@@ -1,0 +1,42 @@
+{
+  "app": {
+    "name": "ToolCove",
+    "slogan": "A cozy cove of developer tools"
+  },
+  "nav": {
+    "toolbox": "Toolbox",
+    "snippet": "Snippets",
+    "problem": "Issues",
+    "settings": "Settings",
+    "expand": "Expand",
+    "collapse": "Collapse"
+  },
+  "module": {
+    "toolboxDesc": "Dev tools, ready to paste",
+    "snippetDesc": "Frequently used data, one click to copy",
+    "problemDesc": "Issue tracking",
+    "settingsDesc": "App configuration & maintenance"
+  },
+  "welcome": {
+    "title": "Welcome to ToolCove",
+    "body": "A local-first, account-free developer workbench. Toolbox and more modules are moving in."
+  },
+  "common": {
+    "confirm": "OK",
+    "cancel": "Cancel",
+    "confirmTitle": "Confirm",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "appearance": "Appearance",
+    "themeSwitched": "Appearance: {label}",
+    "backupDone": "Daily backup done: {summary}",
+    "winMinimize": "Minimize",
+    "winRestore": "Restore",
+    "winMaximize": "Maximize",
+    "winClose": "Close",
+    "manual": "User manual",
+    "updateChecking": "Checking…",
+    "updateCheckTip": "Click to check for updates"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "app": {
+    "name": "ToolCove",
+    "slogan": "开发者的工具港湾"
+  },
+  "nav": {
+    "toolbox": "工具箱",
+    "snippet": "速记",
+    "problem": "问题",
+    "settings": "设置",
+    "expand": "展开",
+    "collapse": "收起"
+  },
+  "module": {
+    "toolboxDesc": "研发小工具 · 即贴即用",
+    "snippetDesc": "随时可复制的常用数据",
+    "problemDesc": "问题跟踪",
+    "settingsDesc": "应用配置与维护"
+  },
+  "welcome": {
+    "title": "欢迎使用 ToolCove",
+    "body": "纯本地、无账号、开箱即用的开发者效率工作台。工具箱等模块正在陆续迁入。"
+  },
+  "common": {
+    "confirm": "确定",
+    "cancel": "取消",
+    "confirmTitle": "确认操作",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "appearance": "外观",
+    "themeSwitched": "外观：{label}",
+    "backupDone": "今日自动备份完成：{summary}",
+    "winMinimize": "最小化",
+    "winRestore": "还原",
+    "winMaximize": "最大化",
+    "winClose": "关闭",
+    "manual": "操作手册",
+    "updateChecking": "正在检查更新…",
+    "updateCheckTip": "点击检查更新"
+  }
+}
