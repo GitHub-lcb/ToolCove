@@ -1,0 +1,35 @@
+# 持续集成：前端单测（vitest）+ 前端构建 + Rust 编译检查（cargo check/test）
+# Rust 侧依赖 Windows 原生能力（托盘等），cargo 步骤跑在 windows-latest
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend-test:
+    name: 前端单测与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  rust-check:
+    name: Rust 编译检查
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo check
+        run: cargo check --locked
+      - name: cargo test
+        run: cargo test
