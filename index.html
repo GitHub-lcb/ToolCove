@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        const mode = localStorage.getItem("themeMode") || "system";
+        const dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.bootTheme = dark ? "dark" : "light";
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
+    <style>
+      html, body, #app { min-height: 100%; margin: 0; background: var(--bg, #f6f8fa); }
+      html[data-boot-theme="dark"], html[data-boot-theme="dark"] body, html[data-boot-theme="dark"] #app { background: #0d1117; }
+    </style>
+    <title>ToolCove</title>
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
