@@ -1,0 +1,43 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window and explicit local toolbox tool windows",
+  "windows": [
+    "main",
+    "tool-convert",
+    "tool-diff",
+    "tool-time",
+    "tool-json",
+    "tool-network",
+    "tool-crypto",
+    "tool-file",
+    "tool-image",
+    "tool-generator",
+    "tool-request",
+    "tool-db",
+    "tool-chat"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-create",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-theme",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "opener:default",
+    "dialog:default",
+    "updater:default",
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    }
+  ]
+}
