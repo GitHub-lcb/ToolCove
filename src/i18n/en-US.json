@@ -37,6 +37,13 @@
     "winClose": "Close",
     "manual": "User manual",
     "updateChecking": "Checking…",
-    "updateCheckTip": "Click to check for updates"
+    "updateCheckTip": "Click to check for updates",
+    "updateLatest": "You are on the latest version",
+    "updateFound": "New version v{version} available",
+    "updateMessage": "Click \"Update now\" to download, install and restart automatically. Your local data is not affected.",
+    "updateNow": "Update now",
+    "updateLater": "Later",
+    "updateDownloading": "Downloading update, restarting when done…",
+    "updateFailed": "Update check failed: {err}"
   }
 }
