@@ -19,7 +19,7 @@ const SAMPLE = {
 };
 
 describe("valueType", () => {
-  it("识别各类型", () => {
+  it("recognizes every type", () => {
     expect(valueType(null)).toBe("null");
     expect(valueType([])).toBe("array");
     expect(valueType({})).toBe("object");
@@ -30,7 +30,7 @@ describe("valueType", () => {
 });
 
 describe("buildTree", () => {
-  it("根为对象，含正确子节点数与类型", () => {
+  it("root is an object with correct child count and types", () => {
     const root = buildTree(SAMPLE);
     expect(root.type).toBe("object");
     expect(root.key).toBe(null);
@@ -43,7 +43,7 @@ describe("buildTree", () => {
     const addr = root.children.find((c) => c.key === "address");
     expect(addr.children.find((c) => c.key === "zip").type).toBe("null");
   });
-  it("节点 id 唯一递增", () => {
+  it("node ids are unique and increasing", () => {
     const root = buildTree({ a: 1, b: 2 });
     const ids = [];
     const walk = (n) => { ids.push(n.id); n.children.forEach(walk); };
@@ -53,7 +53,7 @@ describe("buildTree", () => {
 });
 
 describe("primitivePreview", () => {
-  it("字符串返回原文，其它转字符串", () => {
+  it("strings return as-is, others are stringified", () => {
     expect(primitivePreview({ type: "string", value: "hi" })).toBe("hi");
     expect(primitivePreview({ type: "number", value: 42 })).toBe("42");
     expect(primitivePreview({ type: "boolean", value: false })).toBe("false");
@@ -62,38 +62,39 @@ describe("primitivePreview", () => {
 });
 
 describe("typeLabel", () => {
-  it("容器带子项数，基础类型中文名", () => {
-    expect(typeLabel("object", 7)).toBe("对象 (7)");
-    expect(typeLabel("array", 2)).toBe("数组 (2)");
-    expect(typeLabel("string")).toBe("字符串");
-    expect(typeLabel("number")).toBe("数字");
-    expect(typeLabel("boolean")).toBe("布尔");
+  it("containers carry child count, primitives show localized names", () => {
+    // default locale is zh-CN, so labels resolve to Chinese text (unicode escapes keep source ASCII)
+    expect(typeLabel("object", 7)).toBe("\u5bf9\u8c61 (7)");
+    expect(typeLabel("array", 2)).toBe("\u6570\u7ec4 (2)");
+    expect(typeLabel("string")).toBe("\u5b57\u7b26\u4e32");
+    expect(typeLabel("number")).toBe("\u6570\u5b57");
+    expect(typeLabel("boolean")).toBe("\u5e03\u5c14");
     expect(typeLabel("null")).toBe("null");
   });
 });
 
 describe("searchTree", () => {
-  it("命中键，返回祖先用于展开", () => {
+  it("matching a key returns ancestors for expansion", () => {
     const root = buildTree(SAMPLE);
     const r = searchTree(root, "city");
     expect(r.order.length).toBe(1);
     const addr = root.children.find((c) => c.key === "address");
-    // address 是命中节点(city)的祖先，应在 expand 集内
+    // address is an ancestor of the matched node (city), so it must be in the expand set
     expect(r.expand.has(addr.id)).toBe(true);
     expect(r.expand.has(root.id)).toBe(true);
   });
-  it("命中叶子值（大小写不敏感）", () => {
+  it("matches leaf values case-insensitively", () => {
     const root = buildTree(SAMPLE);
     const r = searchTree(root, "ADMIN");
     expect(r.matched.size).toBe(1);
   });
-  it("空查询返回空集", () => {
+  it("empty query returns empty sets", () => {
     const root = buildTree(SAMPLE);
     const r = searchTree(root, "");
     expect(r.matched.size).toBe(0);
     expect(r.order.length).toBe(0);
   });
-  it("多命中按先序排列", () => {
+  it("multiple matches are ordered by pre-order traversal", () => {
     const root = buildTree({ a: "x1", b: { c: "x2" }, d: "x3" });
     const r = searchTree(root, "x");
     expect(r.order.length).toBe(3);
@@ -101,7 +102,7 @@ describe("searchTree", () => {
 });
 
 describe("flattenTree", () => {
-  it("空展开集只有根一行", () => {
+  it("an empty expand set shows only the root row", () => {
     const root = buildTree(SAMPLE);
     const rows = flattenTree(root, new Set());
     expect(rows.length).toBe(1);
@@ -109,13 +110,13 @@ describe("flattenTree", () => {
     expect(rows[0].expandable).toBe(true);
     expect(rows[0].isOpen).toBe(false);
   });
-  it("展开根后可见一级子节点", () => {
+  it("expanding the root reveals first-level children", () => {
     const root = buildTree(SAMPLE);
     const rows = flattenTree(root, new Set([root.id]));
     expect(rows.length).toBe(1 + 5);
     expect(rows[1].depth).toBe(1);
   });
-  it("叶子节点 expandable 为 false", () => {
+  it("leaf nodes are not expandable", () => {
     const root = buildTree({ a: 1 });
     const rows = flattenTree(root, new Set([root.id]));
     const leaf = rows.find((r) => r.key === "a");
@@ -125,20 +126,20 @@ describe("flattenTree", () => {
 });
 
 describe("defaultExpanded / allContainerIds", () => {
-  it("默认展开根与一级容器", () => {
+  it("expands root and first-level containers by default", () => {
     const root = buildTree(SAMPLE);
     const set = defaultExpanded(root, 1);
     expect(set.has(root.id)).toBe(true);
     const addr = root.children.find((c) => c.key === "address");
     expect(set.has(addr.id)).toBe(true);
-    // 展开后 address 的子节点(city/zip)是叶子，不在集合内
+    // after expansion, children of address (city/zip) are leaves and not in the set
     const rows = flattenTree(root, set);
     expect(rows.find((r) => r.key === "city")).toBeTruthy();
   });
-  it("allContainerIds 收集所有容器", () => {
+  it("allContainerIds collects every container", () => {
     const root = buildTree(SAMPLE);
     const set = allContainerIds(root);
-    // root + tags + address = 3 个容器
+    // root + tags + address = 3 containers
     expect(set.size).toBe(3);
   });
 });

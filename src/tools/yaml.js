@@ -1,6 +1,9 @@
 // YAML 纯逻辑层：面向工程配置的 YAML 1.2 Core，并额外支持常见的合并键 <<。
 import { CORE_SCHEMA, dump, loadAll, mergeTag } from "js-yaml";
 import { parseJson } from "./json.js";
+import { i18n } from "../i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 const YAML_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 const MAX_SOURCE_LENGTH = 1024 * 1024;
@@ -26,13 +29,13 @@ function normalizeYamlError(error) {
   const column = error?.mark && typeof error.mark.column === "number" ? error.mark.column + 1 : 0;
   const reason = error?.reason || error?.message || String(error);
   if (/alias/i.test(reason) && /(limit|maximum|maxAliases)/i.test(reason)) {
-    return { line, column, message: `YAML 别名数量超过安全限制（最多 ${MAX_ALIASES} 个）`, kind: "syntax" };
+    return { line, column, message: t("toolbox.yaml.errAliasLimit", { count: MAX_ALIASES }), kind: "syntax" };
   }
   if (/maximum nesting depth|maxDepth/i.test(reason)) {
-    return { line, column, message: `YAML 嵌套层级超过安全限制（最多 ${MAX_DEPTH} 层）`, kind: "syntax" };
+    return { line, column, message: t("toolbox.yaml.errDepthLimit", { count: MAX_DEPTH }), kind: "syntax" };
   }
   if (/merge/i.test(reason) && /(limit|maximum)/i.test(reason)) {
-    return { line, column, message: "YAML 合并键展开数量超过安全限制", kind: "syntax" };
+    return { line, column, message: t("toolbox.yaml.errMergeLimit"), kind: "syntax" };
   }
   return { line, column, message: reason, kind: "syntax" };
 }
@@ -41,7 +44,7 @@ function normalizeYamlError(error) {
 export function parseYaml(text) {
   const source = String(text ?? "");
   if (source.length > MAX_SOURCE_LENGTH) {
-    return errorResult(`YAML 内容过大，最多支持 ${MAX_SOURCE_LENGTH / 1024} KB`);
+    return errorResult(t("toolbox.yaml.errSourceTooLarge", { kb: MAX_SOURCE_LENGTH / 1024 }));
   }
   try {
     const documents = loadAll(source, LOAD_OPTIONS);
@@ -73,17 +76,17 @@ function toJsonCompatible(value) {
   function walk(current, ancestors) {
     state.nodes++;
     if (state.nodes > MAX_EXPANDED_NODES) {
-      throw new Error("YAML 别名展开后的数据过大，已停止转换");
+      throw new Error(t("toolbox.yaml.errExpandedTooLarge"));
     }
     if (current === null || typeof current === "string" || typeof current === "boolean") return current;
     if (typeof current === "number") {
-      if (!Number.isFinite(current)) throw new Error("YAML 包含 JSON 无法表达的非有限数字");
+      if (!Number.isFinite(current)) throw new Error(t("toolbox.yaml.errNonFiniteNumber"));
       return current;
     }
     if (typeof current !== "object") {
-      throw new Error(`YAML 包含 JSON 无法表达的值类型：${typeof current}`);
+      throw new Error(t("toolbox.yaml.errUnsupportedType", { type: typeof current }));
     }
-    if (ancestors.has(current)) throw new Error("YAML 包含循环引用，无法转换为 JSON");
+    if (ancestors.has(current)) throw new Error(t("toolbox.yaml.errCircularRef"));
 
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(current);
@@ -106,7 +109,7 @@ function toJsonCompatible(value) {
 
 function ensureOutputSize(output, operation) {
   if (output.length > MAX_OUTPUT_LENGTH) {
-    throw new Error(`${operation}结果过大，最多支持 ${MAX_OUTPUT_LENGTH / 1024} KB`);
+    throw new Error(t("toolbox.yaml.errOutputTooLarge", { op: operation, kb: MAX_OUTPUT_LENGTH / 1024 }));
   }
   return output;
 }
@@ -140,7 +143,7 @@ export function formatYaml(text, indent = 2) {
     const output = ensureOutputSize(chunks.join("\n---\n") + "\n", "YAML");
     return { ok: true, output, documentCount: parsed.documentCount, error: null };
   } catch (error) {
-    return conversionError("YAML 格式化失败：" + (error?.message || String(error)));
+    return conversionError(t("toolbox.yaml.errFormatFailed", { err: error?.message || String(error) }));
   }
 }
 
@@ -156,7 +159,7 @@ export function jsonToYaml(text, indent = 2) {
     }), "YAML");
     return { ok: true, output, value: parsed.value, error: null };
   } catch (error) {
-    return conversionError("JSON 转 YAML 失败：" + (error?.message || String(error)));
+    return conversionError(t("toolbox.yaml.errJsonToYamlFailed", { err: error?.message || String(error) }));
   }
 }
 
@@ -213,20 +216,20 @@ export function lintYaml(text) {
     if (!content.trim()) return;
 
     if (/^[ \t]*\u3000/.test(raw)) {
-      warnings.push({ line, message: "缩进中检测到全角空格，请改用半角空格" });
+      warnings.push({ line, message: t("toolbox.yaml.lintFullWidthSpace") });
     }
     if (/[ \t]+$/.test(raw)) {
-      warnings.push({ line, message: "行尾有多余空白（建议删除，避免 diff 干扰）" });
+      warnings.push({ line, message: t("toolbox.yaml.lintTrailingSpace") });
     }
     if (/^\s*(?:-\s+)?[\w\u4e00-\u9fff.-]+：(?=\s|$)/.test(content)) {
-      warnings.push({ line, message: "键名后检测到全角冒号「：」，请改用半角「:」" });
+      warnings.push({ line, message: t("toolbox.yaml.lintFullWidthColon") });
     }
     if (/^\s*(?:-\s+)?[A-Za-z0-9_.-]+\s+:(?=\s|$)/.test(content)) {
-      warnings.push({ line, message: "键名与冒号之间有空格（建议改为「键名:」）" });
+      warnings.push({ line, message: t("toolbox.yaml.lintSpaceBeforeColon") });
     }
     const legacyBool = /(?:^|:\s+|-\s+)(ON|OFF|YES|NO|On|Off|Yes|No)\s*$/.exec(content);
     if (legacyBool) {
-      warnings.push({ line, message: `「${legacyBool[1]}」是 YAML 1.1 布尔写法，当前会按字符串解析` });
+      warnings.push({ line, message: t("toolbox.yaml.lintLegacyBool", { value: legacyBool[1] }) });
     }
     if (startsBlockScalar(content)) blockIndent = indent;
   });

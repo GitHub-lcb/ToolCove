@@ -7,8 +7,8 @@ function ids(...values) {
   return () => values[index++] || "id-" + index;
 }
 
-describe("跨工具 JSON handoff 队列", () => {
-  it("并发 handoff 串行读写且两个内容都保留", async () => {
+describe("cross-tool JSON handoff queue", () => {
+  it("serializes concurrent handoffs and keeps both contents", async () => {
     let persisted = { input: '{"base":true}', mode: "format" };
     let opened = 0;
     const run = createJsonHandoffQueue({
@@ -37,7 +37,7 @@ describe("跨工具 JSON handoff 队列", () => {
     expect(opened).toBe(2);
   });
 
-  it("保存失败不打开工具并报告原因", async () => {
+  it("does not open the tool when saving fails and reports the reason", async () => {
     const reasons = [];
     let opened = 0;
     const run = createJsonHandoffQueue({
@@ -54,7 +54,7 @@ describe("跨工具 JSON handoff 队列", () => {
     expect(reasons).toEqual(["save-failed"]);
   });
 
-  it("只把 phase=load 视为读取失败", async () => {
+  it("treats only phase=load as a read failure", async () => {
     const reasons = [];
     let saves = 0;
     const runAfterMigrationFailure = createJsonHandoffQueue({
@@ -88,8 +88,8 @@ describe("跨工具 JSON handoff 队列", () => {
   });
 });
 
-describe("跨窗口 JSON handoff 接收", () => {
-  it("先即时保存取消旧 pending，再应用新状态", async () => {
+describe("cross-window JSON handoff receiver", () => {
+  it("cancels the old pending state via an immediate save, then applies the new state", async () => {
     const order = [];
     let applied = null;
     const receive = createJsonHandoffReceiver({
@@ -107,7 +107,7 @@ describe("跨窗口 JSON handoff 接收", () => {
 
 
 
-  it("并发事件串行完成 persist 和 apply", async () => {
+  it("completes persist and apply serially for concurrent events", async () => {
     const order = [];
     const receive = createJsonHandoffReceiver({
       normalizeState: (value) => ({ state: value, unsupportedVersion: false, destructive: false }),
@@ -132,7 +132,7 @@ describe("跨窗口 JSON handoff 接收", () => {
     ]);
   });
 
-  it("拒绝未来版本、破坏性 payload 和接收端保存失败", async () => {
+  it("rejects future versions, destructive payloads and receiver save failures", async () => {
     const reasons = [];
     let applied = 0;
     const receive = createJsonHandoffReceiver({

@@ -28,8 +28,8 @@ function workspaceWith(count) {
   return workspace;
 }
 
-describe("JSON 工作区标签操作", () => {
-  it("创建默认活动标签", () => {
+describe("JSON workspace tab operations", () => {
+  it("creates a default active tab", () => {
     expect(createJsonWorkspace(ids("tab-1"))).toEqual({
       activeId: "tab-1",
       tabs: [{
@@ -45,7 +45,7 @@ describe("JSON 工作区标签操作", () => {
     });
   });
 
-  it("新建继承偏好但固定为格式化模式", () => {
+  it("new tabs inherit preferences but are pinned to format mode", () => {
     const seed = createJsonWorkspace(ids("a"));
     const original = {
       ...seed,
@@ -64,11 +64,12 @@ describe("JSON 工作区标签操作", () => {
     expect(original.tabs).toHaveLength(1);
   });
 
-  it("使用最小未占用编号并保护上限", () => {
+  it("uses the smallest free number and guards the limit", () => {
     const seed = workspaceWith(3);
     const withGap = {
       ...seed,
-      tabs: seed.tabs.map((tab, index) => index === 1 ? { ...tab, title: "其他" } : tab),
+      // tab title 其他 kept as unicode escapes
+      tabs: seed.tabs.map((tab, index) => index === 1 ? { ...tab, title: "\u5176\u4ed6" } : tab),
     };
     expect(addJsonTab(withGap, {}, ids("id-4")).workspace.tabs[3].title).toBe("JSON 2");
 
@@ -80,14 +81,15 @@ describe("JSON 工作区标签操作", () => {
     });
   });
 
-  it("切换与重命名返回明确结果且不修改输入图", () => {
+  it("switch and rename return explicit results without mutating the input", () => {
     const original = workspaceWith(2);
     const switched = setActiveJsonTab(original, "id-1");
     expect(switched.workspace.activeId).toBe("id-1");
     expect(original.activeId).toBe("id-2");
 
-    const renamed = renameJsonTab(switched.workspace, "id-1", "  用户详情  ");
-    expect(renamed.workspace.tabs[0].title).toBe("用户详情");
+    // title 用户详情 kept as unicode escapes
+    const renamed = renameJsonTab(switched.workspace, "id-1", "  \u7528\u6237\u8be6\u60c5  ");
+    expect(renamed.workspace.tabs[0].title).toBe("\u7528\u6237\u8be6\u60c5");
     expect(switched.workspace.tabs[0].title).toBe("JSON 1");
     expect(renameJsonTab(switched.workspace, "id-1", "  ")).toEqual({
       ok: false,
@@ -101,7 +103,7 @@ describe("JSON 工作区标签操作", () => {
     });
   });
 
-  it("关闭活动标签右优先、末尾左兜底，并按原索引撤销", () => {
+  it("closing prefers the right neighbour, falls back left at the end, and restores at the original index", () => {
     const workspace = workspaceWith(3);
     const middle = setActiveJsonTab(workspace, "id-2").workspace;
     const closed = closeJsonTab(middle, "id-2");
@@ -116,7 +118,7 @@ describe("JSON 工作区标签操作", () => {
     expect(closeJsonTab(lastActive, "id-3").workspace.activeId).toBe("id-2");
   });
 
-  it("保护最后标签和满额撤销", () => {
+  it("guards the last tab and restore at the limit", () => {
     const single = createJsonWorkspace(ids("only"));
     expect(closeJsonTab(single, "only")).toEqual({
       ok: false,
@@ -132,7 +134,7 @@ describe("JSON 工作区标签操作", () => {
     });
   });
 
-  it("异步结果只允许写回相同 ID 和源文本", () => {
+  it("async results may only write back with the same id and source text", () => {
     const workspace = createJsonWorkspace(ids("target"));
     const source = workspace.tabs[0].input;
     expect(canWriteJsonTab(workspace, "target", source).ok).toBe(true);
@@ -142,7 +144,7 @@ describe("JSON 工作区标签操作", () => {
     expect(canWriteJsonTab(changed, "target", source)).toEqual({ ok: false, reason: "changed" });
   });
 
-  it("关闭后按相同 ID 和源文本恢复时允许异步写回", () => {
+  it("async write-back is allowed after restoring the same id and source text", () => {
     const sourceWorkspace = createJsonWorkspace(ids("target"));
     const sourceTab = sourceWorkspace.tabs[0];
     const withSecond = addJsonTab(sourceWorkspace, {}, ids("second")).workspace;
@@ -157,8 +159,8 @@ describe("JSON 工作区标签操作", () => {
   });
 });
 
-describe("JSON 工具状态迁移与持久化", () => {
-  it("迁移旧 JSON 与 YAML 单草稿", () => {
+describe("JSON tool state migration and persistence", () => {
+  it("migrates legacy JSON and YAML single drafts", () => {
     const json = normalizeJsonToolState({
       dataType: "json",
       input: "{\"a\":1}",
@@ -198,7 +200,7 @@ describe("JSON 工具状态迁移与持久化", () => {
     });
   });
 
-  it("保护未来版本并标记破坏性截断", () => {
+  it("guards future versions and flags destructive truncation", () => {
     const future = { schemaVersion: 9, jsonWorkspace: { tabs: [{ input: "keep" }] } };
     expect(normalizeJsonToolState(future, ids("temp"))).toMatchObject({
       unsupportedVersion: true,
@@ -225,7 +227,7 @@ describe("JSON 工具状态迁移与持久化", () => {
 
 
 
-  it("跨工具 JSON 在空工作区复用默认标签，在已有草稿时新建", () => {
+  it("cross-tool JSON reuses the default tab in an empty workspace and adds one otherwise", () => {
     const empty = prepareJsonHandoff({}, '{"from":"request"}', ids("first"));
     expect(empty).toMatchObject({
       ok: true,
@@ -260,7 +262,7 @@ describe("JSON 工具状态迁移与持久化", () => {
     expect(preserved.value.jsonWorkspace.tabs[1].input).toBe('{"next":true}');
   });
 
-  it("跨工具 JSON 不覆盖未来版本、破坏性状态或满额工作区", () => {
+  it("cross-tool JSON never overwrites future versions, destructive states or full workspaces", () => {
     expect(prepareJsonHandoff({ schemaVersion: 9 }, "{}", ids("future"))).toMatchObject({
       ok: false,
       reason: "unsupported-version",
@@ -279,12 +281,13 @@ describe("JSON 工具状态迁移与持久化", () => {
     });
   });
 
-  it("按 UTF-8 字节判断 200KiB 边界", () => {
+  it("judges the 200KiB boundary by UTF-8 bytes", () => {
     const state = normalizeJsonToolState({}, ids("a")).state;
-    state.jsonWorkspace.tabs[0].input = "中".repeat(Math.floor(MAX_PERSIST_BYTES / 3));
+    // 中 is a 3-byte UTF-8 char; kept as unicode escape
+    state.jsonWorkspace.tabs[0].input = "\u4e2d".repeat(Math.floor(MAX_PERSIST_BYTES / 3));
     expect(serializeJsonToolState(state).omittedTabIds).toEqual([]);
 
-    state.jsonWorkspace.tabs[0].input += "中";
+    state.jsonWorkspace.tabs[0].input += "\u4e2d";
     expect(serializeJsonToolState(state)).toMatchObject({
       omittedTabIds: ["a"],
       value: { jsonWorkspace: { tabs: [{ input: "", inputOmitted: true }] } },
@@ -292,15 +295,16 @@ describe("JSON 工具状态迁移与持久化", () => {
 
     state.jsonWorkspace.tabs[0] = {
       ...state.jsonWorkspace.tabs[0],
-      input: "𠮷".repeat(MAX_PERSIST_BYTES / 4),
+      // 𠮷 is a 4-byte UTF-8 char; kept as a surrogate pair
+      input: "\ud842\udfb7".repeat(MAX_PERSIST_BYTES / 4),
       inputOmitted: false,
     };
     expect(serializeJsonToolState(state).omittedTabIds).toEqual([]);
-    state.jsonWorkspace.tabs[0].input += "𠮷";
+    state.jsonWorkspace.tabs[0].input += "\ud842\udfb7";
     expect(serializeJsonToolState(state).omittedTabIds).toEqual(["a"]);
   });
 
-  it("恢复快照按外部时间排序并只保留三份", () => {
+  it("recovery snapshots are ordered by external time and capped at three", () => {
     const snapshots = [1, 2, 3].map((capturedAt) => ({
       capturedAt,
       reason: "r" + capturedAt,

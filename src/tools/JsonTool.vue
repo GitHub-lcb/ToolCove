@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { formatJson, minifyJson, escapeJson, unescapeJson, parseJson, jsonStats, maskJsonText } from "./json.js";
 import { formatYaml, jsonToYaml, lintYaml, parseYaml, yamlToJson } from "./yaml.js";
 import { buildTree, searchTree, flattenTree, defaultExpanded, allContainerIds, primitivePreview, typeLabel } from "./jsonTree.js";
@@ -27,6 +28,8 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
+const { t } = useI18n();
+
 const HIST_MAX = 10;
 const HIST_ITEM_MAX = 50 * 1024; // 单条历史最多存 50KB
 const HL_MAX = 150 * 1024; // 输出超过 150KB 不做语法高亮（退化为纯文本）
@@ -36,31 +39,31 @@ const DATA_TYPES = [
   { key: "yaml", label: "YAML" },
 ];
 const JSON_MODES = [
-  { key: "format", label: "格式化" },
-  { key: "tree", label: "树视图" },
-  { key: "minify", label: "压缩" },
-  { key: "escape", label: "转义" },
-  { key: "unescape", label: "去转义" },
-  { key: "to-yaml", label: "转 YAML" },
+  { key: "format", labelKey: "toolbox.json.modeFormat" },
+  { key: "tree", labelKey: "toolbox.json.modeTree" },
+  { key: "minify", labelKey: "toolbox.json.modeMinify" },
+  { key: "escape", labelKey: "toolbox.json.modeEscape" },
+  { key: "unescape", labelKey: "toolbox.json.modeUnescape" },
+  { key: "to-yaml", labelKey: "toolbox.json.modeToYaml" },
 ];
 const YAML_MODES = [
-  { key: "validate", label: "校验" },
-  { key: "format", label: "格式化", title: "重新序列化 YAML，结果不保留原注释" },
-  { key: "tree", label: "树视图" },
-  { key: "to-json", label: "转 JSON" },
+  { key: "validate", labelKey: "toolbox.json.modeValidate" },
+  { key: "format", labelKey: "toolbox.json.modeFormat", titleKey: "toolbox.json.yamlFormatTip" },
+  { key: "tree", labelKey: "toolbox.json.modeTree" },
+  { key: "to-json", labelKey: "toolbox.json.modeToJson" },
 ];
 
 // 快捷示例
 const SAMPLES = [
   {
     key: "user",
-    label: "示例: 用户信息",
+    labelKey: "toolbox.json.sampleUser",
     text: JSON.stringify({
       code: 200,
       data: {
         user: {
           id: 101,
-          name: "研发小助手",
+          name: "ToolCove",
           role: "admin",
           skills: ["Vue", "Tauri", "Rust"],
           active: true,
@@ -72,13 +75,13 @@ const SAMPLES = [
   },
   {
     key: "list",
-    label: "示例: 列表数据",
+    labelKey: "toolbox.json.sampleList",
     text: JSON.stringify({
       total: 3,
       items: [
-        { id: 1, title: "需求评审", done: true },
-        { id: 2, title: "接口联调", done: false },
-        { id: 3, title: "上线发布", done: false },
+        { id: 1, title: "Code review", done: true },
+        { id: 2, title: "API testing", done: false },
+        { id: 3, title: "Release", done: false },
       ],
       page: 1,
       pageSize: 20,
@@ -86,7 +89,7 @@ const SAMPLES = [
   },
   {
     key: "api",
-    label: "示例: 接口响应",
+    labelKey: "toolbox.json.sampleApi",
     text: JSON.stringify({
       stat: {
         _apiUUID: "db5b706a-3816-4642-9d23-b2bd2555d6aa",
@@ -96,20 +99,20 @@ const SAMPLES = [
           { key: "output", value: "[2091]" },
           { key: "dubbo", value: "[2.0.2]" },
         ],
-        stateList: [{ code: 0, defaultTip: "成功", length: 480, msg: "SUCCESS_0" }],
+        stateList: [{ code: 0, defaultTip: "Success", length: 480, msg: "SUCCESS_0" }],
         systime: 1785318116516,
       },
-      content: [{ id: 1, name: "示例条目", enabled: true, tags: ["a", "b"] }],
+      content: [{ id: 1, name: "Sample item", enabled: true, tags: ["a", "b"] }],
     }),
   },
   {
     key: "sensitive",
-    label: "示例: 敏感数据",
+    labelKey: "toolbox.json.sampleSensitive",
     text: JSON.stringify({
       code: 200,
       data: {
         userId: 100238,
-        name: "示例用户",
+        name: "Sample User",
         phone: "13812345678",
         email: "user@example.com",
         idCard: "110101199001011234",
@@ -117,7 +120,7 @@ const SAMPLES = [
         password: "MyP@ssw0rd123",
         token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
         salary: 25000,
-        address: "示例市示例区示例路 88 号",
+        address: "88 Sample Road, Sample City",
         loginIp: "192.0.2.100",
       },
       message: "ok",
@@ -125,10 +128,10 @@ const SAMPLES = [
   },
   {
     key: "yaml",
-    label: "示例: YAML 配置",
+    labelKey: "toolbox.json.sampleYaml",
     dataType: "yaml",
     text: [
-      "# 服务配置示例",
+      "# Service config example",
       "server:",
       "  host: 0.0.0.0",
       "  port: 8080",
@@ -139,17 +142,17 @@ const SAMPLES = [
       "    max: 10",
       "    idle: 2",
       "features:",
-      "  - 登录",
-      "  - 订单",
+      "  - login",
+      "  - order",
       "enabled: true",
     ].join("\n"),
   },
   {
     key: "yaml-compose",
-    label: "示例: YAML 部署文件",
+    labelKey: "toolbox.json.sampleYamlCompose",
     dataType: "yaml",
     text: [
-      "# docker-compose 风格部署配置",
+      "# docker-compose style deployment config",
       "version: \"3.8\"",
       "services:",
       "  web:",
@@ -279,7 +282,7 @@ function createTab(options = {}) {
   if (dataType.value === "json") finalizeCurrentBeforeSwitch();
   const result = addJsonTab(toolState.value.jsonWorkspace, options, idFactory);
   if (!result.ok) {
-    props.showToast("最多保留 10 个 JSON 标签，请先关闭一个");
+    props.showToast(t("toolbox.json.tabLimit"));
     return false;
   }
   toolState.value = {
@@ -324,19 +327,19 @@ function closeTab(id) {
   const result = closeJsonTab(toolState.value.jsonWorkspace, id);
   if (!result.ok) {
     if (result.reason === "last-tab") {
-      props.showToast("至少保留一个标签，可使用“清空”重置内容");
+      props.showToast(t("toolbox.json.lastTab"));
     }
     return;
   }
   toolState.value = { ...toolState.value, jsonWorkspace: result.workspace };
   if (wasActive) resetTransientState();
-  props.showToast("已关闭“" + result.closed.tab.title + "”", {
-    actionLabel: "撤销",
+  props.showToast(t("toolbox.json.closedTab", { title: result.closed.tab.title }), {
+    actionLabel: t("toolbox.json.undo"),
     duration: 5000,
     onAction: () => {
       const restored = restoreJsonTab(toolState.value.jsonWorkspace, result.closed);
       if (!restored.ok) {
-        props.showToast("标签已满，无法撤销关闭");
+        props.showToast(t("toolbox.json.undoTabFull"));
         return;
       }
       toolState.value = {
@@ -345,7 +348,7 @@ function closeTab(id) {
         jsonWorkspace: restored.workspace,
       };
       resetTransientState();
-      props.showToast("已恢复标签");
+      props.showToast(t("toolbox.json.tabRestored"));
     },
   });
 }
@@ -404,7 +407,7 @@ function selectDataType(nextType) {
 function showPersistenceError() {
   if (persistenceWarned) return;
   persistenceWarned = true;
-  props.showToast("草稿保存失败，本次修改可能无法在重启后恢复");
+  props.showToast(t("toolbox.json.persistFailed"));
 }
 
 function persistState() {
@@ -412,7 +415,7 @@ function persistState() {
   const { value, omittedTabIds } = serializeJsonToolState(toolState.value);
   const omitted = new Set(omittedTabIds);
   for (const id of omitted) {
-    if (!omittedWarned.has(id)) props.showToast("该标签超过 200KiB，重启后不会恢复内容");
+    if (!omittedWarned.has(id)) props.showToast(t("toolbox.json.tabOmitted"));
     omittedWarned.add(id);
   }
   for (const id of [...omittedWarned]) {
@@ -434,7 +437,7 @@ async function backupDestructiveState(normalized) {
   });
   const saved = await saveToolboxNow("json-recovery", snapshots);
   if (!saved.ok) return false;
-  props.showToast("原始 JSON 草稿已备份到恢复文件");
+  props.showToast(t("toolbox.json.draftBackedUp"));
   return true;
 }
 
@@ -453,12 +456,12 @@ const receiveJsonHandoff = createJsonHandoffReceiver({
     toolState.value = { ...state, dataType: "json" };
     if (!stopPersist) stopPersist = watch(toolState, persistState, { deep: true });
     resetTransientState();
-    props.showToast("已打开请求中的 JSON");
+    props.showToast(t("toolbox.json.handoffOpened"));
   },
   onError: (reason) => {
     const message = reason === "save-failed"
-      ? "JSON 响应接收失败，原草稿保持不变"
-      : "JSON 响应状态无效，已拒绝接收";
+      ? t("toolbox.json.handoffSaveFailed")
+      : t("toolbox.json.handoffInvalid");
     props.showToast(message);
   },
 });
@@ -473,7 +476,7 @@ function hydratePendingHandoff() {
   if (!stopPersist) stopPersist = watch(toolState, persistState, { deep: true });
   persistState();
   resetTransientState();
-  props.showToast("已打开请求中的 JSON");
+  props.showToast(t("toolbox.json.handoffOpened"));
   return true;
 }
 
@@ -490,7 +493,7 @@ onMounted(async () => {
         void receiveJsonHandoff(event.payload);
       });
     } catch {
-      props.showToast("JSON 跨窗口通知初始化失败");
+      props.showToast(t("toolbox.json.handoffInitFailed"));
     }
   } else {
     window.addEventListener(JSON_HANDOFF_EVENT, onBrowserJsonHandoff);
@@ -518,8 +521,8 @@ onMounted(async () => {
   history.value = Array.isArray(savedHistory)
     ? savedHistory.filter((item) => item && typeof item.text === "string").slice(0, HIST_MAX)
     : [];
-  if (historyLoadFailed) props.showToast("JSON 历史记录读取失败");
-  else if (historyMigrationSaveFailed) props.showToast("JSON 历史记录已读取，但迁移保存失败");
+  if (historyLoadFailed) props.showToast(t("toolbox.json.historyLoadFailed"));
+  else if (historyMigrationSaveFailed) props.showToast(t("toolbox.json.historyMigrateFailed"));
   if (hydratePendingHandoff()) return;
   if (stateLoadFailed) {
     persistenceBlocked.value = true;
@@ -533,17 +536,17 @@ onMounted(async () => {
     persistenceBlocked.value = true;
     toolState.value = normalized.state;
     hydrated.value = true;
-    props.showToast("JSON 草稿来自更高版本，已阻止覆盖原数据");
+    props.showToast(t("toolbox.json.draftFutureVersion"));
     return;
   }
   if (stateMigrationSaveFailed) {
     persistenceBlocked.value = true;
-    props.showToast("旧 JSON 草稿已读取，但迁移保存失败");
+    props.showToast(t("toolbox.json.draftMigrateFailed"));
   }
   if (normalized.destructive && !(await backupDestructiveState(normalized))) {
     if (disposed) return;
     persistenceBlocked.value = true;
-    props.showToast("JSON 恢复备份失败，已阻止覆盖原数据");
+    props.showToast(t("toolbox.json.recoveryBackupFailed"));
   }
   if (disposed) return;
   if (hydratePendingHandoff()) return;
@@ -553,7 +556,7 @@ onMounted(async () => {
     .filter((tab) => tab.inputOmitted)
     .map((tab) => tab.id);
   for (const id of omittedIds) omittedWarned.add(id);
-  if (omittedIds.length) props.showToast(String(omittedIds.length) + " 个超大标签的内容未恢复");
+  if (omittedIds.length) props.showToast(t("toolbox.json.omittedNotRestored", { count: omittedIds.length }));
 
   hydrated.value = true;
   if (!persistenceBlocked.value) {
@@ -614,7 +617,7 @@ const isEmpty = computed(() => !!result.value.empty);
 const errorText = computed(() => {
   const e = error.value;
   if (!e) return "";
-  if (e.line > 0) return `第 ${e.line} 行第 ${e.column} 列：${e.message}`;
+  if (e.line > 0) return t("toolbox.json.errorLocation", { line: e.line, column: e.column, message: e.message });
   return e.message;
 });
 
@@ -660,25 +663,25 @@ const outLineCount = computed(() => (output.value ? output.value.split("\n").len
 
 const resultTitle = computed(() => {
   if (dataType.value === "yaml") {
-    return { validate: "校验结果", format: "YAML 格式化结果", tree: "结构视图", "to-json": "JSON 转换结果" }[mode.value];
+    return { validate: "toolbox.json.resultValidate", format: "toolbox.json.resultYamlFormat", tree: "toolbox.json.resultTree", "to-json": "toolbox.json.resultToJson" }[mode.value];
   }
-  return { format: "JSON 格式化结果", tree: "结构视图", minify: "压缩结果", escape: "转义结果", unescape: "去转义结果", "to-yaml": "YAML 转换结果" }[mode.value];
+  return { format: "toolbox.json.resultJsonFormat", tree: "toolbox.json.resultTree", minify: "toolbox.json.resultMinify", escape: "toolbox.json.resultEscape", unescape: "toolbox.json.resultUnescape", "to-yaml": "toolbox.json.resultToYaml" }[mode.value];
 });
 
 // 输入区标题与占位文案随模式切换
-const inputTitle = computed(() => `输入 ${dataType.value.toUpperCase()}`);
+const inputTitle = computed(() => t("toolbox.json.inputTitle", { type: dataType.value.toUpperCase() }));
 const inputPlaceholder = computed(() =>
-  dataType.value === "yaml" ? "在此粘贴 / 输入 YAML…（Ctrl+Enter 复制结果）" : "在此粘贴 / 输入 JSON…（Ctrl+Enter 复制结果）"
+  dataType.value === "yaml" ? t("toolbox.json.inputPlaceholderYaml") : t("toolbox.json.inputPlaceholderJson")
 );
-const emptyHint = computed(() => `在左侧粘贴 ${dataType.value.toUpperCase()}…`);
+const emptyHint = computed(() => t("toolbox.json.emptyHint", { type: dataType.value.toUpperCase() }));
 const isTreeMode = computed(() => mode.value === "tree");
 const isValidateMode = computed(() => dataType.value === "yaml" && mode.value === "validate");
-const syntaxStatusText = computed(() => (dataType.value === "yaml" ? "YAML 语法正确" : "JSON 格式正确"));
-const invalidStatusText = computed(() => (dataType.value === "yaml" ? "YAML 语法错误" : "JSON 格式错误"));
+const syntaxStatusText = computed(() => (dataType.value === "yaml" ? t("toolbox.json.syntaxOkYaml") : t("toolbox.json.syntaxOkJson")));
+const invalidStatusText = computed(() => (dataType.value === "yaml" ? t("toolbox.json.syntaxBadYaml") : t("toolbox.json.syntaxBadJson")));
 const resultHint = computed(() => {
   if (isEmpty.value) return emptyHint.value;
-  if (error.value?.kind === "conversion") return "语法正确，但当前内容无法完成此转换";
-  return "修正错误后显示结果";
+  if (error.value?.kind === "conversion") return t("toolbox.json.conversionImpossible");
+  return t("toolbox.json.fixErrorFirst");
 });
 
 // 行号列与 textarea 滚动同步
@@ -731,12 +734,12 @@ function pushHistorySnapshot(text, type, selectedMode, { persist = true } = {}) 
 
 async function saveAiHistorySnapshot(text, selectedMode) {
   if (!pushHistorySnapshot(text, "json", selectedMode, { persist: false })) {
-    props.showToast("内容过大，无法创建历史快照，已取消 AI 操作");
+    props.showToast(t("toolbox.json.aiHistoryTooLarge"));
     return false;
   }
   const saved = await saveToolboxNow("json-history", history.value);
   if (!saved.ok) {
-    props.showToast("历史快照保存失败，已取消 AI 操作");
+    props.showToast(t("toolbox.json.aiHistorySaveFailed"));
     return false;
   }
   return true;
@@ -761,7 +764,7 @@ function restoreHistory(item) {
   }
   historyOpen.value = false;
   resetTransientState();
-  props.showToast("已恢复历史记录");
+  props.showToast(t("toolbox.json.historyRestored"));
 }
 function clearHistory() {
   history.value = [];
@@ -781,15 +784,15 @@ function onDocClick(e) {
 const copiedResult = ref(false); // 复制结果反馈：按钮短暂变 check
 let copiedTimer = null;
 async function copyResult() {
-  if (!output.value) return props.showToast("没有可复制的结果");
+  if (!output.value) return props.showToast(t("toolbox.json.nothingToCopy"));
   try {
     await navigator.clipboard.writeText(output.value);
     copiedResult.value = true;
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => (copiedResult.value = false), 1200);
-    props.showToast("已复制结果");
+    props.showToast(t("toolbox.json.copiedResult"));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.json.copyFailed", { err: e }));
   }
 }
 function clearAll() {
@@ -804,7 +807,7 @@ function loadSample(sample) {
     : sample.text;
   mode.value = dataType.value === "json" ? "format" : "validate";
   resetTransientState();
-  props.showToast("已载入" + sample.label.replace("示例: ", "示例："));
+  props.showToast(t("toolbox.json.sampleLoaded", { label: t(sample.labelKey) }));
 }
 function triggerImport() {
   fileRef.value?.click();
@@ -819,7 +822,7 @@ function onFile(event) {
     || extension === "yml"
     || (extension === "txt" && dataType.value === "yaml");
   if (!targetsYaml && toolState.value.jsonWorkspace.tabs.length >= 10) {
-    props.showToast("最多保留 10 个 JSON 标签，请先关闭一个");
+    props.showToast(t("toolbox.json.tabLimit"));
     return;
   }
 
@@ -845,9 +848,9 @@ function onFile(event) {
       return;
     }
     resetTransientState();
-    props.showToast("已导入 " + file.name);
+    props.showToast(t("toolbox.json.imported", { name: file.name }));
   };
-  reader.onerror = () => props.showToast("读取文件失败");
+  reader.onerror = () => props.showToast(t("toolbox.json.fileReadFailed"));
   reader.readAsText(file);
 }
 
@@ -861,23 +864,23 @@ async function aiRepair() {
   aiFixing.value = true;
   try {
     if (!(await isAIConfigured())) {
-      props.showToast("请先在右上角设置中配置 AI 模型");
+      props.showToast(t("toolbox.json.aiNotConfigured"));
       return;
     }
     if (!canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source).ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
     if (!(await saveAiHistorySnapshot(source, sourceMode))) return;
     if (!canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source).ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
-    props.showToast("AI 正在修复 JSON…");
+    props.showToast(t("toolbox.json.aiFixing"));
     const fixed = await aiRepairJson(source);
     const target = canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source);
     if (!target.ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
     const formatted = JSON.stringify(JSON.parse(fixed), null, target.tab.indent);
@@ -893,9 +896,9 @@ async function aiRepair() {
     if (toolState.value.jsonWorkspace.activeId === tabId && dataType.value === "json") {
       cursor.value = { line: 1, col: 1 };
     }
-    props.showToast("AI 已修复并格式化");
+    props.showToast(t("toolbox.json.aiFixed"));
   } catch (e) {
-    props.showToast("AI 修复失败：" + (e && e.message ? e.message : e));
+    props.showToast(t("toolbox.json.aiFixFailed", { err: e && e.message ? e.message : e }));
   } finally {
     aiFixing.value = false;
   }
@@ -904,14 +907,14 @@ async function aiRepair() {
 // ---------- 一键脱敏 ----------
 // 对当前合法 JSON 脱敏（纯本地），回填到输入区（脱敏前自动留档可回退）。
 function maskSensitive() {
-  if (dataType.value !== "json" || jsonState.value !== "ok") return props.showToast("请先输入合法的 JSON");
+  if (dataType.value !== "json" || jsonState.value !== "ok") return props.showToast(t("toolbox.json.needValidJson"));
   const r = maskJsonText(input.value, indent.value);
-  if (!r.ok) return props.showToast("脱敏失败：JSON 格式错误");
-  if (!r.count) return props.showToast("未识别到需脱敏的敏感字段");
+  if (!r.ok) return props.showToast(t("toolbox.json.maskFormatError"));
+  if (!r.count) return props.showToast(t("toolbox.json.maskNoneFound"));
   pushHistory();
   input.value = r.output;
   cursor.value = { line: 1, col: 1 };
-  props.showToast("已脱敏 " + r.count + " 处敏感字段");
+  props.showToast(t("toolbox.json.masked", { count: r.count }));
 }
 
 // ---------- AI mock 数据 ----------
@@ -920,13 +923,13 @@ const mockInstruction = ref(""); // 用户生成指令
 const mocking = ref(false);
 const mockWrap = ref(null);
 function toggleMock() {
-  if (dataType.value !== "json" || jsonState.value !== "ok") return props.showToast("请先输入合法的 JSON 作为模板");
+  if (dataType.value !== "json" || jsonState.value !== "ok") return props.showToast(t("toolbox.json.needValidJsonTemplate"));
   mockOpen.value = !mockOpen.value;
 }
 async function runMock() {
   if (mocking.value) return;
   if (dataType.value !== "json" || jsonState.value !== "ok") {
-    return props.showToast("请先输入合法的 JSON 作为模板");
+    return props.showToast(t("toolbox.json.needValidJsonTemplate"));
   }
   const tabId = toolState.value.jsonWorkspace.activeId;
   const source = activeTab.value.input;
@@ -935,23 +938,23 @@ async function runMock() {
   mocking.value = true;
   try {
     if (!(await isAIConfigured())) {
-      props.showToast("请先在右上角设置中配置 AI 模型");
+      props.showToast(t("toolbox.json.aiNotConfigured"));
       return;
     }
     if (!canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source).ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
     if (!(await saveAiHistorySnapshot(source, sourceMode))) return;
     if (!canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source).ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
-    props.showToast("AI 正在生成 mock 数据…");
+    props.showToast(t("toolbox.json.mockGenerating"));
     const mocked = await aiMockJson(source, instruction);
     const target = canWriteJsonTab(toolState.value.jsonWorkspace, tabId, source);
     if (!target.ok) {
-      props.showToast("原标签已关闭或内容已变化，结果未写回");
+      props.showToast(t("toolbox.json.tabChanged"));
       return;
     }
     const formatted = JSON.stringify(JSON.parse(mocked), null, target.tab.indent);
@@ -968,9 +971,9 @@ async function runMock() {
       cursor.value = { line: 1, col: 1 };
     }
     mockOpen.value = false;
-    props.showToast("AI 已生成 mock 数据");
+    props.showToast(t("toolbox.json.mockGenerated"));
   } catch (e) {
-    props.showToast("mock 生成失败：" + (e && e.message ? e.message : e));
+    props.showToast(t("toolbox.json.mockFailed", { err: e && e.message ? e.message : e }));
   } finally {
     mocking.value = false;
   }
@@ -1051,9 +1054,9 @@ async function copyValue(row) {
   const text = row.type === "string" ? row.value : primitivePreview(row);
   try {
     await navigator.clipboard.writeText(text);
-    props.showToast("已复制值");
+    props.showToast(t("toolbox.json.valueCopied"));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.json.copyFailed", { err: e }));
   }
 }
 </script>
@@ -1064,7 +1067,7 @@ async function copyValue(row) {
 
     <!-- 工具条：先选数据格式，再选该格式下的操作 -->
     <div class="bar">
-      <div class="type-switch" aria-label="数据格式">
+      <div class="type-switch" :aria-label="t('toolbox.json.ariaDataFormat')">
         <button
           v-for="item in DATA_TYPES"
           :key="item.key"
@@ -1079,17 +1082,17 @@ async function copyValue(row) {
           :key="m.key"
           class="pill"
           :class="{ on: mode === m.key }"
-          :title="m.title || m.label"
+          :title="m.titleKey ? t(m.titleKey) : t(m.labelKey)"
           @click="mode = m.key"
-        >{{ m.label }}</button>
+        >{{ t(m.labelKey) }}</button>
       </div>
       <div class="bar-right">
         <div ref="histWrap" class="hist-wrap">
-          <button class="act" :class="{ open: historyOpen }" @click="historyOpen = !historyOpen"><Icon name="clock" :size="14" />历史记录</button>
+          <button class="act" :class="{ open: historyOpen }" @click="historyOpen = !historyOpen"><Icon name="clock" :size="14" />{{ t("toolbox.json.history") }}</button>
           <div v-if="historyOpen" class="hist-panel">
             <div class="hp-head">
-              <b>历史记录</b>
-              <button v-if="history.length" class="hp-clear" @click="clearHistory">清空</button>
+              <b>{{ t("toolbox.json.history") }}</b>
+              <button v-if="history.length" class="hp-clear" @click="clearHistory">{{ t("toolbox.json.clear") }}</button>
             </div>
             <div v-if="history.length" class="hp-list">
               <button v-for="(h, i) in history" :key="h.ts + '-' + i" class="hp-item" @click="restoreHistory(h)">
@@ -1097,30 +1100,30 @@ async function copyValue(row) {
                 <span class="hp-time">{{ relativeTime(h.ts) }}</span>
               </button>
             </div>
-            <p v-else class="hp-empty">暂无历史。输入内容失焦后会自动留档。</p>
+            <p v-else class="hp-empty">{{ t("toolbox.json.historyEmpty") }}</p>
           </div>
         </div>
-        <button v-if="dataType === 'json'" class="act" title="一键脱敏：本地把密码/手机/邮箱/身份证等敏感信息打星（不上传）" @click="maskSensitive"><Icon name="eye" :size="14" />脱敏</button>
+        <button v-if="dataType === 'json'" class="act" :title="t('toolbox.json.maskTitle')" @click="maskSensitive"><Icon name="eye" :size="14" />{{ t("toolbox.json.mask") }}</button>
         <div v-if="dataType === 'json'" ref="mockWrap" class="hist-wrap">
-          <button class="act" :class="{ open: mockOpen }" title="以当前 JSON 为模板，让 AI 生成全新的 mock 数据" @click="toggleMock"><Icon name="sparkles" :size="14" />AI Mock</button>
+          <button class="act" :class="{ open: mockOpen }" :title="t('toolbox.json.mockTitle')" @click="toggleMock"><Icon name="sparkles" :size="14" />AI Mock</button>
           <div v-if="mockOpen" class="mock-panel">
-            <div class="hp-head"><b>AI 生成 mock 数据</b></div>
+            <div class="hp-head"><b>{{ t("toolbox.json.mockPanelTitle") }}</b></div>
             <div class="mock-body">
-              <p class="mock-tip">以当前 JSON 为结构模板，描述你想要什么样的新数据（可留空）：</p>
-              <textarea v-model="mockInstruction" class="mock-ta" spellcheck="false" placeholder="例：生成 3 条电商订单，金额 100~500，状态有已付款/待发货；用户名用中文…"></textarea>
+              <p class="mock-tip">{{ t("toolbox.json.mockTip") }}</p>
+              <textarea v-model="mockInstruction" class="mock-ta" spellcheck="false" :placeholder="t('toolbox.json.mockPlaceholder')"></textarea>
               <button class="mock-run" :disabled="mocking" @click="runMock">
-                <Icon name="sparkles" :size="14" />{{ mocking ? "生成中…" : "生成 mock 数据" }}
+                <Icon name="sparkles" :size="14" />{{ mocking ? t("toolbox.json.mockRunning") : t("toolbox.json.mockRun") }}
               </button>
             </div>
           </div>
         </div>
-        <button class="act" @click="triggerImport"><Icon name="download" :size="14" />导入文件</button>
-        <button class="act" @click="clearAll"><Icon name="trash" :size="14" />清空</button>
-        <button v-if="!isValidateMode" class="act primary" :class="{ done: copiedResult }" :disabled="!output" @click="copyResult"><Icon :name="copiedResult ? 'check' : 'copy'" :size="14" />{{ copiedResult ? "已复制" : "复制结果" }}</button>
+        <button class="act" @click="triggerImport"><Icon name="download" :size="14" />{{ t("toolbox.json.importFile") }}</button>
+        <button class="act" @click="clearAll"><Icon name="trash" :size="14" />{{ t("toolbox.json.clear") }}</button>
+        <button v-if="!isValidateMode" class="act primary" :class="{ done: copiedResult }" :disabled="!output" @click="copyResult"><Icon :name="copiedResult ? 'check' : 'copy'" :size="14" />{{ copiedResult ? t("toolbox.json.copied") : t("toolbox.json.copyResult") }}</button>
       </div>
     </div>
 
-    <div v-if="dataType === 'json'" class="doc-tabs" aria-label="JSON 文档标签">
+    <div v-if="dataType === 'json'" class="doc-tabs" :aria-label="t('toolbox.json.ariaDocTabs')">
       <div class="doc-tabs-scroll">
         <div
           v-for="tab in toolState.jsonWorkspace.tabs"
@@ -1133,7 +1136,7 @@ async function copyValue(row) {
             :ref="setRenameRef"
             v-model="editingTitle"
             class="doc-tab-input"
-            aria-label="标签名称"
+            :aria-label="t('toolbox.json.ariaTabName')"
             @click.stop
             @keydown.enter.prevent="commitRename"
             @keydown.esc.prevent="cancelRename"
@@ -1153,8 +1156,8 @@ async function copyValue(row) {
           <button
             class="doc-tab-close icon-btn xs"
             :disabled="toolState.jsonWorkspace.tabs.length === 1"
-            :aria-label="'关闭 ' + tab.title"
-            :title="toolState.jsonWorkspace.tabs.length === 1 ? '至少保留一个标签' : '关闭标签'"
+            :aria-label="t('toolbox.json.closeTabAria', { title: tab.title })"
+            :title="toolState.jsonWorkspace.tabs.length === 1 ? t('toolbox.json.lastTabShort') : t('toolbox.json.closeTabTitle')"
             @click.stop="closeTab(tab.id)"
           ><Icon name="x" :size="12" /></button>
         </div>
@@ -1162,8 +1165,8 @@ async function copyValue(row) {
       <button
         class="doc-tab-add icon-btn"
         :disabled="toolState.jsonWorkspace.tabs.length >= 10"
-        :title="toolState.jsonWorkspace.tabs.length >= 10 ? '最多 10 个标签' : '新建 JSON 标签'"
-        aria-label="新建 JSON 标签"
+        :title="toolState.jsonWorkspace.tabs.length >= 10 ? t('toolbox.json.tabLimitShort') : t('toolbox.json.newTab')"
+        :aria-label="t('toolbox.json.newTab')"
         @click="createTab()"
       ><Icon name="plus" :size="15" /></button>
     </div>
@@ -1172,14 +1175,14 @@ async function copyValue(row) {
     <div v-if="errorText" class="err-bar">
       <span class="err-msg">{{ errorText }}</span>
       <button v-if="canAiFix" class="ai-fix" :disabled="aiFixing" @click="aiRepair">
-        <Icon name="sparkles" :size="14" />{{ aiFixing ? "AI 修复中…" : "AI 修复" }}
+        <Icon name="sparkles" :size="14" />{{ aiFixing ? t("toolbox.json.aiFixingBtn") : t("toolbox.json.aiFixBtn") }}
       </button>
     </div>
 
     <!-- YAML 可疑写法提示（琥珀条，语法合法但通常是笔误） -->
     <div v-if="yamlWarnings.length" class="warn-bar">
       <Icon name="alert" :size="13" class="warn-ico" />
-      <span v-for="(w, i) in yamlWarnings" :key="i" class="warn-item" :title="w.message">第 {{ w.line }} 行：{{ w.message }}</span>
+      <span v-for="(w, i) in yamlWarnings" :key="i" class="warn-item" :title="w.message">{{ t("toolbox.json.warnLine", { line: w.line, message: w.message }) }}</span>
     </div>
 
     <!-- 主体三栏 -->
@@ -1189,8 +1192,8 @@ async function copyValue(row) {
         <div class="pane-head">
           <span class="pane-title">{{ inputTitle }}</span>
           <span class="spacer"></span>
-          <button v-if="dataType === 'json'" class="switch-btn" :class="{ on: autoFormat }" :title="autoFormat ? '自动格式化：开' : '自动格式化：关'" @click="toggleAuto">
-            <span class="sw-label">自动格式化</span>
+          <button v-if="dataType === 'json'" class="switch-btn" :class="{ on: autoFormat }" :title="autoFormat ? t('toolbox.json.autoFormatOn') : t('toolbox.json.autoFormatOff')" @click="toggleAuto">
+            <span class="sw-label">{{ t("toolbox.json.autoFormat") }}</span>
             <span class="sw-track"><span class="sw-knob"></span></span>
           </button>
         </div>
@@ -1218,12 +1221,12 @@ async function copyValue(row) {
           ></textarea>
         </div>
         <div class="pane-foot">
-          <span class="ff">长度: {{ charCount.toLocaleString() }}</span>
+          <span class="ff">{{ t("toolbox.json.length") }}: {{ charCount.toLocaleString() }}</span>
           <span class="ff-sep">|</span>
-          <span class="ff">行数: {{ lineCount }}</span>
+          <span class="ff">{{ t("toolbox.json.lines") }}: {{ lineCount }}</span>
           <span class="spacer"></span>
-          <span class="ff">行 {{ cursor.line }}, 列 {{ cursor.col }}</span>
-          <span class="ff">空格:</span>
+          <span class="ff">{{ t("toolbox.json.cursorPos", { line: cursor.line, col: cursor.col }) }}</span>
+          <span class="ff">{{ t("toolbox.json.indent") }}:</span>
           <button class="mini" :class="{ on: indent === 2 }" @click="indent = 2">2</button>
           <button class="mini" :class="{ on: indent === 4 }" @click="indent = 4">4</button>
         </div>
@@ -1232,19 +1235,19 @@ async function copyValue(row) {
       <!-- 结果卡 -->
       <div class="pane">
         <div class="pane-head">
-          <span class="pane-title">{{ resultTitle }}</span>
+          <span class="pane-title">{{ t(resultTitle) }}</span>
           <template v-if="isTreeMode">
             <div class="tsearch">
               <Icon name="search" :size="13" />
-              <input v-model="treeQuery" spellcheck="false" placeholder="搜索键或值…" />
+              <input v-model="treeQuery" spellcheck="false" :placeholder="t('toolbox.json.treeSearch')" />
             </div>
             <span v-if="treeQuery" class="match-info">{{ matchCount ? (matchIndex + 1) + '/' + matchCount : '0/0' }}</span>
-            <button class="mini" :disabled="!matchCount" title="上一个" @click="gotoMatch(-1)">‹</button>
-            <button class="mini" :disabled="!matchCount" title="下一个" @click="gotoMatch(1)">›</button>
+            <button class="mini" :disabled="!matchCount" :title="t('toolbox.json.prevMatch')" @click="gotoMatch(-1)">‹</button>
+            <button class="mini" :disabled="!matchCount" :title="t('toolbox.json.nextMatch')" @click="gotoMatch(1)">›</button>
             <span class="spacer"></span>
-            <label class="chk"><input v-model="showTypes" type="checkbox" />显示类型</label>
-            <button class="mini" @click="expandAll">展开全部</button>
-            <button class="mini" @click="collapseAll">折叠全部</button>
+            <label class="chk"><input v-model="showTypes" type="checkbox" />{{ t("toolbox.json.showTypes") }}</label>
+            <button class="mini" @click="expandAll">{{ t("toolbox.json.expandAll") }}</button>
+            <button class="mini" @click="collapseAll">{{ t("toolbox.json.collapseAll") }}</button>
           </template>
           <template v-else>
             <span class="spacer"></span>
@@ -1266,21 +1269,21 @@ async function copyValue(row) {
               >
                 <span class="tw" :class="{ ghost: !row.expandable }" @click="row.expandable && toggle(row.id)">{{ row.expandable ? (row.isOpen ? '▾' : '▸') : '' }}</span>
                 <span v-if="row.key !== null" class="tk"><span v-for="(s, i) in segs(String(row.key))" :key="i" :class="{ hl: s.hit }">{{ s.t }}</span><span class="colon">:</span></span>
-                <span v-else class="tk root">根对象</span>
+                <span v-else class="tk root">{{ t("toolbox.json.rootObject") }}</span>
                 <span v-if="row.type === 'object'" class="tsum">{{ row.isOpen ? '{' : '{ ' + row.size + ' }' }}</span>
                 <span v-else-if="row.type === 'array'" class="tsum">{{ row.isOpen ? '[' : '[ ' + row.size + ' ]' }}</span>
-                <span v-else class="tv" :class="'v-' + row.type" :title="'点击复制：' + primitivePreview(row)" @click="copyValue(row)"><template v-if="row.type === 'string'">"<span v-for="(s, i) in segs(row.value)" :key="i" :class="{ hl: s.hit }">{{ s.t }}</span>"</template><template v-else><span v-for="(s, i) in segs(primitivePreview(row))" :key="i" :class="{ hl: s.hit }">{{ s.t }}</span></template></span>
+                <span v-else class="tv" :class="'v-' + row.type" :title="t('toolbox.json.clickToCopy', { value: primitivePreview(row) })" @click="copyValue(row)"><template v-if="row.type === 'string'">"<span v-for="(s, i) in segs(row.value)" :key="i" :class="{ hl: s.hit }">{{ s.t }}</span>"</template><template v-else><span v-for="(s, i) in segs(primitivePreview(row))" :key="i" :class="{ hl: s.hit }">{{ s.t }}</span></template></span>
                 <span v-if="showTypes" class="ttag" :class="'tt-' + row.type">{{ typeLabel(row.type, row.size) }}</span>
               </div>
             </div>
-            <p v-else class="ph">{{ isEmpty ? emptyHint : (error?.kind === 'conversion' ? '语法正确，但当前内容无法生成结构树' : '修正错误后显示结构树') }}</p>
+            <p v-else class="ph">{{ isEmpty ? emptyHint : (error?.kind === 'conversion' ? t("toolbox.json.treeConversionImpossible") : t("toolbox.json.treeFixFirst")) }}</p>
           </template>
 
           <!-- YAML 独立校验结果 -->
           <div v-else-if="isValidateMode && inputState === 'ok' && !isEmpty" class="validate-ok">
             <span class="validate-icon"><Icon name="check" :size="24" /></span>
-            <b>YAML 语法正确</b>
-            <span>共 {{ yamlParsed?.documentCount || 0 }} 个文档</span>
+            <b>{{ t("toolbox.json.syntaxOkYaml") }}</b>
+            <span>{{ t("toolbox.json.docCount", { count: yamlParsed?.documentCount || 0 }) }}</span>
           </div>
 
           <!-- 格式化 / 转换输出 -->
@@ -1296,32 +1299,32 @@ async function copyValue(row) {
           </template>
         </div>
         <div v-if="!isTreeMode && !isValidateMode" class="pane-foot">
-          <span class="ff">长度: {{ output.length.toLocaleString() }}</span>
+          <span class="ff">{{ t("toolbox.json.length") }}: {{ output.length.toLocaleString() }}</span>
           <span class="ff-sep">|</span>
-          <span class="ff">行数: {{ outLineCount }}</span>
+          <span class="ff">{{ t("toolbox.json.lines") }}: {{ outLineCount }}</span>
         </div>
       </div>
 
       <!-- 右侧栏（模式切换只保留顶部 pill，避免与操作宫格重复） -->
       <aside class="side">
         <div class="side-card">
-          <div class="side-title">数据统计</div>
+          <div class="side-title">{{ t("toolbox.json.statsTitle") }}</div>
           <div class="stat-rows">
-            <div class="srow"><span>总字符数</span><b>{{ charCount.toLocaleString() }}</b></div>
-            <div v-if="dataType === 'yaml'" class="srow"><span>文档数量</span><b>{{ yamlParsed?.ok ? yamlParsed.documentCount : "-" }}</b></div>
-            <div class="srow"><span>结构深度</span><b>{{ stats ? stats.depth : "-" }}</b></div>
-            <div class="srow"><span>对象数量</span><b>{{ stats ? stats.objects : "-" }}</b></div>
-            <div class="srow"><span>数组数量</span><b>{{ stats ? stats.arrays : "-" }}</b></div>
-            <div class="srow"><span>键值对数量</span><b>{{ stats ? stats.keys : "-" }}</b></div>
+            <div class="srow"><span>{{ t("toolbox.json.statChars") }}</span><b>{{ charCount.toLocaleString() }}</b></div>
+            <div v-if="dataType === 'yaml'" class="srow"><span>{{ t("toolbox.json.statDocs") }}</span><b>{{ yamlParsed?.ok ? yamlParsed.documentCount : "-" }}</b></div>
+            <div class="srow"><span>{{ t("toolbox.json.statDepth") }}</span><b>{{ stats ? stats.depth : "-" }}</b></div>
+            <div class="srow"><span>{{ t("toolbox.json.statObjects") }}</span><b>{{ stats ? stats.objects : "-" }}</b></div>
+            <div class="srow"><span>{{ t("toolbox.json.statArrays") }}</span><b>{{ stats ? stats.arrays : "-" }}</b></div>
+            <div class="srow"><span>{{ t("toolbox.json.statKeys") }}</span><b>{{ stats ? stats.keys : "-" }}</b></div>
           </div>
         </div>
         <div class="side-card">
-          <div class="side-title">快捷示例</div>
+          <div class="side-title">{{ t("toolbox.json.samplesTitle") }}</div>
           <div class="samples">
             <button v-for="s in visibleSamples" :key="s.key" class="sample" @click="loadSample(s)">
-              <Icon name="note" :size="14" />{{ s.label }}
+              <Icon name="note" :size="14" />{{ t(s.labelKey) }}
             </button>
-            <button class="sample sample-clear" @click="clearAll">清空输入</button>
+            <button class="sample sample-clear" @click="clearAll">{{ t("toolbox.json.clearInput") }}</button>
           </div>
         </div>
       </aside>

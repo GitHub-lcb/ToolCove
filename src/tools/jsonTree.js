@@ -1,5 +1,8 @@
 // JSON 树视图纯逻辑层（无 Vue、无 IO，便于单测）。
 // 把解析后的 JS 值构建成节点树，并提供搜索、扁平化（按展开集）、默认展开集等纯函数。
+import { i18n } from "../i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 // 值类型：object | array | string | number | boolean | null
 export function valueType(v) {
@@ -15,14 +18,14 @@ export function primitivePreview(node) {
   return String(node.value); // number | boolean
 }
 
-// 类型标签（用于树视图“显示类型”）：容器带子项数，基础类型显示中文名。
+// 类型标签（用于树视图“显示类型”）：容器带子项数，基础类型显示本地化名称。
 export function typeLabel(type, size = 0) {
   switch (type) {
-    case "object": return `对象 (${size})`;
-    case "array": return `数组 (${size})`;
-    case "string": return "字符串";
-    case "number": return "数字";
-    case "boolean": return "布尔";
+    case "object": return t("toolbox.json.typeObject", { count: size });
+    case "array": return t("toolbox.json.typeArray", { count: size });
+    case "string": return t("toolbox.json.typeString");
+    case "number": return t("toolbox.json.typeNumber");
+    case "boolean": return t("toolbox.json.typeBoolean");
     case "null": return "null";
     default: return type;
   }
