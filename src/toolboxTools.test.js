@@ -47,7 +47,7 @@ describe("searchToolboxTools", () => {
       ["network", "request"],
       ["file", "image"],
       ["crypto", "db"],
-      ["chat", "harness"],
+      ["chat"],
     ]);
     const groupedKeys = groups.flatMap((group) => group.tools.map((tool) => tool.key));
     expect(groupedKeys).toHaveLength(TOOLBOX_TOOLS.length);
@@ -58,12 +58,6 @@ describe("searchToolboxTools", () => {
   it("可按 AI 对话的关键词搜索", () => {
     for (const keyword of ["AI", "对话", "Chat", "提示词", "GPT"]) {
       expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("chat");
-    }
-  });
-
-  it("可按 Harness 入口关键词搜索", () => {
-    for (const keyword of ["Harness", "Agent", "本地 AI"]) {
-      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("harness");
     }
   });
 });

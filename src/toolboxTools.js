@@ -52,15 +52,6 @@ export const TOOLBOX_TOOLS = [
     keywords: ["AI", "对话", "Chat", "聊天", "GPT", "提示词", "智能问答"],
     ready: true,
   },
-  {
-    key: "harness",
-    label: "Harness",
-    icon: "terminal",
-    category: "AI 助手",
-    desc: "本机 AI 工程工作台",
-    keywords: ["Harness", "Agent", "工程工作台", "本地 AI"],
-    ready: true,
-  },
 ];
 
 export function groupToolboxTools(tools = TOOLBOX_TOOLS, groups = TOOLBOX_GROUPS) {
