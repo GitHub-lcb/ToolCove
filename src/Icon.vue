@@ -45,6 +45,10 @@ defineProps({
       <rect x="16" y="16" width="6" height="6" rx="1" />
       <path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2" />
     </template>
+    <template v-else-if="name === 'tag'">
+      <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
+      <line x1="7" y1="7" x2="7.01" y2="7" />
+    </template>
     <template v-else-if="name === 'shield'">
       <path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z" />
       <path d="m9 12 2 2 4-4" />
