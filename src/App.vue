@@ -7,6 +7,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { fmtDate } from "./shared.js";
+import { normalizeHiddenModules } from "./settingsConfig.js";
+import { checkForUpdate } from "./updater.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import ToolWindow from "./ToolWindow.vue";
 import ToolboxView from "./ToolboxView.vue";
@@ -50,13 +52,35 @@ const gsRef = ref(null);
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
 const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
 const ProblemView = defineAsyncComponent(() => import("./ProblemView.vue"));
-const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: SnippetView, problem: ProblemView };
+const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
+const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: SnippetView, problem: ProblemView, settings: SettingsView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
 function openSettings(section) {
   activeModule.value = "settings";
   settingsSection.value = section;
+}
+
+// 界面设置（密度 + 侧边栏模块展示/隐藏，设置里可切换；紧凑为默认）
+const density = ref("compact");
+const hiddenModules = ref([]); // 设置里隐藏的模块 key；隐藏只是不展示，全局搜索仍可达
+const visibleModules = computed(() => MODULES.filter((m) => !hiddenModules.value.includes(m.key)));
+async function refreshUiSettings() {
+  try {
+    const s = (await invoke("load_data", { key: "settings" })) || {};
+    density.value = s.ui?.density === "comfort" ? "comfort" : "compact";
+    hiddenModules.value = normalizeHiddenModules(MODULES.map((m) => m.key), s.ui?.hiddenModules);
+    // 当前所在模块被隐藏时切到第一个可见模块，避免侧边栏失去选中高亮
+    if (MODULES.some((m) => m.key === activeModule.value) && hiddenModules.value.includes(activeModule.value) && visibleModules.value.length) {
+      activeModule.value = visibleModules.value[0].key;
+    }
+  } catch (e) {}
+}
+
+// 保存设置后刷新界面设置（密度 / 侧边栏模块展示）
+function onSettingsSaved() {
+  refreshUiSettings();
 }
 
 // ------- 全局页脚 -------
@@ -186,12 +210,14 @@ function onGlobalNavigate({ module, id }) {
   if (id) jump.value = { module, id, ts: Date.now() };
 }
 
-// 托盘/全局快捷键动作：quick-note 切到问题视图并唤起新建弹窗
+// 托盘/全局快捷键动作：quick-note 切到问题视图并唤起新建弹窗；check-update 手动检查更新
 async function handleTrayAction(action) {
   if (action === "quick-note") {
     activeModule.value = "problem";
     await nextTick();
     setTimeout(() => window.dispatchEvent(new CustomEvent("quick-note")), 60);
+  } else if (action === "check-update") {
+    checkForUpdate({ silent: false, showToast });
   }
 }
 
@@ -231,11 +257,30 @@ async function autoBackup() {
   }
 }
 
+// ------- 版本更新（顶栏手动入口；启动静默检查与托盘入口走 updater.js） -------
+const checkingVer = ref(false);
+async function onCheckVersion() {
+  if (checkingVer.value) return;
+  checkingVer.value = true;
+  try {
+    await checkForUpdate({ silent: false, showToast });
+  } finally {
+    checkingVer.value = false;
+  }
+}
+
 onMounted(() => {
   if (toolMode) setTimeout(revealToolWindow, 3000);
   applyTheme(themeMode.value);
   listen("tray-action", (e) => handleTrayAction(e.payload));
+  window.addEventListener("settings-saved", onSettingsSaved);
+  refreshUiSettings();
   setTimeout(autoBackup, 3000);
+  // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
+  setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+});
+onUnmounted(() => {
+  window.removeEventListener("settings-saved", onSettingsSaved);
 });
 </script>
 
@@ -252,7 +297,7 @@ onMounted(() => {
     <ConfirmDialog />
   </template>
 
-  <div v-else class="shell" :class="{ collapsed }">
+  <div v-else class="shell" :class="{ collapsed, 'dens-comfort': density === 'comfort' }">
     <div class="orbs" aria-hidden="true">
       <span class="orb o1"></span>
       <span class="orb o2"></span>
@@ -267,7 +312,7 @@ onMounted(() => {
 
       <nav class="nav">
         <button
-          v-for="m in MODULES"
+          v-for="m in visibleModules"
           :key="m.key"
           class="nav-item"
           :class="{ on: activeModule === m.key }"
@@ -280,6 +325,10 @@ onMounted(() => {
       </nav>
 
       <div class="side-foot">
+        <button class="collapse" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" @click="openSettings('general')">
+          <span class="clp-ico"><Icon name="settings" :size="15" /></span>
+          <span class="nav-label">{{ t("nav.settings") }}</span>
+        </button>
         <button class="collapse" :title="collapsed ? t('nav.expand') : t('nav.collapse')" @click="collapsed = !collapsed">
           <span class="clp-ico"><Icon name="chevrons-left" :size="14" :class="{ flip: collapsed }" /></span>
           <span class="nav-label">{{ collapsed ? t("nav.expand") : t("nav.collapse") }}</span>
@@ -305,6 +354,9 @@ onMounted(() => {
           <button class="theme-btn" :title="t('common.manual')" @click="openManual">
             <Icon name="book-open" :size="16" />
           </button>
+          <button class="theme-btn" :title="checkingVer ? t('common.updateChecking') : t('common.updateCheckTip')" :disabled="checkingVer" @click="onCheckVersion">
+            <Icon name="repeat" :size="15" />
+          </button>
           <button class="theme-btn" :title="t('common.appearance') + '：' + t(themeMeta.labelKey)" @click="cycleTheme">
             <Icon :name="themeMeta.icon" :size="15" />
           </button>
@@ -323,6 +375,7 @@ onMounted(() => {
           :is="activeViewComp"
           :key="activeModule"
           :show-toast="showToast"
+          :section="settingsSection"
           :jump-id="jump && jump.module === activeModule ? jump : null"
           @navigate="(p) => (activeModule = p.module)"
         />
