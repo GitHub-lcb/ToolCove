@@ -20,6 +20,25 @@ fn notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), Stri
         .map_err(|e| e.to_string())
 }
 
+/// 查询当前是否已设为开机启动（读系统真实状态，不存配置避免与注册表漂移）
+#[tauri::command]
+fn autostart_status(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// 开关开机启动（Windows 下写入当前用户注册表 Run 项，无需管理员权限）
+#[tauri::command]
+fn autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let m = app.autolaunch();
+    if enabled {
+        m.enable().map_err(|e| e.to_string())
+    } else {
+        m.disable().map_err(|e| e.to_string())
+    }
+}
+
 /// window-state 兜底校正：插件还原路径不走 conf 的 minWidth/minHeight 约束，
 /// 且最小化/还原瞬间系统可能上报极小矩形被插件持久化。数值须与 tauri.conf.json 同步（min 720×520 / 默认 1200×760）
 fn sanitize_main_window(app: &tauri::AppHandle, remaximize: bool) {
@@ -106,6 +125,9 @@ pub fn run() {
             storage::restore_data,
             storage::auto_backup,
             notify,
+            // 开机启动（设置页读系统真实状态）
+            autostart_status,
+            autostart_set,
             // HTTP 通用代理（请求工具；源仓挂在 coding 模块，ToolCove 归入 network）
             network::http_request,
             // 网络诊断（网络工具）
