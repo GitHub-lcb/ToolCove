@@ -2,6 +2,7 @@
 // 工具箱工具独立窗口容器：迷你标题栏（拖拽区 + 最小化/关闭）+ 工具组件
 import { computed, onBeforeUnmount, onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { TOOLBOX_TOOLS } from "./toolboxTools.js";
 import { getToolComponent } from "./toolComponents.js";
@@ -13,6 +14,8 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 const emit = defineEmits(["ready"]);
+
+const { t } = useI18n();
 
 const meta = computed(() => TOOLBOX_TOOLS.find((t) => t.key === props.tool) || TOOLBOX_TOOLS.find((t) => t.key === "json"));
 const toolComponent = computed(() => getToolComponent(props.tool));
@@ -67,11 +70,11 @@ function winClose() {
       <div class="tw-title">
         <span class="tw-ico"><Icon :name="meta.icon" :size="16" /></span>
         <b>{{ meta.label }}</b>
-        <span class="tw-hint">独立窗口，可拖动 / 缩放</span>
+        <span class="tw-hint">{{ t("common.toolWindowHint") }}</span>
       </div>
       <div class="tw-ctrls">
-        <button class="twc" title="最小化" @click="winMinimize"><Icon name="minus" :size="13" /></button>
-        <button class="twc close" title="关闭" @click="winClose"><Icon name="x" :size="14" /></button>
+        <button class="twc" :title="t('common.winMinimize')" @click="winMinimize"><Icon name="minus" :size="13" /></button>
+        <button class="twc close" :title="t('common.winClose')" @click="winClose"><Icon name="x" :size="14" /></button>
       </div>
     </header>
 

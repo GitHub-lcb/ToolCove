@@ -1,8 +1,11 @@
 <script setup>
 import { ref, computed, nextTick, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { searchToolboxTools } from "./toolboxTools.js";
+
+const { t } = useI18n();
 
 const emit = defineEmits(["navigate"]);
 
@@ -68,9 +71,9 @@ watch(open, (v) => {
 });
 
 const GROUPS = {
-  problem: { label: "问题", icon: "alert" },
-  snippet: { label: "速记", icon: "copy" },
-  tool: { label: "工具", icon: "wrench" },
+  problem: { labelKey: "nav.problem", icon: "alert" },
+  snippet: { labelKey: "nav.snippet", icon: "copy" },
+  tool: { labelKey: "common.gsGroupTool", icon: "wrench" },
 };
 
 const results = computed(() => {
@@ -83,11 +86,11 @@ const results = computed(() => {
     if (hit(p.title) || hit(p.note) || (p.tags || []).join(" ").toLowerCase().includes(kw))
       out.push({ group: "problem", title: p.title, sub: p.note || "", module: "problem", id: p.id });
     else if (hit(p.resolution))
-      out.push({ group: "problem", title: p.title, sub: "结论：" + (p.resolution || "").slice(0, 60), module: "problem", id: p.id });
+      out.push({ group: "problem", title: p.title, sub: t("common.gsResolution", { text: (p.resolution || "").slice(0, 60) }), module: "problem", id: p.id });
   }
   for (const s of data.value.snippets) {
     if (hit(s.title) || hit(s.content) || hit(s.category))
-      out.push({ group: "snippet", title: s.title || "无标题", sub: s.category || (s.content || "").slice(0, 40), module: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
+      out.push({ group: "snippet", title: s.title || t("common.gsUntitled"), sub: s.category || (s.content || "").slice(0, 40), module: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
   }
   const toolResults = searchToolboxTools(kw).map((tool) => ({
     group: "tool",
@@ -148,15 +151,15 @@ function pick(r) {
 
 let copiedTimer = null;
 async function copyResult(r) {
-  if (!r.content) return props.showToast("没有可复制的内容");
+  if (!r.content) return props.showToast(t("common.gsCopyEmpty"));
   try {
     await navigator.clipboard.writeText(r.content);
     copiedId.value = r.copyKey;
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => (copiedId.value = null), 1500);
-    props.showToast(`已复制「${r.title}」`);
+    props.showToast(t("common.gsCopied", { title: r.title }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("common.gsCopyFailed", { err: e }));
   }
 }
 
@@ -164,8 +167,8 @@ defineExpose({ openPalette });
 </script>
 
 <template>
-  <button class="gs-trigger" title="全局搜索 (跨问题/速记/工具)" @click="openPalette">
-    <Icon name="search" :size="15" /> <span class="gs-ph">搜索问题、速记、工具...</span> <kbd class="gs-kbd">Ctrl K</kbd>
+  <button class="gs-trigger" :title="t('common.gsTriggerTitle')" @click="openPalette">
+    <Icon name="search" :size="15" /> <span class="gs-ph">{{ t("common.gsTriggerPh") }}</span> <kbd class="gs-kbd">Ctrl K</kbd>
   </button>
 
   <div v-if="open" class="gs-mask" @click.self="close">
@@ -175,7 +178,7 @@ defineExpose({ openPalette });
         <input
           ref="inputRef"
           v-model="q"
-          placeholder="搜索问题 / 速记 / 工具..."
+          :placeholder="t('common.gsPlaceholder')"
           @keyup.esc="close"
           @keydown="onKeyNav"
         />
@@ -186,8 +189,8 @@ defineExpose({ openPalette });
         <div v-if="!q.trim()" class="gs-hint">
           <template v-if="history.length">
             <div class="gs-his-head">
-              <span>最近搜索</span>
-              <button class="gs-his-clear" @click="clearHistory">清空</button>
+              <span>{{ t("common.gsHistory") }}</span>
+              <button class="gs-his-clear" @click="clearHistory">{{ t("common.gsClear") }}</button>
             </div>
             <div class="gs-his-list">
               <button v-for="h in history" :key="h" class="gs-his-chip" @click="q = h">
@@ -195,15 +198,15 @@ defineExpose({ openPalette });
               </button>
             </div>
           </template>
-          <template v-else>输入关键词，跨所有模块实时检索。</template>
+          <template v-else>{{ t("common.gsHint") }}</template>
         </div>
         <div v-else-if="!grouped.length" class="gs-none">
           <span class="empty-ico"><Icon name="search" :size="32" /></span>
-          <p>没有匹配「{{ q }}」的结果。</p>
+          <p>{{ t("common.gsNoMatch", { q }) }}</p>
         </div>
         <template v-else>
           <div v-for="g in grouped" :key="g.key" class="gs-group">
-            <button class="gs-group-head" :title="'跳到 ' + g.label + ' 首个结果'" @click="activeIdx = g.items[0].idx"><Icon :name="g.icon" :size="13" /> {{ g.label }} <em>{{ g.items.length }}</em></button>
+            <button class="gs-group-head" :title="t('common.gsJumpGroup', { label: t(g.labelKey) })" @click="activeIdx = g.items[0].idx"><Icon :name="g.icon" :size="13" /> {{ t(g.labelKey) }} <em>{{ g.items.length }}</em></button>
             <div v-for="(r, i) in g.items" :key="i" class="gs-item" :class="{ on: activeIdx === r.idx }" @mouseenter="activeIdx = r.idx">
               <button class="gs-main" @click="pick(r)">
                 <span class="gs-title">{{ r.title }}</span>
@@ -213,7 +216,7 @@ defineExpose({ openPalette });
                 v-if="r.copyKey"
                 class="gs-copy"
                 :class="{ done: copiedId === r.copyKey }"
-                :title="copiedId === r.copyKey ? '已复制' : '复制内容'"
+                :title="copiedId === r.copyKey ? t('common.gsCopiedTag') : t('common.gsCopyBtn')"
                 @click.stop="copyResult(r)"
               >
                 <Icon :name="copiedId === r.copyKey ? 'check' : 'copy'" :size="14" />
