@@ -6,6 +6,7 @@ vi.mock("./secure.js", () => ({ decryptValue: async (v) => v }));
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { aiChatStream } from "./ai.js";
+import { i18n } from "./i18n/index.js";
 
 // 假 Channel：记录 onmessage 回调与 close 状态，供测试手动触发消息
 class FakeChannel {
@@ -79,7 +80,7 @@ describe("aiChatStream", () => {
     const err = vi.fn();
     aiChatStream([{ role: "user", content: "hi" }], {}, { onError: err });
     await new Promise((r) => setTimeout(r, 0));
-    expect(err).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("未配置") }));
+    expect(err).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining(i18n.global.t("toolbox.ai.errNoBaseUrl")) }));
   });
 
   it("stop() 关闭 Channel", async () => {

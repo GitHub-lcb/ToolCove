@@ -69,7 +69,7 @@ function winClose() {
     <header class="tw-bar" data-tauri-drag-region>
       <div class="tw-title">
         <span class="tw-ico"><Icon :name="meta.icon" :size="16" /></span>
-        <b>{{ meta.label }}</b>
+        <b>{{ t(meta.labelKey) }}</b>
         <span class="tw-hint">{{ t("common.toolWindowHint") }}</span>
       </div>
       <div class="tw-ctrls">

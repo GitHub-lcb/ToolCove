@@ -1,7 +1,8 @@
 // JSON 工具纯逻辑层（无 Vue、无 IO，便于单测）。
 // 统一返回结构：成功 { ok:true, output, error:null }；失败 { ok:false, output:"", error }。
 // error 形如 { line, column, message }（无法定位时 line/column 为 0）。
-import { i18n } from "../i18n/index.js";
+
+import { i18n } from "./i18n/index.js";
 
 // 从 JSON.parse 抛出的错误里尽量解析出行列号。
 // 兼容两种引擎信息：Chromium/WebView2 的 "... in JSON at position N (line L column C)"

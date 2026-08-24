@@ -104,22 +104,12 @@ export function isReadOnlySql(sql) {
 /** 各数据库方言要点（AI 生成/优化 SQL 时作为系统提示，避免默认按 MySQL 语法） */
 export function dialectHint(type) {
   const hints = {
-    mysql:
-      "MySQL 方言：标识符用反引号 `（如 `user`）；分页用 LIMIT n OFFSET m；字符串用单引号；" +
-      "自增列用 AUTO_INCREMENT；`?` 占位符；支持 IFNULL、DATE_FORMAT、GROUP_CONCAT。",
-    postgres:
-      "PostgreSQL 方言：标识符用双引号 \"（未加引号时自动小写）；分页用 LIMIT n OFFSET m；" +
-      "字符串用单引号；自增列用 SERIAL/IDENTITY；类型转换用 ::type；支持 COALESCE、to_char、STRING_AGG；" +
-      "布尔值 TRUE/FALSE；不支持 AUTO_INCREMENT 与 IFNULL。",
-    sqlite:
-      "SQLite 方言：标识符用双引号 \"；字符串用单引号；自增列用 INTEGER PRIMARY KEY AUTOINCREMENT；" +
-      "分页用 LIMIT n OFFSET m；不支持 RIGHT JOIN、FULL JOIN；日期函数用 date()/strftime()；类型亲和性宽松。",
-    oracle:
-      "Oracle 方言：标识符用双引号 \"（未加引号时自动大写）；字符串用单引号；" +
-      "不支持 LIMIT，分页必须用 FETCH FIRST n ROWS ONLY 或 ROWNUM；自增列用 IDENTITY 或序列；" +
-      "字符串拼接用 ||；空字符串视为 NULL；伪列 ROWNUM；日期用 TO_DATE/TO_CHAR。",
+    mysql: t("prompt.dbDialectMysql"),
+    postgres: t("prompt.dbDialectPostgres"),
+    sqlite: t("prompt.dbDialectSqlite"),
+    oracle: t("prompt.dbDialectOracle"),
   };
-  return hints[type] || "标准 SQL 语法";
+  return hints[type] || t("prompt.dbDialectFallback");
 }
 
 /**

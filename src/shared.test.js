@@ -14,6 +14,7 @@ import {
   subPushedHours,
   errText,
 } from "./shared.js";
+import { i18n } from "./i18n/index.js";
 
 describe("fmtDate", () => {
   it("补零成 YYYY-MM-DD", () => {
@@ -24,7 +25,7 @@ describe("fmtDate", () => {
 
 describe("weekday", () => {
   it("按日期返回中文星期", () => {
-    expect(weekday("2026-07-22")).toBe("周三");
+    expect(weekday("2026-07-22")).toBe(i18n.global.t("common.weekWed"));
   });
   it("空串或非法日期返回空", () => {
     expect(weekday("")).toBe("");
@@ -47,14 +48,14 @@ describe("workHoursRows", () => {
     ]);
     expect(rows[0]).toEqual({
       date: "2026-07-22",
-      weekday: "周三",
-      source: "迭代需求",
+      weekday: i18n.global.t("common.weekWed"),
+      source: i18n.global.t("common.sourceIteration"),
       hours: 2,
       title: "A",
       note: "n1",
     });
-    expect(rows[1].source).toBe("问题");
-    expect(rows[1].weekday).toBe("周四");
+    expect(rows[1].source).toBe(i18n.global.t("common.sourceProblem"));
+    expect(rows[1].weekday).toBe(i18n.global.t("common.weekThu"));
     expect(rows[1].note).toBe("");
   });
   it("按日期升序排列", () => {
@@ -339,9 +340,9 @@ describe("renderMarkdown", () => {
 describe("relativeTime", () => {
   it("刚刚 / 分钟 / 小时", () => {
     const now = Date.now();
-    expect(relativeTime(now)).toBe("刚刚");
-    expect(relativeTime(now - 5 * 60000)).toBe("5 分钟前");
-    expect(relativeTime(now - 3 * 3600000)).toBe("3 小时前");
+    expect(relativeTime(now)).toBe(i18n.global.t("common.timeJustNow"));
+    expect(relativeTime(now - 5 * 60000)).toBe(i18n.global.t("common.timeMinutesAgo", { n: 5 }));
+    expect(relativeTime(now - 3 * 3600000)).toBe(i18n.global.t("common.timeHoursAgo", { n: 3 }));
   });
   it("空值返回空串", () => {
     expect(relativeTime(0)).toBe("");
@@ -356,6 +357,6 @@ describe("errText", () => {
     expect(errText(new Error("bad"))).toBe("bad");
   });
   it("null 返回兜底文案", () => {
-    expect(errText(null)).toBe("未知错误");
+    expect(errText(null)).toBe(i18n.global.t("common.unknownError"));
   });
 });

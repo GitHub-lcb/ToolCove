@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupToolboxTools, searchToolboxTools, TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "./toolboxTools.js";
+import { i18n } from "./i18n/index.js";
 
 describe("searchToolboxTools", () => {
   it("可按工具名称和英文名称搜索", () => {
@@ -41,7 +42,7 @@ describe("searchToolboxTools", () => {
 
   it("按五个明确大类分组，每个工具只出现一次", () => {
     const groups = groupToolboxTools();
-    expect(groups.map((group) => group.label)).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手"]);
+    expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "diff", "time", "json", "generator"],
       ["network", "request"],

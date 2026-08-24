@@ -76,7 +76,7 @@ describe("driverInstallUrl", () => {
 
 describe("dialectHint", () => {
   it("gives each database its own dialect hints", () => {
-    expect(dialectHint("mysql")).toContain("\u53cd\u5f15\u53f7");
+    expect(dialectHint("mysql")).toBe(i18n.global.t("prompt.dbDialectMysql"));
     expect(dialectHint("mysql")).toContain("LIMIT");
     expect(dialectHint("postgres")).toContain("::type");
     expect(dialectHint("sqlite")).toContain("AUTOINCREMENT");
@@ -84,9 +84,9 @@ describe("dialectHint", () => {
     expect(dialectHint("oracle")).not.toContain("LIMIT n OFFSET");
   });
   it("falls back to standard SQL for unknown types", () => {
-    expect(dialectHint("db2")).toBe("\u6807\u51c6 SQL \u8bed\u6cd5");
-    expect(dialectHint("")).toBe("\u6807\u51c6 SQL \u8bed\u6cd5");
-    expect(dialectHint(null)).toBe("\u6807\u51c6 SQL \u8bed\u6cd5");
+    expect(dialectHint("db2")).toBe(i18n.global.t("prompt.dbDialectFallback"));
+    expect(dialectHint("")).toBe(i18n.global.t("prompt.dbDialectFallback"));
+    expect(dialectHint(null)).toBe(i18n.global.t("prompt.dbDialectFallback"));
   });
 });
 

@@ -11,11 +11,11 @@ const t = (key, params) => i18n.global.t(key, params);
 
 // 常见服务商预设（baseUrl 已含 /v1 等版本段，直接拼 /chat/completions）
 export const AI_PRESETS = [
-  { key: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  { key: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-  { key: "moonshot", label: "Moonshot / Kimi", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
-  { key: "dashscope", label: "阿里通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
-  { key: "siliconflow", label: "硅基流动", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+  { key: "openai", labelKey: "settings.aiPresetOpenai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  { key: "deepseek", labelKey: "settings.aiPresetDeepseek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  { key: "moonshot", labelKey: "settings.aiPresetMoonshot", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
+  { key: "dashscope", labelKey: "settings.aiPresetDashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
+  { key: "siliconflow", labelKey: "settings.aiPresetSiliconflow", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
 ];
 
 // 读取 settings.ai 配置
@@ -48,9 +48,9 @@ export async function isAIConfigured() {
 // opts：{ model, temperature, config }（config 可传入临时配置，用于「测试连接」时先于保存生效）
 export async function aiChat(messages, opts = {}) {
   const cfg = opts.config || (await loadAIConfig());
-  if (!cfg.baseUrl) throw new Error("未配置 AI 接口地址（在右上角设置里填写）");
-  if (!cfg.apiKey) throw new Error("未配置 AI API Key（在右上角设置里填写）");
-  if (!cfg.model) throw new Error("未配置 AI 模型名称（在右上角设置里填写）");
+  if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
+  if (!cfg.apiKey) throw new Error(t("toolbox.ai.errNoApiKey"));
+  if (!cfg.model) throw new Error(t("toolbox.ai.errNoModel"));
 
   // 推理档位：优先取 opts，其次配置。设了推理档位就不再传 temperature（推理模型只接受默认温度）。
   const reasoningEffort = (opts.reasoningEffort ?? cfg.reasoningEffort ?? "").trim();
@@ -105,9 +105,9 @@ export function aiChatStream(messages, opts = {}, handlers = {}) {
   (async () => {
     try {
       const cfg = opts.config || (await loadAIConfig());
-      if (!cfg.baseUrl) throw new Error("未配置 AI 接口地址（在右上角设置里填写）");
-      if (!cfg.apiKey) throw new Error("未配置 AI API Key（在右上角设置里填写）");
-      if (!cfg.model) throw new Error("未配置 AI 模型名称（在右上角设置里填写）");
+      if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
+      if (!cfg.apiKey) throw new Error(t("toolbox.ai.errNoApiKey"));
+      if (!cfg.model) throw new Error(t("toolbox.ai.errNoModel"));
       const reasoningEffort = (opts.reasoningEffort ?? cfg.reasoningEffort ?? "").trim();
       const args = {
         baseUrl: cfg.baseUrl,
@@ -138,17 +138,17 @@ function extractContent(raw) {
   if (Array.isArray(content)) {
     return content.map((c) => (typeof c === "string" ? c : c.text || "")).join("").trim();
   }
-  if (raw && raw.raw) throw new Error("接口返回非 JSON：" + raw.raw);
-  throw new Error("AI 返回内容为空或格式无法识别");
+  if (raw && raw.raw) throw new Error(t("toolbox.ai.errNonJson", { raw: raw.raw }));
+  throw new Error(t("toolbox.ai.errEmptyReply"));
 }
 
 // 测试连接：用当前（或临时）配置发一条极短消息，验证 key/地址/模型是否可用
 export async function testAI(config) {
   const reply = await aiChat(
-    [{ role: "user", content: "回复两个字：可用" }],
+    [{ role: "user", content: t("prompt.testReply") }],
     { config, temperature: 0 },
   );
-  return reply || "（空回复）";
+  return reply || t("toolbox.ai.emptyReply");
 }
 
 // ---------- 识图提取（流式） ----------
@@ -225,7 +225,7 @@ function filterExtractGroups(parsed, groups) {
         for (const f of g.fields) {
           let v = obj ? obj[f.key] : "";
           if (f.bool) {
-            row[f.key] = v === true || /^(true|是|y|yes|1|✓|√)$/i.test(String(v == null ? "" : v).trim());
+            row[f.key] = v === true || /^(true|\u662f|y|yes|1|✓|√)$/i.test(String(v == null ? "" : v).trim());
             continue;
           }
           if (v === undefined || v === null) v = "";
@@ -323,13 +323,8 @@ export function aiExtractGroupsStream(images, groups, opts = {}, handlers = {}) 
 // 内部用 parseJSONLoose 二次校验，确保返回的一定能被 JSON.parse；失败则 throw。
 export async function aiRepairJson(brokenText, opts = {}) {
   const input = String(brokenText || "").trim();
-  if (!input) throw new Error("没有需要修复的内容");
-  const system =
-    "你是 JSON 修复助手。用户会给你一段格式不正确的 JSON 文本，" +
-    "请修复其中的语法错误（缺失或多余的引号 / 逗号 / 括号、单引号、尾随逗号、注释、" +
-    "未转义字符、Python 风格的 True/False/None 等），在【尽最大可能保留原始数据与结构】" +
-    "的前提下使其成为合法 JSON。不要新增、删减或臆造字段值。" +
-    "严格只输出修复后的 JSON 本身，不要输出任何解释、前后缀或 ```json 代码块围栏。";
+  if (!input) throw new Error(t("toolbox.ai.errNoRepairInput"));
+  const system = t("prompt.repairSystem");
   const text = await aiChat(
     [
       { role: "system", content: system },
@@ -347,18 +342,12 @@ export async function aiRepairJson(brokenText, opts = {}) {
 // instruction：用户描述要 mock 成什么样（如“生成 3 条电商订单、金额在 100~500”）；为空时按字段含义造合理假数据。
 export async function aiMockJson(templateText, instruction = "", opts = {}) {
   const tpl = String(templateText || "").trim();
-  if (!tpl) throw new Error("没有作为模板的 JSON");
-  const system =
-    "你是测试数据生成助手。用户会给你一段作为结构模板的 JSON，以及一段生成要求。" +
-    "请生成全新的、真实感强的虚构 mock 数据：" +
-    "①默认保持模板的字段名与层级结构不变，仅替换字段的值；" +
-    "②生成的值要符合字段名的语义（如 name 是姓名、email 是邮箱、date 是日期）并与原值类型一致；" +
-    "③如果用户要求生成多条、改变数量或增删字段，则按要求调整；" +
-    "④不要使用真实个人隐私（真实手机号/身份证/银行卡），用明显虚构的样例。" +
-    "严格只输出生成后的 JSON 本身，不要输出任何解释、前后缀或 ```json 代码块围栏。";
+  if (!tpl) throw new Error(t("toolbox.ai.errNoMockTemplate"));
+  const system = t("prompt.mockSystem");
   const userMsg =
-    "【结构模板】\n" + tpl +
-    "\n\n【生成要求】\n" + (instruction.trim() || "保持原结构，生成一条全新的合理示例数据。");
+    t("prompt.mockTplHead", { json: tpl }) +
+    "\n\n" + t("prompt.mockReqHead") + "\n" +
+    (instruction.trim() || t("prompt.mockDefaultReq"));
   const text = await aiChat(
     [
       { role: "system", content: system },
@@ -372,7 +361,7 @@ export async function aiMockJson(templateText, instruction = "", opts = {}) {
 
 // 宽松解析 AI 返回的 JSON：容忍代码块围栏、前后缀文本
 function parseJSONLoose(text) {
-  if (!text) throw new Error("AI 未返回内容");
+  if (!text) throw new Error(t("toolbox.ai.errNoReply"));
   let s = String(text).trim();
   // 去掉 ```json ... ``` 围栏
   const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -397,6 +386,6 @@ function parseJSONLoose(text) {
         /* try next */
       }
     }
-    throw new Error("AI 返回内容无法解析为 JSON：" + s.slice(0, 120));
+    throw new Error(t("toolbox.ai.errParseJson", { text: s.slice(0, 120) }));
   }
 }

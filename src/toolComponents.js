@@ -2,6 +2,7 @@
 // key 与 toolboxTools.js 注册表一一对应，避免多入口重复维护映射。
 // 工具组件体积大，用 defineAsyncComponent 切到才加载（入口处 Suspense/动态组件触发）。
 import { defineAsyncComponent } from "vue";
+import { i18n } from "./i18n/index.js";
 
 export const TOOL_COMPONENTS = {
   convert: defineAsyncComponent(() => import("./tools/ConvertTool.vue")),
@@ -21,7 +22,7 @@ export const TOOL_COMPONENTS = {
 export function getToolComponent(key) {
   const comp = TOOL_COMPONENTS[key];
   if (!comp) {
-    console.error("工具箱注册表缺少组件映射：", key);
+    console.error(i18n.global.t("common.missingToolComp", { key }));
     return TOOL_COMPONENTS.json;
   }
   return comp;

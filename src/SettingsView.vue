@@ -300,7 +300,7 @@ async function restoreNow() {
               class="preset-chip"
               :class="{ on: form.ai.baseUrl === p.baseUrl }"
               @click="applyAIPreset(p)"
-            >{{ p.label }}</button>
+            >{{ t(p.labelKey) }}</button>
           </div>
 
           <label class="field" :class="{ err: fieldErr.aiBase }">

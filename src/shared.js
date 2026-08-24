@@ -1,11 +1,14 @@
 // 资料类型元数据（图标对应 Icon.vue 中的 name，cls 对应 App.vue 全局 tc-chip 配色类）
+import { i18n } from "./i18n/index.js";
 import { highlightCode } from "./highlight.js";
 
+const t = (key, params) => i18n.global.t(key, params);
+
 export const TYPES = {
-  file: { label: "文件", icon: "folder", cls: "tc-primary" },
-  url: { label: "链接", icon: "link", cls: "tc-sky" },
-  project: { label: "项目", icon: "briefcase", cls: "tc-amber" },
-  note: { label: "备注", icon: "note", cls: "tc-accent" },
+  file: { labelKey: "common.typeFile", icon: "folder", cls: "tc-primary" },
+  url: { labelKey: "common.typeUrl", icon: "link", cls: "tc-sky" },
+  project: { labelKey: "common.typeProject", icon: "briefcase", cls: "tc-amber" },
+  note: { labelKey: "common.typeNote", icon: "note", cls: "tc-accent" },
 };
 
 // 领域配色（循环取用；只用中性主色与领域色板，不混入 danger/success 语义色）
@@ -14,18 +17,18 @@ export const DOMAIN_COLORS = ["var(--primary)", "var(--teal)", "var(--primary-ho
 
 // 发布用途（资料在上线发布单里的角色）
 export const RELEASE_ROLES = {
-  pool: { label: "服务 / Pool", short: "Pool", icon: "upload", cls: "tc-primary" },
-  sql: { label: "SQL 脚本", short: "SQL", icon: "database", cls: "tc-teal" },
-  config: { label: "配置", short: "配置", icon: "settings", cls: "tc-accent" },
-  note: { label: "说明 / 步骤", short: "说明", icon: "note", cls: "tc-note" },
+  pool: { labelKey: "common.rolePool", shortKey: "common.rolePoolShort", icon: "upload", cls: "tc-primary" },
+  sql: { labelKey: "common.roleSql", shortKey: "common.roleSqlShort", icon: "database", cls: "tc-teal" },
+  config: { labelKey: "common.roleConfig", shortKey: "common.roleConfigShort", icon: "settings", cls: "tc-accent" },
+  note: { labelKey: "common.roleNote", shortKey: "common.roleNoteShort", icon: "note", cls: "tc-note" },
 };
 export const RELEASE_ROLE_ORDER = ["pool", "sql", "config", "note"];
 
 // 排序方式
 export const SORTS = {
-  updated: { label: "最近更新" },
-  created: { label: "最近添加" },
-  name: { label: "按名称" },
+  updated: { labelKey: "common.sortUpdated" },
+  created: { labelKey: "common.sortCreated" },
+  name: { labelKey: "common.sortName" },
 };
 
 // 相对时间格式化
@@ -33,12 +36,12 @@ export function relativeTime(ts) {
   if (!ts) return "";
   const diff = Date.now() - ts;
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "刚刚";
-  if (m < 60) return `${m} 分钟前`;
+  if (m < 1) return t("common.timeJustNow");
+  if (m < 60) return t("common.timeMinutesAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} 小时前`;
+  if (h < 24) return t("common.timeHoursAgo", { n: h });
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d} 天前`;
+  if (d < 30) return t("common.timeDaysAgo", { n: d });
   const date = new Date(ts);
   const p = (n) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
@@ -49,11 +52,11 @@ export function fmtDate(d) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WEEKDAY_KEYS = ["common.weekSun", "common.weekMon", "common.weekTue", "common.weekWed", "common.weekThu", "common.weekFri", "common.weekSat"];
 export function weekday(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
-  return isNaN(d) ? "" : WEEKDAYS[d.getDay()];
+  return isNaN(d) ? "" : t(WEEKDAY_KEYS[d.getDay()]);
 }
 // 下一个周二 / 周四（含今天）
 export function nextReleaseDate() {
@@ -83,34 +86,34 @@ export function buildReleaseItems(allItems, projectId) {
 // ===================== 上线包（三表） =====================
 // Pool 发布表列
 export const PKG_POOL_COLS = [
-  { key: "pool", label: "需要发布的Pool", type: "text" },
-  { key: "content", label: "上线内容", type: "text" },
-  { key: "devBranch", label: "开发分支", type: "text" },
-  { key: "testBranch", label: "测试分支", type: "text" },
-  { key: "uatBranch", label: "UAT分支", type: "text" },
-  { key: "prodBranch", label: "上线分支", type: "text" },
-  { key: "backupMaster", label: "是否备份master", type: "bool" },
-  { key: "releaseMerged", label: "release合并完成", type: "bool" },
-  { key: "dev", label: "研发", type: "text" },
-  { key: "test", label: "测试", type: "text" },
-  { key: "published", label: "是否已发布", type: "bool" },
-  { key: "note", label: "备注", type: "text" },
+  { key: "pool", labelKey: "common.colPool", type: "text" },
+  { key: "content", labelKey: "common.colContent", type: "text" },
+  { key: "devBranch", labelKey: "common.colDevBranch", type: "text" },
+  { key: "testBranch", labelKey: "common.colTestBranch", type: "text" },
+  { key: "uatBranch", labelKey: "common.colUatBranch", type: "text" },
+  { key: "prodBranch", labelKey: "common.colProdBranch", type: "text" },
+  { key: "backupMaster", labelKey: "common.colBackupMaster", type: "bool" },
+  { key: "releaseMerged", labelKey: "common.colReleaseMerged", type: "bool" },
+  { key: "dev", labelKey: "common.colDev", type: "text" },
+  { key: "test", labelKey: "common.colTest", type: "text" },
+  { key: "published", labelKey: "common.colPublished", type: "bool" },
+  { key: "note", labelKey: "common.colNote", type: "text" },
 ];
 // 制品表列
 export const PKG_ART_COLS = [
-  { key: "name", label: "制品", type: "text" },
-  { key: "module", label: "模块", type: "text" },
-  { key: "owner", label: "责任人", type: "text" },
-  { key: "version", label: "版本", type: "text" },
-  { key: "note", label: "备注", type: "text" },
+  { key: "name", labelKey: "common.colArtifact", type: "text" },
+  { key: "module", labelKey: "common.colModule", type: "text" },
+  { key: "owner", labelKey: "common.colOwner", type: "text" },
+  { key: "version", labelKey: "common.colVersion", type: "text" },
+  { key: "note", labelKey: "common.colNote", type: "text" },
 ];
 // 数据库脚本表列
 export const PKG_DB_COLS = [
-  { key: "db", label: "数据库", type: "text" },
-  { key: "file", label: "脚本文件", type: "text" },
-  { key: "owner", label: "责任人", type: "text" },
-  { key: "order", label: "多脚本执行顺序", type: "text" },
-  { key: "note", label: "备注", type: "text" },
+  { key: "db", labelKey: "common.colDatabase", type: "text" },
+  { key: "file", labelKey: "common.colScriptFile", type: "text" },
+  { key: "owner", labelKey: "common.colOwner", type: "text" },
+  { key: "order", labelKey: "common.colOrder", type: "text" },
+  { key: "note", labelKey: "common.colNote", type: "text" },
 ];
 
 // 空的上线包结构
@@ -125,7 +128,7 @@ export function newPkgRow(cols) {
 
 function cellVal(row, col) {
   const v = row[col.key];
-  if (col.type === "bool") return v ? "是" : "否";
+  if (col.type === "bool") return v ? t("common.yes") : t("common.no");
   return v == null ? "" : v;
 }
 
@@ -149,7 +152,7 @@ function addXlsxTable(ws, title, cols, rows, maxSpan) {
     cell.fill = fillOf("FFD9E1F2");
     cell.font = { bold: true, size: 11, color: { argb: "FF1F3864" }, name: "Microsoft YaHei" };
   }
-  const hd = ws.addRow(cols.map((c) => c.label));
+  const hd = ws.addRow(cols.map((c) => t(c.labelKey)));
   hd.eachCell({ includeEmpty: false }, (cell) => {
     cell.border = XLSX_BORDER;
     cell.fill = fillOf("FF8EA9DB");
@@ -167,7 +170,7 @@ function addXlsxTable(ws, title, cols, rows, maxSpan) {
       }
     }
   } else {
-    const empty = ws.addRow(["（无）"]);
+    const empty = ws.addRow([t("common.none")]);
     ws.mergeCells(empty.number, 1, empty.number, cols.length);
     for (let c = 1; c <= cols.length; c++) {
       const cell = empty.getCell(c);
@@ -186,13 +189,13 @@ export async function buildReleaseXlsx(iteration) {
   const pkg = iteration.pkg || emptyPkg();
   const maxSpan = Math.max(PKG_POOL_COLS.length, PKG_ART_COLS.length, PKG_DB_COLS.length);
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("上线包");
+  const ws = wb.addWorksheet(t("common.pkgSheet"));
   ws.columns = Array.from({ length: maxSpan }, () => ({ width: 26 }));
 
   const titleText =
-    `${iteration.title || "迭代"} 上线包` +
-    (iteration.version ? " · " + iteration.version : "") +
-    (iteration.releaseDate ? " · 计划上线 " + iteration.releaseDate : "");
+    t("common.pkgTitleBase", { title: iteration.title || t("common.iteration") }) +
+    (iteration.version ? t("common.pkgTitleVersion", { version: iteration.version }) : "") +
+    (iteration.releaseDate ? t("common.pkgTitleDate", { date: iteration.releaseDate }) : "");
   const titleRow = ws.addRow([titleText]);
   ws.mergeCells(titleRow.number, 1, titleRow.number, maxSpan);
   titleRow.height = 26;
@@ -205,9 +208,9 @@ export async function buildReleaseXlsx(iteration) {
   }
   ws.addRow([]);
 
-  addXlsxTable(ws, "一、Pool 发布表", PKG_POOL_COLS, pkg.pools, maxSpan);
-  addXlsxTable(ws, "二、制品表", PKG_ART_COLS, pkg.artifacts, maxSpan);
-  addXlsxTable(ws, "三、数据库脚本表", PKG_DB_COLS, pkg.dbScripts, maxSpan);
+  addXlsxTable(ws, t("common.pkgTablePool"), PKG_POOL_COLS, pkg.pools, maxSpan);
+  addXlsxTable(ws, t("common.pkgTableArt"), PKG_ART_COLS, pkg.artifacts, maxSpan);
+  addXlsxTable(ws, t("common.pkgTableDb"), PKG_DB_COLS, pkg.dbScripts, maxSpan);
 
   const buf = await wb.xlsx.writeBuffer();
   const bytes = new Uint8Array(buf);
@@ -291,8 +294,8 @@ export function collectDayLogs(iterations, problems, mineName = "") {
 }
 
 export const WORK_SOURCES = {
-  iteration: { label: "迭代需求", color: "var(--accent)" },
-  problem: { label: "问题", color: "var(--danger)" },
+  iteration: { labelKey: "common.sourceIteration", color: "var(--accent)" },
+  problem: { labelKey: "common.sourceProblem", color: "var(--danger)" },
 };
 
 // 子任务工时登记明细：按登记日聚合升序（[{ date, hours }]），无明细返回空数组
@@ -331,7 +334,7 @@ export function workHoursRows(entries) {
     .map((e) => ({
       date: e.date,
       weekday: weekday(e.date),
-      source: (WORK_SOURCES[e.source] && WORK_SOURCES[e.source].label) || e.source || "",
+      source: (WORK_SOURCES[e.source] && t(WORK_SOURCES[e.source].labelKey)) || e.source || "",
       hours: round2(Number(e.hours) || 0),
       title: e.title || "",
       note: e.note || "",
@@ -343,22 +346,28 @@ export function workHoursRows(entries) {
 export async function buildWorkHoursXlsx({ entries, from, to, userName = "" }) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("工时");
+  const ws = wb.addWorksheet(t("common.hoursSheet"));
   const cols = [
-    { key: "date", label: "日期" },
-    { key: "weekday", label: "星期" },
-    { key: "source", label: "来源" },
-    { key: "hours", label: "工时(h)" },
-    { key: "title", label: "事项" },
-    { key: "note", label: "备注" },
+    { key: "date", labelKey: "common.hoursColDate" },
+    { key: "weekday", labelKey: "common.hoursColWeekday" },
+    { key: "source", labelKey: "common.hoursColSource" },
+    { key: "hours", labelKey: "common.hoursColHours" },
+    { key: "title", labelKey: "common.hoursColTitle" },
+    { key: "note", labelKey: "common.colNote" },
   ];
   ws.columns = [13, 9, 11, 9, 42, 30].map((width) => ({ width }));
 
   const rows = workHoursRows(entries);
   const total = rows.reduce((s, r) => s + r.hours, 0);
-  const itTotal = rows.filter((r) => r.source === "迭代需求").reduce((s, r) => s + r.hours, 0);
+  const itTotal = rows.filter((r) => r.source === t("common.sourceIteration")).reduce((s, r) => s + r.hours, 0);
 
-  const titleText = `个人工时 · ${userName || "我"} · ${from} 至 ${to}（共 ${rows.length} 条，合计 ${Math.round(total * 100) / 100}h）`;
+  const titleText = t("common.hoursTitle", {
+    name: userName || t("common.me"),
+    from,
+    to,
+    count: rows.length,
+    total: Math.round(total * 100) / 100,
+  });
   const titleRow = ws.addRow([titleText]);
   ws.mergeCells(titleRow.number, 1, titleRow.number, cols.length);
   titleRow.height = 26;
@@ -373,19 +382,19 @@ export async function buildWorkHoursXlsx({ entries, from, to, userName = "" }) {
 
   addXlsxTable(
     ws,
-    "一、工时汇总",
+    t("common.hoursTableSummary"),
     [
-      { key: "k", label: "统计项" },
-      { key: "v", label: "数值" },
+      { key: "k", labelKey: "common.statItem" },
+      { key: "v", labelKey: "common.statValue" },
     ],
     [
-      { k: "总工时", v: Math.round(total * 100) / 100 },
-      { k: "迭代需求工时", v: Math.round(itTotal * 100) / 100 },
-      { k: "问题工时", v: Math.round((total - itTotal) * 100) / 100 },
+      { k: t("common.statTotal"), v: Math.round(total * 100) / 100 },
+      { k: t("common.statIteration"), v: Math.round(itTotal * 100) / 100 },
+      { k: t("common.statProblem"), v: Math.round((total - itTotal) * 100) / 100 },
     ],
     cols.length
   );
-  addXlsxTable(ws, "二、工时明细", cols, rows, cols.length);
+  addXlsxTable(ws, t("common.hoursTableDetail"), cols, rows, cols.length);
 
   return bufferToBase64(await wb.xlsx.writeBuffer());
 }
@@ -424,7 +433,7 @@ function mdInline(s) {
 }
 function mdCodeBlock(code, lang, highlight) {
   if (highlight && lang) {
-    return `<pre class="md-code" data-lang="${lang}"><button type="button" class="md-copy">复制</button><code class="hljs">${highlightCode(code, lang)}</code></pre>`;
+    return `<pre class="md-code" data-lang="${lang}"><button type="button" class="md-copy">${t("common.copy")}</button><code class="hljs">${highlightCode(code, lang)}</code></pre>`;
   }
   return `<pre class="md-code">${escapeHtml(code)}</pre>`;
 }
@@ -518,7 +527,7 @@ export function renderMarkdown(src, opts = {}) {
       out.push(`<li>${mdInline(ul[1])}</li>`);
       continue;
     }
-    const ol = line.match(/^\s*\d+[.、)]\s+(.+)$/);
+    const ol = line.match(/^\s*\d+[.\u3001)]\s+(.+)$/);
     if (ol) {
       openList("ol");
       out.push(`<li>${mdInline(ol[1])}</li>`);
@@ -541,7 +550,7 @@ export function renderMarkdown(src, opts = {}) {
 
 // 错误对象转可读文案（原 coding.js errText，Coding 剥离后并入 shared）
 export function errText(e) {
-  if (e == null) return "未知错误";
+  if (e == null) return t("common.unknownError");
   if (typeof e === "string") return e;
   if (e.message) return e.message;
   try {

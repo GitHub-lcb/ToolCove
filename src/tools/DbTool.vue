@@ -974,10 +974,10 @@ async function ensureAI() {
 function schemaContext() {
   const parts = [];
   if (meta.value.tables.length) {
-    parts.push("当前库的表：" + meta.value.tables.map((t) => `${t.name}（${t.kind}）`).join("、"));
+    parts.push(t("prompt.dbCtxTables", { tables: meta.value.tables.map((tab) => t("prompt.dbCtxTableItem", { name: tab.name, kind: tab.kind })).join(t("prompt.listSep")) }));
   }
   for (const [table, cols] of Object.entries(meta.value.columns)) {
-    parts.push(`表 ${table} 的列：` + cols.map((c) => `${c.name} ${c.type}${c.pk ? " 主键" : ""}${c.nullable ? "" : " NOT NULL"}`).join("，"));
+    parts.push(t("prompt.dbCtxCols", { table, cols: cols.map((c) => `${c.name} ${c.type}${c.pk ? t("prompt.dbPkSuffix") : ""}${c.nullable ? "" : " NOT NULL"}`).join(t("prompt.dbColSep")) }));
   }
   return parts.join("\n");
 }
@@ -1013,10 +1013,9 @@ async function aiGenSQL() {
   try {
     const ctx = schemaContext();
     const sys =
-      "你是资深 DBA 与 SQL 专家。根据用户的中文需求生成一条 SQL 语句，" +
-      "只输出 SQL 本身，不要任何解释、前后缀或代码块围栏。" +
-      `目标数据库方言：${dialect}。` +
-      (ctx ? `\n当前库结构参考：\n${ctx}` : "");
+      t("prompt.dbGenSqlSystem") +
+      t("prompt.dbGenSqlDialect", { dialect }) +
+      (ctx ? "\n" + t("prompt.dbCtxIntro", { ctx }) : "");
     aiReply.value = await aiComplete(aiPrompt.value, { system: sys, temperature: 0.2 });
   } catch (e) {
     aiError.value = String(e);
@@ -1042,13 +1041,11 @@ async function aiExplainError() {
   aiReply.value = "";
   try {
     const dialect = dialectContext();
-    const sys =
-      "你是资深 DBA。用户会给出数据库类型（如未给出则按 SQL 本身推断）、SQL 语句与报错信息。" +
-      "用中文解释报错原因，指出具体问题所在，并给出修复后的 SQL（如需要）。保持简洁。";
+    const sys = t("prompt.dbExplainSystem");
     const prompt = [
-      dialect ? `数据库：${dialect}` : "",
-      `SQL：\n${activeTab.value?.lastSql || sql.value}`,
-      `报错：\n${error.value}`,
+      dialect ? t("prompt.dbExplainDb", { dialect }) : "",
+      t("prompt.dbExplainSql", { sql: activeTab.value?.lastSql || sql.value }),
+      t("prompt.dbExplainError", { error: error.value }),
     ]
       .filter(Boolean)
       .join("\n");
@@ -1070,10 +1067,7 @@ async function aiOptimize() {
   aiReply.value = "";
   try {
     const dialect = dialectContext();
-    const sys =
-      "你是资深 DBA。分析用户给出的 SQL：指出潜在性能问题（如全表扫描、缺少索引、N+1 查询、不必要的回表等），" +
-      "给出可落地的优化建议，必要时给出改写后的 SQL。改写时严格遵守目标数据库方言，不要换成 MySQL 语法。" +
-      `用中文分点输出，保持简洁。${dialect ? `目标数据库方言：${dialect}` : ""}`;
+    const sys = t("prompt.dbOptimizeSystem") + (dialect ? t("prompt.dbOptimizeDialect", { dialect }) : "");
     aiReply.value = await aiComplete(sql.value, { system: sys, temperature: 0.3 });
   } catch (e) {
     aiError.value = String(e);
@@ -1417,9 +1411,9 @@ function onWinKey(e) {
           <button class="btn ghost sm ai" :title="t('toolbox.db.aiGenTip')" @click="openAIGen"><Icon name="sparkles" :size="13" />{{ t("toolbox.db.aiGen") }}</button>
           <button class="btn ghost sm ai" :title="t('toolbox.db.aiOptTip')" :disabled="!sql.trim()" @click="aiOptimize"><Icon name="sparkles" :size="13" />{{ t("toolbox.db.aiOpt") }}</button>
           <button class="btn ghost sm" @click="sql = ''">{{ t("toolbox.db.clear") }}</button>
-          <button class="btn ghost sm" @click="showHistory = !showHistory; if (showHistory) showFavs = false">{{ t("toolbox.db.history") }}<template v-if="history.length">（{{ history.length }}）</template></button>
+          <button class="btn ghost sm" @click="showHistory = !showHistory; if (showHistory) showFavs = false">{{ t("toolbox.db.history") }}<template v-if="history.length">{{ t("common.badgeCount", { n: history.length }) }}</template></button>
           <button class="btn ghost sm" :title="t('toolbox.db.favTip')" :disabled="!sql.trim()" @click="addFav">{{ t("toolbox.db.fav") }}</button>
-          <button class="btn ghost sm" @click="showFavs = !showFavs; if (showFavs) showHistory = false">{{ t("toolbox.db.favs") }}<template v-if="favs.length">（{{ favs.length }}）</template></button>
+          <button class="btn ghost sm" @click="showFavs = !showFavs; if (showFavs) showHistory = false">{{ t("toolbox.db.favs") }}<template v-if="favs.length">{{ t("common.badgeCount", { n: favs.length }) }}</template></button>
           <button class="btn ghost sm" :title="t('toolbox.db.importTip')" @click="importSQL"><Icon name="download" :size="13" />{{ t("toolbox.db.importSql") }}</button>
           <span class="spacer"></span>
         </div>
@@ -1516,7 +1510,7 @@ function onWinKey(e) {
               </span>
               <button v-if="canEdit" class="btn ghost sm" :title="t('toolbox.db.addRowTip')" @click="startAddRow"><Icon name="plus" :size="13" />{{ t("toolbox.db.addRow") }}</button>
               <button v-if="canDeleteRows" class="btn ghost sm danger" :disabled="!activeTab.selectedRows.size" @click="deleteSelected">
-                {{ t("toolbox.db.deleteSelected") }}<template v-if="activeTab.selectedRows.size">（{{ activeTab.selectedRows.size }}）</template>
+                {{ t("toolbox.db.deleteSelected") }}<template v-if="activeTab.selectedRows.size">{{ t("common.badgeCount", { n: activeTab.selectedRows.size }) }}</template>
               </button>
             </span>
             <span class="meta-sep"></span>

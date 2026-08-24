@@ -513,13 +513,13 @@ async function generateAiIcon() {
   aiIconBusy.value = true;
   try {
     const backgroundRule = aiIconOptions.transparent
-      ? "透明背景，不要绘制底色矩形"
-      : `使用 ${aiIconOptions.color} 作为背景色`;
+      ? t("prompt.iconTransparent")
+      : t("prompt.iconColorBg", { color: aiIconOptions.color });
     const reply = await aiComplete(
-      `请生成这个图标：${prompt}\n主色优先使用 ${aiIconOptions.color}。${backgroundRule}。`,
+      t("prompt.iconGenUser", { prompt, color: aiIconOptions.color, rule: backgroundRule }),
       {
         temperature: 0.4,
-        system: "你是应用图标设计师。严格只返回一段完整 SVG，不要解释，不要 Markdown 代码围栏。SVG 必须使用 viewBox=\"0 0 512 512\"，构图居中、轮廓清晰、减少细碎元素，在 32px 下仍可识别。禁止文字、图片、脚本、CSS、滤镜、渐变、蒙版、外链、foreignObject 和 use，只使用 path、circle、rect、line、polyline、polygon、ellipse、g 及基础 fill/stroke 属性。",
+        system: t("prompt.iconGenSystem"),
       },
     );
     aiIconSvg.value = sanitizeSvg(extractSvgFromAiText(reply));

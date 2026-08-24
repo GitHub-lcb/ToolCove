@@ -3,7 +3,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
-import { searchToolboxTools } from "./toolboxTools.js";
+import { searchToolboxTools, TOOLBOX_GROUPS } from "./toolboxTools.js";
 
 const { t } = useI18n();
 
@@ -75,6 +75,7 @@ const GROUPS = {
   snippet: { labelKey: "nav.snippet", icon: "copy" },
   tool: { labelKey: "common.gsGroupTool", icon: "wrench" },
 };
+const GROUP_BY_KEY = new Map(TOOLBOX_GROUPS.map((g) => [g.key, g]));
 
 const results = computed(() => {
   const kw = q.value.trim().toLowerCase();
@@ -92,13 +93,16 @@ const results = computed(() => {
     if (hit(s.title) || hit(s.content) || hit(s.category))
       out.push({ group: "snippet", title: s.title || t("common.gsUntitled"), sub: s.category || (s.content || "").slice(0, 40), module: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
   }
-  const toolResults = searchToolboxTools(kw).map((tool) => ({
-    group: "tool",
-    title: tool.label,
-    sub: `${tool.category} · ${tool.desc}`,
-    module: "toolbox",
-    id: tool.key,
-  }));
+  const toolResults = searchToolboxTools(kw).map((tool) => {
+    const group = GROUP_BY_KEY.get(tool.category) || {};
+    return {
+      group: "tool",
+      title: t(tool.labelKey),
+      sub: `${t(group.labelKey)} · ${t(tool.descKey)}`,
+      module: "toolbox",
+      id: tool.key,
+    };
+  });
   return [...out.slice(0, Math.max(0, 60 - toolResults.length)), ...toolResults];
 });
 

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emitTo } from "@tauri-apps/api/event";
@@ -18,6 +19,8 @@ const props = defineProps({
 
 const isTauri = !!window.__TAURI_INTERNALS__;
 const RECENT_MAX = 8;
+
+const { t } = useI18n();
 
 // 工具注册表：ready=true 可打开，false 为规划中占位卡（key/label/icon 与独立窗口共用）
 const TOOLS = TOOLBOX_TOOLS;
@@ -54,16 +57,16 @@ const toolComp = computed(() => (activeMeta.value ? getToolComponent(activeMeta.
 // 仅 API 调试工具需要跨工具跳转钩子（其余组件未声明该 prop，不能透传避免落到根元素）
 const toolProps = computed(() => (activeTool.value === "request" ? { "open-in-json": openInJson } : {}));
 
-function recordRecent(t) {
-  const list = recent.value.filter((r) => r.key !== t.key);
-  list.unshift({ key: t.key, ts: Date.now() });
+function recordRecent(tool) {
+  const list = recent.value.filter((r) => r.key !== tool.key);
+  list.unshift({ key: tool.key, ts: Date.now() });
   recent.value = list.slice(0, RECENT_MAX);
   saveRecent();
 }
 
 // 打开工具：Tauri 下开独立窗口（可拖动、缩放；同工具单例，已开则聚焦）；浏览器降级为主窗口内嵌
-async function openToolWindow(t) {
-  const label = "tool-" + t.key;
+async function openToolWindow(tool) {
+  const label = "tool-" + tool.key;
   try {
     // Tauri v2：getByLabel 是 async（经 IPC 查询窗口），需 await 才是窗口实例
     const existing = await WebviewWindow.getByLabel(label);
@@ -74,8 +77,8 @@ async function openToolWindow(t) {
     }
     const theme = await resolveToolWindowTheme();
     const win = new WebviewWindow(label, {
-      url: "/index.html?tool=" + t.key,
-      title: t.label,
+      url: "/index.html?tool=" + tool.key,
+      title: t(tool.labelKey),
       width: 980,
       height: 720,
       minWidth: 720,
@@ -89,13 +92,13 @@ async function openToolWindow(t) {
     });
     // 创建失败（如权限不足）：提示降级内嵌
     win.once("tauri://error", (e) => {
-      console.error("工具窗口创建失败:", JSON.stringify(e));
-      activeTool.value = t.key;
-      props.showToast("独立窗口打开失败，已在主窗口打开");
+      console.error(t("common.toolWinFail", { err: JSON.stringify(e) }));
+      activeTool.value = tool.key;
+      props.showToast(t("toolbox.windowFailFallback"));
     });
   } catch (e) {
-    console.error("打开工具窗口失败:", e);
-    activeTool.value = t.key;
+    console.error(t("common.toolWinOpenFail", { err: e }));
+    activeTool.value = tool.key;
   }
 }
 
@@ -109,11 +112,11 @@ async function resolveToolWindowTheme() {
   }
 }
 
-async function openTool(t) {
-  if (!t.ready) return props.showToast(`「${t.label}」开发中，敬请期待`);
-  recordRecent(t);
-  if (isTauri) await openToolWindow(t);
-  else activeTool.value = t.key;
+async function openTool(tool) {
+  if (!tool.ready) return props.showToast(t("toolbox.comingSoon", { name: t(tool.labelKey) }));
+  recordRecent(tool);
+  if (isTauri) await openToolWindow(tool);
+  else activeTool.value = tool.key;
 }
 function tryJump() {
   if (!mounted || !props.jumpId?.id) return;
@@ -170,14 +173,14 @@ const enqueueJsonHandoff = createJsonHandoffQueue({
   onOpen: openJsonHandoffState,
   onError: (reason) => {
     const messages = {
-      "load-failed": "JSON 草稿读取失败，未打开响应内容",
-      "save-failed": "JSON 草稿保存失败，响应内容未写入",
-      "open-failed": "响应内容已保存，JSON 工具通知失败",
-      limit: "JSON 标签已满，未打开响应内容",
-      "unsupported-version": "JSON 草稿来自更高版本，已阻止覆盖",
-      "recovery-required": "JSON 草稿需要先恢复，已阻止覆盖",
+      "load-failed": t("toolbox.handoff.loadFailed"),
+      "save-failed": t("toolbox.handoff.saveFailed"),
+      "open-failed": t("toolbox.handoff.openFailed"),
+      limit: t("toolbox.handoff.limit"),
+      "unsupported-version": t("toolbox.handoff.unsupportedVersion"),
+      "recovery-required": t("toolbox.handoff.recoveryRequired"),
     };
-    props.showToast(messages[reason] || "未能打开 JSON 响应内容");
+    props.showToast(messages[reason] || t("toolbox.handoff.unknown"));
   },
 });
 
@@ -191,11 +194,11 @@ function openInJson(text) {
     <!-- 工具详情：面包屑返回 + 工具工作区 -->
     <template v-if="activeMeta">
       <div class="crumbs">
-        <button class="crumb-back" @click="backHome"><Icon name="chevrons-left" :size="14" />工具箱</button>
+        <button class="crumb-back" @click="backHome"><Icon name="chevrons-left" :size="14" />{{ t("nav.toolbox") }}</button>
         <span class="crumb-sep">/</span>
         <span class="crumb-ico"><Icon :name="activeMeta.icon" :size="16" /></span>
-        <span class="crumb-cur">{{ activeMeta.label }}</span>
-        <span class="crumb-desc">{{ activeMeta.desc }}</span>
+        <span class="crumb-cur">{{ t(activeMeta.labelKey) }}</span>
+        <span class="crumb-desc">{{ t(activeMeta.descKey) }}</span>
       </div>
       <section class="detail-body">
         <component :is="toolComp" :show-toast="showToast" v-bind="toolProps" />
@@ -217,32 +220,32 @@ function openInJson(text) {
               >
                 <span class="group-icon"><Icon :name="group.icon" :size="21" /></span>
                 <span class="group-info">
-                  <b class="group-name">{{ group.label }}</b>
-                  <span class="group-desc" :title="group.desc">{{ group.desc }}</span>
+                  <b class="group-name">{{ t(group.labelKey) }}</b>
+                  <span class="group-desc" :title="t(group.descKey)">{{ t(group.descKey) }}</span>
                 </span>
-                <span class="group-count">{{ group.tools.length }} 个工具</span>
+                <span class="group-count">{{ t("toolbox.gallery.count", { n: group.tools.length }) }}</span>
                 <Icon name="chevron-right" :size="17" class="group-arrow" />
               </button>
 
               <Transition name="group-reveal">
                 <div v-if="expandedGroup === group.key" :id="'tool-group-' + group.key" class="tool-list">
                   <button
-                    v-for="t in group.tools"
-                    :key="t.key"
+                    v-for="tool in group.tools"
+                    :key="tool.key"
                     class="tool-item"
-                    :class="{ coming: !t.ready, last: isLastUsed(t) }"
-                    @click="openTool(t)"
+                    :class="{ coming: !tool.ready, last: isLastUsed(tool) }"
+                    @click="openTool(tool)"
                   >
-                    <span class="tile"><Icon :name="t.icon" :size="24" /></span>
+                    <span class="tile"><Icon :name="tool.icon" :size="24" /></span>
                     <span class="info">
                       <span class="info-top">
-                        <b class="name">{{ t.label }}</b>
-                        <span v-if="isLastUsed(t)" class="last-tag" title="上次使用过的工具">最近</span>
+                        <b class="name">{{ t(tool.labelKey) }}</b>
+                        <span v-if="isLastUsed(tool)" class="last-tag" :title="t('toolbox.gallery.lastUsedTip')">{{ t("toolbox.gallery.lastUsed") }}</span>
                       </span>
-                      <span class="desc" :title="t.desc">{{ t.desc }}</span>
+                      <span class="desc" :title="t(tool.descKey)">{{ t(tool.descKey) }}</span>
                     </span>
-                    <Icon v-if="t.ready" name="chevron-right" :size="16" class="go" />
-                    <span v-else class="go-txt">敬请期待</span>
+                    <Icon v-if="tool.ready" name="chevron-right" :size="16" class="go" />
+                    <span v-else class="go-txt">{{ t("toolbox.gallery.coming") }}</span>
                   </button>
                 </div>
               </Transition>
@@ -253,27 +256,27 @@ function openInJson(text) {
         <aside class="home-side">
           <div class="side-card">
             <div class="side-head">
-              <b>最近使用</b>
-              <button v-if="recentList.length" class="side-clear" @click="clearRecent">清空</button>
+              <b>{{ t("toolbox.gallery.recent") }}</b>
+              <button v-if="recentList.length" class="side-clear" @click="clearRecent">{{ t("toolbox.gallery.clear") }}</button>
             </div>
             <div v-if="recentList.length" class="recent-list">
               <button v-for="r in recentList" :key="r.key" class="recent-item" @click="openTool(r.tool)">
                 <span class="ri-ico"><Icon :name="r.tool.icon" :size="16" /></span>
-                <span class="ri-name" :title="r.tool.label">{{ r.tool.label }}</span>
+                <span class="ri-name" :title="t(r.tool.labelKey)">{{ t(r.tool.labelKey) }}</span>
                 <span class="ri-time">{{ relativeTime(r.ts) }}</span>
               </button>
             </div>
-            <p v-else class="side-empty">还没有使用记录，打开一个工具试试吧</p>
+            <p v-else class="side-empty">{{ t("toolbox.gallery.empty") }}</p>
           </div>
 
           <div class="side-card">
             <div class="side-head">
-              <b>小贴士</b>
+              <b>{{ t("toolbox.gallery.tip") }}</b>
             </div>
             <ul class="tip-list">
-              <li>工具在独立窗口打开，可拖动、缩放</li>
-              <li>同一个工具只开一个窗口，再次打开会聚焦它</li>
-              <li><b>Ctrl</b> + <b>K</b> 全局搜索可直接跳转工具</li>
+              <li>{{ t("toolbox.gallery.tip1") }}</li>
+              <li>{{ t("toolbox.gallery.tip2") }}</li>
+              <li><b>Ctrl</b> + <b>K</b> {{ t("toolbox.gallery.tip3") }}</li>
             </ul>
           </div>
         </aside>

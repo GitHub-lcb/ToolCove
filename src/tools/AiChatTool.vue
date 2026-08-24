@@ -212,7 +212,7 @@ async function send() {
   sending.value = true;
   await scrollBottom();
 
-  const context = buildContextMessages(session.messages, activePreset.value.content, MAX_ROUNDS);
+  const context = buildContextMessages(session.messages, t(activePreset.value.contentKey), MAX_ROUNDS);
   streamStop = aiChatStream(context, {}, {
     onDelta: (d) => {
       streamText.value += d;
@@ -343,7 +343,7 @@ function removePreset(p) {
           @click="setActivePreset(p.id)"
         >
           <span class="pi-name">{{ p.name }}</span>
-          <span class="pi-desc" :title="p.content">{{ p.content }}</span>
+          <span class="pi-desc" :title="t(p.contentKey)">{{ t(p.contentKey) }}</span>
         </button>
       </div>
     </aside>
@@ -406,7 +406,7 @@ function removePreset(p) {
         <div class="dlg-body">
           <div v-for="p in allPresets" :key="p.id" class="preset-row">
             <b class="pr-name">{{ p.name }}</b>
-            <span class="pr-content" :title="p.content">{{ p.content }}</span>
+            <span class="pr-content" :title="t(p.contentKey)">{{ t(p.contentKey) }}</span>
             <button v-if="!DEFAULT_PRESETS.some((d) => d.id === p.id)" class="pr-del" :title="t('toolbox.ai.delete')" @click="removePreset(p)">
               <Icon name="trash" :size="13" />
             </button>
