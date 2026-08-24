@@ -5,6 +5,9 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { decryptValue } from "./secure.js";
 import { parsePartialJson } from "./streamJson.js";
 import { throttleFlush } from "./throttle.js";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 // 常见服务商预设（baseUrl 已含 /v1 等版本段，直接拼 /chat/completions）
 export const AI_PRESETS = [
@@ -149,67 +152,45 @@ export async function testAI(config) {
 }
 
 // ---------- 识图提取（流式） ----------
-// system 模板：单条/批量/分组三段原文（不得合并，各有特殊指令）
+// system 模板：单条/批量/分组三段原文（不得合并，各有特殊指令）；提示词文案走 prompt.extract* 键
 function buildExtractSystem(kind, fieldsOrGroups) {
   if (kind === "groups") {
     const groupLines = fieldsOrGroups
       .map((g) => {
         const fieldLines = g.fields
           .map((f) => {
-            let line = `  - ${f.key}（${f.label}）`;
-            if (f.desc) line += `：${f.desc}`;
-            if (f.bool) line += "（布尔值 true/false，图中勾选/是为 true，无法判断填 false）";
+            let line = "  " + t("prompt.extractFieldLine", { key: f.key, label: f.label });
+            if (f.desc) line += t("prompt.extractFieldDesc", { desc: f.desc });
+            if (f.bool) line += t("prompt.extractFieldBool");
             return line;
           })
           .join("\n");
-        return `- ${g.key}（${g.title}）：数组，每个元素代表表中一行，字段：\n${fieldLines}`;
+        return t("prompt.extractGroupLine", { key: g.key, title: g.title }) + "\n" + fieldLines;
       })
       .join("\n");
     return (
-      "你是信息提取助手。用户的截图中可能包含下列【一张或多张】表格，请先判断图中实际出现了哪几张表，" +
-      "再把每张表的每一行数据提取为一个 JSON 对象。最终严格只输出一个 JSON 对象，" +
-      "key 为表名，value 为该表的行数组；图中没有出现的表返回空数组 []。" +
-      "不要输出任何解释、前后缀或代码块围栏。表定义如下：\n" +
+      t("prompt.extractGroupsHead") + "\n" +
       groupLines +
-      "\n\n要求：只提取图中真实存在的数据行，不要编造；表头行、占位提示行（如‘还没有数据’）不算数据行；" +
-      "某字段识别不到就填空字符串（布尔字段填 false）。" +
-      "表的数据不一定以规范表格形式出现：若图中存在备注/说明类的合并单元格或自由文本段落，" +
-      "其内容能明确对应某张表的字段（例如提到 .sql 脚本文件名与责任人→属于数据库脚本表），" +
-      "也要逐条拆分为该表的行提取，对应不上的字段留空、其余说明可放入备注字段；但仍不得凭空编造。" +
-      "特别注意表格中的【跨行合并单元格】：若某列的一个单元格在视觉上跨越了多行，" +
-      "说明它的内容同时适用于这几行，这几行的该字段都要填入相同内容；" +
-      "严格按每行的上下边界判断各列内容属于哪一行，不要把内容错位到相邻行。"
+      "\n\n" + t("prompt.extractGroupsTail")
     );
   }
   const fieldLines = fieldsOrGroups
     .map((f) => {
-      let line = `- ${f.key}（${f.label}）`;
-      if (f.desc) line += `：${f.desc}`;
+      let line = t("prompt.extractFieldLine", { key: f.key, label: f.label });
+      if (f.desc) line += t("prompt.extractFieldDesc", { desc: f.desc });
       if (Array.isArray(f.enum) && f.enum.length) {
-        line += `（只能取以下之一：${f.enum.join(" / ")}，无法判断则留空）`;
+        line += t("prompt.extractFieldEnum", { values: f.enum.join(" / ") });
       }
       return line;
     })
     .join("\n");
-  const head =
-    kind === "many"
-      ? "你是信息提取助手。用户提供的截图中可能包含【多条】记录（如列表或表格）。" +
-        "请为图中每一条记录提取为一个 JSON 对象，最终严格只输出一个 JSON 数组，"
-      : "你是信息提取助手。请从用户提供的截图中提取信息，严格只输出一个 JSON 对象，";
-  const tail =
-    kind === "many"
-      ? "\n\n要求：数组每个元素的 key 必须与上面一致；只提取图中真实存在的条目，不要编造；" +
-        "某字段识别不到就填空字符串。" +
-        "特别注意表格中的【跨行合并单元格】：若某列的一个单元格在视觉上跨越了多行，" +
-        "说明它的内容同时适用于这几行，这几行的该字段都要填入相同内容；" +
-        "严格按每行的上下边界判断各列内容属于哪一行，不要把内容错位到相邻行。"
-      : "\n\n要求：JSON 的 key 必须与上面一致；未能从图中识别到的字段填空字符串 \"\"；" +
-        "不要编造图中不存在的内容。";
+  const head = kind === "many" ? t("prompt.extractManyHead") : t("prompt.extractSingleHead");
+  const tail = kind === "many" ? t("prompt.extractManyTail") : t("prompt.extractSingleTail");
   return (
     head +
-    "不要输出任何解释、前后缀或 ```json 代码块围栏。字段定义如下：\n" +
+    t("prompt.extractFieldsIntro") + "\n" +
     fieldLines +
-    tail
+    "\n\n" + tail
   );
 }
 
@@ -297,14 +278,14 @@ function extractStreamImpl(messages, opts, handlers, filterFn) {
 
 function listOf(images) {
   const list = Array.isArray(images) ? images.filter(Boolean) : [images].filter(Boolean);
-  if (!list.length) throw new Error("请先提供截图");
+  if (!list.length) throw new Error(t("prompt.extractErrNoImages"));
   return list;
 }
 
 // 单条：识别 1 条，onPartial/onDone 回传对象（仅含声明字段）
 export function aiExtractStream(images, fields, opts = {}, handlers = {}) {
-  if (!Array.isArray(fields) || !fields.length) throw new Error("未定义要提取的字段");
-  const content = [{ type: "text", text: opts.hint || "请从这张截图中提取上述字段，只返回 JSON。" }];
+  if (!Array.isArray(fields) || !fields.length) throw new Error(t("prompt.extractErrNoFields"));
+  const content = [{ type: "text", text: opts.hint || t("prompt.extractHintSingle") }];
   for (const url of listOf(images)) content.push({ type: "image_url", image_url: { url } });
   const messages = [
     { role: "system", content: buildExtractSystem("single", fields) },
@@ -315,8 +296,8 @@ export function aiExtractStream(images, fields, opts = {}, handlers = {}) {
 
 // 批量：识别多条，onPartial/onDone 回传对象数组（已过滤空白行）
 export function aiExtractManyStream(images, fields, opts = {}, handlers = {}) {
-  if (!Array.isArray(fields) || !fields.length) throw new Error("未定义要提取的字段");
-  const content = [{ type: "text", text: opts.hint || "请把截图中的每一条记录提取为数组元素，只返回 JSON 数组。" }];
+  if (!Array.isArray(fields) || !fields.length) throw new Error(t("prompt.extractErrNoFields"));
+  const content = [{ type: "text", text: opts.hint || t("prompt.extractHintMany") }];
   for (const url of listOf(images)) content.push({ type: "image_url", image_url: { url } });
   const messages = [
     { role: "system", content: buildExtractSystem("many", fields) },
@@ -327,8 +308,8 @@ export function aiExtractManyStream(images, fields, opts = {}, handlers = {}) {
 
 // 分组：截图含多张表，onPartial/onDone 回传 { 表key: 行数组 }
 export function aiExtractGroupsStream(images, groups, opts = {}, handlers = {}) {
-  if (!Array.isArray(groups) || !groups.length) throw new Error("未定义要提取的分组");
-  const content = [{ type: "text", text: opts.hint || "请识别截图中出现的表格并按表分组提取每一行，只返回 JSON 对象。" }];
+  if (!Array.isArray(groups) || !groups.length) throw new Error(t("prompt.extractErrNoGroups"));
+  const content = [{ type: "text", text: opts.hint || t("prompt.extractHintGroups") }];
   for (const url of listOf(images)) content.push({ type: "image_url", image_url: { url } });
   const messages = [
     { role: "system", content: buildExtractSystem("groups", groups) },

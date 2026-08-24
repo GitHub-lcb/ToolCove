@@ -5,15 +5,20 @@ import {
   aiExtractManyStream,
   aiExtractGroupsStream,
 } from "./ai.js";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 let task = null;
 const listeners = new Set();
 const owners = new Set(); // 当前挂载中的 AiExtract 实例 id
 
 export const TASK_LABELS = {
-  running: (seconds) => `识别中 ${seconds}s`,
-  done: (count) => `✓ 识别完成 ${count} 行`,
-  error: "识别失败",
+  running: (seconds) => t("extract.taskRunning", { seconds }),
+  done: (count) => t("extract.taskDone", { count }),
+  get error() {
+    return t("extract.taskError");
+  },
 };
 
 export function registerOwner(id) {

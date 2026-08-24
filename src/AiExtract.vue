@@ -7,6 +7,7 @@
 // 流式+异步：识别结果边生成边填表（生成中只读）；可最小化弹窗后台继续（跨视图存活），
 // 完成 toast 通知、重开弹窗恢复；可随时取消。任务状态由 extractTask.js 模块驱动。
 import { ref, watch, onMounted, onUnmounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import {
   aiExtractStream,
@@ -32,8 +33,8 @@ const props = defineProps({
   // 分组模式：[{ key, title, fields: [{ key, label, desc?, bool?, multiline? }] }]
   groups: { type: Array, default: () => [] },
   hint: { type: String, default: "" },
-  title: { type: String, default: "AI 识图录入" },
-  buttonLabel: { type: String, default: "AI 识图" },
+  title: { type: String, default: "" },
+  buttonLabel: { type: String, default: "" },
   multiple: { type: Boolean, default: false },
   // 重复项高亮：dedupeKey 指定用哪个字段比对，existing 为已存在的值列表
   dedupeKey: { type: String, default: "" },
@@ -42,6 +43,11 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["apply"]);
+
+const { t } = useI18n();
+// 未传 title/buttonLabel 时走 i18n 默认文案
+const dialogTitle = computed(() => props.title || t("extract.defaultTitle"));
+const defaultButtonLabel = computed(() => props.buttonLabel || t("extract.defaultButton"));
 
 const open = ref(false);
 const dialogOpen = ref(false); // 本实例弹窗是否开着（toast 文案与恢复逻辑用）
@@ -65,12 +71,12 @@ const taskState = ref(getExtractTask());
 let unsub = null;
 
 const triggerLabel = computed(() => {
-  const t = taskState.value;
-  if (!t) return props.buttonLabel;
-  if (t.status === "running") return TASK_LABELS.running(t.elapsed);
-  if (t.status === "done") return TASK_LABELS.done(countRows(t));
-  if (t.status === "error") return TASK_LABELS.error;
-  return props.buttonLabel;
+  const task = taskState.value;
+  if (!task) return defaultButtonLabel.value;
+  if (task.status === "running") return TASK_LABELS.running(task.elapsed);
+  if (task.status === "done") return TASK_LABELS.done(countRows(task));
+  if (task.status === "error") return TASK_LABELS.error;
+  return defaultButtonLabel.value;
 });
 
 function countRows(t) {
@@ -81,42 +87,42 @@ function countRows(t) {
 }
 
 // 任务状态变化 → 本实例 UI 同步；owner 身份发 toast（owner 卸载期间不发，按钮三态即通知）
-function syncFromTask(t) {
-  if (!t) {
+function syncFromTask(task) {
+  if (!task) {
     loading.value = false;
     return;
   }
-  const isOwner = t.ownerId === instanceId;
-  if (t.status === "running") {
+  const isOwner = task.ownerId === instanceId;
+  if (task.status === "running") {
     loading.value = true;
-    if (dialogOpen.value && t.partial) {
-      result.value = normalizePartial(t);
-      selected.value = partialSelected(t);
+    if (dialogOpen.value && task.partial) {
+      result.value = normalizePartial(task);
+      selected.value = partialSelected(task);
     }
     return;
   }
   loading.value = false;
   // 完成/错误/被取消 → owner 发 toast（仅一次）
   if (isOwner && mountedRef.value && isOwnerMounted(instanceId)) {
-    if (t.status === "done" && !toastSent && t.result) {
+    if (task.status === "done" && !toastSent && task.result) {
       toastSent = true;
-      const n = countRows(t);
-      props.showToast(dialogOpen.value ? `识别完成：已提取 ${n} 行` : `识别完成 ${n} 行，点「AI 识图」查看`);
+      const n = countRows(task);
+      props.showToast(dialogOpen.value ? t("extract.toastDoneOpen", { count: n }) : t("extract.toastDoneClosed", { count: n }));
       if (dialogOpen.value) {
-        result.value = cloneResult(t.result);
-        selected.value = initSelected(t);
+        result.value = cloneResult(task.result);
+        selected.value = initSelected(task);
       }
-    } else if (t.status === "error" && !toastSent) {
+    } else if (task.status === "error" && !toastSent) {
       toastSent = true;
-      props.showToast("识别失败：" + (t.error?.message || t.error));
+      props.showToast(t("extract.toastFailed", { err: task.error?.message || task.error }));
       if (dialogOpen.value) {
-        error.value = t.error?.message || String(t.error);
+        error.value = task.error?.message || String(task.error);
         result.value = null;
       }
-    } else if (t.status === "cancelled" && !toastSent) {
+    } else if (task.status === "cancelled" && !toastSent) {
       // 被新任务取消（非本实例主动取消，主动取消由 cancelRun 自己 toast）
       toastSent = true;
-      props.showToast("原识别任务已被取消");
+      props.showToast(t("extract.toastCancelled"));
     }
   }
 }
@@ -163,9 +169,9 @@ function cancelRun() {
   cancelExtractTask();
   loading.value = false;
   result.value = null;
-  error.value = "已取消";
+  error.value = t("extract.cancelled");
   toastSent = true;
-  props.showToast("已取消");
+  props.showToast(t("extract.cancelled"));
 }
 // 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（识别结果可编辑，防误触丢失）；
 // running 态 Esc = 最小化（不中断任务）
@@ -195,7 +201,7 @@ onUnmounted(() => {
 function readFile(file) {
   if (!file) return;
   if (!file.type || !file.type.startsWith("image/")) {
-    props.showToast("请选择图片文件");
+    props.showToast(t("extract.selectImage"));
     return;
   }
   const reader = new FileReader();
@@ -204,7 +210,7 @@ function readFile(file) {
     result.value = null;
     error.value = "";
   };
-  reader.onerror = () => props.showToast("读取图片失败");
+  reader.onerror = () => props.showToast(t("extract.readFailed"));
   reader.readAsDataURL(file);
 }
 function onSelect(e) {
@@ -320,8 +326,8 @@ function isDupInList(i) {
 }
 function rowFlag(i) {
   const row = result.value[i];
-  if (isDuplicate(row)) return "已存在";
-  if (isDupInList(i)) return "重复";
+  if (isDuplicate(row)) return t("extract.flagExisting");
+  if (isDupInList(i)) return t("extract.flagDuplicate");
   return "";
 }
 
@@ -440,7 +446,7 @@ defineExpose({ openDialog });
     type="button"
     class="ai-trigger"
     :class="{ busy: taskState?.status === 'running', done: taskState?.status === 'done', err: taskState?.status === 'error' }"
-    :title="title"
+    :title="dialogTitle"
     @click="openDialog"
   >
     <Icon name="sparkles" :size="15" /> {{ triggerLabel }}
@@ -448,10 +454,10 @@ defineExpose({ openDialog });
 
   <div v-if="open" class="ax-mask">
     <div class="ax-modal" :class="{ wide: isGroups }">
-      <h2><Icon name="sparkles" :size="18" /> {{ title }}</h2>
+      <h2><Icon name="sparkles" :size="18" /> {{ dialogTitle }}</h2>
 
       <p v-if="!configured" class="ax-warn">
-        <Icon name="alert" :size="14" /> 尚未配置 AI 模型，请先在右上角「设置 → AI 模型」中填写接口地址、模型与 API Key（模型需支持图片输入）。
+        <Icon name="alert" :size="14" /> {{ t("extract.notConfigured") }}
       </p>
 
       <!-- 图片输入区 -->
@@ -464,28 +470,28 @@ defineExpose({ openDialog });
         @click="!imageUrl && fileInput && fileInput.click()"
       >
         <template v-if="imageUrl">
-          <img :src="imageUrl" class="ax-preview" alt="预览" />
+          <img :src="imageUrl" class="ax-preview" :alt="t('extract.previewAlt')" />
         </template>
         <template v-else>
           <span class="ax-drop-ico"><Icon name="image" :size="26" /></span>
-          <p class="ax-drop-main">点击选择图片</p>
-          <p class="ax-drop-sub">或 Ctrl+V 粘贴截图 / 把图片拖到这里{{ isGroups ? "（可含一张或多张表）" : multiple ? "（可含多条记录）" : "" }}</p>
+          <p class="ax-drop-main">{{ t("extract.dropMain") }}</p>
+          <p class="ax-drop-sub">{{ t("extract.dropSub") }}{{ isGroups ? t("extract.dropSubGroupsSuffix") : multiple ? t("extract.dropSubManySuffix") : "" }}</p>
         </template>
         <input ref="fileInput" type="file" accept="image/*" class="ax-file" @change="onSelect" />
       </div>
 
       <div class="ax-actions" v-if="imageUrl">
         <button type="button" class="btn-ghost sm" :disabled="loading" @click="fileInput && fileInput.click()">
-          <Icon name="repeat" :size="14" /> 换一张
+          <Icon name="repeat" :size="14" /> {{ t("extract.changeImage") }}
         </button>
         <button type="button" class="btn-primary sm" :disabled="loading" @click="runExtract">
-          <Icon name="sparkles" :size="14" /> {{ loading ? `识别中… ${taskState?.elapsed ?? 0}s` : result ? "重新识别" : "开始识别" }}
+          <Icon name="sparkles" :size="14" /> {{ loading ? t("extract.recognizing", { seconds: taskState?.elapsed ?? 0 }) : result ? t("extract.reExtract") : t("extract.startExtract") }}
         </button>
       </div>
 
       <p v-if="error" class="ax-err"><Icon name="alert" :size="14" /> {{ error }}</p>
       <p v-if="loading && !result" class="ax-err ax-info">
-        <Icon name="sparkles" :size="14" /> 正在识别，可点「最小化」继续做别的事，完成后会通知你
+        <Icon name="sparkles" :size="14" /> {{ t("extract.minimizeHint") }}
       </p>
 
       <!-- 分组识别结果（多张表） -->
@@ -493,15 +499,15 @@ defineExpose({ openDialog });
         <div class="ax-result-hd">
           <label class="ax-selall">
             <input type="checkbox" v-model="allSelected" :disabled="loading" />
-            <span>已选 {{ selectedCount }} / {{ totalRows }} 行</span>
+            <span>{{ t("extract.selectedRows", { selected: selectedCount, total: totalRows }) }}</span>
           </label>
         </div>
         <div v-for="g in groups" :key="g.key" class="ax-group">
           <div class="ax-group-hd">
             <span>{{ g.title }}<em>{{ (result[g.key] || []).length }}</em></span>
-            <button type="button" class="ax-add" :disabled="loading" @click="groupAddRow(g)"><Icon name="plus" :size="13" /> 加一行</button>
+            <button type="button" class="ax-add" :disabled="loading" @click="groupAddRow(g)"><Icon name="plus" :size="13" /> {{ t("extract.addRow") }}</button>
           </div>
-          <p v-if="!(result[g.key] || []).length" class="ax-group-empty">截图中未识别到该表{{ loading ? "（识别中…）" : "" }}</p>
+          <p v-if="!(result[g.key] || []).length" class="ax-group-empty">{{ t("extract.groupEmpty") }}{{ loading ? t("extract.runningSuffix") : "" }}</p>
           <div v-for="(row, i) in result[g.key]" :key="i" class="ax-card" :class="{ off: !selected[g.key][i] }">
             <input type="checkbox" class="ax-check" v-model="selected[g.key][i]" :disabled="loading" />
             <span class="ax-idx">{{ i + 1 }}</span>
@@ -512,7 +518,7 @@ defineExpose({ openDialog });
                 <input v-else v-model="row[f.key]" :disabled="loading" />
               </label>
             </div>
-            <button type="button" class="ax-del" title="删除该行" :disabled="loading" @click="groupRemoveRow(g, i)">
+            <button type="button" class="ax-del" :title="t('extract.deleteRow')" :disabled="loading" @click="groupRemoveRow(g, i)">
               <Icon name="trash" :size="14" />
             </button>
           </div>
@@ -524,9 +530,9 @@ defineExpose({ openDialog });
         <div class="ax-result-hd">
           <label class="ax-selall">
             <input type="checkbox" v-model="allSelected" :disabled="loading" />
-            <span>已选 {{ selectedCount }} / {{ result.length }} 条</span>
+            <span>{{ t("extract.selectedItems", { selected: selectedCount, total: result.length }) }}</span>
           </label>
-          <button type="button" class="ax-add" :disabled="loading" @click="addRow"><Icon name="plus" :size="13" /> 加一条</button>
+          <button type="button" class="ax-add" :disabled="loading" @click="addRow"><Icon name="plus" :size="13" /> {{ t("extract.addItem") }}</button>
         </div>
         <div v-for="(row, i) in result" :key="i" class="ax-card" :class="{ off: !selected[i], dup: rowFlag(i) }">
           <input type="checkbox" class="ax-check" v-model="selected[i]" :disabled="loading" />
@@ -539,7 +545,7 @@ defineExpose({ openDialog });
               <input v-else v-model="row[f.key]" :disabled="loading" />
             </label>
           </div>
-          <button type="button" class="ax-del" title="删除该条" :disabled="loading" @click="removeRow(i)">
+          <button type="button" class="ax-del" :title="t('extract.deleteItem')" :disabled="loading" @click="removeRow(i)">
             <Icon name="trash" :size="14" />
           </button>
         </div>
@@ -547,7 +553,7 @@ defineExpose({ openDialog });
 
       <!-- 单条识别结果 -->
       <div v-else-if="result" class="ax-result">
-        <div class="ax-result-hd"><span>识别结果{{ loading ? "（识别中…）" : "（可修改后再填入）" }}</span></div>
+        <div class="ax-result-hd"><span>{{ t("extract.resultTitle") }}{{ loading ? t("extract.runningSuffix") : t("extract.resultEditingSuffix") }}</span></div>
         <label v-for="(val, key) in result" :key="key" class="ax-field">
           <span>{{ labelOf(key) }}</span>
           <textarea v-if="isMultiline(key)" v-model="result[key]" rows="2" :disabled="loading"></textarea>
@@ -557,14 +563,14 @@ defineExpose({ openDialog });
 
       <div class="ax-foot">
         <template v-if="loading">
-          <button class="btn-ghost" @click="cancelRun"><Icon name="x" :size="15" /> 取消识别</button>
-          <button class="btn-ghost" @click="minimize"><Icon name="chevrons-left" :size="15" /> 最小化</button>
+          <button class="btn-ghost" @click="cancelRun"><Icon name="x" :size="15" /> {{ t("extract.cancelExtract") }}</button>
+          <button class="btn-ghost" @click="minimize"><Icon name="chevrons-left" :size="15" /> {{ t("extract.minimize") }}</button>
         </template>
         <template v-else>
-          <button class="btn-ghost" @click="close">取消</button>
+          <button class="btn-ghost" @click="close">{{ t("common.cancel") }}</button>
           <button class="btn-primary" :disabled="!canApply()" @click="apply">
             <Icon name="check" :size="15" />
-            {{ multiple || isGroups ? `批量填入${result ? " (" + selectedCount + ")" : ""}` : "填入表单" }}
+            {{ multiple || isGroups ? t("extract.batchFill") + (result ? " (" + selectedCount + ")" : "") : t("extract.fillForm") }}
           </button>
         </template>
       </div>

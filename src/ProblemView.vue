@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import Icon from "./Icon.vue";
 import AiExtract from "./AiExtract.vue";
@@ -12,18 +13,26 @@ const props = defineProps({
   jumpId: { type: Object, default: null },
 });
 
-// 问题类型
-const TYPES = {
-  online: { label: "线上问题", icon: "alert", cls: "tc-danger" },
-  meeting: { label: "会议", icon: "note", cls: "tc-primary" },
-  temp: { label: "临时任务", icon: "clock", cls: "tc-amber" },
-  other: { label: "其他", icon: "folder", cls: "tc-neutral" },
+const { t } = useI18n();
+
+// 问题类型（label 走 i18n，computed 保证语言切换后重新求值）
+const TYPE_META = {
+  online: { icon: "alert", cls: "tc-danger" },
+  meeting: { icon: "note", cls: "tc-primary" },
+  temp: { icon: "clock", cls: "tc-amber" },
+  other: { icon: "folder", cls: "tc-neutral" },
 };
-const FILTERS = [
-  { key: "open", label: "处理中" },
-  { key: "done", label: "已解决" },
-  { key: "all", label: "全部" },
-];
+const TYPES = computed(() => ({
+  online: { label: t("problem.typeOnline"), ...TYPE_META.online },
+  meeting: { label: t("problem.typeMeeting"), ...TYPE_META.meeting },
+  temp: { label: t("problem.typeTemp"), ...TYPE_META.temp },
+  other: { label: t("problem.typeOther"), ...TYPE_META.other },
+}));
+const FILTERS = computed(() => [
+  { key: "open", label: t("problem.filterOpen") },
+  { key: "done", label: t("problem.filterDone") },
+  { key: "all", label: t("problem.filterAll") },
+]);
 
 const problems = ref([]);
 const search = ref("");
@@ -52,14 +61,14 @@ async function load() {
     });
     problems.value = data;
   } catch (e) {
-    props.showToast("加载问题失败：" + errText(e));
+    props.showToast(t("problem.loadFailed", { err: errText(e) }));
   }
 }
 async function persist() {
   try {
     await invoke("save_data", { key: "problems", data: problems.value });
   } catch (e) {
-    props.showToast("保存失败：" + errText(e));
+    props.showToast(t("problem.saveFailed", { err: errText(e) }));
   }
 }
 onMounted(async () => {
@@ -129,12 +138,12 @@ function openCreate() {
   showForm.value = true;
 }
 
-// AI 识图字段定义
-const AI_FIELDS = [
-  { key: "title", label: "标题", desc: "问题/事项的简短标题" },
-  { key: "type", label: "类型", desc: "online=线上问题，meeting=会议，temp=临时任务，other=其他", enum: ["online", "meeting", "temp", "other"] },
-  { key: "note", label: "备注", desc: "补充说明、报错信息或上下文", multiline: true },
-];
+// AI 识图字段定义（computed：语言切换后重新求值）
+const AI_FIELDS = computed(() => [
+  { key: "title", label: t("problem.aiFieldTitle"), desc: t("problem.aiFieldTitleDesc") },
+  { key: "type", label: t("problem.aiFieldType"), desc: t("problem.aiFieldTypeDesc"), enum: ["online", "meeting", "temp", "other"] },
+  { key: "note", label: t("problem.aiFieldNote"), desc: t("problem.aiFieldNoteDesc"), multiline: true },
+]);
 // 识图结果→批量新建
 async function createProblemsFromAI(list) {
   const rows = Array.isArray(list) ? list : [list];
@@ -160,7 +169,7 @@ async function createProblemsFromAI(list) {
     added++;
   }
   await persist();
-  props.showToast(added ? `已新增 ${added} 个问题` : "没有可录入的问题（缺标题）");
+  props.showToast(added ? t("problem.aiAdded", { count: added }) : t("problem.aiNothing"));
 }
 function openEdit(p) {
   form.value = { id: p.id, title: p.title, type: p.type, status: p.status, note: p.note || "", tags: [...(p.tags || [])] };
@@ -169,7 +178,7 @@ function openEdit(p) {
 }
 async function saveForm() {
   const f = form.value;
-  if (!f.title.trim()) return props.showToast("请填写问题标题");
+  if (!f.title.trim()) return props.showToast(t("problem.titleRequired"));
   const now = Date.now();
   const existing = f.id ? problems.value.find((p) => p.id === f.id) : null;
   if (existing) {
@@ -189,12 +198,13 @@ async function saveForm() {
   }
   await persist();
   showForm.value = false;
-  props.showToast(existing ? "已更新" : "已添加问题");
+  props.showToast(existing ? t("problem.updated") : t("problem.added"));
 }
 // 表单标签编辑：输入框逗号/空格分隔批量添加 + 已有标签点选
 const tagInput = ref("");
 function applyTagInput() {
-  const arr = tagInput.value.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+  // 支持中文逗号分隔（\uff0c 为「，」的 unicode 转义，源码保持纯 ASCII）
+  const arr = tagInput.value.split(/[,\uff0c\s]+/).map((s) => s.trim()).filter(Boolean);
   for (const t of arr) if (!form.value.tags.includes(t)) form.value.tags.push(t);
   tagInput.value = "";
 }
@@ -211,7 +221,7 @@ async function toggleStatus(p) {
       expanded.value[p.id] = true;
       lastExpandedId.value = p.id;
       loadImages(p);
-      props.showToast("已标记解决，记得补充结论");
+      props.showToast(t("problem.resolvedHint"));
     }
   } else {
     p.resolvedAt = null;
@@ -220,17 +230,21 @@ async function toggleStatus(p) {
   await persist();
 }
 async function removeProblem(p) {
-  const ok = await askConfirm({ title: "删除问题", message: `「${p.title}」将被删除，5 秒内可在底部提示条撤销。`, okText: "删除" });
+  const ok = await askConfirm({
+    title: t("problem.deleteTitle"),
+    message: t("problem.deleteMsg", { title: p.title }),
+    okText: t("problem.deleteOk"),
+  });
   if (!ok) return;
   const idx = problems.value.findIndex((x) => x.id === p.id);
   problems.value = problems.value.filter((x) => x.id !== p.id);
   await persist();
-  props.showToast("已删除问题", {
-    actionLabel: "撤销",
+  props.showToast(t("problem.deleted"), {
+    actionLabel: t("problem.undo"),
     onAction: async () => {
       problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, p);
       await persist();
-      props.showToast("已恢复");
+      props.showToast(t("problem.restored"));
     },
     // 撤销窗口结束后才真正清理图片文件
     onExpire: async () => {
@@ -278,7 +292,11 @@ function toggleAll() {
 async function removeChecked() {
   const list = checkedList.value;
   if (!list.length) return;
-  const ok = await askConfirm({ title: "批量删除", message: `将删除选中的 ${list.length} 个问题，5 秒内可在底部提示条撤销。`, okText: "删除" });
+  const ok = await askConfirm({
+    title: t("problem.batchDeleteTitle"),
+    message: t("problem.batchDeleteMsg", { count: list.length }),
+    okText: t("problem.deleteOk"),
+  });
   if (!ok) return;
   const ids = new Set(list.map((p) => p.id));
   const removed = problems.value.filter((p) => ids.has(p.id));
@@ -286,12 +304,12 @@ async function removeChecked() {
   problems.value = problems.value.filter((p) => !ids.has(p.id));
   await persist();
   exitBatch();
-  props.showToast(`已删除 ${removed.length} 个问题`, {
-    actionLabel: "撤销",
+  props.showToast(t("problem.batchDeleted", { count: removed.length }), {
+    actionLabel: t("problem.undo"),
     onAction: async () => {
       problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, ...removed);
       await persist();
-      props.showToast("已恢复");
+      props.showToast(t("problem.restored"));
     },
     onExpire: async () => {
       for (const p of removed) {
@@ -310,18 +328,18 @@ const openCtxMenu = inject("openCtxMenu");
 async function copyProblemTitle(p) {
   try {
     await navigator.clipboard.writeText(p.title);
-    props.showToast(`已复制「${p.title}」`);
+    props.showToast(t("problem.copiedTitle", { title: p.title }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("problem.copyFailed", { err: e }));
   }
 }
 function onProbCtx(e, p) {
   openCtxMenu(e, [
-    { label: "复制标题", icon: "copy", fn: () => copyProblemTitle(p) },
-    { label: p.status === "done" ? "重新打开" : "标记已解决", icon: "check", fn: () => toggleStatus(p) },
-    { label: "记工时", icon: "clock", fn: () => toggleExpand(p) },
-    { label: "编辑", icon: "edit", fn: () => openEdit(p) },
-    { label: "删除问题", icon: "trash", danger: true, fn: () => removeProblem(p) },
+    { label: t("problem.ctxCopyTitle"), icon: "copy", fn: () => copyProblemTitle(p) },
+    { label: p.status === "done" ? t("problem.ctxReopen") : t("problem.ctxResolve"), icon: "check", fn: () => toggleStatus(p) },
+    { label: t("problem.ctxLogHours"), icon: "clock", fn: () => toggleExpand(p) },
+    { label: t("problem.ctxEdit"), icon: "edit", fn: () => openEdit(p) },
+    { label: t("problem.ctxDelete"), icon: "trash", danger: true, fn: () => removeProblem(p) },
   ]);
 }
 
@@ -333,7 +351,7 @@ function ensureLog(p) {
 async function addLog(p) {
   const f = ensureLog(p);
   const h = Number(f.hours) || 0;
-  if (!f.date || h <= 0) return props.showToast("请填写日期和有效工时");
+  if (!f.date || h <= 0) return props.showToast(t("problem.logInvalid"));
   if (!Array.isArray(p.logs)) p.logs = [];
   p.logs.push({ id: crypto.randomUUID(), date: f.date, hours: round(h), note: (f.note || "").trim() });
   logInput.value[p.id] = { date: f.date, hours: 1, note: "" };
@@ -345,8 +363,8 @@ async function removeLog(p, l) {
   p.logs = (p.logs || []).filter((x) => x.id !== l.id);
   touch(p);
   await persist();
-  props.showToast("已删除工时记录", {
-    actionLabel: "撤销",
+  props.showToast(t("problem.logDeleted"), {
+    actionLabel: t("problem.undo"),
     onAction: async () => {
       p.logs.splice(Math.min(Math.max(idx, 0), p.logs.length), 0, l);
       touch(p);
@@ -357,9 +375,9 @@ async function removeLog(p, l) {
 
 // ------- 结论 / 截图附件 -------
 // 摘要行的结论/备注只显示一行，悬停给短预览；全文展开条目后在「结论/解决方案」里看
-function notePreview(t) {
-  const s = String(t || "").replace(/\s+/g, " ").trim();
-  return s.length > 160 ? s.slice(0, 160) + "……（点击条目展开查看全文）" : s;
+function notePreview(text) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  return s.length > 160 ? s.slice(0, 160) + t("problem.noteExpandHint") : s;
 }
 const imgCache = ref({}); // name -> dataURL
 const previewSrc = ref("");
@@ -385,10 +403,10 @@ function onWinPaste(e) {
       if (added) {
         touch(p);
         await persist();
-        props.showToast(`已粘贴 ${added} 张截图`);
+        props.showToast(t("problem.pastedImages", { count: added }));
       }
     } catch (err) {
-      props.showToast("保存截图失败：" + err);
+      props.showToast(t("problem.saveImageFailed", { err }));
     }
   })();
 }
@@ -426,15 +444,15 @@ const runIds = {}; // pid -> 本次分析的 run token：丢弃过期结果
 
 function buildAnalysisPrompt(p) {
   const lines = [];
-  lines.push("你是一名资深后端/全栈工程师，请分析下面这个线上问题，全程用中文回答。");
+  lines.push(t("prompt.problemAnalysisIntro"));
   lines.push("");
-  lines.push(`【问题标题】${p.title}`);
-  lines.push(`【类型】${(TYPES[p.type] || {}).label || p.type}`);
-  if ((p.note || "").trim()) lines.push(`【问题描述】${p.note.trim()}`);
-  if ((p.resolution || "").trim()) lines.push(`【已有排查记录/结论】${p.resolution.trim()}`);
-  if ((p.tags || []).length) lines.push(`【标签】${p.tags.join("、")}`);
+  lines.push(t("prompt.problemAnalysisTitle", { text: p.title }));
+  lines.push(t("prompt.problemAnalysisType", { text: (TYPES.value[p.type] || {}).label || p.type }));
+  if ((p.note || "").trim()) lines.push(t("prompt.problemAnalysisNote", { text: p.note.trim() }));
+  if ((p.resolution || "").trim()) lines.push(t("prompt.problemAnalysisResolution", { text: p.resolution.trim() }));
+  if ((p.tags || []).length) lines.push(t("prompt.problemAnalysisTags", { text: p.tags.join(t("prompt.problemAnalysisTagSep")) }));
   lines.push("");
-  lines.push("请基于描述给出：1. 可能的原因方向（按可能性排序） 2. 排查步骤（日志、SQL、接口验证） 3. 修复建议。");
+  lines.push(t("prompt.problemAnalysisAsk"));
   return lines.join("\n");
 }
 async function analyzeProblem(p) {
@@ -448,10 +466,10 @@ async function analyzeProblem(p) {
     p.aiAnalysis = { at: Date.now(), text: (text || "").trim() };
     touch(p);
     await persist();
-    props.showToast("AI 分析完成");
+    props.showToast(t("problem.analysisDone"));
   } catch (e) {
     if (runIds[p.id] !== runId) return; // 中断导致的报错不提示
-    props.showToast("分析失败：" + errText(e));
+    props.showToast(t("problem.analysisFailed", { err: errText(e) }));
   } finally {
     if (runIds[p.id] === runId) {
       analyzing.value[p.id] = undefined;
@@ -464,14 +482,14 @@ function cancelAnalysis(p) {
   if (!analyzing.value[p.id]) return;
   delete runIds[p.id]; // 先作废本次 run，过期结果不再写回
   analyzing.value[p.id] = undefined;
-  props.showToast("已中断分析");
+  props.showToast(t("problem.analysisCancelled"));
 }
 async function copyAnalysis(p) {
   try {
     await navigator.clipboard.writeText((p.aiAnalysis && p.aiAnalysis.text) || "");
-    props.showToast("已复制分析结果");
+    props.showToast(t("problem.analysisCopied"));
   } catch (e) {
-    props.showToast("复制失败：" + errText(e));
+    props.showToast(t("problem.copyFailed", { err: errText(e) }));
   }
 }
 async function clearAnalysis(p) {
@@ -531,9 +549,9 @@ async function onPickImages(p, e) {
     for (const f of files) await addImageBlob(p, f, f.type);
     touch(p);
     await persist();
-    props.showToast(`已添加 ${files.length} 张截图`);
+    props.showToast(t("problem.addedImages", { count: files.length }));
   } catch (err) {
-    props.showToast("保存截图失败：" + err);
+    props.showToast(t("problem.saveImageFailed", { err }));
   }
 }
 async function pasteImages(p) {
@@ -547,12 +565,12 @@ async function pasteImages(p) {
       await addImageBlob(p, blob, type);
       added++;
     }
-    if (!added) return props.showToast("剪贴板里没有图片");
+    if (!added) return props.showToast(t("problem.clipboardNoImage"));
     touch(p);
     await persist();
-    props.showToast(`已粘贴 ${added} 张截图`);
+    props.showToast(t("problem.pastedImages", { count: added }));
   } catch (err) {
-    props.showToast("读取剪贴板失败：" + err);
+    props.showToast(t("problem.clipboardReadFailed", { err }));
   }
 }
 async function removeImage(p, img) {
@@ -560,8 +578,8 @@ async function removeImage(p, img) {
   p.images = (p.images || []).filter((x) => x.id !== img.id);
   touch(p);
   await persist();
-  props.showToast("已删除截图", {
-    actionLabel: "撤销",
+  props.showToast(t("problem.imageDeleted"), {
+    actionLabel: t("problem.undo"),
     onAction: async () => {
       p.images.splice(Math.min(Math.max(idx, 0), p.images.length), 0, img);
       touch(p);
@@ -596,7 +614,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 <template>
   <div class="toolbar">
     <div class="tb-left">
-      <h3 class="section-title">问题</h3>
+      <h3 class="section-title">{{ t("problem.sectionTitle") }}</h3>
       <div class="filters">
         <button v-for="f in FILTERS" :key="f.key" class="chip" :class="{ active: filter === f.key }" @click="filter = f.key">
           {{ f.label }}<em class="count">{{ counts[f.key] }}</em>
@@ -604,35 +622,35 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
       </div>
       <div class="search-mini">
         <Icon name="search" :size="15" class="s-icon" />
-        <input v-model="search" placeholder="搜索问题 / 标签..." />
+        <input v-model="search" :placeholder="t('problem.searchPh')" />
       </div>
     </div>
     <div class="tb-right">
       <template v-if="batchMode">
-        <span class="batch-count">已选 {{ checkedIds.size }} 项</span>
-        <button class="btn-ghost sm" @click="toggleAll">{{ allChecked ? "取消全选" : "全选" }}</button>
-        <button class="btn-ghost sm danger" :disabled="!checkedIds.size" @click="removeChecked"><Icon name="trash" :size="14" /> 删除</button>
-        <button class="btn-ghost sm" @click="exitBatch">退出多选</button>
+        <span class="batch-count">{{ t("problem.selectedCount", { count: checkedIds.size }) }}</span>
+        <button class="btn-ghost sm" @click="toggleAll">{{ allChecked ? t("problem.unselectAll") : t("problem.selectAll") }}</button>
+        <button class="btn-ghost sm danger" :disabled="!checkedIds.size" @click="removeChecked"><Icon name="trash" :size="14" /> {{ t("problem.batchDeleteBtn") }}</button>
+        <button class="btn-ghost sm" @click="exitBatch">{{ t("problem.exitBatch") }}</button>
       </template>
       <template v-else>
-        <button class="btn-ghost sm" title="批量选择问题" @click="enterBatch"><Icon name="square" :size="14" /> 多选</button>
-        <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> 新建问题</button>
-        <AiExtract :fields="AI_FIELDS" :multiple="true" dedupe-key="title" :existing="problems.map((p) => p.title)" hint="这是一张线上问题/工单/会议/消息截图，可能有多条，请把每一条提取为一条记录（问题标题、类型与备注）。" title="AI 识图录入问题" :show-toast="showToast" @apply="createProblemsFromAI" />
+        <button class="btn-ghost sm" :title="t('problem.batchBtnTitle')" @click="enterBatch"><Icon name="square" :size="14" /> {{ t("problem.batchBtn") }}</button>
+        <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> {{ t("problem.create") }}</button>
+        <AiExtract :fields="AI_FIELDS" :multiple="true" dedupe-key="title" :existing="problems.map((p) => p.title)" :hint="t('prompt.problemExtractHint')" :title="t('problem.extractTitle')" :show-toast="showToast" @apply="createProblemsFromAI" />
       </template>
     </div>
   </div>
 
   <div class="summary">
-    <div class="stat pend"><span class="stat-ico"><Icon name="clock" :size="17" /></span><span class="stat-main"><span class="num">{{ counts.open }}</span><span class="lbl">处理中</span></span></div>
-    <div class="stat hrs"><span class="stat-ico"><Icon name="bar-chart" :size="17" /></span><span class="stat-main"><span class="num">{{ totalHours }}</span><span class="lbl">累计工时 (h)</span></span></div>
-    <div class="stat all"><span class="stat-ico"><Icon name="alert" :size="17" /></span><span class="stat-main"><span class="num">{{ counts.all }}</span><span class="lbl">全部问题</span></span></div>
+    <div class="stat pend"><span class="stat-ico"><Icon name="clock" :size="17" /></span><span class="stat-main"><span class="num">{{ counts.open }}</span><span class="lbl">{{ t("problem.statOpen") }}</span></span></div>
+    <div class="stat hrs"><span class="stat-ico"><Icon name="bar-chart" :size="17" /></span><span class="stat-main"><span class="num">{{ totalHours }}</span><span class="lbl">{{ t("problem.statHours") }}</span></span></div>
+    <div class="stat all"><span class="stat-ico"><Icon name="alert" :size="17" /></span><span class="stat-main"><span class="num">{{ counts.all }}</span><span class="lbl">{{ t("problem.statAll") }}</span></span></div>
   </div>
 
   <main class="content">
     <div v-if="filteredList.length" class="prob-list">
       <div v-for="p in filteredList" :key="p.id" class="prob-block">
         <div class="prob-row" :class="{ done: p.status === 'done' }" @contextmenu.prevent="onProbCtx($event, p)">
-          <button v-if="batchMode" class="sel-check" :class="{ on: checkedIds.has(p.id) }" :title="checkedIds.has(p.id) ? '取消勾选' : '勾选'" @click.stop="toggleCheck(p)">
+          <button v-if="batchMode" class="sel-check" :class="{ on: checkedIds.has(p.id) }" :title="checkedIds.has(p.id) ? t('problem.uncheck') : t('problem.check')" @click.stop="toggleCheck(p)">
             <Icon v-if="checkedIds.has(p.id)" name="check" :size="13" />
           </button>
           <button class="check" :class="{ on: p.status === 'done' }" @click="toggleStatus(p)">
@@ -652,49 +670,49 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
               <span v-else-if="p.note" class="prob-note" :title="notePreview(p.note)">{{ p.note }}</span>
             </span>
           </div>
-          <button class="icon-btn" :title="expanded[p.id] ? '收起' : '记工时'" @click="toggleExpand(p)">
+          <button class="icon-btn" :title="expanded[p.id] ? t('problem.collapse') : t('problem.logHoursBtn')" @click="toggleExpand(p)">
             <Icon name="chevron" :size="15" :class="{ rot180: expanded[p.id] }" />
           </button>
-          <button class="icon-btn" title="编辑" @click="openEdit(p)"><Icon name="edit" :size="15" /></button>
-          <button class="icon-btn" title="删除" @click="removeProblem(p)"><Icon name="trash" :size="15" /></button>
+          <button class="icon-btn" :title="t('problem.edit')" @click="openEdit(p)"><Icon name="edit" :size="15" /></button>
+          <button class="icon-btn" :title="t('problem.delete')" @click="removeProblem(p)"><Icon name="trash" :size="15" /></button>
         </div>
 
         <div v-if="expanded[p.id]" class="prob-detail">
-          <div class="sub-title">工时记录 <em>合计 {{ probHours(p) }}h</em></div>
+          <div class="sub-title">{{ t("problem.hoursTitle") }} <em>{{ t("problem.hoursTotal", { hours: probHours(p) }) }}</em></div>
           <div v-for="l in p.logs || []" :key="l.id" class="log-row">
             <span class="log-date">{{ l.date }}</span>
             <span class="log-hours">{{ l.hours }}h</span>
             <span class="log-note">{{ l.note }}</span>
-            <button class="icon-btn xs" title="删除" @click="removeLog(p, l)"><Icon name="x" :size="13" /></button>
+            <button class="icon-btn xs" :title="t('problem.delete')" @click="removeLog(p, l)"><Icon name="x" :size="13" /></button>
           </div>
           <div class="log-add">
             <input type="date" v-model="ensureLog(p).date" class="log-d" />
             <input type="number" min="0" step="0.5" v-model.number="ensureLog(p).hours" class="log-h" />
-            <input v-model="ensureLog(p).note" placeholder="做了什么（可选）" class="log-n" @keyup.enter="addLog(p)" />
-            <button class="btn-ghost sm" @click="addLog(p)"><Icon name="plus" :size="14" /> 记一笔</button>
+            <input v-model="ensureLog(p).note" :placeholder="t('problem.logNotePh')" class="log-n" @keyup.enter="addLog(p)" />
+            <button class="btn-ghost sm" @click="addLog(p)"><Icon name="plus" :size="14" /> {{ t("problem.addLog") }}</button>
           </div>
 
           <div class="sub-title res-title">
-            结论 / 解决方案
-            <em v-if="p.status === 'done' && p.resolvedAt" class="ok">已解决 · {{ fmtDate(new Date(p.resolvedAt)) }}</em>
+            {{ t("problem.resolutionTitle") }}
+            <em v-if="p.status === 'done' && p.resolvedAt" class="ok">{{ t("problem.resolvedAt", { date: fmtDate(new Date(p.resolvedAt)) }) }}</em>
           </div>
           <textarea
             v-model="p.resolution"
             class="res-input"
             rows="2"
-            placeholder="根因、结论与解决方案……填写后自动保存"
+            :placeholder="t('problem.resolutionPh')"
             @change="saveResolution(p)"
           ></textarea>
 
           <div class="sub-title res-title">
-            标签
-            <em class="dom-hint">点选已有标签 · 输入后回车新增</em>
+            {{ t("problem.tagsTitle") }}
+            <em class="dom-hint">{{ t("problem.tagHint") }}</em>
           </div>
           <div class="dom-picker">
             <input
               v-model="newTagInput"
               class="tag-input"
-              placeholder="输入标签，回车添加"
+              :placeholder="t('problem.tagInputPh')"
               @keyup.enter="addProbTag(p)"
             />
             <button
@@ -707,43 +725,43 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
             >
               <Icon name="tag" :size="12" /> {{ t }}
             </button>
-            <span v-if="!allTags.length" class="no-dom">还没有标签，输入后回车创建</span>
+            <span v-if="!allTags.length" class="no-dom">{{ t("problem.noTags") }}</span>
           </div>
 
           <div class="sub-title res-title">
-            AI 分析
+            {{ t("problem.aiTitle") }}
             <em v-if="p.aiAnalysis" class="ai-meta">{{ fmtDate(new Date(p.aiAnalysis.at)) }}</em>
             <span class="ai-actions">
-              <button class="btn-ghost xs2" :disabled="!!analyzing[p.id]" title="用设置里配置的 AI 模型分析问题" @click="analyzeProblem(p)">
-                <Icon name="sparkles" :size="12" /> {{ analyzing[p.id] ? "分析中..." : "AI 分析" }}
+              <button class="btn-ghost xs2" :disabled="!!analyzing[p.id]" :title="t('problem.aiBtnTitle')" @click="analyzeProblem(p)">
+                <Icon name="sparkles" :size="12" /> {{ analyzing[p.id] ? t("problem.aiAnalyzing") : t("problem.aiAnalyze") }}
               </button>
               <template v-if="p.aiAnalysis">
-                <button class="btn-ghost xs2" title="复制分析结果" @click="copyAnalysis(p)"><Icon name="copy" :size="12" /> 复制</button>
-                <button class="btn-ghost xs2" title="清除分析结果" @click="clearAnalysis(p)"><Icon name="x" :size="12" /></button>
+                <button class="btn-ghost xs2" :title="t('problem.aiCopyBtnTitle')" @click="copyAnalysis(p)"><Icon name="copy" :size="12" /> {{ t("problem.aiCopyBtn") }}</button>
+                <button class="btn-ghost xs2" :title="t('problem.aiClearTitle')" @click="clearAnalysis(p)"><Icon name="x" :size="12" /></button>
               </template>
             </span>
           </div>
           <div v-if="analyzing[p.id]" class="ai-running">
-            <Icon name="sparkles" :size="13" /> AI 分析中...
-            <button class="btn-ghost xs2 ai-abort" title="停止本次分析" @click="cancelAnalysis(p)"><Icon name="x" :size="12" /> 中断</button>
+            <Icon name="sparkles" :size="13" /> {{ t("problem.aiRunning") }}
+            <button class="btn-ghost xs2 ai-abort" :title="t('problem.aiAbortTitle')" @click="cancelAnalysis(p)"><Icon name="x" :size="12" /> {{ t("problem.aiAbort") }}</button>
           </div>
           <div v-if="p.aiAnalysis" class="ai-result md" v-html="renderAnalysis(p.aiAnalysis.text)"></div>
 
-          <div class="sub-title res-title">截图附件 <em v-if="(p.images || []).length">{{ p.images.length }} 张</em></div>
+          <div class="sub-title res-title">{{ t("problem.imgsTitle") }} <em v-if="(p.images || []).length">{{ t("problem.imgsCount", { count: p.images.length }) }}</em></div>
           <div class="img-grid">
             <div v-for="img in p.images || []" :key="img.id" class="img-cell">
               <img v-if="imgCache[img.name]" :src="imgCache[img.name]" @click="previewSrc = imgCache[img.name]" />
               <span v-else class="img-miss"><Icon name="image" :size="18" /></span>
-              <button class="img-stage" :class="img.stage" title="点击切换问题/解决" @click="toggleStage(p, img)">
-                {{ img.stage === "after" ? "解决" : "问题" }}
+              <button class="img-stage" :class="img.stage" :title="t('problem.stageTitle')" @click="toggleStage(p, img)">
+                {{ img.stage === "after" ? t("problem.stageAfter") : t("problem.stageBefore") }}
               </button>
-              <button class="img-del" title="删除" @click="removeImage(p, img)"><Icon name="x" :size="12" /></button>
+              <button class="img-del" :title="t('problem.delete')" @click="removeImage(p, img)"><Icon name="x" :size="12" /></button>
             </div>
             <label class="img-add">
-              <Icon name="plus" :size="15" /> 选图
+              <Icon name="plus" :size="15" /> {{ t("problem.pickImage") }}
               <input type="file" accept="image/*" multiple hidden @change="onPickImages(p, $event)" />
             </label>
-            <button class="img-add" @click="pasteImages(p)"><Icon name="copy" :size="14" /> 粘贴</button>
+            <button class="img-add" @click="pasteImages(p)"><Icon name="copy" :size="14" /> {{ t("problem.pasteImage") }}</button>
           </div>
         </div>
       </div>
@@ -751,24 +769,24 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 
     <div v-else class="empty">
           <span class="empty-ico"><Icon name="alert" :size="32" /></span>
-      <h2>还没有问题</h2>
-      <p>把线上业务问题、集团会议、临时任务记在这里，它们没有需求关联，但同样占用工时。</p>
-      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> 新建第一个问题</button>
+      <h2>{{ t("problem.emptyTitle") }}</h2>
+      <p>{{ t("problem.emptyDesc") }}</p>
+      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> {{ t("problem.emptyCreate") }}</button>
     </div>
   </main>
 
   <!-- 新建 / 编辑弹窗 -->
   <div v-if="showForm" class="modal-mask">
     <div class="modal">
-      <h2>{{ form.id ? "编辑问题" : "新建问题" }}</h2>
+      <h2>{{ form.id ? t("problem.formEditTitle") : t("problem.formCreateTitle") }}</h2>
 
       <label class="field">
-        <span>标题</span>
-        <input v-model="form.title" placeholder="例如：结算单金额精度异常 / 集团架构评审会" />
+        <span>{{ t("problem.formTitle") }}</span>
+        <input v-model="form.title" :placeholder="t('problem.formTitlePh')" />
       </label>
 
       <label class="field">
-        <span>类型</span>
+        <span>{{ t("problem.formType") }}</span>
         <div class="type-picker">
           <button
             v-for="(m, k) in TYPES"
@@ -784,40 +802,40 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
       </label>
 
       <label class="field">
-        <span>标签（回车添加，可逗号/空格分隔批量）</span>
+        <span>{{ t("problem.formTagsLabel") }}</span>
         <div v-if="form.tags.length" class="picked-tags">
-          <span v-for="t in form.tags" :key="t" class="tag-chip" title="点击移除" @click="toggleFormTag(t)"><Icon name="tag" :size="11" /> {{ t }}<Icon name="x" :size="11" /></span>
+          <span v-for="tag in form.tags" :key="tag" class="tag-chip" :title="t('problem.formTagRemove')" @click="toggleFormTag(tag)"><Icon name="tag" :size="11" /> {{ tag }}<Icon name="x" :size="11" /></span>
         </div>
-        <input v-model="tagInput" class="tag-input" placeholder="输入新标签后回车" @keyup.enter="applyTagInput" @blur="applyTagInput" />
-        <div v-if="allTags.some((t) => !form.tags.includes(t))" class="type-picker">
+        <input v-model="tagInput" class="tag-input" :placeholder="t('problem.formTagPh')" @keyup.enter="applyTagInput" @blur="applyTagInput" />
+        <div v-if="allTags.some((x) => !form.tags.includes(x))" class="type-picker">
           <button
-            v-for="t in allTags.filter((x) => !form.tags.includes(x))"
-            :key="t"
+            v-for="tag in allTags.filter((x) => !form.tags.includes(x))"
+            :key="tag"
             type="button"
             class="type-opt dom"
-            @click="toggleFormTag(t)"
+            @click="toggleFormTag(tag)"
           >
-            <Icon name="tag" :size="13" /> {{ t }}
+            <Icon name="tag" :size="13" /> {{ tag }}
           </button>
         </div>
       </label>
 
       <label class="field">
-        <span>状态</span>
+        <span>{{ t("problem.formStatus") }}</span>
         <select v-model="form.status" class="select">
-          <option value="open">处理中</option>
-          <option value="done">已解决</option>
+          <option value="open">{{ t("problem.filterOpen") }}</option>
+          <option value="done">{{ t("problem.filterDone") }}</option>
         </select>
       </label>
 
       <label class="field">
-        <span>备注</span>
-        <textarea v-model="form.note" rows="2" placeholder="可选的补充说明"></textarea>
+        <span>{{ t("problem.formNote") }}</span>
+        <textarea v-model="form.note" rows="2" :placeholder="t('problem.formNotePh')"></textarea>
       </label>
 
       <div class="modal-foot">
-        <button class="btn-ghost" @click="showForm = false">取消</button>
-        <button class="btn-primary" @click="saveForm">保存</button>
+        <button class="btn-ghost" @click="showForm = false">{{ t("common.cancel") }}</button>
+        <button class="btn-primary" @click="saveForm">{{ t("problem.saveBtn") }}</button>
       </div>
     </div>
   </div>

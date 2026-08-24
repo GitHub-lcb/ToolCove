@@ -12,6 +12,7 @@ import {
   transition,
   TASK_LABELS,
 } from "./extractTask.js";
+import { i18n } from "./i18n/index.js";
 
 // mock 流式提取：捕获 handlers 供测试驱动
 const h = vi.hoisted(() => ({ handlers: null }));
@@ -45,7 +46,7 @@ function baseConfig(over = {}) {
   return {
     mode: "single",
     images: ["data:image/png;base64,xxx"],
-    fields: [{ key: "name", label: "名称" }],
+    fields: [{ key: "name", label: "Name" }],
     hint: "",
     ownerId: "inst-1",
     imageUrl: "data:image/png;base64,xxx",
@@ -53,17 +54,17 @@ function baseConfig(over = {}) {
   };
 }
 
-describe("transition 状态机", () => {
-  it("合法流转与非法流转静默", () => {
+describe("transition state machine", () => {
+  it("legal transitions apply, illegal ones are ignored", () => {
     const t = { status: "idle" };
     transition(t, { type: "start" });
     expect(t.status).toBe("running");
     transition(t, { type: "done", result: {} });
     expect(t.status).toBe("done");
-    transition(t, { type: "cancel" }); // done 后 cancel 非法
+    transition(t, { type: "cancel" }); // cancel after done is illegal
     expect(t.status).toBe("done");
   });
-  it("start 后 error / cancel 流转", () => {
+  it("error / cancel transitions from running", () => {
     const t = { status: "running" };
     transition(t, { type: "error", error: new Error("x") });
     expect(t.status).toBe("error");
@@ -73,15 +74,15 @@ describe("transition 状态机", () => {
   });
 });
 
-describe("startExtractTask 单任务互斥", () => {
-  it("后启动取消先启动，旧任务 cancelled", () => {
+describe("startExtractTask single-task exclusion", () => {
+  it("later start cancels earlier one, old task cancelled", () => {
     const a = startExtractTask(baseConfig({ ownerId: "inst-1" }));
     const b = startExtractTask(baseConfig({ ownerId: "inst-2" }));
     expect(a.status).toBe("cancelled");
     expect(b.status).toBe("running");
     expect(getExtractTask()).toBe(b);
   });
-  it("取消不走 onError（cancel 后 handlers.onError 未被调用）", () => {
+  it("cancel does not go through onError (handlers.onError not called)", () => {
     const err = vi.fn();
     startExtractTask(baseConfig({ ownerId: "inst-1" }));
     h.handlers.onError = err;
@@ -89,28 +90,28 @@ describe("startExtractTask 单任务互斥", () => {
     expect(err).not.toHaveBeenCalled();
     expect(getExtractTask().status).toBe("cancelled");
   });
-  it("onPartial 推进任务 partial，onDone 置 done 与 result", () => {
+  it("onPartial updates partial, onDone sets done with result", () => {
     startExtractTask(baseConfig());
-    h.handlers.onPartial({ name: "张" });
-    expect(getExtractTask().partial).toEqual({ name: "张" });
-    h.handlers.onDone({ name: "张三" });
+    h.handlers.onPartial({ name: "a" });
+    expect(getExtractTask().partial).toEqual({ name: "a" });
+    h.handlers.onDone({ name: "abc" });
     expect(getExtractTask().status).toBe("done");
-    expect(getExtractTask().result).toEqual({ name: "张三" });
+    expect(getExtractTask().result).toEqual({ name: "abc" });
     expect(getExtractTask().partial).toBeNull();
   });
-  it("clearExtractTask 清空任务", () => {
+  it("clearExtractTask clears the task", () => {
     startExtractTask(baseConfig());
     clearExtractTask();
     expect(getExtractTask()).toBeNull();
   });
-  it("任务携带 imageUrl 快照", () => {
+  it("task keeps imageUrl snapshot", () => {
     const t = startExtractTask(baseConfig({ imageUrl: "data:image/png;base64,abc" }));
     expect(t.imageUrl).toBe("data:image/png;base64,abc");
   });
 });
 
-describe("订阅与 owner 注册表", () => {
-  it("subscribe 通知状态变化，退订后不再收到", () => {
+describe("subscribe and owner registry", () => {
+  it("subscribe notifies state changes, unsubscribe stops notifications", () => {
     const fn = vi.fn();
     const unsub = subscribe(fn);
     startExtractTask(baseConfig());
@@ -120,7 +121,7 @@ describe("订阅与 owner 注册表", () => {
     cancelExtractTask();
     expect(fn.mock.calls.length).toBe(calls);
   });
-  it("registerOwner/unregisterOwner 维护挂载实例集合", () => {
+  it("registerOwner/unregisterOwner maintain mounted instance set", () => {
     registerOwner("inst-1");
     registerOwner("inst-2");
     unregisterOwner("inst-1");
@@ -130,9 +131,9 @@ describe("订阅与 owner 注册表", () => {
 });
 
 describe("TASK_LABELS", () => {
-  it("文案格式", () => {
-    expect(TASK_LABELS.running(12.3)).toContain("12.3");
-    expect(TASK_LABELS.done(5)).toBe("✓ 识别完成 5 行");
-    expect(TASK_LABELS.error).toBe("识别失败");
+  it("labels follow i18n templates", () => {
+    expect(TASK_LABELS.running(12.3)).toBe(i18n.global.t("extract.taskRunning", { seconds: 12.3 }));
+    expect(TASK_LABELS.done(5)).toBe(i18n.global.t("extract.taskDone", { count: 5 }));
+    expect(TASK_LABELS.error).toBe(i18n.global.t("extract.taskError"));
   });
 });

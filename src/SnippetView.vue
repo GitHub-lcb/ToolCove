@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
@@ -10,6 +11,8 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
   jumpId: { type: Object, default: null },
 });
+
+const { t } = useI18n();
 
 const snippets = ref([]);
 const search = ref("");
@@ -32,14 +35,14 @@ async function load() {
     });
     loadImages();
   } catch (e) {
-    props.showToast("加载速记失败：" + e);
+    props.showToast(t("snippet.loadFailed", { err: e }));
   }
 }
 async function persist() {
   try {
     await invoke("save_data", { key: "snippets", data: snippets.value });
   } catch (e) {
-    props.showToast("保存失败：" + e);
+    props.showToast(t("snippet.saveFailed", { err: e }));
   }
 }
 onMounted(async () => {
@@ -105,31 +108,32 @@ function flashCopied(key) {
   copiedTimer = setTimeout(() => (copiedId.value = ""), 900);
 }
 async function copy(s) {
-  if (!s.content) return props.showToast("这条速记没有内容");
+  if (!s.content) return props.showToast(t("snippet.copyEmpty"));
   try {
     await navigator.clipboard.writeText(s.content);
     flashCopied(s.id);
-    const name = s.title || "速记";
-    props.showToast(hasFields(s) ? `已复制「${name}」全部 ${s.fields.length} 项` : `已复制「${name}」`);
+    const name = s.title || t("snippet.copyNameFallback");
+    props.showToast(hasFields(s) ? t("snippet.copiedAll", { name, count: s.fields.length }) : t("snippet.copied", { name }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("snippet.copyFailed", { err: e }));
   }
 }
 // 单字段复制（分别复制）：只复制该字段的值
 async function copyField(f, s) {
   const v = fieldValue(f);
-  if (!v) return props.showToast("这个字段没有内容");
+  if (!v) return props.showToast(t("snippet.fieldEmpty"));
   try {
     await navigator.clipboard.writeText(v);
     flashCopied(s.id + ":" + f.id);
-    props.showToast(`已复制「${s.title || "速记"}」的 ${f.label || "字段"}`);
+    props.showToast(t("snippet.copiedField", { title: s.title || t("snippet.copyNameFallback"), label: f.label || t("snippet.fieldDefault") }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("snippet.copyFailed", { err: e }));
   }
 }
 
 // ------- 密码类脱敏：分类命中敏感词时正文默认打码，眼睛按钮临时查看，复制始终是真内容 -------
-const SECRET_CAT = /密码|口令|密钥|秘钥|token|secret|password/i;
+// 中文敏感词用 unicode 转义书写（源码保持纯 ASCII），功能等价
+const SECRET_CAT = /\u5bc6\u7801|\u53e3\u4ee4|\u5bc6\u94a5|\u79d8\u94a5|token|secret|password/i;
 const revealed = ref({}); // id -> true，仅当次会话生效，不落盘
 function isSecret(s) {
   return SECRET_CAT.test(s.category || "");
@@ -199,9 +203,9 @@ async function pasteFormImages() {
       await addFormImage(await it.getType(type), type);
       added++;
     }
-    if (!added) props.showToast("剪贴板里没有图片");
+    if (!added) props.showToast(t("snippet.clipboardNoImage"));
   } catch (err) {
-    props.showToast("读取剪贴板失败：" + err);
+    props.showToast(t("snippet.clipboardReadFailed", { err }));
   }
 }
 function removeFormImage(img) {
@@ -233,12 +237,12 @@ function openCreate() {
   showForm.value = true;
 }
 
-// AI 识图字段定义
-const AI_FIELDS = [
-  { key: "title", label: "标题", desc: "这条速记的简短名称/用途" },
-  { key: "category", label: "分类", desc: "如：命令 / SQL / 账号 / 链接 / Token 等，无法判断则留空" },
-  { key: "content", label: "内容", desc: "需要保存、方便复制的正文（如命令、SQL、链接、一段文本）", multiline: true },
-];
+// AI 识图字段定义（computed：语言切换后重新求值）
+const AI_FIELDS = computed(() => [
+  { key: "title", label: t("snippet.aiFieldTitle"), desc: t("snippet.aiFieldTitleDesc") },
+  { key: "category", label: t("snippet.aiFieldCategory"), desc: t("snippet.aiFieldCategoryDesc") },
+  { key: "content", label: t("snippet.aiFieldContent"), desc: t("snippet.aiFieldContentDesc"), multiline: true },
+]);
 async function createSnippetsFromAI(list) {
   const rows = Array.isArray(list) ? list : [list];
   const now = Date.now();
@@ -262,7 +266,7 @@ async function createSnippetsFromAI(list) {
     added++;
   }
   await persist();
-  props.showToast(added ? `已新增 ${added} 条速记` : "没有可录入的内容");
+  props.showToast(added ? t("snippet.aiAdded", { count: added }) : t("snippet.aiNothing"));
 }
 function openEdit(s) {
   form.value = {
@@ -288,7 +292,7 @@ async function saveForm() {
   const f = form.value;
   // 字段模式：content 由字段自动生成拼接快照（保证搜索/全局搜索/整体复制一致）
   if (f.fields.length) f.content = fieldsToContent(f.fields);
-  if (!f.content.trim() && !f.images.length) return props.showToast("请填写内容或添加字段/图片");
+  if (!f.content.trim() && !f.images.length) return props.showToast(t("snippet.saveRequire"));
   const now = Date.now();
   // 新图落盘，换成元数据
   const metas = [];
@@ -305,7 +309,7 @@ async function saveForm() {
       metas.push({ id: img.id, name, createdAt: now });
     }
   } catch (e) {
-    return props.showToast("保存图片失败：" + e);
+    return props.showToast(t("snippet.saveImageFailed", { err: e }));
   }
   const existing = f.id ? snippets.value.find((s) => s.id === f.id) : null;
   if (existing) {
@@ -341,17 +345,21 @@ async function saveForm() {
   showForm.value = false;
 }
 async function removeSnippet(s) {
-  const ok = await askConfirm({ title: "删除速记", message: `速记「${s.title || "无标题"}」将被删除，5 秒内可撤销。`, okText: "删除" });
+  const ok = await askConfirm({
+    title: t("snippet.deleteTitle"),
+    message: t("snippet.deleteMsg", { title: s.title || t("snippet.untitled") }),
+    okText: t("snippet.deleteOk"),
+  });
   if (!ok) return;
   const idx = snippets.value.findIndex((x) => x.id === s.id);
   snippets.value = snippets.value.filter((x) => x.id !== s.id);
   await persist();
-  props.showToast("已删除速记", {
-    actionLabel: "撤销",
+  props.showToast(t("snippet.deleted"), {
+    actionLabel: t("snippet.undo"),
     onAction: async () => {
       snippets.value.splice(Math.min(Math.max(idx, 0), snippets.value.length), 0, s);
       await persist();
-      props.showToast("已恢复");
+      props.showToast(t("snippet.restored"));
     },
     // 撤销窗口结束后才删图片文件
     onExpire: async () => {
@@ -375,19 +383,19 @@ function fmtTime(ts) {
 <template>
   <div class="toolbar">
     <div class="tb-left">
-      <h3 class="section-title">速记 · {{ snippets.length }}</h3>
+      <h3 class="section-title">{{ t("snippet.titleCount", { count: snippets.length }) }}</h3>
       <div class="filters">
-        <button class="chip" :class="{ active: cat === 'all' }" @click="cat = 'all'">全部</button>
+        <button class="chip" :class="{ active: cat === 'all' }" @click="cat = 'all'">{{ t("snippet.filterAll") }}</button>
         <button v-for="c in categories" :key="c" class="chip" :class="{ active: cat === c }" @click="cat = c">{{ c }}</button>
       </div>
       <div class="search-mini">
         <Icon name="search" :size="15" class="s-icon" />
-        <input v-model="search" placeholder="搜索标题 / 内容 / 分类..." />
+        <input v-model="search" :placeholder="t('snippet.searchPh')" />
       </div>
     </div>
     <div class="tb-right">
-      <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> 新建速记</button>
-            <AiExtract :fields="AI_FIELDS" :multiple="true" hint="这是一张包含命令/SQL/表格/配置/文本的截图，可能有多条，请把每一条可保存为速记的条目提取为一条记录（标题、分类与内容）。" title="AI 识图录入速记" :show-toast="showToast" @apply="createSnippetsFromAI" />
+      <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> {{ t("snippet.create") }}</button>
+            <AiExtract :fields="AI_FIELDS" :multiple="true" :hint="t('prompt.snippetExtractHint')" :title="t('snippet.extractTitle')" :show-toast="showToast" @apply="createSnippetsFromAI" />
     </div>
   </div>
 
@@ -403,64 +411,64 @@ function fmtTime(ts) {
       >
         <div class="snip-head">
           <span v-if="s.category" class="snip-cat">{{ s.category }}</span>
-          <h4 class="snip-title" :title="s.title || '无标题'">{{ s.title || "无标题" }}</h4>
+          <h4 class="snip-title" :title="s.title || t('snippet.untitled')">{{ s.title || t("snippet.untitled") }}</h4>
           <div class="snip-ops">
             <button
               v-if="isSecret(s) && s.content"
               class="op"
               :class="{ on: revealed[s.id] }"
-              :title="revealed[s.id] ? '隐藏内容' : '查看内容'"
+              :title="revealed[s.id] ? t('snippet.hideContent') : t('snippet.revealContent')"
               @click="revealed[s.id] = !revealed[s.id]"
             >
               <Icon :name="revealed[s.id] ? 'eye-off' : 'eye'" :size="14" />
             </button>
-            <button class="op" :class="{ on: s.pinned }" :title="s.pinned ? '取消置顶' : '置顶'" @click="togglePin(s)"><Icon name="target" :size="14" /></button>
-            <button class="op" title="编辑" @click="openEdit(s)"><Icon name="edit" :size="14" /></button>
-            <button class="op del" title="删除" @click="removeSnippet(s)"><Icon name="trash" :size="14" /></button>
+            <button class="op" :class="{ on: s.pinned }" :title="s.pinned ? t('snippet.unpin') : t('snippet.pin')" @click="togglePin(s)"><Icon name="target" :size="14" /></button>
+            <button class="op" :title="t('snippet.edit')" @click="openEdit(s)"><Icon name="edit" :size="14" /></button>
+            <button class="op del" :title="t('snippet.delete')" @click="removeSnippet(s)"><Icon name="trash" :size="14" /></button>
           </div>
         </div>
-        <pre v-if="s.content && !hasFields(s)" class="snip-content" :class="{ masked: isSecret(s) && !revealed[s.id] }" title="点击复制" @click="copy(s)">{{ isSecret(s) && !revealed[s.id] ? maskOf() : s.content }}</pre>
+        <pre v-if="s.content && !hasFields(s)" class="snip-content" :class="{ masked: isSecret(s) && !revealed[s.id] }" :title="t('snippet.clickCopy')" @click="copy(s)">{{ isSecret(s) && !revealed[s.id] ? maskOf() : s.content }}</pre>
         <div v-else-if="hasFields(s)" class="snip-fields" :class="{ masked: isSecret(s) && !revealed[s.id] }">
-          <div v-for="f in s.fields" :key="f.id" class="snip-field" :title="f.label ? `${f.label}：点击行复制` : '点击复制'" @click="copyField(f, s)">
+          <div v-for="f in s.fields" :key="f.id" class="snip-field" :title="f.label ? t('snippet.fieldClickCopy', { label: f.label }) : t('snippet.clickCopy')" @click="copyField(f, s)">
             <span v-if="f.label" class="snip-field-label">{{ f.label }}</span>
             <span class="snip-field-val">{{ isSecret(s) && !revealed[s.id] ? maskOf() : fieldValue(f) || "-" }}</span>
-            <button class="snip-field-copy" :class="{ done: copiedId === s.id + ':' + f.id }" :title="`复制${f.label || '该字段'}`" @click.stop="copyField(f, s)"><Icon :name="copiedId === s.id + ':' + f.id ? 'check' : 'copy'" :size="12" /></button>
+            <button class="snip-field-copy" :class="{ done: copiedId === s.id + ':' + f.id }" :title="t('snippet.copyFieldBtn', { label: f.label || t('snippet.fieldDefault') })" @click.stop="copyField(f, s)"><Icon :name="copiedId === s.id + ':' + f.id ? 'check' : 'copy'" :size="12" /></button>
           </div>
         </div>
         <div v-if="(s.images || []).length" class="snip-imgs">
           <div v-for="img in s.images" :key="img.id" class="snip-img-cell">
-            <img v-if="imgCache[img.name]" :src="imgCache[img.name]" title="点击放大" @click="previewSrc = imgCache[img.name]" />
+            <img v-if="imgCache[img.name]" :src="imgCache[img.name]" :title="t('snippet.zoomIn')" @click="previewSrc = imgCache[img.name]" />
             <span v-else class="snip-img-miss"><Icon name="image" :size="16" /></span>
           </div>
         </div>
         <div class="snip-foot">
           <span class="snip-time">{{ fmtTime(s.updatedAt) }}</span>
-          <button class="copy-btn" :class="{ done: copiedId === s.id }" @click="copy(s)"><Icon :name="copiedId === s.id ? 'check' : 'copy'" :size="14" /> {{ hasFields(s) ? "复制全部" : "复制" }}</button>
+          <button class="copy-btn" :class="{ done: copiedId === s.id }" @click="copy(s)"><Icon :name="copiedId === s.id ? 'check' : 'copy'" :size="14" /> {{ hasFields(s) ? t("snippet.copyAll") : t("snippet.copy") }}</button>
         </div>
       </div>
     </div>
 
     <div v-else class="empty">
           <span class="empty-ico"><Icon name="copy" :size="32" /></span>
-      <h2>还没有速记</h2>
-      <p>把常用的命令、token、SQL、账号、链接等存在这里，随时一键复制，不用再翻聊天记录。</p>
-      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> 新建第一条速记</button>
+      <h2>{{ t("snippet.emptyTitle") }}</h2>
+      <p>{{ t("snippet.emptyDesc") }}</p>
+      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> {{ t("snippet.emptyCreate") }}</button>
     </div>
   </main>
 
   <!-- 新建 / 编辑弹窗 -->
   <div v-if="showForm" class="modal-mask">
     <div class="modal">
-      <h2>{{ form.id ? "编辑速记" : "新建速记" }}</h2>
+      <h2>{{ form.id ? t("snippet.formEditTitle") : t("snippet.formCreateTitle") }}</h2>
 
       <div class="row2">
         <label class="field">
-          <span>标题</span>
-          <input v-model="form.title" placeholder="例如：测试环境数据库连接" />
+          <span>{{ t("snippet.formTitle") }}</span>
+          <input v-model="form.title" :placeholder="t('snippet.formTitlePh')" />
         </label>
         <label class="field">
-          <span>分类（可选）</span>
-          <input v-model="form.category" placeholder="例如：命令 / SQL / 账号" list="snip-cats" />
+          <span>{{ t("snippet.formCategory") }}</span>
+          <input v-model="form.category" :placeholder="t('snippet.formCategoryPh')" list="snip-cats" />
           <datalist id="snip-cats">
             <option v-for="c in categories" :key="c" :value="c" />
           </datalist>
@@ -468,41 +476,41 @@ function fmtTime(ts) {
       </div>
 
       <label class="field">
-        <span>内容<span v-if="form.fields.length" class="field-hint">（已有字段，保存时自动按「标签: 值」生成，无需手填）</span></span>
-        <textarea v-model="form.content" rows="6" placeholder="要随时复制的内容，支持多行；纯图速记可留空" class="mono"></textarea>
+        <span>{{ t("snippet.formContent") }}<span v-if="form.fields.length" class="field-hint">{{ t("snippet.formContentHint") }}</span></span>
+        <textarea v-model="form.content" rows="6" :placeholder="t('snippet.formContentPh')" class="mono"></textarea>
       </label>
 
       <div class="field">
-        <span>字段（可选，账号/密码等多条信息，每条可单独复制）</span>
+        <span>{{ t("snippet.formFields") }}</span>
         <div class="field-rows">
           <div v-for="f in form.fields" :key="f.id" class="field-row">
-            <input v-model="f.label" placeholder="标签（如：账号）" class="field-row-label" />
-            <input v-model="f.value" placeholder="值" class="field-row-val mono" />
-            <button class="op del" type="button" title="删除该字段" @click="removeFormField(f)"><Icon name="x" :size="12" /></button>
+            <input v-model="f.label" :placeholder="t('snippet.fieldLabelPh')" class="field-row-label" />
+            <input v-model="f.value" :placeholder="t('snippet.fieldValuePh')" class="field-row-val mono" />
+            <button class="op del" type="button" :title="t('snippet.removeField')" @click="removeFormField(f)"><Icon name="x" :size="12" /></button>
           </div>
         </div>
-        <button class="btn-ghost sm" type="button" @click="addFormField"><Icon name="plus" :size="13" /> 添加字段</button>
+        <button class="btn-ghost sm" type="button" @click="addFormField"><Icon name="plus" :size="13" /> {{ t("snippet.addField") }}</button>
       </div>
 
       <div class="field">
-        <span>图片（可选，弹窗内可直接 Ctrl+V 贴图）</span>
+        <span>{{ t("snippet.formImages") }}</span>
         <div class="form-imgs">
           <div v-for="img in form.images" :key="img.id" class="form-img-cell">
-            <img v-if="formImgSrc(img)" :src="formImgSrc(img)" title="点击放大" @click="previewSrc = formImgSrc(img)" />
+            <img v-if="formImgSrc(img)" :src="formImgSrc(img)" :title="t('snippet.zoomIn')" @click="previewSrc = formImgSrc(img)" />
             <span v-else class="snip-img-miss"><Icon name="image" :size="16" /></span>
-            <button class="form-img-del" title="移除" @click="removeFormImage(img)"><Icon name="x" :size="10" /></button>
+            <button class="form-img-del" :title="t('snippet.removeImage')" @click="removeFormImage(img)"><Icon name="x" :size="10" /></button>
           </div>
           <label class="form-img-add">
-            <Icon name="plus" :size="13" /> 选图
+            <Icon name="plus" :size="13" /> {{ t("snippet.pickImage") }}
             <input type="file" accept="image/*" multiple hidden @change="onPickFormImages" />
           </label>
-          <button class="form-img-add" type="button" @click="pasteFormImages"><Icon name="copy" :size="12" /> 粘贴</button>
+          <button class="form-img-add" type="button" @click="pasteFormImages"><Icon name="copy" :size="12" /> {{ t("snippet.pasteImage") }}</button>
         </div>
       </div>
 
       <div class="modal-foot">
-        <button class="btn-ghost" @click="showForm = false">取消</button>
-        <button class="btn-primary" @click="saveForm">保存</button>
+        <button class="btn-ghost" @click="showForm = false">{{ t("common.cancel") }}</button>
+        <button class="btn-primary" @click="saveForm">{{ t("snippet.saveBtn") }}</button>
       </div>
     </div>
   </div>

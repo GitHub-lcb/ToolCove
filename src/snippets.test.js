@@ -3,50 +3,50 @@ import { describe, it, expect } from "vitest";
 import { fieldsToContent, hasFields, fieldValue } from "./snippets.js";
 
 describe("fieldsToContent", () => {
-  it("空数组与非数组返回空串", () => {
+  it("empty or non-array input returns empty string", () => {
     expect(fieldsToContent([])).toBe("");
     expect(fieldsToContent(null)).toBe("");
     expect(fieldsToContent(undefined)).toBe("");
   });
 
-  it("按「标签: 值」每行拼接", () => {
+  it("joins fields as one 'label: value' per line", () => {
     const out = fieldsToContent([
-      { label: "账号", value: "zhangsan" },
-      { label: "密码", value: "p@ss123" },
+      { label: "account", value: "zhangsan" },
+      { label: "password", value: "p@ss123" },
     ]);
-    expect(out).toBe("账号: zhangsan\n密码: p@ss123");
+    expect(out).toBe("account: zhangsan\npassword: p@ss123");
   });
 
-  it("无标签字段只输出值", () => {
+  it("field without label outputs value only", () => {
     expect(fieldsToContent([{ label: "", value: "http://x" }])).toBe("http://x");
   });
 
-  it("空值字段与全空字段跳过", () => {
+  it("skips empty-value fields and all-empty fields", () => {
     const out = fieldsToContent([
-      { label: "账号", value: "zhangsan" },
-      { label: "密码", value: "" },
+      { label: "account", value: "zhangsan" },
+      { label: "password", value: "" },
       { label: "", value: "" },
     ]);
-    expect(out).toBe("账号: zhangsan");
+    expect(out).toBe("account: zhangsan");
   });
 
-  it("值内换行拍平成空格，保证一行一个字段", () => {
-    const out = fieldsToContent([{ label: "证书", value: "line1\nline2" }]);
-    expect(out).toBe("证书: line1 line2");
+  it("flattens newlines in values to spaces, one field per line", () => {
+    const out = fieldsToContent([{ label: "cert", value: "line1\nline2" }]);
+    expect(out).toBe("cert: line1 line2");
   });
 
-  it("标签与值都做 trim", () => {
-    const out = fieldsToContent([{ label: " 账号 ", value: "  zhangsan  " }]);
-    expect(out).toBe("账号: zhangsan");
+  it("trims both label and value", () => {
+    const out = fieldsToContent([{ label: " account ", value: "  zhangsan  " }]);
+    expect(out).toBe("account: zhangsan");
   });
 });
 
 describe("hasFields", () => {
-  it("fields 非空视为字段模式", () => {
-    expect(hasFields({ fields: [{ label: "账号", value: "a" }] })).toBe(true);
+  it("non-empty fields means field-mode snippet", () => {
+    expect(hasFields({ fields: [{ label: "account", value: "a" }] })).toBe(true);
   });
 
-  it("无 fields / 空数组 / 非对象返回 false", () => {
+  it("no fields / empty array / non-object returns false", () => {
     expect(hasFields({})).toBe(false);
     expect(hasFields({ fields: [] })).toBe(false);
     expect(hasFields(null)).toBe(false);
@@ -54,11 +54,11 @@ describe("hasFields", () => {
 });
 
 describe("fieldValue", () => {
-  it("返回 trim 后的字符串值", () => {
+  it("returns trimmed string value", () => {
     expect(fieldValue({ value: "  abc  " })).toBe("abc");
   });
 
-  it("空值 / 缺字段返回空串", () => {
+  it("empty value / missing field returns empty string", () => {
     expect(fieldValue({ value: "" })).toBe("");
     expect(fieldValue({ value: null })).toBe("");
     expect(fieldValue(undefined)).toBe("");

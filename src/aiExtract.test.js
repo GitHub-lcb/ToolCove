@@ -6,6 +6,7 @@ vi.mock("./secure.js", () => ({ decryptValue: async (v) => v }));
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { aiExtractStream, aiExtractManyStream, aiExtractGroupsStream } from "./ai.js";
+import { i18n } from "./i18n/index.js";
 
 // 假 Channel：记录实例供测试手动触发消息
 class FakeChannel {
@@ -19,12 +20,12 @@ class FakeChannel {
 }
 
 const FIELDS = [
-  { key: "name", label: "名称" },
-  { key: "count", label: "数量", enum: ["1", "2"] },
+  { key: "name", label: "Name" },
+  { key: "count", label: "Count", enum: ["1", "2"] },
 ];
 const GROUPS = [
-  { key: "sql", title: "数据库脚本", fields: [{ key: "file", label: "文件名" }] },
-  { key: "conf", title: "配置文件", fields: [{ key: "path", label: "路径" }] },
+  { key: "sql", title: "DB Scripts", fields: [{ key: "file", label: "File" }] },
+  { key: "conf", title: "Config Files", fields: [{ key: "path", label: "Path" }] },
 ];
 
 function setupAI() {
@@ -52,21 +53,21 @@ beforeEach(() => {
   setupAI();
 });
 
-describe("aiExtractStream（单条）", () => {
-  it("构造 system+user 消息（含图片块）并经 ai_chat_stream 发送", async () => {
-    aiExtractStream(["data:image/png;base64,xxx"], FIELDS, { hint: "提取" }, {});
+describe("aiExtractStream (single)", () => {
+  it("builds system+user messages (with image blocks) and sends via ai_chat_stream", async () => {
+    aiExtractStream(["data:image/png;base64,xxx"], FIELDS, { hint: "extract" }, {});
     await settle();
     const call = invoke.mock.calls.find((c) => c[0] === "ai_chat_stream");
     expect(call).toBeTruthy();
     const messages = call[1].messages;
     expect(messages[0].role).toBe("system");
-    expect(messages[0].content).toContain("严格只输出一个 JSON 对象");
+    expect(messages[0].content).toContain(i18n.global.t("prompt.extractSingleHead"));
     expect(messages[1].content[0].type).toBe("text");
     expect(messages[1].content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,xxx" } });
     expect(call[1].channel).toBeInstanceOf(FakeChannel);
   });
 
-  it("delta 首拍立即触发 onPartial（字段过滤后）", async () => {
+  it("first delta triggers onPartial immediately (after field filtering)", async () => {
     const partials = [];
     aiExtractStream(["data:image/png;base64,xxx"], FIELDS, {}, { onPartial: (v) => partials.push(v) });
     await settle();
@@ -76,17 +77,17 @@ describe("aiExtractStream（单条）", () => {
     expect(partials[0]).toEqual({ name: "", count: "" }); // 仅声明字段
   });
 
-  it("done 终态：parseJSONLoose 解析 + 字段过滤 + enum 校验", async () => {
+  it("done final state: parseJSONLoose + field filtering + enum validation", async () => {
     const done = vi.fn();
     aiExtractStream(["data:image/png;base64,xxx"], FIELDS, {}, { onDone: done });
     await settle();
-    lastChannel().onmessage({ delta: '{"name":"张三","count":"9"}' });
+    lastChannel().onmessage({ delta: '{"name":"Tom","count":"9"}' });
     lastChannel().onmessage({ done: true });
     await new Promise((r) => setTimeout(r, 20));
-    expect(done).toHaveBeenCalledWith({ name: "张三", count: "" }); // count=9 不在 enum → 清空
+    expect(done).toHaveBeenCalledWith({ name: "Tom", count: "" }); // count=9 not in enum -> cleared
   });
 
-  it("onError 收到后端 error 载荷", async () => {
+  it("onError receives backend error payload", async () => {
     const err = vi.fn();
     aiExtractStream(["data:image/png;base64,xxx"], FIELDS, {}, { onError: err });
     await settle();
@@ -94,7 +95,7 @@ describe("aiExtractStream（单条）", () => {
     expect(err).toHaveBeenCalledWith(expect.objectContaining({ message: "HTTP 500" }));
   });
 
-  it("stop 关闭 Channel", async () => {
+  it("stop closes the Channel", async () => {
     const handle = aiExtractStream(["data:image/png;base64,xxx"], FIELDS, {}, {});
     await settle();
     handle.stop();
@@ -102,19 +103,19 @@ describe("aiExtractStream（单条）", () => {
   });
 });
 
-describe("aiExtractManyStream（批量）", () => {
-  it("system 含数组指令，onPartial 过滤空白行", async () => {
+describe("aiExtractManyStream (many)", () => {
+  it("system carries array instruction, onPartial filters empty rows", async () => {
     const partials = [];
     aiExtractManyStream(["data:image/png;base64,xxx"], FIELDS, {}, { onPartial: (v) => partials.push(v) });
     await settle();
     const call = invoke.mock.calls.find((c) => c[0] === "ai_chat_stream");
-    expect(call[1].messages[0].content).toContain("JSON 数组");
+    expect(call[1].messages[0].content).toContain(i18n.global.t("prompt.extractManyHead"));
     lastChannel().onmessage({ delta: '[{"name":"a"},{"name":""}]' });
     await new Promise((r) => setTimeout(r, 20));
-    expect(partials[0]).toEqual([{ name: "a", count: "" }]); // 空白行被过滤
+    expect(partials[0]).toEqual([{ name: "a", count: "" }]); // empty rows filtered
   });
 
-  it("done 终态数组", async () => {
+  it("done final state array", async () => {
     const done = vi.fn();
     aiExtractManyStream(["data:image/png;base64,xxx"], FIELDS, {}, { onDone: done });
     await settle();
@@ -128,19 +129,19 @@ describe("aiExtractManyStream（批量）", () => {
   });
 });
 
-describe("aiExtractGroupsStream（分组）", () => {
-  it("system 含表名定义，onPartial 按组过滤", async () => {
+describe("aiExtractGroupsStream (groups)", () => {
+  it("system carries table definitions, onPartial filters by group", async () => {
     const partials = [];
     aiExtractGroupsStream(["data:image/png;base64,xxx"], GROUPS, {}, { onPartial: (v) => partials.push(v) });
     await settle();
     const call = invoke.mock.calls.find((c) => c[0] === "ai_chat_stream");
-    expect(call[1].messages[0].content).toContain("数据库脚本");
+    expect(call[1].messages[0].content).toContain("DB Scripts");
     lastChannel().onmessage({ delta: '{"sql":[{"file":"a.sql"}],"conf":[]}' });
     await new Promise((r) => setTimeout(r, 20));
     expect(partials[0]).toEqual({ sql: [{ file: "a.sql" }], conf: [] });
   });
 
-  it("done 终态分组", async () => {
+  it("done final state grouped", async () => {
     const done = vi.fn();
     aiExtractGroupsStream(["data:image/png;base64,xxx"], GROUPS, {}, { onDone: done });
     await settle();
