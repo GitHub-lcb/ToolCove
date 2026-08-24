@@ -8,6 +8,8 @@ import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { fmtDate } from "./shared.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import ToolWindow from "./ToolWindow.vue";
+import ToolboxView from "./ToolboxView.vue";
 import pkg from "../package.json";
 
 const { t } = useI18n();
@@ -19,8 +21,23 @@ const MODULES = [
   { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
 ];
 
-// 工具箱工具独立窗口模式（M1 迁入 ToolWindow 后生效）
+// 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
+let toolWindowShown = false;
+async function revealToolWindow() {
+  if (!toolMode || toolWindowShown || !window.__TAURI_INTERNALS__) return;
+  toolWindowShown = true;
+  try {
+    await applyTheme(themeMode.value);
+    await nextTick();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const win = getCurrentWindow();
+    await win.show();
+    await win.setFocus();
+  } catch {
+    toolWindowShown = false;
+  }
+}
 
 // ------- 状态 -------
 const activeModule = ref("toolbox");
@@ -29,7 +46,7 @@ const toast = ref(null);
 const jump = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
-const VIEW_COMPONENTS = { toolbox: WelcomeView, snippet: WelcomeView, problem: WelcomeView };
+const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: WelcomeView, problem: WelcomeView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
@@ -199,6 +216,7 @@ async function autoBackup() {
 }
 
 onMounted(() => {
+  if (toolMode) setTimeout(revealToolWindow, 3000);
   applyTheme(themeMode.value);
   listen("tray-action", (e) => handleTrayAction(e.payload));
   setTimeout(autoBackup, 3000);
@@ -206,7 +224,19 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="shell" :class="{ collapsed }">
+  <!-- 工具独立窗口模式：只渲染工具本体 + toast，不渲染主界面 -->
+  <template v-if="toolMode">
+    <ToolWindow :tool="toolMode" :show-toast="showToast" @ready="revealToolWindow" />
+    <transition name="fade">
+      <div v-if="toast" class="toast">
+        {{ toast.text }}
+        <button v-if="toast.actionLabel" class="toast-act" @click="onToastAction">{{ toast.actionLabel }}</button>
+      </div>
+    </transition>
+    <ConfirmDialog />
+  </template>
+
+  <div v-else class="shell" :class="{ collapsed }">
     <div class="orbs" aria-hidden="true">
       <span class="orb o1"></span>
       <span class="orb o2"></span>
