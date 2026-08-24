@@ -1,6 +1,9 @@
 <script setup>
 // 集合树侧栏（RequestTool 拆出）：纯展示 + 交互委托给父组件
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
+
+const { t } = useI18n();
 
 const props = defineProps({
   collections: { type: Array, default: () => [] },
@@ -13,10 +16,10 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 
 <template>
   <aside class="col-collection">
-    <button class="new-btn" @click="emit('new-collection')"><Icon name="plus" :size="15" />新建集合</button>
+    <button class="new-btn" @click="emit('new-collection')"><Icon name="plus" :size="15" />{{ t("toolbox.request.newCollection") }}</button>
     <div class="cl-head">
-      <span>集合</span>
-      <span class="cl-count">{{ collections.length }} 组 · {{ totalRequests }} 请求</span>
+      <span>{{ t("toolbox.request.collections") }}</span>
+      <span class="cl-count">{{ t("toolbox.request.collCount", { groups: collections.length, requests: totalRequests }) }}</span>
     </div>
     <div v-if="collections.length" class="cl-list">
       <div v-for="c in collections" :key="c.id" class="cl-group">
@@ -25,8 +28,8 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
           <Icon name="folder" :size="14" class="cl-folder" />
           <span class="cl-gname">{{ c.name }}</span>
           <span class="cl-gcount">{{ c.requests.length }}</span>
-          <button class="cl-mini" title="保存当前请求到此集合" @click.stop="emit('save-dialog', c.id)"><Icon name="plus" :size="12" /></button>
-          <button class="cl-mini cl-del" title="删除集合" @click.stop="emit('remove-collection', c)"><Icon name="trash" :size="12" /></button>
+          <button class="cl-mini" :title="t('toolbox.request.saveToThisColl')" @click.stop="emit('save-dialog', c.id)"><Icon name="plus" :size="12" /></button>
+          <button class="cl-mini cl-del" :title="t('toolbox.request.deleteColl')" @click.stop="emit('remove-collection', c)"><Icon name="trash" :size="12" /></button>
         </div>
         <div v-if="c.open" class="cl-reqs">
           <div
@@ -38,13 +41,13 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
           >
             <span class="mtag" :class="methodClass(r.method)">{{ r.method }}</span>
             <span class="cl-name">{{ r.name }}</span>
-            <button class="cl-mini cl-del" title="删除" @click.stop="emit('remove-request', c, r)"><Icon name="trash" :size="12" /></button>
+            <button class="cl-mini cl-del" :title="t('toolbox.request.delete')" @click.stop="emit('remove-request', c, r)"><Icon name="trash" :size="12" /></button>
           </div>
-          <p v-if="!c.requests.length" class="cl-sub-empty">空集合，点 ＋ 保存当前请求</p>
+          <p v-if="!c.requests.length" class="cl-sub-empty">{{ t("toolbox.request.collEmptySub") }}</p>
         </div>
       </div>
     </div>
-    <p v-else class="cl-empty">点击「新建集合」创建分组，或用右侧「保存为集合」快速收藏当前请求。</p>
+    <p v-else class="cl-empty">{{ t("toolbox.request.collEmpty") }}</p>
   </aside>
 </template>
 

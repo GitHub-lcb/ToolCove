@@ -1,6 +1,9 @@
 <script setup>
 // 环境变量管理弹窗（RequestTool 拆出）：变量键值直接绑定父组件数据，持久化经事件委托
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
+
+const { t } = useI18n();
 
 const props = defineProps({
   envs: { type: Array, default: () => [] },
@@ -14,33 +17,33 @@ const emit = defineEmits(["close", "add", "use", "remove", "remove-var", "var-ed
   <div class="env-mask" @click.self="emit('close')">
     <div class="env-box">
       <div class="env-head">
-        <b>环境变量</b>
-        <span class="env-hint">在 URL / Header / Body 中用 <code>{{ varNameSyntax }}</code> 引用当前环境的变量</span>
+        <b>{{ t("toolbox.request.envTitle") }}</b>
+        <span class="env-hint">{{ t("toolbox.request.envHint", { syntax: varNameSyntax }) }}</span>
         <span class="spacer"></span>
-        <button class="env-add" @click="emit('add')"><Icon name="plus" :size="14" />新增环境</button>
+        <button class="env-add" @click="emit('add')"><Icon name="plus" :size="14" />{{ t("toolbox.request.addEnv") }}</button>
         <button class="env-close" @click="emit('close')"><Icon name="x" :size="16" /></button>
       </div>
       <div v-if="envs.length" class="env-body">
         <div v-for="en in envs" :key="en.id" class="env-card" :class="{ active: activeEnvId === en.id }">
           <div class="env-card-head">
             <input v-model="en.name" class="env-name" spellcheck="false" @input="emit('persist')" />
-            <button class="env-use" :class="{ on: activeEnvId === en.id }" @click="emit('use', en)">{{ activeEnvId === en.id ? "使用中" : "启用" }}</button>
-            <button class="env-remove" title="删除环境" @click="emit('remove', en)"><Icon name="trash" :size="13" /></button>
+            <button class="env-use" :class="{ on: activeEnvId === en.id }" @click="emit('use', en)">{{ t(activeEnvId === en.id ? "toolbox.request.inUse" : "toolbox.request.enable") }}</button>
+            <button class="env-remove" :title="t('toolbox.request.deleteEnv')" @click="emit('remove', en)"><Icon name="trash" :size="13" /></button>
           </div>
           <table class="kv">
-            <thead><tr><th class="th-ck"></th><th>变量名</th><th>值</th><th class="th-op"></th></tr></thead>
+            <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.varName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
             <tbody>
               <tr v-for="(v, i) in en.vars" :key="'v' + i">
                 <td class="td-ck"><input v-model="v.on" type="checkbox" @change="emit('persist')" /></td>
-                <td><input v-model="v.key" class="cell" spellcheck="false" placeholder="如 base_url" @input="emit('var-edit', en)" /></td>
-                <td><input v-model="v.value" class="cell" spellcheck="false" placeholder="如 https://api.test.com" @input="emit('var-edit', en)" /></td>
+                <td><input v-model="v.key" class="cell" spellcheck="false" :placeholder="t('toolbox.request.varKeyPlaceholder')" @input="emit('var-edit', en)" /></td>
+                <td><input v-model="v.value" class="cell" spellcheck="false" :placeholder="t('toolbox.request.varValuePlaceholder')" @input="emit('var-edit', en)" /></td>
                 <td class="td-op"><button v-if="i < en.vars.length - 1" class="row-del" @click="emit('remove-var', en, i)"><Icon name="x" :size="13" /></button></td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
-      <p v-else class="env-empty">还没有环境。点击「新增环境」创建，例如「开发」「测试」「生产」，每个环境维护一套变量键值。</p>
+      <p v-else class="env-empty">{{ t("toolbox.request.envEmpty") }}</p>
     </div>
   </div>
 </template>

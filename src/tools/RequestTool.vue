@@ -24,6 +24,9 @@ import ReqCollectionsSide from "./ReqCollectionsSide.vue";
 import ReqResponsePanel from "./ReqResponsePanel.vue";
 import ReqEnvDialog from "./ReqEnvDialog.vue";
 import { askConfirm } from "../confirm.js";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -36,10 +39,10 @@ const HL_MAX = 150 * 1024;
 const isTauri = !!window.__TAURI_INTERNALS__;
 
 const BODY_TYPES = [
-  { key: "none", label: "无" },
-  { key: "json", label: "JSON" },
-  { key: "text", label: "文本" },
-  { key: "form", label: "Form 表单" },
+  { key: "none", labelKey: "bodyNone" },
+  { key: "json", labelKey: "bodyJson" },
+  { key: "text", labelKey: "bodyTextLabel" },
+  { key: "form", labelKey: "bodyFormLabel" },
 ];
 
 // ---------- 多请求页（标签） ----------
@@ -72,7 +75,7 @@ function createTab(init) {
   };
 }
 function newTab() {
-  if (tabs.value.length >= TAB_MAX) return props.showToast(`标签页最多 ${TAB_MAX} 个`);
+  if (tabs.value.length >= TAB_MAX) return props.showToast(t("toolbox.request.tabMax", { max: TAB_MAX }));
   const tab = createTab();
   syncQueryFromUrl(tab);
   tabs.value.push(tab);
@@ -110,7 +113,7 @@ const activeEnvId = ref(""); // "" = 不使用环境
 // ---------- 弹窗 ----------
 const curlOpen = ref(false);
 const curlText = ref("");
-const CURL_PH = "粘贴 cURL 命令，例如：\ncurl -X POST 'https://api.example.com/users' -H 'Content-Type: application/json' -d '{...}'";
+const CURL_PH = t("toolbox.request.curlPh");
 const curlInputRef = ref(null);
 const saveOpen = ref(false);
 const saveName = ref("");
@@ -141,7 +144,7 @@ onMounted(async () => {
     persistCollections();
     persistEnvs();
   } catch (e) {
-    props.showToast("请求工具敏感配置读取失败：" + e);
+    props.showToast(t("toolbox.request.loadSecureFail", { error: e }));
     return;
   }
 });
@@ -177,7 +180,7 @@ async function loadCollections() {
     let legacy = [];
     try { legacy = JSON.parse(localStorage.getItem(SAVED_KEY) || "[]"); } catch { legacy = []; }
     colls = (Array.isArray(legacy) && legacy.length)
-      ? [{ id: "c" + Date.now(), name: "默认集合", open: true, requests: legacy.map(normalizeRequest) }]
+      ? [{ id: "c" + Date.now(), name: t("toolbox.request.collDefaultName"), open: true, requests: legacy.map(normalizeRequest) }]
       : [];
     if (colls.length) persistCollectionsRaw(colls);
     if (legacy.length) { try { localStorage.removeItem(SAVED_KEY); } catch { /* 忽略 */ } }
@@ -197,7 +200,7 @@ function normalizeRequest(r) {
   r = r || {};
   return {
     id: r.id || rid("r"),
-    name: r.name || "未命名请求",
+    name: r.name || t("toolbox.request.reqUnnamed"),
     method: METHODS.includes(r.method) ? r.method : "GET",
     url: typeof r.url === "string" ? r.url : "",
     headers: Array.isArray(r.headers) ? r.headers : [],
@@ -210,7 +213,7 @@ function normalizeCollection(c) {
   c = c || {};
   return {
     id: c.id || rid("c"),
-    name: c.name || "未命名集合",
+    name: c.name || t("toolbox.request.collUnnamed"),
     open: c.open !== false,
     requests: Array.isArray(c.requests) ? c.requests.map(normalizeRequest) : [],
   };
@@ -220,7 +223,7 @@ function normalizeEnv(e) {
   const vars = Array.isArray(e.vars) ? e.vars.filter((v) => v && typeof v.key === "string") : [];
   return {
     id: e.id || rid("e"),
-    name: e.name || "未命名环境",
+    name: e.name || t("toolbox.request.envUnnamed"),
     vars: vars.length
       ? vars.map((v) => ({ key: v.key, value: String(v.value ?? ""), on: v.on !== false }))
       : [{ key: "", value: "", on: true }],
@@ -245,7 +248,7 @@ function persistTabs() {
 }
 
 function secureSaveError(e) {
-  props.showToast("敏感配置加密失败，本次修改未落盘：" + e);
+  props.showToast(t("toolbox.request.secureSaveFail", { error: e }));
 }
 
 // ---------- URL ↔ 查询参数 双向同步 ----------
@@ -316,7 +319,7 @@ const bodyRaw = computed(() => (activeTab.value ? bodyRawOf(activeTab.value) : "
 const hasBody = computed(() => (activeTab.value ? hasBodyOf(activeTab.value) : false));
 const bodyPlaceholder = computed(() => {
   if (bodyType.value === "json") return '{\n  "key": "value"\n}';
-  if (bodyType.value === "text") return "请求体文本…";
+  if (bodyType.value === "text") return t("toolbox.request.bodyTextPh");
   return "";
 });
 
@@ -339,8 +342,8 @@ async function send() {
   if (!tab || tab.loading) return;
   const map = envMap.value;
   const target = substituteVars(tab.url.trim(), map);
-  if (!target) return props.showToast("请输入请求 URL");
-  if (!/^https?:\/\//i.test(target)) return props.showToast("URL 需以 http:// 或 https:// 开头（变量替换后）");
+  if (!target) return props.showToast(t("toolbox.request.urlRequired"));
+  if (!/^https?:\/\//i.test(target)) return props.showToast(t("toolbox.request.urlScheme"));
 
   const pairs = headersToPairs(tab.headers).map(([k, v]) => [substituteVars(k, map), substituteVars(v, map)]);
   const ct = autoContentType(tab);
@@ -364,7 +367,7 @@ async function send() {
   } catch (e) {
     tab.response = null;
     tab.respError = e && e.message ? e.message : String(e);
-    props.showToast("请求失败：" + tab.respError);
+    props.showToast(t("toolbox.request.sendFail", { error: tab.respError }));
   } finally {
     tab.loading = false;
   }
@@ -416,24 +419,24 @@ async function copyResp() {
   if (!response.value) return;
   try {
     await navigator.clipboard.writeText(respBodyPretty.value);
-    props.showToast("已复制响应体");
-  } catch (e) { props.showToast("复制失败：" + e); }
+    props.showToast(t("toolbox.request.copied"));
+  } catch (e) { props.showToast(t("toolbox.request.copyFail", { error: e })); }
 }
 
 // 保存响应为本地文件：二进制走 base64 原样落盘，文本走 UTF-8 直写
 async function saveResponse() {
   const t = activeTab.value;
-  if (!t || !t.response) return props.showToast("先发送请求获取响应");
+  if (!t || !t.response) return props.showToast(t("toolbox.request.sendFirst"));
   const res = t.response;
   const isBin = !!res.bodyBase64;
   const name = suggestFileName(res.headers, t.url);
   if (!isTauri) {
     // 浏览器预览降级：文本用 Blob 触发下载；文件流无法还原原始字节
-    if (isBin) return props.showToast("文件流响应请在桌面端保存");
+    if (isBin) return props.showToast(t("toolbox.request.binDesktopOnly"));
     blobDownload(res.body, name);
-    return props.showToast("已开始下载 " + name);
+    return props.showToast(t("toolbox.request.downloadStart", { name }));
   }
-  const path = await saveDialog({ title: "保存响应为文件", defaultPath: name });
+  const path = await saveDialog({ title: t("toolbox.request.saveRespTitle"), defaultPath: name });
   if (!path) return; // 用户取消
   try {
     if (isBin) {
@@ -441,9 +444,9 @@ async function saveResponse() {
     } else {
       await invoke("export_file", { path, content: res.body });
     }
-    props.showToast(`已保存 ${sizeText(res.size)}`);
+    props.showToast(t("toolbox.request.savedSize", { size: sizeText(res.size) }));
   } catch (e) {
-    props.showToast("保存失败：" + (e && e.message ? e.message : e));
+    props.showToast(t("toolbox.request.saveFail", { error: (e && e.message) ? e.message : e }));
   }
 }
 function blobDownload(text, name) {
@@ -460,12 +463,12 @@ function blobDownload(text, name) {
 // ---------- 请求体：美化 / 跳 JSON 工具 ----------
 function beautifyBody() {
   const r = formatJson(bodyText.value, 2);
-  if (r.ok) { bodyText.value = r.output; props.showToast("已格式化请求 JSON"); }
-  else props.showToast("JSON 格式有误，无法美化" + (r.error && r.error.line ? `（第 ${r.error.line} 行）` : ""));
+  if (r.ok) { bodyText.value = r.output; props.showToast(t("toolbox.request.formattedJson")); }
+  else props.showToast(t("toolbox.request.jsonInvalid", { line: (r.error && r.error.line) ? t("toolbox.request.atLine", { line: r.error.line }) : "" }));
 }
 function jumpReqToJson() {
   if (!props.openInJson) return;
-  if (!bodyText.value.trim()) return props.showToast("请求体为空");
+  if (!bodyText.value.trim()) return props.showToast(t("toolbox.request.bodyEmpty"));
   props.openInJson(bodyText.value);
 }
 function jumpRespToJson() {
@@ -488,7 +491,7 @@ function pushHistory(t) {
   persistHistory();
 }
 function persistHistory() { saveSecureToolbox("request-history", history.value, protectRequestHistory, secureSaveError); }
-function restoreHistory(h) { applySnapshot(activeTab.value, h); props.showToast("已恢复历史请求（含参数 / 头 / Body）"); }
+function restoreHistory(h) { applySnapshot(activeTab.value, h); props.showToast(t("toolbox.request.histRestored")); }
 function clearHistory() {
   history.value = [];
   histQuery.value = "";
@@ -526,7 +529,7 @@ function persistEnvs() {
   saveSecureToolbox("request-envs", envs.value, protectRequestEnvs, secureSaveError);
 }
 
-function deriveName(t) { return splitUrl(t.url).base.split("/").filter(Boolean).pop() || "新请求"; }
+function deriveName(t) { return splitUrl(t.url).base.split("/").filter(Boolean).pop() || t("toolbox.request.reqNewName"); }
 
 function openCollDialog() {
   collName.value = "";
@@ -534,11 +537,11 @@ function openCollDialog() {
   nextTick(() => collInputRef.value?.focus());
 }
 function confirmColl() {
-  const name = collName.value.trim() || "新集合";
+  const name = collName.value.trim() || t("toolbox.request.collNewName");
   collections.value.push({ id: "c" + Date.now(), name, open: true, requests: [] });
   persistCollections();
   collOpen.value = false;
-  props.showToast("已创建集合");
+  props.showToast(t("toolbox.request.collCreated"));
 }
 function toggleColl(c) { c.open = !c.open; persistCollections(); }
 function removeCollection(c) {
@@ -548,7 +551,7 @@ function removeCollection(c) {
 
 function openSaveDialog(collId) {
   const t = activeTab.value;
-  if (!t || !t.url.trim()) return props.showToast("请先填写请求 URL");
+  if (!t || !t.url.trim()) return props.showToast(t("toolbox.request.urlRequired"));
   saveName.value = deriveName(t);
   if (collId) saveCollId.value = collId;
   else if (!collections.value.some((c) => c.id === saveCollId.value)) saveCollId.value = collections.value[0]?.id || "";
@@ -557,10 +560,10 @@ function openSaveDialog(collId) {
 }
 function confirmSave() {
   const name = saveName.value.trim();
-  if (!name) return props.showToast("请输入名称");
+  if (!name) return props.showToast(t("toolbox.request.nameRequired"));
   let collId = saveCollId.value;
   if (!collId || !collections.value.some((c) => c.id === collId)) {
-    const c = { id: "c" + Date.now(), name: "默认集合", open: true, requests: [] };
+    const c = { id: "c" + Date.now(), name: t("toolbox.request.collDefaultName"), open: true, requests: [] };
     collections.value.push(c);
     collId = c.id;
   }
@@ -575,7 +578,7 @@ function confirmSave() {
   }
   persistCollections();
   saveOpen.value = false;
-  props.showToast("已保存到「" + coll.name + "」");
+  props.showToast(t("toolbox.request.savedTo", { name: coll.name }));
 }
 function loadRequest(r) {
   const cur = activeTab.value;
@@ -596,7 +599,7 @@ const tabSavedId = computed(() => activeTab.value?.savedId ?? "");
 // ---------- 环境变量管理 ----------
 function openEnvPanel() { envOpen.value = true; }
 function addEnv() {
-  const en = { id: "e" + Date.now(), name: "新环境", vars: [{ key: "", value: "", on: true }] };
+  const en = { id: "e" + Date.now(), name: t("toolbox.request.envNewName"), vars: [{ key: "", value: "", on: true }] };
   envs.value.push(en);
   if (!activeEnvId.value) activeEnvId.value = en.id;
   persistEnvs();
@@ -617,13 +620,13 @@ function useEnv(en) { activeEnvId.value = activeEnvId.value === en.id ? "" : en.
 // ---------- 导入 / 导出 ----------
 async function exportData() {
   const ok = await askConfirm({
-    title: "导出请求工具数据",
-    message: "导出文件会包含请求 Header 与环境变量中的明文敏感信息，请妥善保管。是否继续导出？",
-    okText: "继续导出",
+    title: t("toolbox.request.exportTitle"),
+    message: t("toolbox.request.exportMsg"),
+    okText: t("toolbox.request.exportOk"),
     danger: false,
   });
   if (!ok) return;
-  const data = { app: "研发小助手·请求工具", version: 1, exportedAt: new Date().toISOString(), collections: collections.value, envs: envs.value };
+  const data = { app: "toolcove-request", version: 1, exportedAt: new Date().toISOString(), collections: collections.value, envs: envs.value };
   try {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -633,8 +636,8 @@ async function exportData() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
-    props.showToast("已导出集合与环境");
-  } catch (e) { props.showToast("导出失败：" + e); }
+    props.showToast(t("toolbox.request.exported"));
+  } catch (e) { props.showToast(t("toolbox.request.exportFail", { error: e })); }
 }
 function triggerImport() { importRef.value?.click(); }
 function onImportFile(e) {
@@ -656,9 +659,9 @@ function onImportFile(e) {
         for (const en of data.envs) { envs.value.push(normalizeEnv({ ...en, id: undefined })); addedE++; }
         persistEnvs();
       }
-      if (!addedC && !addedE) props.showToast("文件中没有可导入的集合或环境");
-      else props.showToast(`已导入 ${addedC} 个集合、${addedE} 个环境`);
-    } catch { props.showToast("导入失败：文件格式不正确"); }
+      if (!addedC && !addedE) props.showToast(t("toolbox.request.importEmpty"));
+      else props.showToast(t("toolbox.request.imported", { collections: addedC, envs: addedE }));
+    } catch { props.showToast(t("toolbox.request.importBad")); }
   };
   reader.readAsText(file);
   e.target.value = "";
@@ -688,7 +691,7 @@ function importCurl() {
     }
     curlOpen.value = false;
     curlText.value = "";
-    props.showToast("已从 cURL 导入");
+    props.showToast(t("toolbox.request.curlImported"));
   } catch (e) {
     props.showToast(e && e.message ? e.message : String(e));
   }
@@ -701,7 +704,7 @@ const renameInputRef = ref(null);
 function tabLabel(t) {
   if (t.name.trim()) return t.name;
   const seg = splitUrl(t.url).base.split("/").filter(Boolean).pop();
-  return seg || "新请求";
+  return seg || t("toolbox.request.reqNewName");
 }
 function closeTab(id) {
   const i = tabs.value.findIndex((t) => t.id === id);
@@ -735,11 +738,11 @@ function openCtx(e, t) {
   const isFirst = t.id === tabs.value[0]?.id;
   const isLast = t.id === tabs.value[tabs.value.length - 1]?.id;
   openCtxMenu(e, [
-    { label: "关闭标签页", icon: "x", fn: () => closeTab(t.id) },
+    { label: t("toolbox.request.closeTab"), icon: "x", fn: () => closeTab(t.id) },
     // 首/尾标签无左/右侧可关，直接不出菜单项（全局菜单无禁用态）
-    ...(isFirst ? [] : [{ label: "关闭左侧标签页", icon: "minus", fn: () => closeLeft(t.id) }]),
-    ...(isLast ? [] : [{ label: "关闭右侧标签页", icon: "minus", fn: () => closeRight(t.id) }]),
-    { label: "全部关闭", icon: "trash", danger: true, fn: closeAll },
+    ...(isFirst ? [] : [{ label: t("toolbox.request.closeLeft"), icon: "minus", fn: () => closeLeft(t.id) }]),
+    ...(isLast ? [] : [{ label: t("toolbox.request.closeRight"), icon: "minus", fn: () => closeRight(t.id) }]),
+    { label: t("toolbox.request.closeAll"), icon: "trash", danger: true, fn: closeAll },
   ]);
 }
 function closeLeft(id) {
@@ -764,9 +767,9 @@ function closeAll() {
 
 function methodClass(m) { return "m-" + String(m).toLowerCase(); }
 
-// 字面量 {{变量}} - 直接写在模板插值里会被 Vue 编译器误当作嵌套插值
-const VAR_SYNTAX = "{{变量}}";
-const VAR_NAME_SYNTAX = "{{变量名}}";
+// 字面量 {{变量}} - 直接写在模板插值里会被 Vue 编译器误当作嵌套插值；语法示例跟随界面语言
+const VAR_SYNTAX = computed(() => "{{" + t("toolbox.request.varToken") + "}}");
+const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") + "}}");
 </script>
 
 <template>
@@ -812,10 +815,10 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
             @blur="commitRename"
           />
           <span v-else class="tab-name">{{ tabLabel(t) }}</span>
-          <span v-if="t.loading" class="tab-spin" title="请求中…"></span>
-          <button class="tab-close" title="关闭标签页" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></button>
+          <span v-if="t.loading" class="tab-spin" :title="t('toolbox.request.loading')"></span>
+          <button class="tab-close" :title="t('toolbox.request.closeTab')" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></button>
         </div>
-        <button class="tab-add" title="新建请求页" @click="newTab"><Icon name="plus" :size="14" /></button>
+        <button class="tab-add" :title="t('toolbox.request.newTab')" @click="newTab"><Icon name="plus" :size="14" /></button>
       </div>
 
       <!-- 环境 + 导入导出 工具条 -->
@@ -823,16 +826,16 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
         <div class="env-pick">
           <Icon name="layers" :size="14" class="env-ico" />
           <select v-model="activeEnvId" class="env-sel">
-            <option value="">不使用环境</option>
+            <option value="">{{ t("toolbox.request.noEnv") }}</option>
             <option v-for="en in envs" :key="en.id" :value="en.id">{{ en.name }}</option>
           </select>
         </div>
         <button class="env-manage" @click="openEnvPanel">
-          <Icon name="settings" :size="14" />环境变量<span v-if="envs.length" class="env-badge">{{ envs.length }}</span>
+          <Icon name="settings" :size="14" />{{ t("toolbox.request.envTitle") }}<span v-if="envs.length" class="env-badge">{{ envs.length }}</span>
         </button>
         <span class="spacer"></span>
-        <button class="io-btn" @click="triggerImport"><Icon name="download" :size="14" />导入</button>
-        <button class="io-btn" @click="exportData"><Icon name="open" :size="14" />导出</button>
+        <button class="io-btn" @click="triggerImport"><Icon name="download" :size="14" />{{ t("toolbox.request.import") }}</button>
+        <button class="io-btn" @click="exportData"><Icon name="open" :size="14" />{{ t("toolbox.request.export") }}</button>
         <input ref="importRef" type="file" accept="application/json,.json" class="hidden-file" @change="onImportFile" />
       </div>
 
@@ -845,17 +848,17 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
           v-model="url"
           class="url-input"
           spellcheck="false"
-          placeholder="https://{{host}}/path 支持 {{变量}}"
+          :placeholder="t('toolbox.request.urlPh', { host: '{{host}}', syntax: VAR_SYNTAX })"
           @keyup.enter="send"
         />
         <button class="send-btn" :disabled="loading" @click="send">
-          <Icon name="send" :size="14" />{{ loading ? "请求中…" : "发送" }}
+          <Icon name="send" :size="14" />{{ loading ? t("toolbox.request.loading") : t("toolbox.request.send") }}
         </button>
       </div>
 
       <!-- 请求配置 tabs -->
       <div class="req-tabs">
-        <button class="rt" :class="{ on: reqTab === 'params' }" @click="reqTab = 'params'">参数<span v-if="activeQueryCount" class="dot">{{ activeQueryCount }}</span></button>
+        <button class="rt" :class="{ on: reqTab === 'params' }" @click="reqTab = 'params'">{{ t("toolbox.request.params") }}<span v-if="activeQueryCount" class="dot">{{ activeQueryCount }}</span></button>
         <button class="rt" :class="{ on: reqTab === 'headers' }" @click="reqTab = 'headers'">Headers<span v-if="activeHeaderCount" class="dot">{{ activeHeaderCount }}</span></button>
         <button class="rt" :class="{ on: reqTab === 'body' }" @click="reqTab = 'body'">Body<span v-if="hasBody" class="dot dot-on"></span></button>
       </div>
@@ -863,12 +866,12 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
       <div class="req-body">
         <!-- 查询参数 -->
         <table v-if="reqTab === 'params'" class="kv">
-          <thead><tr><th class="th-ck"></th><th>参数名</th><th>值</th><th class="th-op"></th></tr></thead>
+          <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.paramName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
           <tbody>
             <tr v-for="(q, i) in query" :key="'q' + i">
               <td class="td-ck"><input v-model="q.on" type="checkbox" @change="rebuildUrl" /></td>
-              <td><input v-model="q.key" class="cell" spellcheck="false" placeholder="参数名" @input="onQueryEdit(i)" /></td>
-              <td><input v-model="q.value" class="cell" spellcheck="false" placeholder="值" @input="onQueryEdit(i)" /></td>
+              <td><input v-model="q.key" class="cell" spellcheck="false" :placeholder="t('toolbox.request.paramName')" @input="onQueryEdit(i)" /></td>
+              <td><input v-model="q.value" class="cell" spellcheck="false" :placeholder="t('toolbox.request.value')" @input="onQueryEdit(i)" /></td>
               <td class="td-op"><button v-if="i < query.length - 1" class="row-del" @click="removeQuery(i)"><Icon name="x" :size="13" /></button></td>
             </tr>
           </tbody>
@@ -876,12 +879,12 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
 
         <!-- 请求头 -->
         <table v-else-if="reqTab === 'headers'" class="kv">
-          <thead><tr><th class="th-ck"></th><th>Header</th><th>值</th><th class="th-op"></th></tr></thead>
+          <thead><tr><th class="th-ck"></th><th>Header</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
           <tbody>
             <tr v-for="(h, i) in headers" :key="'h' + i">
               <td class="td-ck"><input v-model="h.on" type="checkbox" /></td>
-              <td><input v-model="h.key" class="cell" spellcheck="false" placeholder="Header 名" @input="onHeaderEdit" /></td>
-              <td><input v-model="h.value" class="cell" spellcheck="false" placeholder="值" @input="onHeaderEdit" /></td>
+              <td><input v-model="h.key" class="cell" spellcheck="false" :placeholder="t('toolbox.request.headerName')" @input="onHeaderEdit" /></td>
+              <td><input v-model="h.value" class="cell" spellcheck="false" :placeholder="t('toolbox.request.value')" @input="onHeaderEdit" /></td>
               <td class="td-op"><button v-if="i < headers.length - 1" class="row-del" @click="removeHeader(i)"><Icon name="x" :size="13" /></button></td>
             </tr>
           </tbody>
@@ -896,22 +899,22 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
               class="bt"
               :class="{ on: bodyType === b.key }"
               @click="bodyType = b.key"
-            >{{ b.label }}</button>
-            <span v-if="['GET','HEAD'].includes(method) && bodyType !== 'none'" class="body-warn">{{ method }} 请求不会携带 Body</span>
+            >{{ t(b.labelKey) }}</button>
+            <span v-if="['GET','HEAD'].includes(method) && bodyType !== 'none'" class="body-warn">{{ t("toolbox.request.noBodyForMethod", { method }) }}</span>
             <span class="spacer"></span>
             <template v-if="bodyType === 'json'">
-              <button class="body-act" @click="beautifyBody"><Icon name="sparkles" :size="13" />美化</button>
-              <button v-if="openInJson" class="body-act" title="在 JSON 工具中打开" @click="jumpReqToJson"><Icon name="open" :size="13" />JSON 工具</button>
+              <button class="body-act" @click="beautifyBody"><Icon name="sparkles" :size="13" />{{ t("toolbox.request.pretty") }}</button>
+              <button v-if="openInJson" class="body-act" :title="t('toolbox.request.openInJson')" @click="jumpReqToJson"><Icon name="open" :size="13" />{{ t("toolbox.request.jsonTool") }}</button>
             </template>
           </div>
           <!-- Form 表单：键值对（x-www-form-urlencoded） -->
           <table v-if="bodyType === 'form'" class="kv">
-            <thead><tr><th class="th-ck"></th><th>字段名</th><th>值</th><th class="th-op"></th></tr></thead>
+            <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.fieldName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
             <tbody>
               <tr v-for="(f, i) in bodyForm" :key="'f' + i">
                 <td class="td-ck"><input v-model="f.on" type="checkbox" /></td>
-                <td><input v-model="f.key" class="cell" spellcheck="false" placeholder="字段名" @input="onFormEdit" /></td>
-                <td><input v-model="f.value" class="cell" spellcheck="false" placeholder="值" @input="onFormEdit" /></td>
+                <td><input v-model="f.key" class="cell" spellcheck="false" :placeholder="t('toolbox.request.fieldName')" @input="onFormEdit" /></td>
+                <td><input v-model="f.value" class="cell" spellcheck="false" :placeholder="t('toolbox.request.value')" @input="onFormEdit" /></td>
                 <td class="td-op"><button v-if="i < bodyForm.length - 1" class="row-del" @click="removeForm(i)"><Icon name="x" :size="13" /></button></td>
               </tr>
             </tbody>
@@ -924,7 +927,7 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
             spellcheck="false"
             :placeholder="bodyPlaceholder"
           ></textarea>
-          <p v-else class="ph">该请求不发送 Body。如需发送，选择上方的 JSON / 文本 / Form。</p>
+          <p v-else class="ph">{{ t("toolbox.request.noBodyPh") }}</p>
         </div>
       </div>
 
@@ -954,12 +957,12 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
     <aside class="col-side">
       <div class="side-card">
         <div class="side-head">
-          <b>历史记录</b>
-          <button v-if="history.length" class="side-clear" @click="clearHistory">清空</button>
+          <b>{{ t("toolbox.request.history") }}</b>
+          <button v-if="history.length" class="side-clear" @click="clearHistory">{{ t("toolbox.request.clear") }}</button>
         </div>
         <div v-if="history.length" class="hist-search">
           <Icon name="search" :size="13" />
-          <input v-model="histQuery" class="hist-input" placeholder="搜索历史 URL…" spellcheck="false" />
+          <input v-model="histQuery" class="hist-input" :placeholder="t('toolbox.request.histSearchPh')" spellcheck="false" />
         </div>
         <div v-if="history.length" class="hist-list">
           <button v-for="(h, i) in filteredHistory" :key="h.ts + '-' + i" class="hist-item" @click="restoreHistory(h)" :title="h.url">
@@ -967,25 +970,25 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
             <span class="hi-url">{{ splitUrl(h.url).base }}</span>
             <span class="hi-time">{{ relativeTime(h.ts) }}</span>
           </button>
-          <p v-if="!filteredHistory.length" class="side-empty">没有匹配「{{ histQuery }}」的历史记录</p>
+          <p v-if="!filteredHistory.length" class="side-empty">{{ t("toolbox.request.histNoMatch", { q: histQuery }) }}</p>
         </div>
-        <p v-else class="side-empty">发送请求后会自动记录，点击可完整恢复参数 / 头 / Body。</p>
+        <p v-else class="side-empty">{{ t("toolbox.request.histEmpty") }}</p>
       </div>
 
       <div class="side-card">
-        <div class="side-title">快捷操作</div>
+        <div class="side-title">{{ t("toolbox.request.quickOps") }}</div>
         <div class="quick-grid">
-          <button class="quick" @click="newTab"><Icon name="plus" :size="15" />新建请求页</button>
-          <button class="quick" :class="{ on: curlOpen }" @click="toggleCurl"><Icon name="download" :size="15" />导入 cURL</button>
-          <button class="quick" @click="openSaveDialog()"><Icon name="folder" :size="15" />保存为集合</button>
-          <button class="quick" @click="saveResponse"><Icon name="download" :size="15" />保存响应文件</button>
-          <button class="quick" @click="copyResp"><Icon name="copy" :size="15" />复制响应</button>
+          <button class="quick" @click="newTab"><Icon name="plus" :size="15" />{{ t("toolbox.request.newTab") }}</button>
+          <button class="quick" :class="{ on: curlOpen }" @click="toggleCurl"><Icon name="download" :size="15" />{{ t("toolbox.request.importCurl") }}</button>
+          <button class="quick" @click="openSaveDialog()"><Icon name="folder" :size="15" />{{ t("toolbox.request.saveAsColl") }}</button>
+          <button class="quick" @click="saveResponse"><Icon name="download" :size="15" />{{ t("toolbox.request.saveRespFile") }}</button>
+          <button class="quick" @click="copyResp"><Icon name="copy" :size="15" />{{ t("toolbox.request.copyResp") }}</button>
         </div>
       </div>
 
       <div class="tip-card">
-        <b>接口调试小贴士</b>
-        <span>原生发送可规避浏览器 CORS 限制；URL / Header / Body 均支持 {{ VAR_SYNTAX }} 环境替换。</span>
+        <b>{{ t("toolbox.request.tipTitle") }}</b>
+        <span>{{ t("toolbox.request.tipBody", { syntax: VAR_SYNTAX }) }}</span>
         <Icon name="sparkles" :size="18" class="tip-ico" />
       </div>
     </aside>
@@ -993,17 +996,17 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
     <!-- 保存命名弹窗 -->
     <div v-if="saveOpen" class="save-mask" @click.self="saveOpen = false">
       <div class="save-box">
-        <div class="save-title">保存到集合</div>
-        <label class="save-label">目标集合</label>
+        <div class="save-title">{{ t("toolbox.request.saveToColl") }}</div>
+        <label class="save-label">{{ t("toolbox.request.targetColl") }}</label>
         <select v-model="saveCollId" class="save-select">
           <option v-for="c in collections" :key="c.id" :value="c.id">{{ c.name }}</option>
-          <option value="">＋ 新建默认集合</option>
+          <option value="">{{ t("toolbox.request.newDefaultColl") }}</option>
         </select>
-        <label class="save-label">请求名称</label>
-        <input ref="saveInputRef" v-model="saveName" class="save-input" placeholder="请求名称" @keyup.enter="confirmSave" />
+        <label class="save-label">{{ t("toolbox.request.reqName") }}</label>
+        <input ref="saveInputRef" v-model="saveName" class="save-input" :placeholder="t('toolbox.request.reqName')" @keyup.enter="confirmSave" />
         <div class="save-acts">
-          <button class="save-cancel" @click="saveOpen = false">取消</button>
-          <button class="save-ok" @click="confirmSave">保存</button>
+          <button class="save-cancel" @click="saveOpen = false">{{ t("toolbox.request.cancel") }}</button>
+          <button class="save-ok" @click="confirmSave">{{ t("toolbox.request.save") }}</button>
         </div>
       </div>
     </div>
@@ -1011,11 +1014,11 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
     <!-- 新建集合弹窗 -->
     <div v-if="collOpen" class="save-mask" @click.self="collOpen = false">
       <div class="save-box">
-        <div class="save-title">新建集合</div>
-        <input ref="collInputRef" v-model="collName" class="save-input" placeholder="集合名称，如：用户接口" @keyup.enter="confirmColl" />
+        <div class="save-title">{{ t("toolbox.request.newCollection") }}</div>
+        <input ref="collInputRef" v-model="collName" class="save-input" :placeholder="t('toolbox.request.collNamePh')" @keyup.enter="confirmColl" />
         <div class="save-acts">
-          <button class="save-cancel" @click="collOpen = false">取消</button>
-          <button class="save-ok" @click="confirmColl">创建</button>
+          <button class="save-cancel" @click="collOpen = false">{{ t("toolbox.request.cancel") }}</button>
+          <button class="save-ok" @click="confirmColl">{{ t("toolbox.request.create") }}</button>
         </div>
       </div>
     </div>
@@ -1023,11 +1026,11 @@ const VAR_NAME_SYNTAX = "{{变量名}}";
     <!-- cURL 导入弹窗（居中模态，避免侧栏 overflow 裁切） -->
     <div v-if="curlOpen" class="curl-mask" @click.self="curlOpen = false">
       <div class="curl-box">
-        <div class="curl-title">导入 cURL 命令</div>
+        <div class="curl-title">{{ t("toolbox.request.importCurlTitle") }}</div>
         <textarea ref="curlInputRef" v-model="curlText" class="curl-input" spellcheck="false" :placeholder="CURL_PH"></textarea>
         <div class="curl-acts">
-          <button class="curl-cancel" @click="curlOpen = false">取消</button>
-          <button class="curl-ok" @click="importCurl">解析导入</button>
+          <button class="curl-cancel" @click="curlOpen = false">{{ t("toolbox.request.cancel") }}</button>
+          <button class="curl-ok" @click="importCurl">{{ t("toolbox.request.parseImport") }}</button>
         </div>
       </div>
     </div>

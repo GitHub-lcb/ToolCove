@@ -1,6 +1,9 @@
 <script setup>
 // 响应面板（RequestTool 拆出）：只读展示 + 保存/复制/跳 JSON 工具委托给父组件
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
+
+const { t } = useI18n();
 
 const props = defineProps({
   response: { type: Object, default: null },
@@ -24,7 +27,7 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
 <template>
   <div class="resp">
     <div class="resp-head">
-      <span class="resp-title">响应</span>
+      <span class="resp-title">{{ t("toolbox.request.respTitle") }}</span>
       <template v-if="response">
         <span class="status" :class="'s-' + respStatusClass">{{ response.status }} {{ response.statusText }}</span>
         <span class="meta"><Icon name="clock" :size="12" />{{ response.durationMs }}ms</span>
@@ -34,15 +37,15 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
           <button class="rst" :class="{ on: respTab === 'body' }" @click="emit('update:respTab', 'body')">Body</button>
           <button class="rst" :class="{ on: respTab === 'headers' }" @click="emit('update:respTab', 'headers')">Headers<span class="dot">{{ response.headers.length }}</span></button>
         </div>
-        <label v-if="respTab === 'body'" class="chk"><input :checked="respPretty" type="checkbox" @change="emit('update:respPretty', $event.target.checked)" />美化</label>
-        <button v-if="respTab === 'body' && respIsJson && openInJson" class="mini" title="在 JSON 工具中打开响应" @click="emit('jump-to-json')"><Icon name="open" :size="13" /></button>
-        <button class="mini" :class="{ 'save-binary': respIsBinary }" :title="respIsBinary ? '保存文件流为本地文件' : '保存响应为文件'" @click="emit('save')"><Icon name="download" :size="13" /></button>
-        <button class="mini" title="复制响应体" @click="emit('copy')"><Icon name="copy" :size="13" /></button>
+        <label v-if="respTab === 'body'" class="chk"><input :checked="respPretty" type="checkbox" @change="emit('update:respPretty', $event.target.checked)" />{{ t("toolbox.request.pretty") }}</label>
+        <button v-if="respTab === 'body' && respIsJson && openInJson" class="mini" :title="t('toolbox.request.openInJsonTitle')" @click="emit('jump-to-json')"><Icon name="open" :size="13" /></button>
+        <button class="mini" :class="{ 'save-binary': respIsBinary }" :title="respIsBinary ? t('toolbox.request.saveStreamTitle') : t('toolbox.request.saveRespTitle')" @click="emit('save')"><Icon name="download" :size="13" /></button>
+        <button class="mini" :title="t('toolbox.request.copyBodyTitle')" @click="emit('copy')"><Icon name="copy" :size="13" /></button>
       </template>
     </div>
     <div class="resp-body">
       <p v-if="respError" class="resp-err">{{ respError }}</p>
-      <p v-else-if="!response" class="ph">点击「发送」查看响应。</p>
+      <p v-else-if="!response" class="ph">{{ t("toolbox.request.phSend") }}</p>
       <template v-else-if="respTab === 'headers'">
         <table class="rh-table">
           <tr v-for="([k, v], i) in response.headers" :key="i"><td class="rh-k">{{ k }}</td><td class="rh-v">{{ v }}</td></tr>
@@ -52,10 +55,10 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
         <div v-if="respIsBinary" class="bin-hint">
           <Icon name="download" :size="18" class="bin-ico" />
           <div class="bin-info">
-            <b>{{ respKindLabel }}响应（文件流）</b>
-            <span>内容为二进制，无法直接预览；点「保存为文件」下载原始字节，建议文件名：{{ respFileName }}</span>
+            <b>{{ t("toolbox.request.binKindLabel", { kind: respKindLabel }) }}</b>
+            <span>{{ t("toolbox.request.binHint", { name: respFileName }) }}</span>
           </div>
-          <button class="bin-save" @click="emit('save')"><Icon name="download" :size="13" />保存为文件</button>
+          <button class="bin-save" @click="emit('save')"><Icon name="download" :size="13" />{{ t("toolbox.request.saveAsFile") }}</button>
         </div>
         <template v-else>
           <span class="lang-badge" :class="'lb-' + respLang">{{ respLang.toUpperCase() }}</span>

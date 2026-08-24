@@ -1,6 +1,10 @@
 // 请求工具纯逻辑层（无 Vue、无 IO，便于单测）。
 // 负责：URL ↔ 查询参数双向同步、cURL 解析、请求头/体处理、响应体格式化与类型探测。
 
+import { i18n } from "../i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 export const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 // 拆分 URL 为 { base, query[] }。base 不含查询串；query 为 [{ key, value, on }]。
@@ -88,31 +92,31 @@ export function suggestFileName(headers, url) {
 // 依据 content-type 给出响应类型的友好描述（文件流提示用）。
 export function describeContentType(contentType) {
   const ct = String(contentType || "").toLowerCase().split(";")[0].trim();
-  const named = {
-    "image/png": "PNG 图片", "image/jpeg": "JPEG 图片", "image/gif": "GIF 图片",
-    "image/webp": "WebP 图片", "image/svg+xml": "SVG 图片",
-    "application/pdf": "PDF 文档",
-    "application/zip": "ZIP 压缩包", "application/x-zip-compressed": "ZIP 压缩包",
-    "application/gzip": "GZIP 压缩包", "application/x-gzip": "GZIP 压缩包",
-    "application/x-tar": "TAR 压缩包",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel 表格",
-    "application/vnd.ms-excel": "Excel 表格",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word 文档",
-    "application/msword": "Word 文档",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPT 演示文稿",
-    "application/vnd.ms-powerpoint": "PPT 演示文稿",
-    "application/octet-stream": "二进制文件",
-    "application/x-msdownload": "可执行文件",
+  const keyByType = {
+    "image/png": "ctPng", "image/jpeg": "ctJpeg", "image/gif": "ctGif",
+    "image/webp": "ctWebp", "image/svg+xml": "ctSvg",
+    "application/pdf": "ctPdf",
+    "application/zip": "ctZip", "application/x-zip-compressed": "ctZip",
+    "application/gzip": "ctGzip", "application/x-gzip": "ctGzip",
+    "application/x-tar": "ctTar",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "ctExcel",
+    "application/vnd.ms-excel": "ctExcel",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "ctWord",
+    "application/msword": "ctWord",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "ctPpt",
+    "application/vnd.ms-powerpoint": "ctPpt",
+    "application/octet-stream": "ctBinary",
+    "application/x-msdownload": "ctExecutable",
   };
-  if (named[ct]) return named[ct];
-  if (ct.startsWith("image/")) return "图片";
-  if (ct.startsWith("audio/")) return "音频";
-  if (ct.startsWith("video/")) return "视频";
-  if (ct.startsWith("font/")) return "字体文件";
-  if (ct.includes("json")) return "JSON 数据";
-  if (ct.includes("xml")) return "XML 数据";
-  if (ct.includes("csv")) return "CSV 表格";
-  return "文件";
+  if (keyByType[ct]) return t("toolbox.request." + keyByType[ct]);
+  if (ct.startsWith("image/")) return t("toolbox.request.ctImage");
+  if (ct.startsWith("audio/")) return t("toolbox.request.ctAudio");
+  if (ct.startsWith("video/")) return t("toolbox.request.ctVideo");
+  if (ct.startsWith("font/")) return t("toolbox.request.ctFont");
+  if (ct.includes("json")) return t("toolbox.request.ctJson");
+  if (ct.includes("xml")) return t("toolbox.request.ctXml");
+  if (ct.includes("csv")) return t("toolbox.request.ctCsv");
+  return t("toolbox.request.ctFile");
 }
 
 // 依据 content-type + 内容猜测响应体语言：json | html | xml | text
@@ -216,7 +220,7 @@ export function parseFormText(text) {
 export function parseCurl(text) {
   const src = String(text || "").trim();
   if (!/^\s*curl\b/i.test(src)) {
-    throw new Error("不是有效的 cURL 命令（应以 curl 开头）");
+    throw new Error(t("toolbox.request.curlInvalid"));
   }
   const tokens = tokenizeCurl(src.replace(/\\\r?\n/g, " "));
   // 丢弃开头的 "curl"
@@ -265,7 +269,7 @@ export function parseCurl(text) {
 
   const body = dataParts.join(dataUrlencode ? "&" : "");
   if (!method) method = body ? "POST" : "GET";
-  if (!url) throw new Error("cURL 命令中未找到 URL");
+  if (!url) throw new Error(t("toolbox.request.curlNoUrl"));
   return { method, url, headers, body };
 }
 
