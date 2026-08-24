@@ -7,7 +7,7 @@ import {
 } from "./networkTool.js";
 
 describe("parseUrl / rebuildUrl", () => {
-  it("解析 URL 并保留重复查询参数", () => {
+  it("parses URL and keeps duplicate query params", () => {
     const result = parseUrl("https://user:pass@example.com:8443/api/items?id=1&id=2#result");
     expect(result).toMatchObject({
       protocol: "https",
@@ -24,24 +24,24 @@ describe("parseUrl / rebuildUrl", () => {
     ]);
   });
 
-  it("为未带协议的地址补全 HTTPS，并可按参数重建", () => {
+  it("infers HTTPS for protocol-less input and rebuilds with params", () => {
     const parsed = parseUrl("example.com/search?q=hello%20world");
     expect(parsed.inferredProtocol).toBe(true);
     expect(parsed.hostname).toBe("example.com");
     expect(rebuildUrl(parsed, [
-      { key: "q", value: "中文" },
+      { key: "q", value: "café" },
       { key: "page", value: "2" },
-    ])).toBe("https://example.com/search?q=%E4%B8%AD%E6%96%87&page=2");
+    ])).toBe("https://example.com/search?q=caf%C3%A9&page=2");
   });
 
-  it("拒绝空地址和非 HTTP 协议", () => {
+  it("rejects empty input and non-HTTP protocols", () => {
     expect(() => parseUrl(" ")).toThrow("URL");
     expect(() => parseUrl("file:///tmp/a.txt")).toThrow("HTTP");
   });
 });
 
 describe("analyzeCidr", () => {
-  it("计算常规 IPv4 网段", () => {
+  it("computes a regular IPv4 subnet", () => {
     expect(analyzeCidr("192.168.10.25/24")).toMatchObject({
       ip: "192.168.10.25",
       prefix: 24,
@@ -57,7 +57,7 @@ describe("analyzeCidr", () => {
     });
   });
 
-  it("正确处理 /31 与 /32", () => {
+  it("handles /31 and /32", () => {
     expect(analyzeCidr("10.0.0.4/31")).toMatchObject({
       firstHost: "10.0.0.4",
       lastHost: "10.0.0.5",
@@ -72,14 +72,14 @@ describe("analyzeCidr", () => {
     });
   });
 
-  it("拒绝非法 IPv4 和前缀", () => {
+  it("rejects invalid IPv4 and prefix", () => {
     expect(() => analyzeCidr("300.1.1.1/24")).toThrow("IPv4");
-    expect(() => analyzeCidr("10.0.0.1/33")).toThrow("前缀");
+    expect(() => analyzeCidr("10.0.0.1/33")).toThrow("CIDR");
   });
 });
 
 describe("parseUserAgent", () => {
-  it("识别浏览器、系统、平台和引擎", () => {
+  it("detects browser, OS, platform and engine", () => {
     const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0";
     expect(parseUserAgent(ua)).toMatchObject({
@@ -90,7 +90,7 @@ describe("parseUserAgent", () => {
     });
   });
 
-  it("空 UA 返回空结果", () => {
+  it("empty UA returns empty result", () => {
     expect(parseUserAgent("")).toMatchObject({ raw: "", browser: {}, os: {} });
   });
 });

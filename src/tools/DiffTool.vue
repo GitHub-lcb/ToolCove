@@ -1,11 +1,14 @@
 <script setup>
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { buildTextDiff, createUnifiedDiff, splitTextLines } from "../textDiff.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
+
+const { t } = useI18n();
 
 const leftText = ref("");
 const rightText = ref("");
@@ -42,7 +45,7 @@ const displayRows = computed(() => {
 });
 
 function startCompare() {
-  if (!leftText.value && !rightText.value) return props.showToast("请先输入要对比的文本");
+  if (!leftText.value && !rightText.value) return props.showToast(t("toolbox.diff.emptyToast"));
   view.value = "result";
 }
 
@@ -63,12 +66,12 @@ async function copyPatch() {
   } catch (e) {
     return props.showToast(e instanceof Error ? e.message : String(e));
   }
-  if (!patch) return props.showToast("当前文本没有差异");
+  if (!patch) return props.showToast(t("toolbox.diff.noDiff"));
   try {
     await navigator.clipboard.writeText(patch);
-    props.showToast("已复制 Unified Diff");
+    props.showToast(t("toolbox.diff.copiedPatch"));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.diff.copyFailed", { err: String(e) }));
   }
 }
 </script>
@@ -76,34 +79,34 @@ async function copyPatch() {
 <template>
   <div class="diff-tool">
     <div class="toolbar">
-      <div class="view-switch" role="group" aria-label="文本 Diff 视图">
-        <button type="button" :class="{ on: view === 'input' }" @click="view = 'input'">输入</button>
-        <button type="button" :class="{ on: view === 'result' }" @click="startCompare">对比结果</button>
+      <div class="view-switch" role="group" :aria-label="t('toolbox.diff.viewLabel')">
+        <button type="button" :class="{ on: view === 'input' }" @click="view = 'input'">{{ t("toolbox.diff.viewInput") }}</button>
+        <button type="button" :class="{ on: view === 'result' }" @click="startCompare">{{ t("toolbox.diff.viewResult") }}</button>
       </div>
 
       <label class="check-option">
         <input v-model="ignoreWhitespace" type="checkbox" />
-        <span>忽略首尾空白</span>
+        <span>{{ t("toolbox.diff.ignoreWs") }}</span>
       </label>
       <label class="check-option">
         <input v-model="ignoreCase" type="checkbox" />
-        <span>忽略大小写</span>
+        <span>{{ t("toolbox.diff.ignoreCase") }}</span>
       </label>
       <label v-if="view === 'result'" class="check-option">
         <input v-model="onlyChanges" type="checkbox" />
-        <span>只看差异</span>
+        <span>{{ t("toolbox.diff.onlyChanges") }}</span>
       </label>
 
       <span class="toolbar-spacer"></span>
-      <button class="icon-btn" type="button" title="交换左右文本" aria-label="交换左右文本" :disabled="!leftText && !rightText" @click="swapTexts">
+      <button class="icon-btn" type="button" :title="t('toolbox.diff.swapTitle')" :aria-label="t('toolbox.diff.swapTitle')" :disabled="!leftText && !rightText" @click="swapTexts">
         <Icon name="repeat" :size="16" />
       </button>
-      <button class="btn-ghost sm" type="button" :disabled="!leftText && !rightText" @click="clearAll">清空</button>
+      <button class="btn-ghost sm" type="button" :disabled="!leftText && !rightText" @click="clearAll">{{ t("toolbox.diff.clear") }}</button>
       <button v-if="view === 'input'" class="btn-primary sm" type="button" @click="startCompare">
-        <Icon name="git-compare" :size="15" />开始对比
+        <Icon name="git-compare" :size="15" />{{ t("toolbox.diff.startCompare") }}
       </button>
       <button v-else class="btn-outline sm" type="button" :disabled="!comparison.data?.hasChanges" @click="copyPatch">
-        <Icon name="copy" :size="14" />复制 Diff
+        <Icon name="copy" :size="14" />{{ t("toolbox.diff.copyDiff") }}
       </button>
     </div>
 
@@ -111,48 +114,48 @@ async function copyPatch() {
       <section class="editor-panel">
         <header class="panel-head">
           <span class="side-mark left"></span>
-          <b>原始文本</b>
-          <span class="text-stats">{{ leftStats.lines }} 行 · {{ leftStats.chars }} 字符</span>
+          <b>{{ t("toolbox.diff.leftName") }}</b>
+          <span class="text-stats">{{ t("toolbox.diff.stats", { lines: leftStats.lines, chars: leftStats.chars }) }}</span>
         </header>
-        <textarea v-model="leftText" class="text-editor" spellcheck="false" placeholder="粘贴原始文本" aria-label="原始文本"></textarea>
+        <textarea v-model="leftText" class="text-editor" spellcheck="false" :placeholder="t('toolbox.diff.phLeft')" :aria-label="t('toolbox.diff.leftName')"></textarea>
       </section>
 
       <section class="editor-panel">
         <header class="panel-head">
           <span class="side-mark right"></span>
-          <b>新文本</b>
-          <span class="text-stats">{{ rightStats.lines }} 行 · {{ rightStats.chars }} 字符</span>
+          <b>{{ t("toolbox.diff.rightName") }}</b>
+          <span class="text-stats">{{ t("toolbox.diff.stats", { lines: rightStats.lines, chars: rightStats.chars }) }}</span>
         </header>
-        <textarea v-model="rightText" class="text-editor" spellcheck="false" placeholder="粘贴新文本" aria-label="新文本"></textarea>
+        <textarea v-model="rightText" class="text-editor" spellcheck="false" :placeholder="t('toolbox.diff.phRight')" :aria-label="t('toolbox.diff.rightName')"></textarea>
       </section>
     </div>
 
     <section v-else class="result-workspace">
       <div v-if="comparison.error" class="result-state error" role="alert">
         <span><Icon name="alert" :size="22" /></span>
-        <b>无法完成对比</b>
+        <b>{{ t("toolbox.diff.compareFailed") }}</b>
         <p>{{ comparison.error }}</p>
       </div>
 
       <div v-else-if="!comparison.data?.hasChanges" class="result-state same">
         <span><Icon name="check" :size="22" /></span>
-        <b>文本一致</b>
-        <p>按当前忽略规则，没有发现差异</p>
+        <b>{{ t("toolbox.diff.sameTitle") }}</b>
+        <p>{{ t("toolbox.diff.sameDesc") }}</p>
       </div>
 
       <template v-else>
         <div class="result-summary">
-          <span class="summary-title">共 {{ comparison.data.rows.length }} 行</span>
-          <span class="stat modified">{{ comparison.data.stats.modified }} 修改</span>
-          <span class="stat added">{{ comparison.data.stats.added }} 新增</span>
-          <span class="stat removed">{{ comparison.data.stats.removed }} 删除</span>
-          <span class="stat unchanged">{{ comparison.data.stats.unchanged }} 未变</span>
+          <span class="summary-title">{{ t("toolbox.diff.totalRows", { count: comparison.data.rows.length }) }}</span>
+          <span class="stat modified">{{ t("toolbox.diff.statModified", { count: comparison.data.stats.modified }) }}</span>
+          <span class="stat added">{{ t("toolbox.diff.statAdded", { count: comparison.data.stats.added }) }}</span>
+          <span class="stat removed">{{ t("toolbox.diff.statRemoved", { count: comparison.data.stats.removed }) }}</span>
+          <span class="stat unchanged">{{ t("toolbox.diff.statUnchanged", { count: comparison.data.stats.unchanged }) }}</span>
         </div>
 
-        <div class="diff-grid" role="table" aria-label="文本对比结果">
+        <div class="diff-grid" role="table" :aria-label="t('toolbox.diff.tableLabel')">
           <div class="diff-head" role="row">
-            <div role="columnheader"><span class="side-mark left"></span>原始文本</div>
-            <div role="columnheader"><span class="side-mark right"></span>新文本</div>
+            <div role="columnheader"><span class="side-mark left"></span>{{ t("toolbox.diff.leftName") }}</div>
+            <div role="columnheader"><span class="side-mark right"></span>{{ t("toolbox.diff.rightName") }}</div>
           </div>
           <div class="diff-body">
             <div v-for="(row, index) in displayRows" :key="index" class="diff-row" :class="row.type" role="row">
@@ -167,7 +170,7 @@ async function copyPatch() {
                 <code>{{ row.right?.text || "" }}</code>
               </div>
             </div>
-            <p v-if="!displayRows.length" class="filtered-empty">当前没有可显示的差异行</p>
+            <p v-if="!displayRows.length" class="filtered-empty">{{ t("toolbox.diff.filteredEmpty") }}</p>
           </div>
         </div>
       </template>

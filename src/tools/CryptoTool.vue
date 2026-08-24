@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import {
   calculateFileHashes,
@@ -19,14 +20,16 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const TABS = [
-  { key: "digest", label: "文本摘要" },
+const { t } = useI18n();
+
+const TABS = computed(() => [
+  { key: "digest", label: t("toolbox.crypto.tabDigest") },
   { key: "hmac", label: "HMAC" },
   { key: "aes", label: "AES" },
   { key: "rsa", label: "RSA" },
-  { key: "file", label: "文件校验" },
-  { key: "password", label: "密码生成" },
-];
+  { key: "file", label: t("toolbox.crypto.tabFile") },
+  { key: "password", label: t("toolbox.crypto.tabPassword") },
+]);
 const HASH_ALGORITHMS = ["MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"];
 const SECURE_HASH_ALGORITHMS = ["SHA-1", "SHA-256", "SHA-384", "SHA-512"];
 const activeTab = ref("digest");
@@ -78,8 +81,8 @@ const aesPassword = ref("");
 const aesIterations = ref(210000);
 const aesState = ref(taskState());
 async function runAes() {
-  if (!aesInput.value) return props.showToast(aesMode.value === "encrypt" ? "请输入待加密文本" : "请输入 AES 数据包");
-  if (!aesPassword.value) return props.showToast("请输入口令");
+  if (!aesInput.value) return props.showToast(t(aesMode.value === "encrypt" ? "toolbox.crypto.aesNeedText" : "toolbox.crypto.aesNeedPackage"));
+  if (!aesPassword.value) return props.showToast(t("toolbox.crypto.aesNeedPassword"));
   aesState.value = { loading: true, result: "", error: "" };
   try {
     const result = aesMode.value === "encrypt"
@@ -111,15 +114,15 @@ async function generateKeys() {
     rsaPublicKey.value = keys.publicKey;
     rsaPrivateKey.value = keys.privateKey;
     rsaKeyState.value = { loading: false, error: "" };
-    props.showToast("RSA 密钥对已生成");
+    props.showToast(t("toolbox.crypto.keysGenerated"));
   } catch (error) {
     rsaKeyState.value = { loading: false, error: errorMessage(error) };
   }
 }
 async function runRsa() {
-  if (!rsaInput.value) return props.showToast(rsaMode.value === "encrypt" ? "请输入待加密文本" : "请输入 Base64 密文");
+  if (!rsaInput.value) return props.showToast(t(rsaMode.value === "encrypt" ? "toolbox.crypto.aesNeedText" : "toolbox.crypto.rsaNeedCipher"));
   const key = rsaMode.value === "encrypt" ? rsaPublicKey.value : rsaPrivateKey.value;
-  if (!key.trim()) return props.showToast(rsaMode.value === "encrypt" ? "请输入公钥" : "请输入私钥");
+  if (!key.trim()) return props.showToast(t(rsaMode.value === "encrypt" ? "toolbox.crypto.rsaNeedPub" : "toolbox.crypto.rsaNeedPriv"));
   rsaState.value = { loading: true, result: "", error: "" };
   try {
     const result = rsaMode.value === "encrypt"
@@ -155,9 +158,9 @@ function setFile(file) {
   fileProgress.value = 0;
 }
 async function runFileHash() {
-  if (!selectedFile.value) return props.showToast("请选择文件");
+  if (!selectedFile.value) return props.showToast(t("toolbox.crypto.fileNotSelected"));
   const algorithms = Object.entries(fileAlgorithms.value).filter(([, enabled]) => enabled).map(([algorithm]) => algorithm);
-  if (!algorithms.length) return props.showToast("请至少选择一种摘要算法");
+  if (!algorithms.length) return props.showToast(t("toolbox.crypto.fileNoAlgo"));
   fileState.value = { loading: true, results: null, error: "" };
   fileProgress.value = 0;
   try {
@@ -201,14 +204,14 @@ function generatePasswords() {
 }
 
 async function copyPassword(password, index) {
-  if (!await copyText(password, "密码")) return;
+  if (!await copyText(password, "toolbox.crypto.copyPassword")) return;
   copiedPasswordIndex.value = index;
   clearTimeout(passwordCopyTimer);
   passwordCopyTimer = setTimeout(() => { copiedPasswordIndex.value = -1; }, 1800);
 }
 
 async function copyAllPasswords() {
-  if (!await copyText(passwords.value.join("\n"), "全部密码")) return;
+  if (!await copyText(passwords.value.join("\n"), "toolbox.crypto.copyAllPassword")) return;
   copiedAllPasswords.value = true;
   clearTimeout(allPasswordsCopyTimer);
   allPasswordsCopyTimer = setTimeout(() => { copiedAllPasswords.value = false; }, 1800);
@@ -231,17 +234,17 @@ function formatFileSize(bytes) {
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }
-async function copyText(value, label = "结果") {
+async function copyText(value, labelKey = "toolbox.crypto.copyResult", params) {
   if (!value) {
-    props.showToast(`没有可复制的${label}`);
+    props.showToast(t("toolbox.crypto.nothingToCopy", { label: t(labelKey, params) }));
     return false;
   }
   try {
     await navigator.clipboard.writeText(String(value));
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.crypto.copiedLabel", { label: t(labelKey, params) }));
     return true;
   } catch (error) {
-    props.showToast("复制失败：" + errorMessage(error));
+    props.showToast(t("toolbox.crypto.copyFailed", { err: errorMessage(error) }));
     return false;
   }
 }
@@ -249,92 +252,92 @@ async function copyText(value, label = "结果") {
 
 <template>
   <div class="crypto-tool">
-    <nav class="mode-tabs" aria-label="加密与校验类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.crypto.navLabel')">
       <button v-for="tab in TABS" :key="tab.key" type="button" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">{{ tab.label }}</button>
     </nav>
 
     <section v-if="activeTab === 'digest'" class="workspace column-workspace">
       <div class="control-bar">
-        <label class="field"><span>算法</span><select v-model="digestAlgorithm"><option v-for="algorithm in HASH_ALGORITHMS" :key="algorithm">{{ algorithm }}</option></select></label>
-        <div class="segmented" role="group" aria-label="摘要输出格式"><button type="button" :class="{ on: digestOutput === 'hex' }" @click="digestOutput = 'hex'">Hex</button><button type="button" :class="{ on: digestOutput === 'base64' }" @click="digestOutput = 'base64'">Base64</button></div>
-        <span v-if="digestAlgorithm === 'MD5' || digestAlgorithm === 'SHA-1'" class="warn-chip"><Icon name="alert" :size="13" />仅用于兼容校验</span>
+        <label class="field"><span>{{ t("toolbox.crypto.algorithmLabel") }}</span><select v-model="digestAlgorithm"><option v-for="algorithm in HASH_ALGORITHMS" :key="algorithm">{{ algorithm }}</option></select></label>
+        <div class="segmented" role="group" :aria-label="t('toolbox.crypto.digestOutAria')"><button type="button" :class="{ on: digestOutput === 'hex' }" @click="digestOutput = 'hex'">Hex</button><button type="button" :class="{ on: digestOutput === 'base64' }" @click="digestOutput = 'base64'">Base64</button></div>
+        <span v-if="digestAlgorithm === 'MD5' || digestAlgorithm === 'SHA-1'" class="warn-chip"><Icon name="alert" :size="13" />{{ t("toolbox.crypto.warnLegacy") }}</span>
       </div>
       <div class="split-workspace">
-        <section class="panel editor-panel"><header class="panel-head"><b>原文</b><span>{{ digestInput.length }} 字符</span></header><textarea v-model="digestInput" class="text-editor mono" spellcheck="false" placeholder="输入要计算摘要的文本"></textarea></section>
-        <section class="panel editor-panel" :class="{ invalid: digestError }"><header class="panel-head"><b>{{ digestAlgorithm }} 摘要</b><button class="icon-btn xs" title="复制摘要" :disabled="!digestResult" @click="copyText(digestResult, '摘要')"><Icon name="copy" :size="13" /></button></header><div v-if="digestError" class="error-state"><Icon name="alert" :size="20" />{{ digestError }}</div><textarea v-else :value="digestResult" class="text-editor mono output" readonly spellcheck="false" placeholder="摘要结果将在这里显示"></textarea></section>
+        <section class="panel editor-panel"><header class="panel-head"><b>{{ t("toolbox.crypto.digestSrcTitle") }}</b><span>{{ t("toolbox.crypto.charCount", { count: digestInput.length }) }}</span></header><textarea v-model="digestInput" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.crypto.digestPh')"></textarea></section>
+        <section class="panel editor-panel" :class="{ invalid: digestError }"><header class="panel-head"><b>{{ t("toolbox.crypto.digestResultTitle", { algo: digestAlgorithm }) }}</b><button class="icon-btn xs" :title="t('toolbox.crypto.copyDigestTitle')" :disabled="!digestResult" @click="copyText(digestResult, 'toolbox.crypto.copyDigest')"><Icon name="copy" :size="13" /></button></header><div v-if="digestError" class="error-state"><Icon name="alert" :size="20" />{{ digestError }}</div><textarea v-else :value="digestResult" class="text-editor mono output" readonly spellcheck="false" :placeholder="t('toolbox.crypto.digestOutPh')"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'hmac'" class="workspace column-workspace">
       <div class="control-bar hmac-controls">
-        <label class="field"><span>算法</span><select v-model="hmacAlgorithm"><option v-for="algorithm in SECURE_HASH_ALGORITHMS" :key="algorithm">{{ algorithm }}</option></select></label>
-        <label class="field secret-field"><span>密钥</span><input v-model="hmacSecret" class="mono" type="password" placeholder="输入 HMAC 密钥" /></label>
-        <div class="segmented" role="group" aria-label="HMAC 输出格式"><button type="button" :class="{ on: hmacOutput === 'hex' }" @click="hmacOutput = 'hex'">Hex</button><button type="button" :class="{ on: hmacOutput === 'base64' }" @click="hmacOutput = 'base64'">Base64</button></div>
+        <label class="field"><span>{{ t("toolbox.crypto.algorithmLabel") }}</span><select v-model="hmacAlgorithm"><option v-for="algorithm in SECURE_HASH_ALGORITHMS" :key="algorithm">{{ algorithm }}</option></select></label>
+        <label class="field secret-field"><span>{{ t("toolbox.crypto.secretLabel") }}</span><input v-model="hmacSecret" class="mono" type="password" :placeholder="t('toolbox.crypto.hmacSecretPh')" /></label>
+        <div class="segmented" role="group" :aria-label="t('toolbox.crypto.hmacOutAria')"><button type="button" :class="{ on: hmacOutput === 'hex' }" @click="hmacOutput = 'hex'">Hex</button><button type="button" :class="{ on: hmacOutput === 'base64' }" @click="hmacOutput = 'base64'">Base64</button></div>
       </div>
       <div class="split-workspace">
-        <section class="panel editor-panel"><header class="panel-head"><b>消息</b><span>{{ hmacInput.length }} 字符</span></header><textarea v-model="hmacInput" class="text-editor mono" spellcheck="false" placeholder="输入待签名消息"></textarea></section>
-        <section class="panel editor-panel" :class="{ invalid: hmacError }"><header class="panel-head"><b>消息认证码</b><button class="icon-btn xs" title="复制 HMAC" :disabled="!hmacResult" @click="copyText(hmacResult, ' HMAC')"><Icon name="copy" :size="13" /></button></header><div v-if="hmacError" class="error-state"><Icon name="alert" :size="20" />{{ hmacError }}</div><textarea v-else :value="hmacResult" class="text-editor mono output" readonly spellcheck="false" placeholder="输入消息和密钥后自动计算"></textarea></section>
+        <section class="panel editor-panel"><header class="panel-head"><b>{{ t("toolbox.crypto.hmacMsgTitle") }}</b><span>{{ t("toolbox.crypto.charCount", { count: hmacInput.length }) }}</span></header><textarea v-model="hmacInput" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.crypto.hmacMsgPh')"></textarea></section>
+        <section class="panel editor-panel" :class="{ invalid: hmacError }"><header class="panel-head"><b>{{ t("toolbox.crypto.hmacResultTitle") }}</b><button class="icon-btn xs" :title="t('toolbox.crypto.copyHmacTitle')" :disabled="!hmacResult" @click="copyText(hmacResult, 'toolbox.crypto.copyHmac')"><Icon name="copy" :size="13" /></button></header><div v-if="hmacError" class="error-state"><Icon name="alert" :size="20" />{{ hmacError }}</div><textarea v-else :value="hmacResult" class="text-editor mono output" readonly spellcheck="false" :placeholder="t('toolbox.crypto.hmacOutPh')"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'aes'" class="workspace column-workspace">
       <div class="control-bar aes-controls">
-        <div class="segmented"><button type="button" :class="{ on: aesMode === 'encrypt' }" @click="aesMode = 'encrypt'; aesState = taskState()">加密</button><button type="button" :class="{ on: aesMode === 'decrypt' }" @click="aesMode = 'decrypt'; aesState = taskState()">解密</button></div>
-        <label class="field secret-field"><span>口令</span><input v-model="aesPassword" class="mono" type="password" placeholder="输入加密口令" /></label>
-        <label v-if="aesMode === 'encrypt'" class="field iteration-field"><span>PBKDF2 迭代</span><input v-model.number="aesIterations" type="number" min="10000" max="2000000" step="10000" /></label>
+        <div class="segmented"><button type="button" :class="{ on: aesMode === 'encrypt' }" @click="aesMode = 'encrypt'; aesState = taskState()">{{ t("toolbox.crypto.modeEncrypt") }}</button><button type="button" :class="{ on: aesMode === 'decrypt' }" @click="aesMode = 'decrypt'; aesState = taskState()">{{ t("toolbox.crypto.modeDecrypt") }}</button></div>
+        <label class="field secret-field"><span>{{ t("toolbox.crypto.passLabel") }}</span><input v-model="aesPassword" class="mono" type="password" :placeholder="t('toolbox.crypto.aesPassPh')" /></label>
+        <label v-if="aesMode === 'encrypt'" class="field iteration-field"><span>{{ t("toolbox.crypto.pbkdf2Label") }}</span><input v-model.number="aesIterations" type="number" min="10000" max="2000000" step="10000" /></label>
         <span class="secure-chip"><Icon name="lock" :size="13" />AES-256-GCM</span>
-        <button class="btn-primary" type="button" :disabled="aesState.loading" @click="runAes"><Icon name="key" :size="15" />{{ aesMode === 'encrypt' ? '加密' : '解密' }}</button>
+        <button class="btn-primary" type="button" :disabled="aesState.loading" @click="runAes"><Icon name="key" :size="15" />{{ aesMode === 'encrypt' ? t("toolbox.crypto.modeEncrypt") : t("toolbox.crypto.modeDecrypt") }}</button>
       </div>
       <div class="split-workspace">
-        <section class="panel editor-panel"><header class="panel-head"><b>{{ aesMode === 'encrypt' ? '明文' : 'AES 数据包' }}</b><span>{{ aesInput.length }} 字符</span></header><textarea v-model="aesInput" class="text-editor mono" spellcheck="false" :placeholder="aesMode === 'encrypt' ? '输入待加密文本' : '粘贴加密生成的 JSON 数据包'"></textarea></section>
-        <section class="panel editor-panel" :class="{ invalid: aesState.error }"><header class="panel-head"><b>{{ aesMode === 'encrypt' ? '密文数据包' : '解密结果' }}</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!aesState.result" @click="useAesResult">反向处理</button><button class="icon-btn xs" title="复制结果" :disabled="!aesState.result" @click="copyText(aesState.result)"><Icon name="copy" :size="13" /></button></span></header><div v-if="aesState.loading" class="loading-state"><span class="spinner"></span>正在处理</div><div v-else-if="aesState.error" class="error-state"><Icon name="alert" :size="20" />{{ aesState.error }}</div><textarea v-else :value="aesState.result" class="text-editor mono output" readonly spellcheck="false" placeholder="执行结果将在这里显示"></textarea></section>
+        <section class="panel editor-panel"><header class="panel-head"><b>{{ aesMode === 'encrypt' ? t("toolbox.crypto.aesSrcEncTitle") : t("toolbox.crypto.aesSrcDecTitle") }}</b><span>{{ t("toolbox.crypto.charCount", { count: aesInput.length }) }}</span></header><textarea v-model="aesInput" class="text-editor mono" spellcheck="false" :placeholder="aesMode === 'encrypt' ? t('toolbox.crypto.aesSrcEncPh') : t('toolbox.crypto.aesSrcDecPh')"></textarea></section>
+        <section class="panel editor-panel" :class="{ invalid: aesState.error }"><header class="panel-head"><b>{{ aesMode === 'encrypt' ? t("toolbox.crypto.aesOutEncTitle") : t("toolbox.crypto.aesOutDecTitle") }}</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!aesState.result" @click="useAesResult">{{ t("toolbox.crypto.aesReverseBtn") }}</button><button class="icon-btn xs" :title="t('toolbox.crypto.copyResultTitle')" :disabled="!aesState.result" @click="copyText(aesState.result)"><Icon name="copy" :size="13" /></button></span></header><div v-if="aesState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.crypto.processing") }}</div><div v-else-if="aesState.error" class="error-state"><Icon name="alert" :size="20" />{{ aesState.error }}</div><textarea v-else :value="aesState.result" class="text-editor mono output" readonly spellcheck="false" :placeholder="t('toolbox.crypto.runOutPh')"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'rsa'" class="workspace rsa-workspace">
       <div class="control-bar rsa-controls">
-        <div class="segmented"><button type="button" :class="{ on: rsaMode === 'encrypt' }" @click="rsaMode = 'encrypt'; rsaState = taskState()">公钥加密</button><button type="button" :class="{ on: rsaMode === 'decrypt' }" @click="rsaMode = 'decrypt'; rsaState = taskState()">私钥解密</button></div>
-        <label class="field bits-field"><span>密钥长度</span><select v-model.number="rsaBits"><option :value="2048">2048</option><option :value="3072">3072</option><option :value="4096">4096</option></select></label>
-        <button class="btn-outline" type="button" :disabled="rsaKeyState.loading" @click="generateKeys"><Icon name="key" :size="15" />生成密钥对</button>
+        <div class="segmented"><button type="button" :class="{ on: rsaMode === 'encrypt' }" @click="rsaMode = 'encrypt'; rsaState = taskState()">{{ t("toolbox.crypto.rsaModeEncrypt") }}</button><button type="button" :class="{ on: rsaMode === 'decrypt' }" @click="rsaMode = 'decrypt'; rsaState = taskState()">{{ t("toolbox.crypto.rsaModeDecrypt") }}</button></div>
+        <label class="field bits-field"><span>{{ t("toolbox.crypto.rsaBitsLabel") }}</span><select v-model.number="rsaBits"><option :value="2048">2048</option><option :value="3072">3072</option><option :value="4096">4096</option></select></label>
+        <button class="btn-outline" type="button" :disabled="rsaKeyState.loading" @click="generateKeys"><Icon name="key" :size="15" />{{ t("toolbox.crypto.genKeysBtn") }}</button>
         <span v-if="rsaKeyState.error" class="inline-error compact">{{ rsaKeyState.error }}</span>
       </div>
       <div class="rsa-grid">
-        <section class="panel key-panel"><header class="panel-head"><b>{{ rsaMode === 'encrypt' ? '公钥（SPKI PEM）' : '私钥（PKCS#8 PEM）' }}</b><button class="icon-btn xs" title="复制密钥" :disabled="rsaMode === 'encrypt' ? !rsaPublicKey : !rsaPrivateKey" @click="copyText(rsaMode === 'encrypt' ? rsaPublicKey : rsaPrivateKey, '密钥')"><Icon name="copy" :size="13" /></button></header><textarea v-if="rsaMode === 'encrypt'" v-model="rsaPublicKey" class="text-editor mono key-editor" spellcheck="false" placeholder="粘贴 RSA 公钥，或生成新密钥对"></textarea><textarea v-else v-model="rsaPrivateKey" class="text-editor mono key-editor" spellcheck="false" placeholder="粘贴 RSA 私钥，或生成新密钥对"></textarea></section>
+        <section class="panel key-panel"><header class="panel-head"><b>{{ rsaMode === 'encrypt' ? t("toolbox.crypto.rsaPubTitle") : t("toolbox.crypto.rsaPrivTitle") }}</b><button class="icon-btn xs" :title="t('toolbox.crypto.copyKeyTitle')" :disabled="rsaMode === 'encrypt' ? !rsaPublicKey : !rsaPrivateKey" @click="copyText(rsaMode === 'encrypt' ? rsaPublicKey : rsaPrivateKey, 'toolbox.crypto.copyKey')"><Icon name="copy" :size="13" /></button></header><textarea v-if="rsaMode === 'encrypt'" v-model="rsaPublicKey" class="text-editor mono key-editor" spellcheck="false" :placeholder="t('toolbox.crypto.rsaPubPh')"></textarea><textarea v-else v-model="rsaPrivateKey" class="text-editor mono key-editor" spellcheck="false" :placeholder="t('toolbox.crypto.rsaPrivPh')"></textarea></section>
         <section class="rsa-message">
-          <div class="rsa-runbar"><span class="secure-chip"><Icon name="lock" :size="13" />RSA-OAEP / SHA-256</span><button class="btn-primary" type="button" :disabled="rsaState.loading" @click="runRsa">{{ rsaMode === 'encrypt' ? '加密' : '解密' }}</button></div>
+          <div class="rsa-runbar"><span class="secure-chip"><Icon name="lock" :size="13" />RSA-OAEP / SHA-256</span><button class="btn-primary" type="button" :disabled="rsaState.loading" @click="runRsa">{{ rsaMode === 'encrypt' ? t("toolbox.crypto.modeEncrypt") : t("toolbox.crypto.modeDecrypt") }}</button></div>
           <div class="rsa-editors">
-            <section class="panel editor-panel"><header class="panel-head"><b>{{ rsaMode === 'encrypt' ? '短文本' : 'Base64 密文' }}</b></header><textarea v-model="rsaInput" class="text-editor mono" spellcheck="false" :placeholder="rsaMode === 'encrypt' ? 'RSA 适合加密短文本或对称密钥' : '粘贴 RSA-OAEP 密文'"></textarea></section>
-            <section class="panel editor-panel" :class="{ invalid: rsaState.error }"><header class="panel-head"><b>结果</b><button class="icon-btn xs" title="复制结果" :disabled="!rsaState.result" @click="copyText(rsaState.result)"><Icon name="copy" :size="13" /></button></header><div v-if="rsaState.loading" class="loading-state"><span class="spinner"></span>正在处理</div><div v-else-if="rsaState.error" class="error-state"><Icon name="alert" :size="20" />{{ rsaState.error }}</div><textarea v-else :value="rsaState.result" class="text-editor mono output" readonly spellcheck="false" placeholder="执行结果将在这里显示"></textarea></section>
+            <section class="panel editor-panel"><header class="panel-head"><b>{{ rsaMode === 'encrypt' ? t("toolbox.crypto.rsaSrcEncTitle") : t("toolbox.crypto.rsaSrcDecTitle") }}</b></header><textarea v-model="rsaInput" class="text-editor mono" spellcheck="false" :placeholder="rsaMode === 'encrypt' ? t('toolbox.crypto.rsaSrcEncPh') : t('toolbox.crypto.rsaSrcDecPh')"></textarea></section>
+            <section class="panel editor-panel" :class="{ invalid: rsaState.error }"><header class="panel-head"><b>{{ t("toolbox.crypto.resultTitle") }}</b><button class="icon-btn xs" :title="t('toolbox.crypto.copyResultTitle')" :disabled="!rsaState.result" @click="copyText(rsaState.result)"><Icon name="copy" :size="13" /></button></header><div v-if="rsaState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.crypto.processing") }}</div><div v-else-if="rsaState.error" class="error-state"><Icon name="alert" :size="20" />{{ rsaState.error }}</div><textarea v-else :value="rsaState.result" class="text-editor mono output" readonly spellcheck="false" :placeholder="t('toolbox.crypto.runOutPh')"></textarea></section>
           </div>
         </section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'file'" class="workspace file-workspace">
-      <div class="file-controls"><div class="algorithm-checks"><span>摘要算法</span><label v-for="algorithm in HASH_ALGORITHMS" :key="algorithm"><input v-model="fileAlgorithms[algorithm]" type="checkbox" />{{ algorithm }}</label></div><button class="btn-primary" type="button" :disabled="fileState.loading || !selectedFile" @click="runFileHash"><Icon name="shield" :size="15" />计算校验值</button></div>
+      <div class="file-controls"><div class="algorithm-checks"><span>{{ t("toolbox.crypto.fileAlgoLabel") }}</span><label v-for="algorithm in HASH_ALGORITHMS" :key="algorithm"><input v-model="fileAlgorithms[algorithm]" type="checkbox" />{{ algorithm }}</label></div><button class="btn-primary" type="button" :disabled="fileState.loading || !selectedFile" @click="runFileHash"><Icon name="shield" :size="15" />{{ t("toolbox.crypto.fileRunBtn") }}</button></div>
       <input ref="fileInput" class="hidden-file" type="file" @change="onFileSelected" />
       <button class="file-drop" :class="{ dragging: draggingFile }" type="button" @click="chooseFile" @dragover.prevent="draggingFile = true" @dragleave.prevent="draggingFile = false" @drop.prevent="onFileDrop">
         <span class="file-icon"><Icon name="file" :size="24" /></span>
-        <template v-if="selectedFile"><b :title="selectedFile.name">{{ selectedFile.name }}</b><span>{{ formatFileSize(selectedFile.size) }} · 点击更换文件</span></template>
-        <template v-else><b>选择文件</b><span>点击选择，或拖放文件到这里</span></template>
+        <template v-if="selectedFile"><b :title="selectedFile.name">{{ selectedFile.name }}</b><span>{{ formatFileSize(selectedFile.size) }} · {{ t("toolbox.crypto.fileChangeHint") }}</span></template>
+        <template v-else><b>{{ t("toolbox.crypto.fileChooseBtn") }}</b><span>{{ t("toolbox.crypto.fileDropHint") }}</span></template>
       </button>
       <div v-if="fileState.loading" class="progress-row"><div><span :style="{ width: `${Math.round(fileProgress * 100)}%` }"></span></div><b>{{ Math.round(fileProgress * 100) }}%</b></div>
       <div v-if="fileState.error" class="inline-error"><Icon name="alert" :size="16" />{{ fileState.error }}</div>
-      <div v-if="fileState.results" class="hash-results"><div v-for="(value, algorithm) in fileState.results" :key="algorithm" class="hash-row"><b>{{ algorithm }}</b><code :title="value">{{ value }}</code><button class="icon-btn xs" title="复制校验值" @click="copyText(value, `${algorithm} 校验值`)"><Icon name="copy" :size="13" /></button></div></div>
-      <div v-else-if="!fileState.loading" class="blank-state"><Icon name="shield" :size="26" /><span>文件内容只在本机读取并计算</span></div>
+      <div v-if="fileState.results" class="hash-results"><div v-for="(value, algorithm) in fileState.results" :key="algorithm" class="hash-row"><b>{{ algorithm }}</b><code :title="value">{{ value }}</code><button class="icon-btn xs" :title="t('toolbox.crypto.copyChecksumTitle')" @click="copyText(value, 'toolbox.crypto.copyChecksum', { algorithm })"><Icon name="copy" :size="13" /></button></div></div>
+      <div v-else-if="!fileState.loading" class="blank-state"><Icon name="shield" :size="26" /><span>{{ t("toolbox.crypto.fileLocalNote") }}</span></div>
     </section>
 
     <section v-else class="workspace password-workspace">
       <div class="password-controls">
-        <div class="length-control"><label><span>长度</span><input v-model.number="passwordOptions.length" type="number" min="4" max="256" /></label><input v-model.number="passwordOptions.length" type="range" min="4" max="64" /></div>
-        <label class="field count-field"><span>数量</span><input v-model.number="passwordOptions.count" type="number" min="1" max="20" /></label>
-        <div class="charset-options"><label><input v-model="passwordOptions.uppercase" type="checkbox" />大写字母</label><label><input v-model="passwordOptions.lowercase" type="checkbox" />小写字母</label><label><input v-model="passwordOptions.numbers" type="checkbox" />数字</label><label><input v-model="passwordOptions.symbols" type="checkbox" />符号</label><label><input v-model="passwordOptions.excludeAmbiguous" type="checkbox" />排除易混字符</label></div>
-        <button class="btn-primary" type="button" @click="generatePasswords"><Icon name="dice" :size="15" />生成</button>
+        <div class="length-control"><label><span>{{ t("toolbox.crypto.lengthLabel") }}</span><input v-model.number="passwordOptions.length" type="number" min="4" max="256" /></label><input v-model.number="passwordOptions.length" type="range" min="4" max="64" /></div>
+        <label class="field count-field"><span>{{ t("toolbox.crypto.countLabel") }}</span><input v-model.number="passwordOptions.count" type="number" min="1" max="20" /></label>
+        <div class="charset-options"><label><input v-model="passwordOptions.uppercase" type="checkbox" />{{ t("toolbox.crypto.optUpper") }}</label><label><input v-model="passwordOptions.lowercase" type="checkbox" />{{ t("toolbox.crypto.optLower") }}</label><label><input v-model="passwordOptions.numbers" type="checkbox" />{{ t("toolbox.crypto.optNumber") }}</label><label><input v-model="passwordOptions.symbols" type="checkbox" />{{ t("toolbox.crypto.optSymbol") }}</label><label><input v-model="passwordOptions.excludeAmbiguous" type="checkbox" />{{ t("toolbox.crypto.optExcludeAmbiguous") }}</label></div>
+        <button class="btn-primary" type="button" @click="generatePasswords"><Icon name="dice" :size="15" />{{ t("toolbox.crypto.genBtn") }}</button>
       </div>
       <div v-if="passwordError" class="inline-error"><Icon name="alert" :size="16" />{{ passwordError }}</div>
-      <div v-if="passwords.length" class="password-summary"><span>首条密码强度</span><b>{{ passwordStrength.label }}</b><code>{{ passwordStrength.entropy }} bit 熵</code><span>{{ passwordPoolSize }} 个候选字符</span><button class="btn-ghost xs copy-all-btn" :class="{ copied: copiedAllPasswords }" @click="copyAllPasswords"><Icon v-if="copiedAllPasswords" name="check" :size="13" />{{ copiedAllPasswords ? "已复制" : "复制全部" }}</button></div>
-      <div v-if="passwords.length" class="password-list"><div v-for="(password, index) in passwords" :key="index" class="password-row"><span>{{ index + 1 }}</span><code :title="password">{{ password }}</code><button class="icon-btn xs password-copy-btn" :class="{ copied: copiedPasswordIndex === index }" :title="copiedPasswordIndex === index ? '已复制' : '复制密码'" :aria-label="copiedPasswordIndex === index ? '已复制密码' : '复制密码'" @click="copyPassword(password, index)"><Icon :name="copiedPasswordIndex === index ? 'check' : 'copy'" :size="13" /></button></div></div>
-      <div v-else class="blank-state"><Icon name="dice" :size="26" /><span>使用系统密码学安全随机数生成密码</span></div>
+      <div v-if="passwords.length" class="password-summary"><span>{{ t("toolbox.crypto.strengthCaption") }}</span><b>{{ passwordStrength.label }}</b><code>{{ t("toolbox.crypto.entropyText", { bits: passwordStrength.entropy }) }}</code><span>{{ t("toolbox.crypto.poolText", { count: passwordPoolSize }) }}</span><button class="btn-ghost xs copy-all-btn" :class="{ copied: copiedAllPasswords }" @click="copyAllPasswords"><Icon v-if="copiedAllPasswords" name="check" :size="13" />{{ copiedAllPasswords ? t("toolbox.crypto.copiedAll") : t("toolbox.crypto.copyAllBtn") }}</button></div>
+      <div v-if="passwords.length" class="password-list"><div v-for="(password, index) in passwords" :key="index" class="password-row"><span>{{ index + 1 }}</span><code :title="password">{{ password }}</code><button class="icon-btn xs password-copy-btn" :class="{ copied: copiedPasswordIndex === index }" :title="copiedPasswordIndex === index ? t('toolbox.crypto.copiedTitle') : t('toolbox.crypto.copyPwdTitle')" :aria-label="copiedPasswordIndex === index ? t('toolbox.crypto.copiedPwdAria') : t('toolbox.crypto.copyPwdAria')" @click="copyPassword(password, index)"><Icon :name="copiedPasswordIndex === index ? 'check' : 'copy'" :size="13" /></button></div></div>
+      <div v-else class="blank-state"><Icon name="dice" :size="26" /><span>{{ t("toolbox.crypto.passwordBlankNote") }}</span></div>
     </section>
   </div>
 </template>

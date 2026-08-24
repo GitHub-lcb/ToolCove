@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "./i18n/index.js";
 import {
   buildHighlightSegments,
   convertNaming,
@@ -9,7 +10,7 @@ import {
 } from "./textTool.js";
 
 describe("findRegexMatches", () => {
-  it("返回全部匹配、捕获组和命名捕获组", () => {
+  it("returns all matches with capture and named groups", () => {
     const result = findRegexMatches("(?<key>\\w+)=(\\d+)", "a=1 b=22", "g");
     expect(result.matches).toHaveLength(2);
     expect(result.matches[1]).toMatchObject({
@@ -21,34 +22,35 @@ describe("findRegexMatches", () => {
     });
   });
 
-  it("非全局模式只返回首个匹配，零长度全局匹配不会死循环", () => {
+  it("non-global returns first match only; zero-length global match does not loop", () => {
     expect(findRegexMatches("a", "a a", "").matches).toHaveLength(1);
     expect(findRegexMatches("^|$", "abc", "gm").matches).toHaveLength(2);
   });
 
-  it("非法表达式抛出中文错误", () => {
-    expect(() => findRegexMatches("[", "text", "g")).toThrow("正则表达式无效");
+  it("invalid expression throws localized error", () => {
+    const prefix = i18n.global.t("toolbox.text.errInvalidRegex", { err: "" }).replace(/[\s：:]+$/, "");
+    expect(() => findRegexMatches("[", "text", "g")).toThrow(prefix);
   });
 });
 
 describe("buildHighlightSegments", () => {
-  it("按匹配范围生成文本与高亮片段", () => {
-    const matches = findRegexMatches("\\d+", "订单12金额300", "g").matches;
-    expect(buildHighlightSegments("订单12金额300", matches)).toEqual([
-      { text: "订单", match: false },
+  it("builds text and highlight segments by match ranges", () => {
+    const matches = findRegexMatches("\\d+", "order12amount300", "g").matches;
+    expect(buildHighlightSegments("order12amount300", matches)).toEqual([
+      { text: "order", match: false },
       { text: "12", match: true, matchIndex: 0 },
-      { text: "金额", match: false },
+      { text: "amount", match: false },
       { text: "300", match: true, matchIndex: 1 },
     ]);
   });
 });
 
 describe("replaceText", () => {
-  it("普通替换支持全部替换且不解释正则字符", () => {
+  it("plain replace supports replaceAll without regex interpretation", () => {
     expect(replaceText("a.b a.b", ".", "-", { replaceAll: true })).toBe("a-b a-b");
   });
 
-  it("正则替换支持捕获组和忽略大小写", () => {
+  it("regex replace supports capture groups and ignoreCase", () => {
     expect(replaceText("Name: Tom\nNAME: Bob", "name: (\\w+)", "$1", {
       regex: true,
       replaceAll: true,
@@ -56,7 +58,7 @@ describe("replaceText", () => {
     })).toBe("Tom\nBob");
   });
 
-  it("查找内容为空时保持原文", () => {
+  it("empty find keeps original text", () => {
     expect(replaceText("abc", "", "x", { replaceAll: true })).toBe("abc");
   });
 });
@@ -64,11 +66,11 @@ describe("replaceText", () => {
 describe("processLines", () => {
   const source = " beta \nalpha\nbeta\n\n10\n2";
 
-  it("去重保持首次出现顺序并可忽略首尾空白", () => {
+  it("dedupe keeps first occurrence order and can ignore trim", () => {
     expect(processLines(source, "dedupe", { trimForCompare: true })).toBe(" beta \nalpha\n\n10\n2");
   });
 
-  it("支持排序、过滤空行、清理空白和前后缀", () => {
+  it("supports sort, remove empty, trim and affix", () => {
     expect(processLines("10\n2\n1", "sort-number")).toBe("1\n2\n10");
     expect(processLines("a\n\n b ", "remove-empty")).toBe("a\n b ");
     expect(processLines(" a \n b ", "trim")).toBe("a\nb");
@@ -77,21 +79,22 @@ describe("processLines", () => {
 });
 
 describe("convertNaming", () => {
-  it("拆分驼峰、缩写、数字并转换为常用命名风格", () => {
+  it("splits camel/acronyms/digits into common naming styles", () => {
     expect(convertNaming("HTTPServer2 config", "camel")).toBe("httpServer2Config");
     expect(convertNaming("HTTPServer2 config", "pascal")).toBe("HttpServer2Config");
     expect(convertNaming("HTTPServer2 config", "snake")).toBe("http_server_2_config");
     expect(convertNaming("HTTPServer2 config", "constant")).toBe("HTTP_SERVER_2_CONFIG");
   });
 
-  it("纯空白输入返回空串", () => {
+  it("whitespace-only input returns empty string", () => {
     expect(convertNaming("  ", "kebab")).toBe("");
   });
 });
 
 describe("getTextStats", () => {
-  it("统计字符、非空白、行、单词、中文、UTF-8 字节与重复行", () => {
-    expect(getTextStats("hello 世界\nhello 世界\n")).toEqual({
+  it("counts characters, lines, words, CJK, UTF-8 bytes and duplicates", () => {
+    // "世界" x2 written as unicode escapes to keep source pure ASCII
+    expect(getTextStats("hello \u4e16\u754c\nhello \u4e16\u754c\n")).toEqual({
       characters: 18,
       charactersNoWhitespace: 14,
       lines: 2,
@@ -104,7 +107,7 @@ describe("getTextStats", () => {
     });
   });
 
-  it("空文本所有统计为零", () => {
+  it("empty text yields all-zero stats", () => {
     expect(getTextStats("")).toMatchObject({ characters: 0, lines: 0, bytes: 0 });
   });
 });

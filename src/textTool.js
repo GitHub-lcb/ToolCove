@@ -1,3 +1,7 @@
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 const MAX_MATCHES = 1000;
 
 function normalizeFlags(flags, forceGlobal = false) {
@@ -15,7 +19,7 @@ function compileRegex(pattern, flags) {
     return new RegExp(String(pattern ?? ""), normalizeFlags(flags));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new Error(`正则表达式无效：${message}`);
+    throw new Error(t("toolbox.text.errInvalidRegex", { err: message }));
   }
 }
 
@@ -122,7 +126,7 @@ export function processLines(text, action, options = {}) {
       lines.reverse();
       break;
     default:
-      throw new Error("不支持的行处理操作");
+      throw new Error(t("toolbox.text.errLineAction"));
   }
   return lines.join("\n");
 }
@@ -150,7 +154,7 @@ export function convertNaming(text, style) {
     case "constant": return words.join("_").toUpperCase();
     case "dot": return words.join(".");
     case "space": return words.join(" ");
-    default: throw new Error("不支持的命名风格");
+    default: throw new Error(t("toolbox.text.errNamingStyle"));
   }
 }
 

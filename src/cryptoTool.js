@@ -6,6 +6,16 @@ import {
   createSHA512,
   md5,
 } from "hash-wasm";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
+// 数据包/编码类错误打标记，供 decryptAes 区分「数据问题」与「口令错误」
+function dataError(key, params) {
+  const err = new Error(t(key, params));
+  err.isDataError = true;
+  return err;
+}
 
 const HASH_FACTORIES = {
   MD5: createMD5,
@@ -19,7 +29,7 @@ const ENCODER = new TextEncoder();
 const DECODER = new TextDecoder();
 
 function subtle() {
-  if (!globalThis.crypto?.subtle) throw new Error("当前环境不支持 Web Crypto");
+  if (!globalThis.crypto?.subtle) throw new Error(t("toolbox.crypto.errNoWebCrypto"));
   return globalThis.crypto.subtle;
 }
 
@@ -29,7 +39,7 @@ function bytesToHex(bytes) {
 
 function hexToBytes(hex) {
   const value = String(hex ?? "").replace(/\s/g, "");
-  if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw new Error("十六进制数据格式无效");
+  if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw dataError("toolbox.crypto.errInvalidHexData");
   return Uint8Array.from(value.match(/.{2}/g), (item) => Number.parseInt(item, 16));
 }
 
@@ -47,7 +57,7 @@ function base64ToBytes(value) {
   try {
     binary = atob(String(value ?? "").replace(/\s/g, ""));
   } catch {
-    throw new Error("Base64 数据格式无效");
+    throw dataError("toolbox.crypto.errInvalidBase64Data");
   }
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
@@ -62,13 +72,13 @@ export async function digestText(text, algorithm = "SHA-256", output = "hex") {
     const hex = await md5(value);
     return output === "base64" ? bytesToBase64(hexToBytes(hex)) : hex;
   }
-  if (!WEB_HASHES.has(algorithm)) throw new Error("不支持的摘要算法");
+  if (!WEB_HASHES.has(algorithm)) throw new Error(t("toolbox.crypto.errUnsupportedDigest"));
   const result = await subtle().digest(algorithm, ENCODER.encode(value));
   return formatBytes(new Uint8Array(result), output);
 }
 
 export async function hmacText(text, secret, algorithm = "SHA-256", output = "hex") {
-  if (!WEB_HASHES.has(algorithm)) throw new Error("不支持的 HMAC 算法");
+  if (!WEB_HASHES.has(algorithm)) throw new Error(t("toolbox.crypto.errUnsupportedHmac"));
   const key = await subtle().importKey(
     "raw",
     ENCODER.encode(String(secret ?? "")),
@@ -92,9 +102,9 @@ async function deriveAesKey(password, salt, iterations, usage) {
 }
 
 export async function encryptAes(text, password, iterations = 210_000) {
-  if (!String(password ?? "")) throw new Error("请输入加密口令");
+  if (!String(password ?? "")) throw new Error(t("toolbox.crypto.errEncryptPassword"));
   const rounds = Number(iterations);
-  if (!Number.isInteger(rounds) || rounds < 10_000 || rounds > 2_000_000) throw new Error("PBKDF2 迭代次数必须在 10000 到 2000000 之间");
+  if (!Number.isInteger(rounds) || rounds < 10_000 || rounds > 2_000_000) throw new Error(t("toolbox.crypto.errIterations"));
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveAesKey(String(password), salt, rounds, "encrypt");
@@ -111,15 +121,15 @@ export async function encryptAes(text, password, iterations = 210_000) {
 }
 
 export async function decryptAes(payload, password) {
-  if (!String(password ?? "")) throw new Error("请输入解密口令");
+  if (!String(password ?? "")) throw new Error(t("toolbox.crypto.errDecryptPassword"));
   let parsed;
   try {
     parsed = JSON.parse(String(payload ?? ""));
   } catch {
-    throw new Error("密文不是有效的 AES 数据包");
+    throw dataError("toolbox.crypto.errAesPacketInvalid");
   }
   if (parsed?.v !== 1 || parsed.alg !== "AES-256-GCM" || parsed.kdf !== "PBKDF2-SHA256") {
-    throw new Error("不支持的 AES 数据包格式");
+    throw dataError("toolbox.crypto.errAesPacketFormat");
   }
   try {
     const salt = base64ToBytes(parsed.salt);
@@ -129,8 +139,8 @@ export async function decryptAes(payload, password) {
     const plain = await subtle().decrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, data);
     return DECODER.decode(plain);
   } catch (error) {
-    if (error instanceof Error && /数据包|Base64/.test(error.message)) throw error;
-    throw new Error("解密失败：口令错误或密文已损坏");
+    if (error instanceof Error && error.isDataError) throw error;
+    throw new Error(t("toolbox.crypto.errDecryptFailed"));
   }
 }
 
@@ -144,13 +154,13 @@ function bytesFromPem(pem, label) {
   const value = String(pem ?? "").trim();
   const begin = `-----BEGIN ${label}-----`;
   const end = `-----END ${label}-----`;
-  if (!value.includes(begin) || !value.includes(end)) throw new Error(`${label} PEM 格式无效`);
+  if (!value.includes(begin) || !value.includes(end)) throw new Error(t("toolbox.crypto.errInvalidPem", { label }));
   return base64ToBytes(value.replace(begin, "").replace(end, "").replace(/\s/g, ""));
 }
 
 export async function generateRsaKeyPair(modulusLength = 2048) {
   const size = Number(modulusLength);
-  if (![2048, 3072, 4096].includes(size)) throw new Error("RSA 密钥长度仅支持 2048、3072 或 4096 位");
+  if (![2048, 3072, 4096].includes(size)) throw new Error(t("toolbox.crypto.errRsaSize"));
   const pair = await subtle().generateKey(
     { name: "RSA-OAEP", modulusLength: size, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
     true,
@@ -174,7 +184,7 @@ export async function encryptRsa(text, publicKeyPem) {
     const encrypted = await subtle().encrypt({ name: "RSA-OAEP" }, key, bytes);
     return bytesToBase64(new Uint8Array(encrypted));
   } catch {
-    throw new Error("RSA 加密失败：文本可能超过当前密钥长度限制");
+    throw new Error(t("toolbox.crypto.errRsaEncrypt"));
   }
 }
 
@@ -185,14 +195,14 @@ export async function decryptRsa(ciphertext, privateKeyPem) {
     const decrypted = await subtle().decrypt({ name: "RSA-OAEP" }, key, base64ToBytes(ciphertext));
     return DECODER.decode(decrypted);
   } catch {
-    throw new Error("RSA 解密失败：私钥不匹配或密文已损坏");
+    throw new Error(t("toolbox.crypto.errRsaDecrypt"));
   }
 }
 
 export async function calculateFileHashes(file, algorithms, options = {}) {
-  if (!file || typeof file.slice !== "function") throw new Error("请选择文件");
+  if (!file || typeof file.slice !== "function") throw new Error(t("toolbox.crypto.errNoFile"));
   const selected = [...new Set(algorithms || [])];
-  if (!selected.length || selected.some((algorithm) => !HASH_FACTORIES[algorithm])) throw new Error("请选择有效的摘要算法");
+  if (!selected.length || selected.some((algorithm) => !HASH_FACTORIES[algorithm])) throw new Error(t("toolbox.crypto.errInvalidAlgorithms"));
   const hashers = await Promise.all(selected.map((algorithm) => HASH_FACTORIES[algorithm]()));
   hashers.forEach((hasher) => hasher.init());
   const chunkSize = Math.max(64 * 1024, Number(options.chunkSize) || 4 * 1024 * 1024);
@@ -215,7 +225,7 @@ const PASSWORD_SETS = {
 const AMBIGUOUS = /[Il1O0o]/g;
 
 function randomIndex(max) {
-  if (max <= 0) throw new Error("随机字符集为空");
+  if (max <= 0) throw new Error(t("toolbox.crypto.errEmptyCharset"));
   const limit = Math.floor(0x100000000 / max) * max;
   const value = new Uint32Array(1);
   do crypto.getRandomValues(value); while (value[0] >= limit);
@@ -224,12 +234,12 @@ function randomIndex(max) {
 
 export function generatePassword(options = {}) {
   const length = Number(options.length ?? 20);
-  if (!Number.isInteger(length) || length < 4 || length > 256) throw new Error("密码长度必须在 4 到 256 之间");
+  if (!Number.isInteger(length) || length < 4 || length > 256) throw new Error(t("toolbox.crypto.errPasswordLength"));
   const enabled = Object.entries(PASSWORD_SETS)
     .filter(([key]) => options[key] !== false)
     .map(([key, chars]) => options.excludeAmbiguous ? chars.replace(AMBIGUOUS, "") : chars);
-  if (!enabled.length) throw new Error("请至少选择一个字符集");
-  if (length < enabled.length) throw new Error("密码长度不能小于已选字符集数量");
+  if (!enabled.length) throw new Error(t("toolbox.crypto.errNoCharset"));
+  if (length < enabled.length) throw new Error(t("toolbox.crypto.errLengthTooSmall"));
   const pool = enabled.join("");
   const result = enabled.map((chars) => chars[randomIndex(chars.length)]);
   while (result.length < length) result.push(pool[randomIndex(pool.length)]);
@@ -242,7 +252,13 @@ export function generatePassword(options = {}) {
 
 export function getPasswordStrength(password, poolSize) {
   const entropy = Math.round(String(password ?? "").length * Math.log2(Math.max(1, Number(poolSize) || 1)));
-  const label = entropy >= 120 ? "强" : entropy >= 80 ? "较强" : entropy >= 50 ? "一般" : "较弱";
+  const label = entropy >= 120
+    ? t("toolbox.crypto.strengthStrong")
+    : entropy >= 80
+      ? t("toolbox.crypto.strengthGood")
+      : entropy >= 50
+        ? t("toolbox.crypto.strengthFair")
+        : t("toolbox.crypto.strengthWeak");
   return { entropy, label };
 }
 

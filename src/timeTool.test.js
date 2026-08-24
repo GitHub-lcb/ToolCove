@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { i18n } from "./i18n/index.js";
 import {
   addDateTime,
   calculateDateDifference,
@@ -8,8 +9,11 @@ import {
   parseTimestamp,
 } from "./timeTool.js";
 
+// 固定英文 locale，使 weekday 等本地化输出可断言
+i18n.global.locale.value = "en-US";
+
 describe("parseTimestamp", () => {
-  it("自动识别秒级与毫秒级时间戳", () => {
+  it("auto-detects seconds vs milliseconds timestamps", () => {
     expect(parseTimestamp("1786505400")).toMatchObject({
       milliseconds: 1786505400000,
       seconds: 1786505400,
@@ -22,50 +26,50 @@ describe("parseTimestamp", () => {
     });
   });
 
-  it("拒绝非整数和超出可表示范围的时间戳", () => {
-    expect(() => parseTimestamp("123.45")).toThrow("整数");
-    expect(() => parseTimestamp("999999999999999999")).toThrow("范围");
+  it("rejects non-integer and out-of-range timestamps", () => {
+    expect(() => parseTimestamp("123.45")).toThrow(i18n.global.t("toolbox.time.errTimestampInteger"));
+    expect(() => parseTimestamp("999999999999999999")).toThrow(i18n.global.t("toolbox.time.errTimestampRange"));
   });
 });
 
 describe("formatInstant", () => {
-  it("在指定 IANA 时区格式化同一时刻", () => {
+  it("formats the same instant in given IANA zones", () => {
     expect(formatInstant(1786505400000, "Asia/Shanghai")).toMatchObject({
       dateTime: "2026-08-12 11:30:00.000",
       offset: "UTC+8",
-      weekday: "星期三",
+      weekday: "Wednesday",
     });
     expect(formatInstant(1786505400000, "America/New_York")).toMatchObject({
       dateTime: "2026-08-11 23:30:00.000",
       offset: "UTC-4",
-      weekday: "星期二",
+      weekday: "Tuesday",
     });
   });
 });
 
 describe("convertZonedDateTime", () => {
-  it("把上海墙上时间转换为纽约时间", () => {
+  it("converts Shanghai wall time to New York time", () => {
     const result = convertZonedDateTime("2026-08-12T11:30", "Asia/Shanghai", "America/New_York");
     expect(result.source.dateTime).toBe("2026-08-12 11:30:00");
     expect(result.target.dateTime).toBe("2026-08-11 23:30:00");
     expect(result.timestamp).toBe(1786505400000);
   });
 
-  it("拒绝不存在的夏令时时刻", () => {
+  it("rejects nonexistent DST instants", () => {
     expect(() => convertZonedDateTime("2026-03-08T02:30", "America/New_York", "Asia/Shanghai"))
-      .toThrow("不存在");
+      .toThrow(i18n.global.t("toolbox.time.errDstGap"));
   });
 });
 
-describe("日期计算", () => {
-  it("使用日历语义处理闰年和月底", () => {
+describe("date arithmetic", () => {
+  it("uses calendar semantics for leap years and month ends", () => {
     expect(addDateTime("2024-02-28T10:00", 1, "days", "Asia/Shanghai").dateTime)
       .toBe("2024-02-29 10:00:00");
     expect(addDateTime("2024-01-31T10:00", 1, "months", "Asia/Shanghai").dateTime)
       .toBe("2024-02-29 10:00:00");
   });
 
-  it("计算两个时刻之间的正负间隔", () => {
+  it("computes signed intervals between two instants", () => {
     expect(calculateDateDifference("2026-08-12T08:00", "2026-08-13T10:30", "Asia/Shanghai"))
       .toMatchObject({ totalMilliseconds: 95400000, days: 1, hours: 2, minutes: 30, seconds: 0 });
     expect(calculateDateDifference("2026-08-13T10:30", "2026-08-12T08:00", "Asia/Shanghai"))
@@ -74,7 +78,7 @@ describe("日期计算", () => {
 });
 
 describe("getNextCronRuns", () => {
-  it("按指定时区计算工作日的后续执行时间", () => {
+  it("computes upcoming weekday runs in a given zone", () => {
     const runs = getNextCronRuns("0 9 * * 1-5", {
       zone: "Asia/Shanghai",
       currentDate: "2026-08-14T09:00:01+08:00",
@@ -87,7 +91,7 @@ describe("getNextCronRuns", () => {
     ]);
   });
 
-  it("支持含秒的六段 Cron 并校验非法表达式", () => {
+  it("supports six-field cron with seconds and rejects invalid expressions", () => {
     const runs = getNextCronRuns("*/15 * * * * *", {
       zone: "UTC",
       currentDate: "2026-08-12T03:30:01Z",

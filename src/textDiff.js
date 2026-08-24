@@ -1,4 +1,7 @@
 import { createTwoFilesPatch, diffArrays } from "diff";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 export function splitTextLines(text) {
   if (!text) return [];
@@ -46,7 +49,7 @@ export function buildTextDiff(leftText, rightText, options = {}) {
   const leftComparable = leftLines.map((line) => normalizeLine(line, options));
   const rightComparable = rightLines.map((line) => normalizeLine(line, options));
   const changes = diffArrays(leftComparable, rightComparable, { timeout: 2000 });
-  if (!changes) throw new Error("文本内容过大或差异过多，请缩小对比范围后重试");
+  if (!changes) throw new Error(t("toolbox.diff.errTooLarge"));
 
   const rows = [];
   const stats = { added: 0, removed: 0, modified: 0, unchanged: 0 };
@@ -90,8 +93,8 @@ export function createUnifiedDiff(leftText, rightText, options = {}) {
   const result = buildTextDiff(leftText, rightText, options);
   if (!result.hasChanges) return "";
   return createTwoFilesPatch(
-    "原始文本",
-    "新文本",
+    t("toolbox.diff.leftName"),
+    t("toolbox.diff.rightName"),
     String(leftText ?? "").replace(/\r\n?/g, "\n"),
     String(rightText ?? "").replace(/\r\n?/g, "\n"),
     "",

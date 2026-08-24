@@ -1,18 +1,21 @@
 import { CronExpressionParser } from "cron-parser";
 import { DateTime } from "luxon";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 const INPUT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
 const DATE_TIME_FORMAT = "yyyy-LL-dd HH:mm:ss";
 
 function ensureZone(zone) {
   const value = String(zone || "").trim();
-  if (!value || !DateTime.now().setZone(value).isValid) throw new Error("请选择有效的时区");
+  if (!value || !DateTime.now().setZone(value).isValid) throw new Error(t("toolbox.time.errInvalidZone"));
   return value;
 }
 
 function parseLocalDateTime(input, zone) {
   const match = INPUT_RE.exec(String(input || "").trim());
-  if (!match) throw new Error("请输入完整的日期和时间");
+  if (!match) throw new Error(t("toolbox.time.errIncompleteDateTime"));
   const parts = {
     year: Number(match[1]),
     month: Number(match[2]),
@@ -23,10 +26,10 @@ function parseLocalDateTime(input, zone) {
     millisecond: 0,
   };
   const dateTime = DateTime.fromObject(parts, { zone: ensureZone(zone) });
-  if (!dateTime.isValid) throw new Error("日期或时间无效");
+  if (!dateTime.isValid) throw new Error(t("toolbox.time.errInvalidDateTime"));
   const keys = ["year", "month", "day", "hour", "minute", "second"];
   if (keys.some((key) => dateTime[key] !== parts[key])) {
-    throw new Error("该时区中不存在这个本地时间，可能处于夏令时跳时区间");
+    throw new Error(t("toolbox.time.errDstGap"));
   }
   return dateTime;
 }
@@ -46,20 +49,20 @@ function formatDateTime(dateTime, includeMilliseconds = false) {
     iso: dateTime.toISO({ suppressMilliseconds: !includeMilliseconds }),
     offset: formatOffset(dateTime.offset),
     zone: dateTime.zoneName,
-    weekday: dateTime.setLocale("zh-CN").toFormat("cccc"),
+    weekday: dateTime.setLocale(i18n.global.locale.value || "en-US").toFormat("cccc"),
   };
 }
 
 export function parseTimestamp(input, unit = "auto") {
   const text = String(input ?? "").trim();
-  if (!/^-?\d+$/.test(text)) throw new Error("时间戳必须是整数");
+  if (!/^-?\d+$/.test(text)) throw new Error(t("toolbox.time.errTimestampInteger"));
   const value = Number(text);
-  if (!Number.isSafeInteger(value)) throw new Error("时间戳超出安全整数范围");
+  if (!Number.isSafeInteger(value)) throw new Error(t("toolbox.time.errTimestampRange"));
   const resolvedUnit = unit === "auto" ? (Math.abs(value) < 100_000_000_000 ? "seconds" : "milliseconds") : unit;
-  if (!['seconds', 'milliseconds'].includes(resolvedUnit)) throw new Error("时间戳单位无效");
+  if (!['seconds', 'milliseconds'].includes(resolvedUnit)) throw new Error(t("toolbox.time.errTimestampUnit"));
   const milliseconds = resolvedUnit === "seconds" ? value * 1000 : value;
   const dateTime = DateTime.fromMillis(milliseconds, { zone: "UTC" });
-  if (!dateTime.isValid) throw new Error("时间戳超出可表示的日期范围");
+  if (!dateTime.isValid) throw new Error(t("toolbox.time.errTimestampDateRange"));
   return {
     milliseconds,
     seconds: Math.trunc(milliseconds / 1000),
@@ -70,7 +73,7 @@ export function parseTimestamp(input, unit = "auto") {
 
 export function formatInstant(milliseconds, zone) {
   const dateTime = DateTime.fromMillis(Number(milliseconds), { zone: ensureZone(zone) });
-  if (!dateTime.isValid) throw new Error("时间值无效");
+  if (!dateTime.isValid) throw new Error(t("toolbox.time.errInvalidInstant"));
   return formatDateTime(dateTime, true);
 }
 
@@ -86,11 +89,11 @@ export function convertZonedDateTime(input, sourceZone, targetZone) {
 
 export function addDateTime(input, amount, unit, zone) {
   const value = Number(amount);
-  if (!Number.isFinite(value)) throw new Error("请输入有效的增减数量");
+  if (!Number.isFinite(value)) throw new Error(t("toolbox.time.errInvalidAmount"));
   const supportedUnits = ["years", "months", "weeks", "days", "hours", "minutes", "seconds"];
-  if (!supportedUnits.includes(unit)) throw new Error("日期计算单位无效");
+  if (!supportedUnits.includes(unit)) throw new Error(t("toolbox.time.errCalcUnit"));
   const result = parseLocalDateTime(input, zone).plus({ [unit]: value });
-  if (!result.isValid) throw new Error("计算结果超出可表示的日期范围");
+  if (!result.isValid) throw new Error(t("toolbox.time.errCalcRange"));
   return { ...formatDateTime(result), timestamp: result.toMillis() };
 }
 
@@ -134,7 +137,7 @@ export function getNextCronRuns(expression, options = {}) {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new Error(`Cron 表达式无效：${message}`);
+    throw new Error(t("toolbox.time.errInvalidCron", { err: message }));
   }
 }
 

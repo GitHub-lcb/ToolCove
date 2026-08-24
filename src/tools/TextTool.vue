@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import DiffTool from "./DiffTool.vue";
 import {
@@ -15,24 +16,26 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const TABS = [
-  { key: "diff", label: "Diff 对比" },
-  { key: "regex", label: "正则匹配" },
-  { key: "replace", label: "查找替换" },
-  { key: "lines", label: "行处理" },
-  { key: "naming", label: "命名转换" },
-  { key: "stats", label: "文本统计" },
-];
-const LINE_ACTIONS = [
-  { value: "dedupe", label: "去除重复行" },
-  { value: "sort-asc", label: "升序排序" },
-  { value: "sort-desc", label: "降序排序" },
-  { value: "sort-number", label: "数字排序" },
-  { value: "remove-empty", label: "过滤空行" },
-  { value: "trim", label: "清理首尾空白" },
-  { value: "affix", label: "添加前后缀" },
-  { value: "reverse", label: "反转行序" },
-];
+const { t, locale } = useI18n();
+
+const TABS = computed(() => [
+  { key: "diff", label: t("toolbox.text.tabDiff") },
+  { key: "regex", label: t("toolbox.text.tabRegex") },
+  { key: "replace", label: t("toolbox.text.tabReplace") },
+  { key: "lines", label: t("toolbox.text.tabLines") },
+  { key: "naming", label: t("toolbox.text.tabNaming") },
+  { key: "stats", label: t("toolbox.text.tabStats") },
+]);
+const LINE_ACTIONS = computed(() => [
+  { value: "dedupe", label: t("toolbox.text.lineDedupe") },
+  { value: "sort-asc", label: t("toolbox.text.lineSortAsc") },
+  { value: "sort-desc", label: t("toolbox.text.lineSortDesc") },
+  { value: "sort-number", label: t("toolbox.text.lineSortNumber") },
+  { value: "remove-empty", label: t("toolbox.text.lineRemoveEmpty") },
+  { value: "trim", label: t("toolbox.text.lineTrim") },
+  { value: "affix", label: t("toolbox.text.lineAffix") },
+  { value: "reverse", label: t("toolbox.text.lineReverse") },
+]);
 const NAMING_STYLES = [
   { key: "camel", label: "camelCase" },
   { key: "pascal", label: "PascalCase" },
@@ -77,15 +80,15 @@ const namingResults = computed(() => NAMING_STYLES.map((style) => ({
 const statsSource = ref("");
 const textStats = computed(() => getTextStats(statsSource.value));
 const statItems = computed(() => [
-  { label: "字符数", value: textStats.value.characters },
-  { label: "非空白字符", value: textStats.value.charactersNoWhitespace },
-  { label: "行数", value: textStats.value.lines },
-  { label: "词语数", value: textStats.value.words },
-  { label: "中文字符", value: textStats.value.chineseCharacters },
-  { label: "UTF-8 字节", value: textStats.value.bytes },
-  { label: "唯一非空行", value: textStats.value.uniqueLines },
-  { label: "重复行", value: textStats.value.duplicateLines },
-  { label: "空行", value: textStats.value.emptyLines },
+  { label: t("toolbox.text.statChars"), value: textStats.value.characters },
+  { label: t("toolbox.text.statCharsNoWs"), value: textStats.value.charactersNoWhitespace },
+  { label: t("toolbox.text.statLines"), value: textStats.value.lines },
+  { label: t("toolbox.text.statWords"), value: textStats.value.words },
+  { label: t("toolbox.text.statChinese"), value: textStats.value.chineseCharacters },
+  { label: t("toolbox.text.statBytes"), value: textStats.value.bytes },
+  { label: t("toolbox.text.statUnique"), value: textStats.value.uniqueLines },
+  { label: t("toolbox.text.statDuplicates"), value: textStats.value.duplicateLines },
+  { label: t("toolbox.text.statEmpty"), value: textStats.value.emptyLines },
 ]);
 
 function safeResult(fn) {
@@ -103,29 +106,29 @@ function selectedFlags(flags) {
 function replaceSourceWithResult() {
   if (replaceResult.value.error) return props.showToast(replaceResult.value.error);
   replaceSource.value = replaceResult.value.data;
-  props.showToast("替换结果已应用到原文");
+  props.showToast(t("toolbox.text.appliedReplace"));
 }
 
 function applyLineResult() {
   if (lineResult.value.error) return props.showToast(lineResult.value.error);
   lineSource.value = lineResult.value.data;
-  props.showToast("处理结果已应用到原文");
+  props.showToast(t("toolbox.text.appliedLine"));
 }
 
-async function copyText(value, label = "结果") {
-  if (value === "" || value === null || value === undefined) return props.showToast(`没有可复制的${label}`);
+async function copyText(value, label = t("toolbox.text.copyDefaultLabel")) {
+  if (value === "" || value === null || value === undefined) return props.showToast(t("toolbox.text.copyEmpty", { label }));
   try {
     await navigator.clipboard.writeText(String(value));
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.text.copied", { label }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.text.copyFailed", { err: String(e) }));
   }
 }
 </script>
 
 <template>
   <div class="text-tool">
-    <nav class="mode-tabs" aria-label="文本处理类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.text.navLabel')">
       <button v-for="tab in TABS" :key="tab.key" type="button" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">
         {{ tab.label }}
       </button>
@@ -135,28 +138,28 @@ async function copyText(value, label = "结果") {
 
     <section v-else-if="activeTab === 'regex'" class="sub-workspace">
       <div class="control-bar regex-controls">
-        <label class="field grow"><span>正则表达式</span><input v-model="regexPattern" class="mono" placeholder="输入正则表达式" /></label>
-        <div class="flag-group"><span>Flags</span><label v-for="flag in ['g', 'i', 'm', 's']" :key="flag" :title="`正则标志 ${flag}`"><input v-model="regexFlags[flag]" type="checkbox" /><b>{{ flag }}</b></label></div>
-        <span v-if="!regexResult.error" class="count-chip">{{ regexResult.data.matches.length }} 个匹配</span>
+        <label class="field grow"><span>{{ t("toolbox.text.regexLabel") }}</span><input v-model="regexPattern" class="mono" :placeholder="t('toolbox.text.regexPh')" /></label>
+        <div class="flag-group"><span>Flags</span><label v-for="flag in ['g', 'i', 'm', 's']" :key="flag" :title="t('toolbox.text.flagTitle', { flag })"><input v-model="regexFlags[flag]" type="checkbox" /><b>{{ flag }}</b></label></div>
+        <span v-if="!regexResult.error" class="count-chip">{{ t("toolbox.text.matchCount", { count: regexResult.data.matches.length }) }}</span>
       </div>
       <div class="split-workspace">
         <section class="editor-panel">
-          <header class="panel-head"><b>测试文本</b><span>{{ regexText.length }} 字符</span></header>
-          <textarea v-model="regexText" class="text-editor" spellcheck="false" placeholder="粘贴要匹配的文本" aria-label="正则测试文本"></textarea>
+          <header class="panel-head"><b>{{ t("toolbox.text.testTextLabel") }}</b><span>{{ t("toolbox.text.charCount", { count: regexText.length }) }}</span></header>
+          <textarea v-model="regexText" class="text-editor" spellcheck="false" :placeholder="t('toolbox.text.regexTextPh')" :aria-label="t('toolbox.text.regexTextAria')"></textarea>
         </section>
         <section class="result-panel">
-          <header class="panel-head"><b>匹配结果</b><span v-if="regexResult.data?.truncated">仅显示前 1000 条</span></header>
+          <header class="panel-head"><b>{{ t("toolbox.text.matchResult") }}</b><span v-if="regexResult.data?.truncated">{{ t("toolbox.text.truncatedHint") }}</span></header>
           <div v-if="regexResult.error" class="error-state" role="alert"><Icon name="alert" :size="20" /><span>{{ regexResult.error }}</span></div>
           <template v-else>
-            <pre class="highlight-preview"><template v-for="(segment, index) in regexResult.data.segments" :key="index"><mark v-if="segment.match" :title="`匹配 ${segment.matchIndex + 1}`">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template><span v-if="!regexText" class="placeholder">匹配内容将在这里高亮</span></pre>
+            <pre class="highlight-preview"><template v-for="(segment, index) in regexResult.data.segments" :key="index"><mark v-if="segment.match" :title="t('toolbox.text.matchTitle', { index: segment.matchIndex + 1 })">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template><span v-if="!regexText" class="placeholder">{{ t("toolbox.text.highlightPh") }}</span></pre>
             <div class="match-list">
               <div v-for="(match, index) in regexResult.data.matches" :key="`${match.index}-${index}`" class="match-row">
                 <span class="match-index">{{ index + 1 }}</span>
-                <code :title="match.value">{{ match.value || "（零长度匹配）" }}</code>
-                <span>位置 {{ match.index }}–{{ match.end }}</span>
+                <code :title="match.value">{{ match.value || t("toolbox.text.zeroLength") }}</code>
+                <span>{{ t("toolbox.text.matchPos", { start: match.index, end: match.end }) }}</span>
                 <div v-if="match.groups.length || Object.keys(match.namedGroups).length" class="group-list">
-                  <code v-for="(group, groupIndex) in match.groups" :key="`group-${groupIndex}`">${{ groupIndex + 1 }} = {{ group ?? "未匹配" }}</code>
-                  <code v-for="(group, name) in match.namedGroups" :key="`named-${name}`">{{ name }} = {{ group ?? "未匹配" }}</code>
+                  <code v-for="(group, groupIndex) in match.groups" :key="`group-${groupIndex}`">${{ groupIndex + 1 }} = {{ group ?? t("toolbox.text.groupNoMatch") }}</code>
+                  <code v-for="(group, name) in match.namedGroups" :key="`named-${name}`">{{ name }} = {{ group ?? t("toolbox.text.groupNoMatch") }}</code>
                 </div>
               </div>
             </div>
@@ -167,46 +170,46 @@ async function copyText(value, label = "结果") {
 
     <section v-else-if="activeTab === 'replace'" class="sub-workspace">
       <div class="control-bar replace-controls">
-        <label class="field grow"><span>查找</span><input v-model="replaceFind" class="mono" placeholder="输入查找内容" /></label>
-        <label class="field grow"><span>替换为</span><input v-model="replacement" class="mono" placeholder="输入替换内容" /></label>
+        <label class="field grow"><span>{{ t("toolbox.text.findLabel") }}</span><input v-model="replaceFind" class="mono" :placeholder="t('toolbox.text.findPh')" /></label>
+        <label class="field grow"><span>{{ t("toolbox.text.replaceWithLabel") }}</span><input v-model="replacement" class="mono" :placeholder="t('toolbox.text.replacePh')" /></label>
         <div class="option-row">
-          <label><input v-model="replaceOptions.regex" type="checkbox" />正则</label>
-          <label><input v-model="replaceOptions.replaceAll" type="checkbox" />全部</label>
-          <label v-if="replaceOptions.regex"><input v-model="replaceOptions.ignoreCase" type="checkbox" />忽略大小写</label>
+          <label><input v-model="replaceOptions.regex" type="checkbox" />{{ t("toolbox.text.optRegex") }}</label>
+          <label><input v-model="replaceOptions.replaceAll" type="checkbox" />{{ t("toolbox.text.optAll") }}</label>
+          <label v-if="replaceOptions.regex"><input v-model="replaceOptions.ignoreCase" type="checkbox" />{{ t("toolbox.text.optIgnoreCase") }}</label>
         </div>
       </div>
       <div class="split-workspace">
-        <section class="editor-panel"><header class="panel-head"><b>原文</b><span>{{ replaceSource.length }} 字符</span></header><textarea v-model="replaceSource" class="text-editor" spellcheck="false" placeholder="粘贴待替换文本"></textarea></section>
+        <section class="editor-panel"><header class="panel-head"><b>{{ t("toolbox.text.sourceTitle") }}</b><span>{{ t("toolbox.text.charCount", { count: replaceSource.length }) }}</span></header><textarea v-model="replaceSource" class="text-editor" spellcheck="false" :placeholder="t('toolbox.text.sourcePhReplace')"></textarea></section>
         <section class="editor-panel" :class="{ invalid: replaceResult.error }">
-          <header class="panel-head"><b>替换预览</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!!replaceResult.error || !replaceFind" @click="replaceSourceWithResult">应用</button><button class="icon-btn xs" title="复制替换结果" :disabled="!!replaceResult.error || !replaceResult.data" @click="copyText(replaceResult.data)"><Icon name="copy" :size="13" /></button></span></header>
+          <header class="panel-head"><b>{{ t("toolbox.text.previewTitle") }}</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!!replaceResult.error || !replaceFind" @click="replaceSourceWithResult">{{ t("toolbox.text.applyBtn") }}</button><button class="icon-btn xs" :title="t('toolbox.text.copyReplaceTitle')" :disabled="!!replaceResult.error || !replaceResult.data" @click="copyText(replaceResult.data)"><Icon name="copy" :size="13" /></button></span></header>
           <div v-if="replaceResult.error" class="error-state" role="alert"><Icon name="alert" :size="20" /><span>{{ replaceResult.error }}</span></div>
-          <textarea v-else :value="replaceResult.data" class="text-editor output" readonly spellcheck="false" placeholder="替换结果将在这里显示"></textarea>
+          <textarea v-else :value="replaceResult.data" class="text-editor output" readonly spellcheck="false" :placeholder="t('toolbox.text.replaceResultPh')"></textarea>
         </section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'lines'" class="sub-workspace">
       <div class="control-bar line-controls">
-        <label class="field action-field"><span>处理方式</span><select v-model="lineAction"><option v-for="action in LINE_ACTIONS" :key="action.value" :value="action.value">{{ action.label }}</option></select></label>
-        <template v-if="lineAction === 'dedupe'"><label class="check-option"><input v-model="lineOptions.trimForCompare" type="checkbox" />忽略首尾空白</label><label class="check-option"><input v-model="lineOptions.ignoreCase" type="checkbox" />忽略大小写</label></template>
-        <template v-if="lineAction === 'affix'"><label class="field"><span>前缀</span><input v-model="lineOptions.prefix" class="mono" /></label><label class="field"><span>后缀</span><input v-model="lineOptions.suffix" class="mono" /></label></template>
+        <label class="field action-field"><span>{{ t("toolbox.text.lineActionLabel") }}</span><select v-model="lineAction"><option v-for="action in LINE_ACTIONS" :key="action.value" :value="action.value">{{ action.label }}</option></select></label>
+        <template v-if="lineAction === 'dedupe'"><label class="check-option"><input v-model="lineOptions.trimForCompare" type="checkbox" />{{ t("toolbox.text.optTrimCompare") }}</label><label class="check-option"><input v-model="lineOptions.ignoreCase" type="checkbox" />{{ t("toolbox.text.optIgnoreCase") }}</label></template>
+        <template v-if="lineAction === 'affix'"><label class="field"><span>{{ t("toolbox.text.prefixLabel") }}</span><input v-model="lineOptions.prefix" class="mono" /></label><label class="field"><span>{{ t("toolbox.text.suffixLabel") }}</span><input v-model="lineOptions.suffix" class="mono" /></label></template>
       </div>
       <div class="split-workspace">
-        <section class="editor-panel"><header class="panel-head"><b>原文</b><span>{{ lineSource ? lineSource.split(/\r?\n/).length : 0 }} 行</span></header><textarea v-model="lineSource" class="text-editor" spellcheck="false" placeholder="每行一条内容"></textarea></section>
-        <section class="editor-panel" :class="{ invalid: lineResult.error }"><header class="panel-head"><b>处理结果</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!!lineResult.error || !lineSource" @click="applyLineResult">应用</button><button class="icon-btn xs" title="复制处理结果" :disabled="!!lineResult.error || !lineResult.data" @click="copyText(lineResult.data)"><Icon name="copy" :size="13" /></button></span></header><div v-if="lineResult.error" class="error-state" role="alert"><Icon name="alert" :size="20" /><span>{{ lineResult.error }}</span></div><textarea v-else :value="lineResult.data" class="text-editor output" readonly spellcheck="false" placeholder="处理结果将在这里显示"></textarea></section>
+        <section class="editor-panel"><header class="panel-head"><b>{{ t("toolbox.text.sourceTitle") }}</b><span>{{ t("toolbox.text.lineCount", { count: lineSource ? lineSource.split(/\r?\n/).length : 0 }) }}</span></header><textarea v-model="lineSource" class="text-editor" spellcheck="false" :placeholder="t('toolbox.text.sourcePhLines')"></textarea></section>
+        <section class="editor-panel" :class="{ invalid: lineResult.error }"><header class="panel-head"><b>{{ t("toolbox.text.lineResultTitle") }}</b><span class="panel-actions"><button class="btn-ghost xs" :disabled="!!lineResult.error || !lineSource" @click="applyLineResult">{{ t("toolbox.text.applyBtn") }}</button><button class="icon-btn xs" :title="t('toolbox.text.copyLineTitle')" :disabled="!!lineResult.error || !lineResult.data" @click="copyText(lineResult.data)"><Icon name="copy" :size="13" /></button></span></header><div v-if="lineResult.error" class="error-state" role="alert"><Icon name="alert" :size="20" /><span>{{ lineResult.error }}</span></div><textarea v-else :value="lineResult.data" class="text-editor output" readonly spellcheck="false" :placeholder="t('toolbox.text.lineResultPh')"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'naming'" class="sub-workspace naming-workspace">
-      <section class="editor-panel naming-input"><header class="panel-head"><b>名称</b><span>{{ namingSource.length }} 字符</span></header><textarea v-model="namingSource" class="text-editor" spellcheck="false" placeholder="输入变量名、类名或短语"></textarea></section>
+      <section class="editor-panel naming-input"><header class="panel-head"><b>{{ t("toolbox.text.namingTitle") }}</b><span>{{ t("toolbox.text.charCount", { count: namingSource.length }) }}</span></header><textarea v-model="namingSource" class="text-editor" spellcheck="false" :placeholder="t('toolbox.text.namingPh')"></textarea></section>
       <div class="naming-results">
-        <button v-for="item in namingResults" :key="item.key" type="button" class="naming-row" :disabled="!item.value" :title="item.value ? `复制 ${item.label}` : item.label" @click="copyText(item.value, item.label)"><span>{{ item.label }}</span><code>{{ item.value || "转换结果" }}</code><Icon name="copy" :size="14" /></button>
+        <button v-for="item in namingResults" :key="item.key" type="button" class="naming-row" :disabled="!item.value" :title="item.value ? t('toolbox.text.namingCopyTitle', { label: item.label }) : item.label" @click="copyText(item.value, item.label)"><span>{{ item.label }}</span><code>{{ item.value || t("toolbox.text.namingEmptyValue") }}</code><Icon name="copy" :size="14" /></button>
       </div>
     </section>
 
     <section v-else class="sub-workspace stats-workspace">
-      <section class="editor-panel"><header class="panel-head"><b>文本</b><span>{{ textStats.characters }} 字符</span></header><textarea v-model="statsSource" class="text-editor" spellcheck="false" placeholder="粘贴要统计的文本"></textarea></section>
-      <div class="stats-grid"><div v-for="item in statItems" :key="item.label" class="stat-item"><span>{{ item.label }}</span><b>{{ item.value.toLocaleString('zh-CN') }}</b></div></div>
+      <section class="editor-panel"><header class="panel-head"><b>{{ t("toolbox.text.statsTitle") }}</b><span>{{ t("toolbox.text.charCount", { count: textStats.characters }) }}</span></header><textarea v-model="statsSource" class="text-editor" spellcheck="false" :placeholder="t('toolbox.text.statsPh')"></textarea></section>
+      <div class="stats-grid"><div v-for="item in statItems" :key="item.label" class="stat-item"><span>{{ item.label }}</span><b>{{ item.value.toLocaleString(locale) }}</b></div></div>
     </section>
   </div>
 </template>

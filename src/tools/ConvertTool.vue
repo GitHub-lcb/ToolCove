@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import {
   decodeBase64,
@@ -19,14 +20,16 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const MODES = [
-  { key: "base64", label: "Base64", placeholder: "输入要编码的文本" },
-  { key: "url", label: "URL", placeholder: "输入 URL 组件或参数" },
-  { key: "unicode", label: "Unicode", placeholder: "输入要转换的文本" },
-  { key: "hex", label: "Hex", placeholder: "输入要转换的 UTF-8 文本" },
-  { key: "json", label: "JSON 转义", placeholder: "输入 JSON 字符串内容" },
-  { key: "jwt", label: "JWT 解析", placeholder: "粘贴 JWT 或 Bearer Token" },
-];
+const { t } = useI18n();
+
+const MODES = computed(() => [
+  { key: "base64", label: "Base64", placeholder: t("toolbox.convert.phBase64") },
+  { key: "url", label: "URL", placeholder: t("toolbox.convert.phUrl") },
+  { key: "unicode", label: "Unicode", placeholder: t("toolbox.convert.phUnicode") },
+  { key: "hex", label: "Hex", placeholder: t("toolbox.convert.phHex") },
+  { key: "json", label: t("toolbox.convert.modeJson"), placeholder: t("toolbox.convert.phJson") },
+  { key: "jwt", label: t("toolbox.convert.modeJwt"), placeholder: t("toolbox.convert.phJwt") },
+]);
 
 const mode = ref("base64");
 const direction = ref("encode");
@@ -36,10 +39,10 @@ const error = ref("");
 const jwtResult = ref(null);
 const base64UrlSafe = ref(false);
 
-const activeMode = computed(() => MODES.find((item) => item.key === mode.value) || MODES[0]);
+const activeMode = computed(() => MODES.value.find((item) => item.key === mode.value) || MODES.value[0]);
 const inputCount = computed(() => Array.from(input.value).length);
 const outputCount = computed(() => Array.from(output.value).length);
-const resultPlaceholder = computed(() => mode.value === "jwt" ? "解析结果将在这里显示" : "转换结果将在这里显示");
+const resultPlaceholder = computed(() => mode.value === "jwt" ? t("toolbox.convert.resultPhJwt") : t("toolbox.convert.resultPh"));
 
 const converters = {
   base64: { encode: () => encodeBase64(input.value, base64UrlSafe.value), decode: () => decodeBase64(input.value) },
@@ -88,13 +91,14 @@ function clearAll() {
   jwtResult.value = null;
 }
 
-async function copyText(text, label = "结果") {
-  if (!text) return props.showToast(`没有可复制的${label}`);
+async function copyText(text, label) {
+  const name = label ?? t("toolbox.convert.result");
+  if (!text) return props.showToast(t("toolbox.convert.copyEmpty", { label: name }));
   try {
     await navigator.clipboard.writeText(text);
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.convert.copied", { label: name }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.convert.copyFailed", { err: String(e) }));
   }
 }
 
@@ -105,7 +109,7 @@ function prettyJson(value) {
 
 <template>
   <div class="convert-tool">
-    <nav class="mode-tabs" aria-label="转换类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.convert.navLabel')">
       <button
         v-for="item in MODES"
         :key="item.key"
@@ -117,15 +121,15 @@ function prettyJson(value) {
     </nav>
 
     <div class="action-bar">
-      <div v-if="mode !== 'jwt'" class="direction" role="group" aria-label="转换方向">
-        <button type="button" :class="{ on: direction === 'encode' }" @click="direction = 'encode'">编码</button>
-        <button type="button" :class="{ on: direction === 'decode' }" @click="direction = 'decode'">解码</button>
+      <div v-if="mode !== 'jwt'" class="direction" role="group" :aria-label="t('toolbox.convert.dirLabel')">
+        <button type="button" :class="{ on: direction === 'encode' }" @click="direction = 'encode'">{{ t("toolbox.convert.encode") }}</button>
+        <button type="button" :class="{ on: direction === 'decode' }" @click="direction = 'decode'">{{ t("toolbox.convert.decode") }}</button>
       </div>
-      <span v-else class="local-badge"><Icon name="eye" :size="14" />仅本地解析，不验证签名</span>
+      <span v-else class="local-badge"><Icon name="eye" :size="14" />{{ t("toolbox.convert.jwtBadge") }}</span>
 
       <label v-if="mode === 'base64' && direction === 'encode'" class="url-safe">
         <input v-model="base64UrlSafe" type="checkbox" />
-        <span>URL 安全格式</span>
+        <span>{{ t("toolbox.convert.urlSafe") }}</span>
       </label>
 
       <span class="action-spacer"></span>
@@ -133,39 +137,39 @@ function prettyJson(value) {
         v-if="mode !== 'jwt'"
         class="icon-btn"
         type="button"
-        title="交换输入输出"
-        aria-label="交换输入输出"
+        :title="t('toolbox.convert.swapTitle')"
+        :aria-label="t('toolbox.convert.swapTitle')"
         :disabled="!output || !!error"
         @click="swap"
       ><Icon name="repeat" :size="16" /></button>
-      <button class="btn-ghost sm" type="button" :disabled="!input" @click="clearAll">清空</button>
+      <button class="btn-ghost sm" type="button" :disabled="!input" @click="clearAll">{{ t("toolbox.convert.clear") }}</button>
     </div>
 
     <div class="workspace" :class="{ 'jwt-workspace': mode === 'jwt' }">
       <section class="editor-panel">
         <header class="panel-head">
-          <b>输入</b>
-          <span>{{ inputCount }} 字符</span>
+          <b>{{ t("toolbox.convert.input") }}</b>
+          <span>{{ t("toolbox.convert.chars", { count: inputCount }) }}</span>
         </header>
         <textarea
           v-model="input"
           class="text-editor"
           spellcheck="false"
           :placeholder="activeMode.placeholder"
-          aria-label="待转换内容"
+          :aria-label="t('toolbox.convert.inputAria')"
         ></textarea>
       </section>
 
       <section class="editor-panel result-panel" :class="{ invalid: error }">
         <header class="panel-head">
-          <b>结果</b>
-          <span v-if="mode !== 'jwt'">{{ outputCount }} 字符</span>
+          <b>{{ t("toolbox.convert.result") }}</b>
+          <span v-if="mode !== 'jwt'">{{ t("toolbox.convert.chars", { count: outputCount }) }}</span>
           <button
             v-if="mode !== 'jwt'"
             class="icon-btn xs"
             type="button"
-            title="复制结果"
-            aria-label="复制结果"
+            :title="t('toolbox.convert.copyTitle')"
+            :aria-label="t('toolbox.convert.copyTitle')"
             :disabled="!output"
             @click="copyText(output)"
           ><Icon name="copy" :size="14" /></button>
@@ -173,7 +177,7 @@ function prettyJson(value) {
 
         <div v-if="error" class="error-state" role="alert">
           <span class="error-icon"><Icon name="alert" :size="20" /></span>
-          <b>无法转换</b>
+          <b>{{ t("toolbox.convert.convertFailed") }}</b>
           <p>{{ error }}</p>
         </div>
 
@@ -182,20 +186,20 @@ function prettyJson(value) {
             <section class="jwt-part">
               <header>
                 <b>Header</b>
-                <button class="icon-btn xs" type="button" title="复制 Header" aria-label="复制 Header" @click="copyText(prettyJson(jwtResult.header), ' Header')"><Icon name="copy" :size="14" /></button>
+                <button class="icon-btn xs" type="button" :title="t('toolbox.convert.copyHeader')" :aria-label="t('toolbox.convert.copyHeader')" @click="copyText(prettyJson(jwtResult.header), ' Header')"><Icon name="copy" :size="14" /></button>
               </header>
               <pre>{{ prettyJson(jwtResult.header) }}</pre>
             </section>
             <section class="jwt-part payload">
               <header>
                 <b>Payload</b>
-                <button class="icon-btn xs" type="button" title="复制 Payload" aria-label="复制 Payload" @click="copyText(prettyJson(jwtResult.payload), ' Payload')"><Icon name="copy" :size="14" /></button>
+                <button class="icon-btn xs" type="button" :title="t('toolbox.convert.copyPayload')" :aria-label="t('toolbox.convert.copyPayload')" @click="copyText(prettyJson(jwtResult.payload), ' Payload')"><Icon name="copy" :size="14" /></button>
               </header>
               <pre>{{ prettyJson(jwtResult.payload) }}</pre>
             </section>
             <section class="signature-row">
               <span>Signature</span>
-              <code :title="jwtResult.signature">{{ jwtResult.signature || "（空）" }}</code>
+              <code :title="jwtResult.signature">{{ jwtResult.signature || t("toolbox.convert.jwtEmpty") }}</code>
             </section>
           </div>
         </template>
@@ -207,7 +211,7 @@ function prettyJson(value) {
           readonly
           spellcheck="false"
           :placeholder="resultPlaceholder"
-          aria-label="转换结果"
+          :aria-label="t('toolbox.convert.resultAria')"
         ></textarea>
         <p v-else class="result-empty">{{ resultPlaceholder }}</p>
       </section>

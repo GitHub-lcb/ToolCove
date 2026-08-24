@@ -2,11 +2,12 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import {
-  BUILTIN_TEMPLATES,
-  MOCK_FIELD_TYPES,
-  RANDOM_TYPES,
+  builtinTemplates,
+  mockFieldTypes,
+  randomTypes,
   formatMockOutput,
   generateIdentifiers,
   generateMockRows,
@@ -19,13 +20,18 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const TABS = [
-  { key: "identifier", label: "标识符" },
-  { key: "random", label: "随机数据" },
-  { key: "mock", label: "Mock 结构" },
-  { key: "sequence", label: "序列生成" },
-  { key: "template", label: "常用模板" },
-];
+const { t, locale } = useI18n();
+
+const TABS = computed(() => [
+  { key: "identifier", label: t("toolbox.generator.tabIdentifier") },
+  { key: "random", label: t("toolbox.generator.tabRandom") },
+  { key: "mock", label: t("toolbox.generator.tabMock") },
+  { key: "sequence", label: t("toolbox.generator.tabSequence") },
+  { key: "template", label: t("toolbox.generator.tabTemplate") },
+]);
+const RANDOM_TYPES = computed(() => randomTypes());
+const MOCK_FIELD_TYPES = computed(() => mockFieldTypes());
+const BUILTIN_TEMPLATES = computed(() => builtinTemplates());
 const activeTab = ref("identifier");
 const copiedKey = ref("");
 let copiedTimer = null;
@@ -34,31 +40,31 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 async function copyResult(value, key = "result") {
-  if (!value) return props.showToast("没有可复制的内容");
+  if (!value) return props.showToast(t("toolbox.generator.copyEmpty"));
   try {
     await navigator.clipboard.writeText(String(value));
     copiedKey.value = key;
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => { copiedKey.value = ""; }, 1800);
-    props.showToast("结果已复制");
+    props.showToast(t("toolbox.generator.resultCopied"));
   } catch {
-    props.showToast("复制失败，请手动复制");
+    props.showToast(t("toolbox.generator.copyFailed"));
   }
 }
 async function exportResult(value, defaultPath, extension) {
-  if (!value) return props.showToast("没有可导出的内容");
-  if (!window.__TAURI_INTERNALS__) return props.showToast("导出文件需要在桌面应用中使用");
+  if (!value) return props.showToast(t("toolbox.generator.exportEmpty"));
+  if (!window.__TAURI_INTERNALS__) return props.showToast(t("toolbox.generator.exportNeedDesktop"));
   try {
     const path = await saveDialog({
-      title: "导出生成结果",
+      title: t("toolbox.generator.exportDialogTitle"),
       defaultPath,
       filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
     });
     if (!path) return;
     await invoke("export_file", { path, content: String(value) });
-    props.showToast("生成结果已导出");
+    props.showToast(t("toolbox.generator.exported"));
   } catch (error) {
-    props.showToast(`导出失败：${errorMessage(error)}`);
+    props.showToast(t("toolbox.generator.exportFailed", { err: errorMessage(error) }));
   }
 }
 function localDateTimeValue(timestamp = Date.now()) {
@@ -80,7 +86,7 @@ const identifierFirstTime = computed(() => {
   if (identifierOptions.value.type !== "ulid" || !identifierState.value.result) return "";
   try {
     const first = identifierState.value.result.split("\n")[0];
-    return new Date(parseUlidTime(first)).toLocaleString("zh-CN");
+    return new Date(parseUlidTime(first)).toLocaleString(locale.value);
   } catch { return ""; }
 });
 function runIdentifiers() {
@@ -164,7 +170,7 @@ const mockFields = ref([
 ]);
 const mockOptions = ref({ count: 10, seed: "", format: "json", tableName: "mock_data" });
 const mockState = ref({ ...taskState(), rows: [] });
-const mockParamHint = (type) => MOCK_FIELD_TYPES.find((item) => item.key === type)?.hint || "无需参数";
+const mockParamHint = (type) => MOCK_FIELD_TYPES.value.find((item) => item.key === type)?.hint || t("toolbox.generator.noParamsHint");
 function addMockField() {
   mockFields.value.push(newField());
 }
@@ -184,7 +190,7 @@ function loadTemplate(template) {
   mockFields.value = template.fields.map((field) => newField(field));
   activeTab.value = "mock";
   runMockData();
-  props.showToast(`已载入「${template.label}」模板`);
+  props.showToast(t("toolbox.generator.templateLoaded", { label: template.label }));
 }
 runMockData();
 
@@ -212,7 +218,7 @@ runSequence();
 // 常用模板
 const templateOptions = ref({ key: "user", count: 10, seed: "", format: "json", tableName: "mock_users" });
 const templateState = ref({ ...taskState(), rows: [] });
-const activeTemplate = computed(() => BUILTIN_TEMPLATES.find((item) => item.key === templateOptions.value.key) || BUILTIN_TEMPLATES[0]);
+const activeTemplate = computed(() => BUILTIN_TEMPLATES.value.find((item) => item.key === templateOptions.value.key) || BUILTIN_TEMPLATES.value[0]);
 function chooseTemplate(template) {
   templateOptions.value.key = template.key;
   if (template.key === "user") templateOptions.value.tableName = "mock_users";
@@ -240,75 +246,75 @@ onBeforeUnmount(() => clearTimeout(copiedTimer));
 
 <template>
   <div class="generator-tool">
-    <nav class="mode-tabs" aria-label="数据生成类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.generator.navLabel')">
       <button v-for="tab in TABS" :key="tab.key" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">{{ tab.label }}</button>
     </nav>
 
     <section v-if="activeTab === 'identifier'" class="workspace split-layout">
       <aside class="panel config-panel">
-        <header class="panel-head"><b>生成设置</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.generator.configTitle") }}</b></header>
         <div class="config-body">
-          <label class="field"><span>标识符类型</span><select v-model="identifierOptions.type"><option value="uuid-v4">UUID v4</option><option value="uuid-v7">UUID v7</option><option value="ulid">ULID</option><option value="nanoid">Nano ID</option></select></label>
-          <div class="two-fields"><label class="field"><span>数量</span><input v-model.number="identifierOptions.count" type="number" min="1" max="10000" /></label><label class="field"><span>随机种子</span><input v-model="identifierOptions.seed" placeholder="留空则安全随机" /></label></div>
-          <template v-if="identifierOptions.type.startsWith('uuid')"><label class="check-control"><input v-model="identifierOptions.uppercase" type="checkbox" />大写输出</label><label class="check-control"><input v-model="identifierOptions.hyphens" type="checkbox" />保留连字符</label></template>
+          <label class="field"><span>{{ t("toolbox.generator.idTypeLabel") }}</span><select v-model="identifierOptions.type"><option value="uuid-v4">UUID v4</option><option value="uuid-v7">UUID v7</option><option value="ulid">ULID</option><option value="nanoid">Nano ID</option></select></label>
+          <div class="two-fields"><label class="field"><span>{{ t("toolbox.generator.countLabel") }}</span><input v-model.number="identifierOptions.count" type="number" min="1" max="10000" /></label><label class="field"><span>{{ t("toolbox.generator.seedLabel") }}</span><input v-model="identifierOptions.seed" :placeholder="t('toolbox.generator.seedPh')" /></label></div>
+          <template v-if="identifierOptions.type.startsWith('uuid')"><label class="check-control"><input v-model="identifierOptions.uppercase" type="checkbox" />{{ t("toolbox.generator.optUppercase") }}</label><label class="check-control"><input v-model="identifierOptions.hyphens" type="checkbox" />{{ t("toolbox.generator.optHyphens") }}</label></template>
           <template v-if="identifierOptions.type === 'uuid-v7' || identifierOptions.type === 'ulid'">
-            <label class="field"><span>时间来源</span><select v-model="identifierOptions.timestampMode"><option value="now">当前时间</option><option value="custom">指定时间</option></select></label>
-            <label v-if="identifierOptions.timestampMode === 'custom'" class="field"><span>指定时间</span><input v-model="identifierOptions.timestamp" type="datetime-local" /></label>
+            <label class="field"><span>{{ t("toolbox.generator.timeSourceLabel") }}</span><select v-model="identifierOptions.timestampMode"><option value="now">{{ t("toolbox.generator.timeNow") }}</option><option value="custom">{{ t("toolbox.generator.timeCustom") }}</option></select></label>
+            <label v-if="identifierOptions.timestampMode === 'custom'" class="field"><span>{{ t("toolbox.generator.customTimeLabel") }}</span><input v-model="identifierOptions.timestamp" type="datetime-local" /></label>
           </template>
           <template v-if="identifierOptions.type === 'nanoid'">
-            <label class="field"><span>长度</span><input v-model.number="identifierOptions.nanoLength" type="number" min="1" max="256" /></label>
-            <label class="field"><span>字符表</span><textarea v-model="identifierOptions.nanoAlphabet" class="mini-editor mono" spellcheck="false"></textarea></label>
+            <label class="field"><span>{{ t("toolbox.generator.lengthLabel") }}</span><input v-model.number="identifierOptions.nanoLength" type="number" min="1" max="256" /></label>
+            <label class="field"><span>{{ t("toolbox.generator.alphabetLabel") }}</span><textarea v-model="identifierOptions.nanoAlphabet" class="mini-editor mono" spellcheck="false"></textarea></label>
           </template>
-          <button class="btn-primary full-btn" @click="runIdentifiers"><Icon name="dice" :size="15" />生成标识符</button>
+          <button class="btn-primary full-btn" @click="runIdentifiers"><Icon name="dice" :size="15" />{{ t("toolbox.generator.genIdentifierBtn") }}</button>
         </div>
       </aside>
       <section class="panel result-panel" :class="{ invalid: identifierState.error }">
-        <header class="panel-head"><b>生成结果</b><span>{{ identifierState.count }} 条</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'identifier' }" :title="copiedKey === 'identifier' ? '已复制' : '复制结果'" @click="copyResult(identifierState.result, 'identifier')"><Icon :name="copiedKey === 'identifier' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" title="导出 TXT" @click="exportResult(identifierState.result, 'identifiers.txt', 'txt')"><Icon name="download" :size="13" /></button></div></header>
+        <header class="panel-head"><b>{{ t("toolbox.generator.resultTitle") }}</b><span>{{ t("toolbox.generator.countItems", { count: identifierState.count }) }}</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'identifier' }" :title="copiedKey === 'identifier' ? t('toolbox.generator.copiedTitle') : t('toolbox.generator.copyTitle')" @click="copyResult(identifierState.result, 'identifier')"><Icon :name="copiedKey === 'identifier' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" :title="t('toolbox.generator.exportTxtTitle')" @click="exportResult(identifierState.result, 'identifiers.txt', 'txt')"><Icon name="download" :size="13" /></button></div></header>
         <div v-if="identifierState.error" class="error-state"><Icon name="alert" :size="20" />{{ identifierState.error }}</div>
-        <template v-else><div v-if="identifierFirstTime" class="result-note">首条 ULID 时间：{{ identifierFirstTime }}</div><textarea :value="identifierState.result" class="result-editor mono" readonly spellcheck="false"></textarea></template>
+        <template v-else><div v-if="identifierFirstTime" class="result-note">{{ t("toolbox.generator.ulidFirstTime", { time: identifierFirstTime }) }}</div><textarea :value="identifierState.result" class="result-editor mono" readonly spellcheck="false"></textarea></template>
       </section>
     </section>
 
     <section v-else-if="activeTab === 'random'" class="workspace column-layout">
       <div class="control-bar random-controls">
-        <label class="field type-field"><span>数据类型</span><select v-model="randomOptions.type"><option v-for="item in RANDOM_TYPES" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
-        <label class="field count-field"><span>数量</span><input v-model.number="randomOptions.count" type="number" min="1" max="10000" /></label>
-        <label class="field seed-field"><span>随机种子</span><input v-model="randomOptions.seed" placeholder="留空则安全随机" /></label>
-        <template v-if="randomNeedsRange"><label class="field number-field"><span>最小值</span><input v-model.number="randomOptions.min" type="number" /></label><label class="field number-field"><span>最大值</span><input v-model.number="randomOptions.max" type="number" /></label><label v-if="randomOptions.type === 'decimal'" class="field number-field"><span>小数位</span><input v-model.number="randomOptions.precision" type="number" min="0" max="12" /></label></template>
-        <template v-if="randomNeedsString"><label class="field number-field"><span>长度</span><input v-model.number="randomOptions.length" type="number" min="1" max="1024" /></label><label class="field charset-field"><span>字符集</span><select v-model="randomOptions.charset"><option value="letter-number">大小写与数字</option><option value="lower-number">小写与数字</option><option value="upper-number">大写与数字</option><option value="number">仅数字</option><option value="all">字母数字符号</option></select></label></template>
-        <template v-if="randomNeedsDate"><label class="field date-field"><span>开始日期</span><input v-model="randomOptions.start" type="date" /></label><label class="field date-field"><span>结束日期</span><input v-model="randomOptions.end" type="date" /></label></template>
-        <label v-if="randomOptions.type === 'enum'" class="field enum-field"><span>候选值</span><input v-model="randomOptions.enumValues" placeholder="逗号分隔" /></label>
-        <label class="field output-type-field"><span>输出</span><select v-model="randomOptions.output"><option value="lines">逐行文本</option><option value="json">JSON 数组</option></select></label>
-        <button class="btn-primary" @click="runRandomData"><Icon name="dice" :size="15" />生成</button>
+        <label class="field type-field"><span>{{ t("toolbox.generator.dataTypeLabel") }}</span><select v-model="randomOptions.type"><option v-for="item in RANDOM_TYPES" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
+        <label class="field count-field"><span>{{ t("toolbox.generator.countLabel") }}</span><input v-model.number="randomOptions.count" type="number" min="1" max="10000" /></label>
+        <label class="field seed-field"><span>{{ t("toolbox.generator.seedLabel") }}</span><input v-model="randomOptions.seed" :placeholder="t('toolbox.generator.seedPh')" /></label>
+        <template v-if="randomNeedsRange"><label class="field number-field"><span>{{ t("toolbox.generator.minLabel") }}</span><input v-model.number="randomOptions.min" type="number" /></label><label class="field number-field"><span>{{ t("toolbox.generator.maxLabel") }}</span><input v-model.number="randomOptions.max" type="number" /></label><label v-if="randomOptions.type === 'decimal'" class="field number-field"><span>{{ t("toolbox.generator.precisionLabel") }}</span><input v-model.number="randomOptions.precision" type="number" min="0" max="12" /></label></template>
+        <template v-if="randomNeedsString"><label class="field number-field"><span>{{ t("toolbox.generator.lengthLabel") }}</span><input v-model.number="randomOptions.length" type="number" min="1" max="1024" /></label><label class="field charset-field"><span>{{ t("toolbox.generator.charsetLabel") }}</span><select v-model="randomOptions.charset"><option value="letter-number">{{ t("toolbox.generator.charsetLetterNumber") }}</option><option value="lower-number">{{ t("toolbox.generator.charsetLowerNumber") }}</option><option value="upper-number">{{ t("toolbox.generator.charsetUpperNumber") }}</option><option value="number">{{ t("toolbox.generator.charsetNumber") }}</option><option value="all">{{ t("toolbox.generator.charsetAll") }}</option></select></label></template>
+        <template v-if="randomNeedsDate"><label class="field date-field"><span>{{ t("toolbox.generator.startDateLabel") }}</span><input v-model="randomOptions.start" type="date" /></label><label class="field date-field"><span>{{ t("toolbox.generator.endDateLabel") }}</span><input v-model="randomOptions.end" type="date" /></label></template>
+        <label v-if="randomOptions.type === 'enum'" class="field enum-field"><span>{{ t("toolbox.generator.enumLabel") }}</span><input v-model="randomOptions.enumValues" :placeholder="t('toolbox.generator.enumPh')" /></label>
+        <label class="field output-type-field"><span>{{ t("toolbox.generator.outputLabel") }}</span><select v-model="randomOptions.output"><option value="lines">{{ t("toolbox.generator.outputLines") }}</option><option value="json">{{ t("toolbox.generator.outputJson") }}</option></select></label>
+        <button class="btn-primary" @click="runRandomData"><Icon name="dice" :size="15" />{{ t("toolbox.generator.generateBtn") }}</button>
       </div>
-      <section class="panel result-panel" :class="{ invalid: randomState.error }"><header class="panel-head"><b>随机数据</b><span>{{ randomState.count }} 条</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'random' }" title="复制结果" @click="copyResult(randomState.result, 'random')"><Icon :name="copiedKey === 'random' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" title="导出结果" @click="exportResult(randomState.result, randomOptions.output === 'json' ? 'random-data.json' : 'random-data.txt', randomOptions.output === 'json' ? 'json' : 'txt')"><Icon name="download" :size="13" /></button></div></header><div v-if="randomState.error" class="error-state"><Icon name="alert" :size="20" />{{ randomState.error }}</div><textarea v-else :value="randomState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
+      <section class="panel result-panel" :class="{ invalid: randomState.error }"><header class="panel-head"><b>{{ t("toolbox.generator.randomTitle") }}</b><span>{{ t("toolbox.generator.countItems", { count: randomState.count }) }}</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'random' }" :title="t('toolbox.generator.copyTitle')" @click="copyResult(randomState.result, 'random')"><Icon :name="copiedKey === 'random' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" :title="t('toolbox.generator.exportResultTitle')" @click="exportResult(randomState.result, randomOptions.output === 'json' ? 'random-data.json' : 'random-data.txt', randomOptions.output === 'json' ? 'json' : 'txt')"><Icon name="download" :size="13" /></button></div></header><div v-if="randomState.error" class="error-state"><Icon name="alert" :size="20" />{{ randomState.error }}</div><textarea v-else :value="randomState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
     </section>
 
     <section v-else-if="activeTab === 'mock'" class="workspace mock-layout">
       <div class="mock-toolbar">
-        <label class="field count-field"><span>行数</span><input v-model.number="mockOptions.count" type="number" min="1" max="10000" /></label>
-        <label class="field seed-field"><span>随机种子</span><input v-model="mockOptions.seed" placeholder="留空则安全随机" /></label>
-        <label class="field output-type-field"><span>输出格式</span><select v-model="mockOptions.format"><option value="json">JSON</option><option value="csv">CSV</option><option value="sql">SQL INSERT</option></select></label>
-        <label v-if="mockOptions.format === 'sql'" class="field table-field"><span>表名</span><input v-model="mockOptions.tableName" class="mono" /></label>
-        <button class="btn-ghost" @click="addMockField"><Icon name="plus" :size="14" />添加字段</button>
-        <button class="btn-primary" @click="runMockData"><Icon name="dice" :size="15" />生成 Mock</button>
+        <label class="field count-field"><span>{{ t("toolbox.generator.rowCountLabel") }}</span><input v-model.number="mockOptions.count" type="number" min="1" max="10000" /></label>
+        <label class="field seed-field"><span>{{ t("toolbox.generator.seedLabel") }}</span><input v-model="mockOptions.seed" :placeholder="t('toolbox.generator.seedPh')" /></label>
+        <label class="field output-type-field"><span>{{ t("toolbox.generator.formatLabel") }}</span><select v-model="mockOptions.format"><option value="json">JSON</option><option value="csv">CSV</option><option value="sql">SQL INSERT</option></select></label>
+        <label v-if="mockOptions.format === 'sql'" class="field table-field"><span>{{ t("toolbox.generator.tableNameLabel") }}</span><input v-model="mockOptions.tableName" class="mono" /></label>
+        <button class="btn-ghost" @click="addMockField"><Icon name="plus" :size="14" />{{ t("toolbox.generator.addFieldBtn") }}</button>
+        <button class="btn-primary" @click="runMockData"><Icon name="dice" :size="15" />{{ t("toolbox.generator.genMockBtn") }}</button>
       </div>
       <div class="mock-grid">
-        <section class="panel field-panel"><header class="panel-head"><b>字段规则</b><span>{{ mockFields.length }} 个字段</span></header><div class="field-table-wrap"><table class="field-table"><thead><tr><th>字段名</th><th>类型</th><th>参数</th><th>可空</th><th>唯一</th><th></th></tr></thead><tbody><tr v-for="(field, index) in mockFields" :key="field.id"><td><input v-model="field.name" class="mono" aria-label="字段名" /></td><td><select v-model="field.type"><option v-for="item in MOCK_FIELD_TYPES" :key="item.key" :value="item.key">{{ item.label }}</option></select></td><td><input v-model="field.params" class="mono" :placeholder="mockParamHint(field.type)" :title="mockParamHint(field.type)" /></td><td><label class="cell-check"><input v-model="field.nullable" type="checkbox" /><input v-if="field.nullable" v-model.number="field.nullRate" class="rate-input" type="number" min="0" max="1" step="0.1" title="空值概率 0 到 1" /></label></td><td><input v-model="field.unique" type="checkbox" /></td><td><button class="icon-btn xs" title="删除字段" @click="removeMockField(index)"><Icon name="x" :size="13" /></button></td></tr></tbody></table></div></section>
-        <section class="panel result-panel" :class="{ invalid: mockState.error }"><header class="panel-head"><b>Mock 结果</b><span>{{ mockState.count }} 行</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'mock' }" title="复制结果" @click="copyResult(mockState.result, 'mock')"><Icon :name="copiedKey === 'mock' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" title="导出结果" @click="exportResult(mockState.result, `mock-data.${outputExtension(mockOptions.format)}`, outputExtension(mockOptions.format))"><Icon name="download" :size="13" /></button></div></header><div v-if="mockState.error" class="error-state"><Icon name="alert" :size="20" />{{ mockState.error }}</div><textarea v-else :value="mockState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
+        <section class="panel field-panel"><header class="panel-head"><b>{{ t("toolbox.generator.fieldRulesTitle") }}</b><span>{{ t("toolbox.generator.fieldCount", { count: mockFields.length }) }}</span></header><div class="field-table-wrap"><table class="field-table"><thead><tr><th>{{ t("toolbox.generator.thFieldName") }}</th><th>{{ t("toolbox.generator.thType") }}</th><th>{{ t("toolbox.generator.thParams") }}</th><th>{{ t("toolbox.generator.thNullable") }}</th><th>{{ t("toolbox.generator.thUnique") }}</th><th></th></tr></thead><tbody><tr v-for="(field, index) in mockFields" :key="field.id"><td><input v-model="field.name" class="mono" :aria-label="t('toolbox.generator.fieldNameAria')" /></td><td><select v-model="field.type"><option v-for="item in MOCK_FIELD_TYPES" :key="item.key" :value="item.key">{{ item.label }}</option></select></td><td><input v-model="field.params" class="mono" :placeholder="mockParamHint(field.type)" :title="mockParamHint(field.type)" /></td><td><label class="cell-check"><input v-model="field.nullable" type="checkbox" /><input v-if="field.nullable" v-model.number="field.nullRate" class="rate-input" type="number" min="0" max="1" step="0.1" :title="t('toolbox.generator.nullRateTitle')" /></label></td><td><input v-model="field.unique" type="checkbox" /></td><td><button class="icon-btn xs" :title="t('toolbox.generator.removeFieldTitle')" @click="removeMockField(index)"><Icon name="x" :size="13" /></button></td></tr></tbody></table></div></section>
+        <section class="panel result-panel" :class="{ invalid: mockState.error }"><header class="panel-head"><b>{{ t("toolbox.generator.mockResultTitle") }}</b><span>{{ t("toolbox.generator.countRows", { count: mockState.count }) }}</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'mock' }" :title="t('toolbox.generator.copyTitle')" @click="copyResult(mockState.result, 'mock')"><Icon :name="copiedKey === 'mock' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" :title="t('toolbox.generator.exportResultTitle')" @click="exportResult(mockState.result, `mock-data.${outputExtension(mockOptions.format)}`, outputExtension(mockOptions.format))"><Icon name="download" :size="13" /></button></div></header><div v-if="mockState.error" class="error-state"><Icon name="alert" :size="20" />{{ mockState.error }}</div><textarea v-else :value="mockState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'sequence'" class="workspace split-layout">
-      <aside class="panel config-panel"><header class="panel-head"><b>序列设置</b></header><div class="config-body"><div class="two-fields"><label class="field"><span>起始值</span><input v-model.number="sequenceOptions.start" type="number" /></label><label class="field"><span>步长</span><input v-model.number="sequenceOptions.step" type="number" /></label></div><div class="two-fields"><label class="field"><span>数量</span><input v-model.number="sequenceOptions.count" type="number" min="1" max="10000" /></label><label class="field"><span>进制</span><select v-model.number="sequenceOptions.radix"><option :value="2">二进制</option><option :value="8">八进制</option><option :value="10">十进制</option><option :value="16">十六进制</option><option :value="36">三十六进制</option></select></label></div><div class="two-fields"><label class="field"><span>补位长度</span><input v-model.number="sequenceOptions.padding" type="number" min="0" max="128" /></label><label class="field"><span>输出方式</span><select v-model="sequenceOptions.output"><option value="lines">逐行</option><option value="comma">逗号分隔</option><option value="json">JSON 数组</option></select></label></div><div class="two-fields"><label class="field"><span>前缀</span><input v-model="sequenceOptions.prefix" /></label><label class="field"><span>后缀</span><input v-model="sequenceOptions.suffix" /></label></div><label class="check-control"><input v-model="sequenceOptions.uppercase" type="checkbox" />字母大写</label><button class="btn-primary full-btn" @click="runSequence"><Icon name="sort" :size="15" />生成序列</button></div></aside>
-      <section class="panel result-panel" :class="{ invalid: sequenceState.error }"><header class="panel-head"><b>序列结果</b><span>{{ sequenceState.count }} 条</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'sequence' }" title="复制结果" @click="copyResult(sequenceState.result, 'sequence')"><Icon :name="copiedKey === 'sequence' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" title="导出结果" @click="exportResult(sequenceState.result, sequenceOptions.output === 'json' ? 'sequence.json' : 'sequence.txt', sequenceOptions.output === 'json' ? 'json' : 'txt')"><Icon name="download" :size="13" /></button></div></header><div v-if="sequenceState.error" class="error-state"><Icon name="alert" :size="20" />{{ sequenceState.error }}</div><textarea v-else :value="sequenceState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
+      <aside class="panel config-panel"><header class="panel-head"><b>{{ t("toolbox.generator.seqConfigTitle") }}</b></header><div class="config-body"><div class="two-fields"><label class="field"><span>{{ t("toolbox.generator.startValueLabel") }}</span><input v-model.number="sequenceOptions.start" type="number" /></label><label class="field"><span>{{ t("toolbox.generator.stepLabel") }}</span><input v-model.number="sequenceOptions.step" type="number" /></label></div><div class="two-fields"><label class="field"><span>{{ t("toolbox.generator.countLabel") }}</span><input v-model.number="sequenceOptions.count" type="number" min="1" max="10000" /></label><label class="field"><span>{{ t("toolbox.generator.radixLabel") }}</span><select v-model.number="sequenceOptions.radix"><option :value="2">{{ t("toolbox.generator.radix2") }}</option><option :value="8">{{ t("toolbox.generator.radix8") }}</option><option :value="10">{{ t("toolbox.generator.radix10") }}</option><option :value="16">{{ t("toolbox.generator.radix16") }}</option><option :value="36">{{ t("toolbox.generator.radix36") }}</option></select></label></div><div class="two-fields"><label class="field"><span>{{ t("toolbox.generator.paddingLabel") }}</span><input v-model.number="sequenceOptions.padding" type="number" min="0" max="128" /></label><label class="field"><span>{{ t("toolbox.generator.outputModeLabel") }}</span><select v-model="sequenceOptions.output"><option value="lines">{{ t("toolbox.generator.outputLines") }}</option><option value="comma">{{ t("toolbox.generator.outputComma") }}</option><option value="json">{{ t("toolbox.generator.outputJson") }}</option></select></label></div><div class="two-fields"><label class="field"><span>{{ t("toolbox.generator.prefixLabel") }}</span><input v-model="sequenceOptions.prefix" /></label><label class="field"><span>{{ t("toolbox.generator.suffixLabel") }}</span><input v-model="sequenceOptions.suffix" /></label></div><label class="check-control"><input v-model="sequenceOptions.uppercase" type="checkbox" />{{ t("toolbox.generator.optLetterUpper") }}</label><button class="btn-primary full-btn" @click="runSequence"><Icon name="sort" :size="15" />{{ t("toolbox.generator.genSeqBtn") }}</button></div></aside>
+      <section class="panel result-panel" :class="{ invalid: sequenceState.error }"><header class="panel-head"><b>{{ t("toolbox.generator.seqResultTitle") }}</b><span>{{ t("toolbox.generator.countItems", { count: sequenceState.count }) }}</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'sequence' }" :title="t('toolbox.generator.copyTitle')" @click="copyResult(sequenceState.result, 'sequence')"><Icon :name="copiedKey === 'sequence' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" :title="t('toolbox.generator.exportResultTitle')" @click="exportResult(sequenceState.result, sequenceOptions.output === 'json' ? 'sequence.json' : 'sequence.txt', sequenceOptions.output === 'json' ? 'json' : 'txt')"><Icon name="download" :size="13" /></button></div></header><div v-if="sequenceState.error" class="error-state"><Icon name="alert" :size="20" />{{ sequenceState.error }}</div><textarea v-else :value="sequenceState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section>
     </section>
 
     <section v-else class="workspace template-layout">
-      <div class="template-list"><button v-for="template in BUILTIN_TEMPLATES" :key="template.key" class="template-card" :class="{ on: templateOptions.key === template.key }" @click="chooseTemplate(template)"><span class="template-icon"><Icon :name="template.key === 'user' ? 'user' : template.key === 'order' ? 'note' : template.key === 'product' ? 'box' : 'home'" :size="20" /></span><span><b>{{ template.label }}</b><small>{{ template.desc }}</small></span><em>{{ template.fields.length }} 字段</em></button></div>
+      <div class="template-list"><button v-for="template in BUILTIN_TEMPLATES" :key="template.key" class="template-card" :class="{ on: templateOptions.key === template.key }" @click="chooseTemplate(template)"><span class="template-icon"><Icon :name="template.key === 'user' ? 'user' : template.key === 'order' ? 'note' : template.key === 'product' ? 'box' : 'home'" :size="20" /></span><span><b>{{ template.label }}</b><small>{{ template.desc }}</small></span><em>{{ t("toolbox.generator.templateFields", { count: template.fields.length }) }}</em></button></div>
       <div class="template-workspace">
-        <div class="template-toolbar"><label class="field count-field"><span>行数</span><input v-model.number="templateOptions.count" type="number" min="1" max="10000" /></label><label class="field seed-field"><span>随机种子</span><input v-model="templateOptions.seed" placeholder="留空则安全随机" /></label><label class="field output-type-field"><span>输出格式</span><select v-model="templateOptions.format"><option value="json">JSON</option><option value="csv">CSV</option><option value="sql">SQL INSERT</option></select></label><label v-if="templateOptions.format === 'sql'" class="field table-field"><span>表名</span><input v-model="templateOptions.tableName" class="mono" /></label><button class="btn-ghost" @click="loadTemplate(activeTemplate)"><Icon name="edit" :size="14" />载入 Mock</button><button class="btn-primary" @click="runTemplate"><Icon name="dice" :size="15" />生成</button></div>
-        <div class="template-detail"><section class="panel schema-panel"><header class="panel-head"><b>{{ activeTemplate.label }}字段</b><span>{{ activeTemplate.fields.length }} 个</span></header><div class="schema-list"><div v-for="field in activeTemplate.fields" :key="field.name"><code>{{ field.name }}</code><span>{{ MOCK_FIELD_TYPES.find((item) => item.key === field.type)?.label || field.type }}</span><small :title="field.params">{{ field.params || '默认规则' }}</small></div></div></section><section class="panel result-panel" :class="{ invalid: templateState.error }"><header class="panel-head"><b>模板结果</b><span>{{ templateState.count }} 行</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'template' }" title="复制结果" @click="copyResult(templateState.result, 'template')"><Icon :name="copiedKey === 'template' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" title="导出结果" @click="exportResult(templateState.result, `${activeTemplate.key}.${outputExtension(templateOptions.format)}`, outputExtension(templateOptions.format))"><Icon name="download" :size="13" /></button></div></header><div v-if="templateState.error" class="error-state"><Icon name="alert" :size="20" />{{ templateState.error }}</div><textarea v-else :value="templateState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section></div>
+        <div class="template-toolbar"><label class="field count-field"><span>{{ t("toolbox.generator.rowCountLabel") }}</span><input v-model.number="templateOptions.count" type="number" min="1" max="10000" /></label><label class="field seed-field"><span>{{ t("toolbox.generator.seedLabel") }}</span><input v-model="templateOptions.seed" :placeholder="t('toolbox.generator.seedPh')" /></label><label class="field output-type-field"><span>{{ t("toolbox.generator.formatLabel") }}</span><select v-model="templateOptions.format"><option value="json">JSON</option><option value="csv">CSV</option><option value="sql">SQL INSERT</option></select></label><label v-if="templateOptions.format === 'sql'" class="field table-field"><span>{{ t("toolbox.generator.tableNameLabel") }}</span><input v-model="templateOptions.tableName" class="mono" /></label><button class="btn-ghost" @click="loadTemplate(activeTemplate)"><Icon name="edit" :size="14" />{{ t("toolbox.generator.loadMockBtn") }}</button><button class="btn-primary" @click="runTemplate"><Icon name="dice" :size="15" />{{ t("toolbox.generator.generateBtn") }}</button></div>
+        <div class="template-detail"><section class="panel schema-panel"><header class="panel-head"><b>{{ t("toolbox.generator.tplFieldsTitle", { label: activeTemplate.label }) }}</b><span>{{ t("toolbox.generator.tplFieldCount", { count: activeTemplate.fields.length }) }}</span></header><div class="schema-list"><div v-for="field in activeTemplate.fields" :key="field.name"><code>{{ field.name }}</code><span>{{ MOCK_FIELD_TYPES.find((item) => item.key === field.type)?.label || field.type }}</span><small :title="field.params">{{ field.params || t("toolbox.generator.defaultParams") }}</small></div></div></section><section class="panel result-panel" :class="{ invalid: templateState.error }"><header class="panel-head"><b>{{ t("toolbox.generator.tplResultTitle") }}</b><span>{{ t("toolbox.generator.countRows", { count: templateState.count }) }}</span><div class="panel-actions"><button class="icon-btn xs" :class="{ copied: copiedKey === 'template' }" :title="t('toolbox.generator.copyTitle')" @click="copyResult(templateState.result, 'template')"><Icon :name="copiedKey === 'template' ? 'check' : 'copy'" :size="13" /></button><button class="icon-btn xs" :title="t('toolbox.generator.exportResultTitle')" @click="exportResult(templateState.result, `${activeTemplate.key}.${outputExtension(templateOptions.format)}`, outputExtension(templateOptions.format))"><Icon name="download" :size="13" /></button></div></header><div v-if="templateState.error" class="error-state"><Icon name="alert" :size="20" />{{ templateState.error }}</div><textarea v-else :value="templateState.result" class="result-editor mono" readonly spellcheck="false"></textarea></section></div>
       </div>
     </section>
   </div>

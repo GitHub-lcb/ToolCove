@@ -1,97 +1,111 @@
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const NANO_ALPHABET = "_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGITS = "0123456789";
 const SYMBOLS = "!@#$%^&*()-_=+[]{};:,.?";
-const SURNAMES = ["赵", "钱", "孙", "李", "周", "吴", "郑", "王", "冯", "陈", "褚", "卫", "蒋", "沈", "韩", "杨", "朱", "秦", "许", "何", "张", "刘", "林", "黄", "马", "罗", "梁", "宋"];
-const GIVEN_NAMES = ["伟", "芳", "娜", "敏", "静", "秀英", "强", "磊", "洋", "艳", "勇", "军", "杰", "娟", "涛", "明", "超", "平", "刚", "欣怡", "宇轩", "子涵", "雨桐", "浩然"];
-const CITIES = ["北京", "上海", "广州", "深圳", "杭州", "南京", "苏州", "成都", "武汉", "西安", "长沙", "重庆", "青岛", "厦门"];
-const DISTRICTS = ["朝阳区", "浦东新区", "南山区", "滨江区", "江宁区", "武侯区", "洪山区", "雁塔区", "岳麓区", "市中区"];
-const ROADS = ["创新路", "科技大道", "人民路", "中山路", "建设路", "解放路", "文一路", "软件园路", "高新路"];
-const COMPANY_PREFIXES = ["华云", "启明", "远航", "卓越", "新程", "智联", "博远", "星河", "鼎盛", "云杉"];
-const COMPANY_SUFFIXES = ["科技", "信息", "网络", "供应链", "数据", "软件", "电子商务"];
+// 中文 mock 语料以 unicode 转义书写，保持源码纯 ASCII
+const SURNAMES = ["\u8d75", "\u94b1", "\u5b59", "\u674e", "\u5468", "\u5434", "\u90d1", "\u738b", "\u51af", "\u9648", "\u891a", "\u536b", "\u848b", "\u6c88", "\u97e9", "\u6768", "\u6731", "\u79e6", "\u8bb8", "\u4f55", "\u5f20", "\u5218", "\u6797", "\u9ec4", "\u9a6c", "\u7f57", "\u6881", "\u5b8b"];
+const GIVEN_NAMES = ["\u4f1f", "\u82b3", "\u5a1c", "\u654f", "\u9759", "\u79c0\u82f1", "\u5f3a", "\u78ca", "\u6d0b", "\u8273", "\u52c7", "\u519b", "\u6770", "\u5a1f", "\u6d9b", "\u660e", "\u8d85", "\u5e73", "\u521a", "\u6b23\u6021", "\u5b87\u8f69", "\u5b50\u6db5", "\u96e8\u6850", "\u6d69\u7136"];
+const CITIES = ["\u5317\u4eac", "\u4e0a\u6d77", "\u5e7f\u5dde", "\u6df1\u5733", "\u676d\u5dde", "\u5357\u4eac", "\u82cf\u5dde", "\u6210\u90fd", "\u6b66\u6c49", "\u897f\u5b89", "\u957f\u6c99", "\u91cd\u5e86", "\u9752\u5c9b", "\u53a6\u95e8"];
+const DISTRICTS = ["\u671d\u9633\u533a", "\u6d66\u4e1c\u65b0\u533a", "\u5357\u5c71\u533a", "\u6ee8\u6c5f\u533a", "\u6c5f\u5b81\u533a", "\u6b66\u4faf\u533a", "\u6d2a\u5c71\u533a", "\u96c1\u5854\u533a", "\u5cb3\u9e93\u533a", "\u5e02\u4e2d\u533a"];
+const ROADS = ["\u521b\u65b0\u8def", "\u79d1\u6280\u5927\u9053", "\u4eba\u6c11\u8def", "\u4e2d\u5c71\u8def", "\u5efa\u8bbe\u8def", "\u89e3\u653e\u8def", "\u6587\u4e00\u8def", "\u8f6f\u4ef6\u56ed\u8def", "\u9ad8\u65b0\u8def"];
+const COMPANY_PREFIXES = ["\u534e\u4e91", "\u542f\u660e", "\u8fdc\u822a", "\u5353\u8d8a", "\u65b0\u7a0b", "\u667a\u8054", "\u535a\u8fdc", "\u661f\u6cb3", "\u9f0e\u76db", "\u4e91\u6749"];
+const COMPANY_SUFFIXES = ["\u79d1\u6280", "\u4fe1\u606f", "\u7f51\u7edc", "\u4f9b\u5e94\u94fe", "\u6570\u636e", "\u8f6f\u4ef6", "\u7535\u5b50\u5546\u52a1"];
+const COMPANY_TAIL = "\u6709\u9650\u516c\u53f8";
+const ADDRESS_NO = "\u53f7";
 const EMAIL_DOMAINS = ["example.com", "test.dev", "mail.local", "demo.cn"];
-const PRODUCT_ADJECTIVES = ["轻量", "专业", "智能", "便携", "高速", "经典", "云端", "多功能"];
-const PRODUCT_NOUNS = ["键盘", "显示器", "开发套件", "路由器", "移动硬盘", "办公椅", "耳机", "扩展坞"];
+const PRODUCT_ADJECTIVES = ["\u8f7b\u91cf", "\u4e13\u4e1a", "\u667a\u80fd", "\u4fbf\u643a", "\u9ad8\u901f", "\u7ecf\u5178", "\u4e91\u7aef", "\u591a\u529f\u80fd"];
+const PRODUCT_NOUNS = ["\u952e\u76d8", "\u663e\u793a\u5668", "\u5f00\u53d1\u5957\u4ef6", "\u8def\u7531\u5668", "\u79fb\u52a8\u786c\u76d8", "\u529e\u516c\u6905", "\u8033\u673a", "\u6269\u5c55\u575e"];
 
-export const RANDOM_TYPES = [
-  { key: "integer", label: "整数" },
-  { key: "decimal", label: "小数" },
-  { key: "boolean", label: "布尔值" },
-  { key: "string", label: "随机字符串" },
-  { key: "date", label: "日期" },
-  { key: "datetime", label: "日期时间" },
-  { key: "name", label: "中文姓名" },
-  { key: "email", label: "邮箱" },
-  { key: "phone", label: "手机号" },
-  { key: "ipv4", label: "IPv4" },
-  { key: "ipv6", label: "IPv6" },
-  { key: "url", label: "URL" },
-  { key: "company", label: "公司名称" },
-  { key: "city", label: "城市" },
-  { key: "address", label: "地址" },
-  { key: "enum", label: "枚举值" },
-];
+// 类型/模板清单含展示文案，改函数以便随语言切换重新求值
+export function randomTypes() {
+  return [
+    { key: "integer", label: t("toolbox.generator.typeInteger") },
+    { key: "decimal", label: t("toolbox.generator.typeDecimal") },
+    { key: "boolean", label: t("toolbox.generator.typeBoolean") },
+    { key: "string", label: t("toolbox.generator.typeString") },
+    { key: "date", label: t("toolbox.generator.typeDate") },
+    { key: "datetime", label: t("toolbox.generator.typeDatetime") },
+    { key: "name", label: t("toolbox.generator.typeName") },
+    { key: "email", label: t("toolbox.generator.typeEmail") },
+    { key: "phone", label: t("toolbox.generator.typePhone") },
+    { key: "ipv4", label: "IPv4" },
+    { key: "ipv6", label: "IPv6" },
+    { key: "url", label: "URL" },
+    { key: "company", label: t("toolbox.generator.typeCompany") },
+    { key: "city", label: t("toolbox.generator.typeCity") },
+    { key: "address", label: t("toolbox.generator.typeAddress") },
+    { key: "enum", label: t("toolbox.generator.typeEnum") },
+  ];
+}
 
-export const MOCK_FIELD_TYPES = [
-  { key: "sequence", label: "自增序号", hint: "起始值,步长" },
-  { key: "uuid", label: "UUID v4", hint: "无需参数" },
-  { key: "ulid", label: "ULID", hint: "无需参数" },
-  ...RANDOM_TYPES,
-];
+export function mockFieldTypes() {
+  return [
+    { key: "sequence", label: t("toolbox.generator.fieldTypeSequence"), hint: t("toolbox.generator.hintSequence") },
+    { key: "uuid", label: "UUID v4", hint: t("toolbox.generator.hintNoParams") },
+    { key: "ulid", label: "ULID", hint: t("toolbox.generator.hintNoParams") },
+    ...randomTypes(),
+  ];
+}
 
-export const BUILTIN_TEMPLATES = [
-  {
-    key: "user", label: "用户", desc: "账号、姓名与联系信息",
-    fields: [
-      { name: "id", type: "sequence", params: "1001,1", unique: true },
-      { name: "user_id", type: "uuid", unique: true },
-      { name: "name", type: "name" },
-      { name: "email", type: "email", unique: true },
-      { name: "phone", type: "phone" },
-      { name: "city", type: "city" },
-      { name: "enabled", type: "boolean" },
-      { name: "created_at", type: "datetime", params: "2025-01-01,2026-12-31" },
-    ],
-  },
-  {
-    key: "order", label: "订单", desc: "订单号、金额与履约状态",
-    fields: [
-      { name: "id", type: "sequence", params: "1,1", unique: true },
-      { name: "order_no", type: "string", params: "18,upper-number", unique: true },
-      { name: "buyer_name", type: "name" },
-      { name: "amount", type: "decimal", params: "10,9999,2" },
-      { name: "status", type: "enum", params: "pending,paid,shipped,completed,cancelled" },
-      { name: "shipping_address", type: "address" },
-      { name: "created_at", type: "datetime", params: "2025-01-01,2026-12-31" },
-    ],
-  },
-  {
-    key: "product", label: "商品", desc: "SKU、价格与库存数据",
-    fields: [
-      { name: "id", type: "sequence", params: "1,1", unique: true },
-      { name: "sku", type: "string", params: "12,upper-number", unique: true },
-      { name: "name", type: "product" },
-      { name: "category", type: "enum", params: "数码,办公,家居,软件,配件" },
-      { name: "price", type: "decimal", params: "9.9,4999,2" },
-      { name: "stock", type: "integer", params: "0,500" },
-      { name: "active", type: "boolean" },
-    ],
-  },
-  {
-    key: "address", label: "地址簿", desc: "收件人与结构化地址",
-    fields: [
-      { name: "id", type: "sequence", params: "1,1", unique: true },
-      { name: "contact", type: "name" },
-      { name: "phone", type: "phone" },
-      { name: "city", type: "city" },
-      { name: "detail", type: "address" },
-      { name: "postcode", type: "string", params: "6,number" },
-      { name: "default", type: "boolean" },
-    ],
-  },
-];
+export function builtinTemplates() {
+  return [
+    {
+      key: "user", label: t("toolbox.generator.tplUser"), desc: t("toolbox.generator.tplUserDesc"),
+      fields: [
+        { name: "id", type: "sequence", params: "1001,1", unique: true },
+        { name: "user_id", type: "uuid", unique: true },
+        { name: "name", type: "name" },
+        { name: "email", type: "email", unique: true },
+        { name: "phone", type: "phone" },
+        { name: "city", type: "city" },
+        { name: "enabled", type: "boolean" },
+        { name: "created_at", type: "datetime", params: "2025-01-01,2026-12-31" },
+      ],
+    },
+    {
+      key: "order", label: t("toolbox.generator.tplOrder"), desc: t("toolbox.generator.tplOrderDesc"),
+      fields: [
+        { name: "id", type: "sequence", params: "1,1", unique: true },
+        { name: "order_no", type: "string", params: "18,upper-number", unique: true },
+        { name: "buyer_name", type: "name" },
+        { name: "amount", type: "decimal", params: "10,9999,2" },
+        { name: "status", type: "enum", params: "pending,paid,shipped,completed,cancelled" },
+        { name: "shipping_address", type: "address" },
+        { name: "created_at", type: "datetime", params: "2025-01-01,2026-12-31" },
+      ],
+    },
+    {
+      key: "product", label: t("toolbox.generator.tplProduct"), desc: t("toolbox.generator.tplProductDesc"),
+      fields: [
+        { name: "id", type: "sequence", params: "1,1", unique: true },
+        { name: "sku", type: "string", params: "12,upper-number", unique: true },
+        { name: "name", type: "product" },
+        { name: "category", type: "enum", params: "\u6570\u7801,\u529e\u516c,\u5bb6\u5c45,\u8f6f\u4ef6,\u914d\u4ef6" },
+        { name: "price", type: "decimal", params: "9.9,4999,2" },
+        { name: "stock", type: "integer", params: "0,500" },
+        { name: "active", type: "boolean" },
+      ],
+    },
+    {
+      key: "address", label: t("toolbox.generator.tplAddress"), desc: t("toolbox.generator.tplAddressDesc"),
+      fields: [
+        { name: "id", type: "sequence", params: "1,1", unique: true },
+        { name: "contact", type: "name" },
+        { name: "phone", type: "phone" },
+        { name: "city", type: "city" },
+        { name: "detail", type: "address" },
+        { name: "postcode", type: "string", params: "6,number" },
+        { name: "default", type: "boolean" },
+      ],
+    },
+  ];
+}
 
 export function createRandomSource(seed = "") {
   const seedText = String(seed ?? "");
@@ -108,7 +122,7 @@ export function createRandomSource(seed = "") {
   }
   function next() {
     if (seeded) return seeded();
-    if (!globalThis.crypto?.getRandomValues) throw new Error("当前环境不支持安全随机数");
+    if (!globalThis.crypto?.getRandomValues) throw new Error(t("toolbox.generator.errNoSecureRandom"));
     const value = new Uint32Array(1);
     globalThis.crypto.getRandomValues(value);
     return value[0] / 0x100000000;
@@ -118,12 +132,12 @@ export function createRandomSource(seed = "") {
     int(min, max) {
       const lower = Math.ceil(Number(min));
       const upper = Math.floor(Number(max));
-      if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower > upper) throw new Error("随机范围无效");
+      if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower > upper) throw new Error(t("toolbox.generator.errRandomRange"));
       return lower + Math.floor(next() * (upper - lower + 1));
     },
     pick(values) {
       const candidates = Array.isArray(values) ? values : [...String(values ?? "")];
-      if (!candidates.length) throw new Error("候选值不能为空");
+      if (!candidates.length) throw new Error(t("toolbox.generator.errNoCandidates"));
       return candidates[Math.floor(next() * candidates.length)];
     },
     bytes(length) {
@@ -153,7 +167,7 @@ export function generateIdentifiers(type, count = 1, options = {}) {
     if (type === "uuid-v7") return uuidV7(random, timestamp + index);
     if (type === "ulid") return ulid(random, timestamp + index);
     if (type === "nanoid") return nanoId(random, options.length ?? 21, options.alphabet ?? NANO_ALPHABET);
-    throw new Error("不支持的标识符类型");
+    throw new Error(t("toolbox.generator.errIdentifierType"));
   });
 }
 
@@ -195,35 +209,35 @@ function ulid(random, timestamp) {
 
 export function parseUlidTime(value) {
   const input = String(value ?? "").toUpperCase();
-  if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(input)) throw new Error("ULID 格式无效");
+  if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(input)) throw new Error(t("toolbox.generator.errUlidFormat"));
   let time = 0n;
   for (const character of input.slice(0, 10)) time = time * 32n + BigInt(CROCKFORD.indexOf(character));
-  if (time > 0xffffffffffffn) throw new Error("ULID 时间部分超出范围");
+  if (time > 0xffffffffffffn) throw new Error(t("toolbox.generator.errUlidTime"));
   return Number(time);
 }
 
 function nanoId(random, length, alphabet) {
   const size = Math.trunc(Number(length));
-  if (!Number.isInteger(size) || size < 1 || size > 256) throw new Error("Nano ID 长度必须在 1 到 256 之间");
+  if (!Number.isInteger(size) || size < 1 || size > 256) throw new Error(t("toolbox.generator.errNanoLength"));
   validateAlphabet(alphabet);
   return Array.from({ length: size }, () => random.pick([...alphabet])).join("");
 }
 
 function validateAlphabet(alphabet) {
   const characters = [...String(alphabet ?? "")];
-  if (characters.length < 2 || characters.length > 256) throw new Error("字符表长度必须在 2 到 256 之间");
-  if (new Set(characters).size !== characters.length) throw new Error("字符表不能包含重复字符");
+  if (characters.length < 2 || characters.length > 256) throw new Error(t("toolbox.generator.errAlphabetLength"));
+  if (new Set(characters).size !== characters.length) throw new Error(t("toolbox.generator.errAlphabetDup"));
 }
 
 function checkedTimestamp(value) {
   const timestamp = Math.trunc(Number(value));
-  if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > 0xffffffffffff) throw new Error("时间戳超出 48 位毫秒范围");
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > 0xffffffffffff) throw new Error(t("toolbox.generator.errTimestamp48"));
   return timestamp;
 }
 
 function checkedCount(value, max = 10000) {
   const count = Math.trunc(Number(value));
-  if (!Number.isInteger(count) || count < 1 || count > max) throw new Error(`数量必须在 1 到 ${max} 之间`);
+  if (!Number.isInteger(count) || count < 1 || count > max) throw new Error(t("toolbox.generator.errCountRange", { max }));
   return count;
 }
 
@@ -247,14 +261,14 @@ function randomValue(type, options, random, index = 0) {
     case "ipv4": return Array.from({ length: 4 }, () => random.int(0, 255)).join(".");
     case "ipv6": return Array.from({ length: 8 }, () => random.int(0, 0xffff).toString(16)).join(":");
     case "url": return `https://${randomString(random, random.int(6, 12), LETTERS)}.${random.pick(["com", "cn", "dev", "io"])}/${randomString(random, random.int(4, 10), LETTERS + DIGITS)}`;
-    case "company": return `${random.pick(COMPANY_PREFIXES)}${random.pick(COMPANY_SUFFIXES)}有限公司`;
+    case "company": return `${random.pick(COMPANY_PREFIXES)}${random.pick(COMPANY_SUFFIXES)}${COMPANY_TAIL}`;
     case "city": return random.pick(CITIES);
-    case "address": return `${random.pick(CITIES)}${random.pick(DISTRICTS)}${random.pick(ROADS)}${random.int(1, 999)}号`;
+    case "address": return `${random.pick(CITIES)}${random.pick(DISTRICTS)}${random.pick(ROADS)}${random.int(1, 999)}${ADDRESS_NO}`;
     case "enum": return random.pick(parseEnum(options.values ?? options.params));
     case "uuid": return uuidV4(random);
     case "ulid": return ulid(random, checkedTimestamp(options.timestamp ?? Date.now()) + index);
     case "product": return `${random.pick(PRODUCT_ADJECTIVES)}${random.pick(PRODUCT_NOUNS)}`;
-    default: throw new Error(`不支持的数据类型：${type}`);
+    default: throw new Error(t("toolbox.generator.errUnsupportedType", { type }));
   }
 }
 
@@ -264,7 +278,7 @@ function numberOption(value, fallback) {
 }
 
 function randomDecimal(random, min, max, precision) {
-  if (min > max) throw new Error("最小值不能大于最大值");
+  if (min > max) throw new Error(t("toolbox.generator.errMinGtMax"));
   const digits = Math.min(12, Math.max(0, Math.trunc(Number(precision) || 0)));
   return Number((min + random.next() * (max - min)).toFixed(digits));
 }
@@ -284,9 +298,9 @@ function resolveStringAlphabet(value) {
 
 function randomString(random, length, alphabet) {
   const size = Math.trunc(Number(length));
-  if (!Number.isInteger(size) || size < 1 || size > 1024) throw new Error("字符串长度必须在 1 到 1024 之间");
+  if (!Number.isInteger(size) || size < 1 || size > 1024) throw new Error(t("toolbox.generator.errStringLength"));
   const values = [...String(alphabet ?? "")];
-  if (!values.length) throw new Error("字符表不能为空");
+  if (!values.length) throw new Error(t("toolbox.generator.errAlphabetEmpty"));
   return Array.from({ length: size }, () => random.pick(values)).join("");
 }
 
@@ -295,7 +309,7 @@ function randomDate(random, start, end, includeTime) {
   const fallbackStart = fallbackEnd - 365 * 24 * 60 * 60 * 1000;
   const startTime = start ? new Date(start).getTime() : fallbackStart;
   const endTime = end ? new Date(end).getTime() + (includeTime ? 0 : 24 * 60 * 60 * 1000 - 1) : fallbackEnd;
-  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime > endTime) throw new Error("日期范围无效");
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime > endTime) throw new Error(t("toolbox.generator.errDateRange"));
   const date = new Date(Math.floor(startTime + random.next() * (endTime - startTime + 1)));
   return includeTime ? toLocalDateTime(date) : toLocalDate(date);
 }
@@ -311,8 +325,9 @@ function toLocalDateTime(date) {
 }
 
 function parseEnum(value) {
-  const values = String(value ?? "").split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
-  if (!values.length) throw new Error("枚举候选值不能为空");
+  // 兼容中英文逗号与换行分隔
+  const values = String(value ?? "").split(/[,\uff0c\n]/).map((item) => item.trim()).filter(Boolean);
+  if (!values.length) throw new Error(t("toolbox.generator.errEnumEmpty"));
   return values;
 }
 
@@ -320,7 +335,7 @@ export function generateMockRows(fields, count, options = {}) {
   const total = checkedCount(count);
   const activeFields = (Array.isArray(fields) ? fields : []).filter((field) => String(field?.name ?? "").trim());
   const names = activeFields.map((field) => String(field.name).trim());
-  if (new Set(names).size !== names.length) throw new Error("字段名重复，请修改后再生成");
+  if (new Set(names).size !== names.length) throw new Error(t("toolbox.generator.errDupFields"));
   const random = createRandomSource(options.seed);
   const uniqueValues = new Map();
   return Array.from({ length: total }, (_, rowIndex) => {
@@ -341,7 +356,7 @@ export function generateMockRows(fields, count, options = {}) {
           value = createValue();
           attempts += 1;
         }
-        if (seen.has(uniqueKey(value))) throw new Error(`字段「${name}」无法在当前规则下生成足够的唯一值`);
+        if (seen.has(uniqueKey(value))) throw new Error(t("toolbox.generator.errUniqueExhausted", { name }));
         seen.add(uniqueKey(value));
         uniqueValues.set(name, seen);
       }
@@ -357,7 +372,7 @@ function uniqueKey(value) {
 
 function mockFieldValue(field, rowIndex, random) {
   const params = String(field.params ?? "");
-  const parts = params.split(/[,，]/).map((item) => item.trim());
+  const parts = params.split(/[,\uff0c]/).map((item) => item.trim());
   if (field.type === "sequence") {
     const start = numberOption(parts[0], 1);
     const step = numberOption(parts[1], 1);
@@ -383,12 +398,12 @@ export function formatMockOutput(rows, format = "json", options = {}) {
   }
   if (format === "sql") {
     const tableName = String(options.tableName || "mock_data").trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(tableName)) throw new Error("SQL 表名只能包含字母、数字、下划线或 $，且不能以数字开头");
+    if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(tableName)) throw new Error(t("toolbox.generator.errSqlTableName"));
     if (!columns.length || !values.length) return "";
     const tuples = values.map((row) => `(${columns.map((column) => sqlValue(row?.[column])).join(", ")})`);
     return `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES\n${tuples.join(",\n")};`;
   }
-  throw new Error("不支持的输出格式");
+  throw new Error(t("toolbox.generator.errOutputFormat"));
 }
 
 function csvCell(value) {
@@ -411,11 +426,11 @@ export function generateSequence(options = {}) {
   const step = Math.trunc(numberOption(options.step, 1));
   const radix = Math.trunc(numberOption(options.radix, 10));
   const padding = Math.min(128, Math.max(0, Math.trunc(numberOption(options.padding, 0))));
-  if (radix < 2 || radix > 36) throw new Error("进制必须在 2 到 36 之间");
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(step)) throw new Error("起始值和步长必须是安全整数");
+  if (radix < 2 || radix > 36) throw new Error(t("toolbox.generator.errRadix"));
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(step)) throw new Error(t("toolbox.generator.errStartStep"));
   return Array.from({ length: count }, (_, index) => {
     const value = start + step * index;
-    if (!Number.isSafeInteger(value)) throw new Error("序列值超出安全整数范围");
+    if (!Number.isSafeInteger(value)) throw new Error(t("toolbox.generator.errSeqOverflow"));
     const sign = value < 0 ? "-" : "";
     let digits = Math.abs(value).toString(radix);
     if (options.uppercase) digits = digits.toUpperCase();

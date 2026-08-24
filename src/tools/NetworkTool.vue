@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { analyzeCidr, parseUrl, parseUserAgent, rebuildUrl } from "../networkTool.js";
 
@@ -8,15 +9,17 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const TABS = [
-  { key: "url", label: "URL 解析" },
-  { key: "cidr", label: "IP / CIDR" },
-  { key: "dns", label: "DNS 查询" },
-  { key: "tcp", label: "端口检测" },
-  { key: "path", label: "Ping / 路由" },
-  { key: "local", label: "本机网络" },
-  { key: "ua", label: "UA 解析" },
-];
+const { t, locale } = useI18n();
+
+const TABS = computed(() => [
+  { key: "url", label: t("toolbox.network.tabUrl") },
+  { key: "cidr", label: t("toolbox.network.tabCidr") },
+  { key: "dns", label: t("toolbox.network.tabDns") },
+  { key: "tcp", label: t("toolbox.network.tabTcp") },
+  { key: "path", label: t("toolbox.network.tabPath") },
+  { key: "local", label: t("toolbox.network.tabLocal") },
+  { key: "ua", label: t("toolbox.network.tabUa") },
+]);
 const activeTab = ref("url");
 const isTauri = !!window.__TAURI_INTERNALS__;
 
@@ -60,7 +63,7 @@ function addUrlParam() {
 function applyRebuiltUrl() {
   if (!rebuiltUrl.value) return;
   urlInput.value = rebuiltUrl.value;
-  props.showToast("已应用重建后的 URL");
+  props.showToast(t("toolbox.network.appliedRebuilt"));
 }
 
 const cidrInput = ref("");
@@ -69,21 +72,21 @@ const cidrItems = computed(() => {
   const result = cidrResult.value.data;
   if (!result) return [];
   return [
-    ["IP 地址", result.ip], ["CIDR 前缀", `/${result.prefix}`],
-    ["子网掩码", result.subnetMask], ["反掩码", result.wildcardMask],
-    ["网络地址", result.network], ["广播地址", result.broadcast],
-    ["首个主机", result.firstHost], ["末个主机", result.lastHost],
-    ["地址总数", result.totalAddresses.toLocaleString("zh-CN")],
-    ["可用主机", result.usableHosts.toLocaleString("zh-CN")],
-    ["整数形式", result.integer.toLocaleString("zh-CN")],
-    ["地址类型", result.private ? "私有地址" : "公网 / 特殊地址"],
+    [t("toolbox.network.cidrIp"), result.ip], [t("toolbox.network.cidrPrefix"), `/${result.prefix}`],
+    [t("toolbox.network.cidrMask"), result.subnetMask], [t("toolbox.network.cidrWildcard"), result.wildcardMask],
+    [t("toolbox.network.cidrNetwork"), result.network], [t("toolbox.network.cidrBroadcast"), result.broadcast],
+    [t("toolbox.network.cidrFirstHost"), result.firstHost], [t("toolbox.network.cidrLastHost"), result.lastHost],
+    [t("toolbox.network.cidrTotal"), result.totalAddresses.toLocaleString(locale.value)],
+    [t("toolbox.network.cidrUsable"), result.usableHosts.toLocaleString(locale.value)],
+    [t("toolbox.network.cidrInteger"), result.integer.toLocaleString(locale.value)],
+    [t("toolbox.network.cidrType"), result.private ? t("toolbox.network.cidrPrivate") : t("toolbox.network.cidrPublic")],
   ];
 });
 
 const dnsHost = ref("");
 const dnsState = ref(taskState());
 async function runDns() {
-  if (!dnsHost.value.trim()) return props.showToast("请输入域名或主机名");
+  if (!dnsHost.value.trim()) return props.showToast(t("toolbox.network.dnsHostEmpty"));
   await runNative(dnsState, "network_dns_lookup", { host: dnsHost.value.trim() });
 }
 
@@ -92,9 +95,9 @@ const tcpPort = ref(443);
 const tcpTimeout = ref(3000);
 const tcpState = ref(taskState());
 async function runTcp() {
-  if (!tcpHost.value.trim()) return props.showToast("请输入主机名或 IP 地址");
+  if (!tcpHost.value.trim()) return props.showToast(t("toolbox.network.tcpHostEmpty"));
   const port = Number(tcpPort.value);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return props.showToast("端口必须在 1 到 65535 之间");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return props.showToast(t("toolbox.network.tcpPortInvalid"));
   await runNative(tcpState, "network_tcp_check", {
     host: tcpHost.value.trim(), port, timeoutMs: Number(tcpTimeout.value),
   });
@@ -107,7 +110,7 @@ const maxHops = ref(15);
 const pathTimeout = ref(1000);
 const pathState = ref(taskState());
 async function runPath() {
-  if (!pathTarget.value.trim()) return props.showToast("请输入主机名或 IP 地址");
+  if (!pathTarget.value.trim()) return props.showToast(t("toolbox.network.tcpHostEmpty"));
   const command = pathMode.value === "ping" ? "network_ping" : "network_trace";
   const args = pathMode.value === "ping"
     ? { target: pathTarget.value.trim(), count: Number(pingCount.value), timeoutMs: Number(pathTimeout.value) }
@@ -125,12 +128,12 @@ const userAgentResult = computed(() => parseUserAgent(userAgentInput.value));
 const uaItems = computed(() => {
   const result = userAgentResult.value;
   return [
-    ["浏览器", joinNameVersion(result.browser)],
-    ["操作系统", joinNameVersion(result.os)],
-    ["平台类型", result.platform.type || "未知"],
-    ["平台厂商", result.platform.vendor || "未知"],
-    ["平台型号", result.platform.model || "未知"],
-    ["渲染引擎", joinNameVersion(result.engine)],
+    [t("toolbox.network.uaBrowser"), joinNameVersion(result.browser)],
+    [t("toolbox.network.uaOs"), joinNameVersion(result.os)],
+    [t("toolbox.network.uaPlatformType"), result.platform.type || t("toolbox.network.unknown")],
+    [t("toolbox.network.uaPlatformVendor"), result.platform.vendor || t("toolbox.network.unknown")],
+    [t("toolbox.network.uaPlatformModel"), result.platform.model || t("toolbox.network.unknown")],
+    [t("toolbox.network.uaEngine"), joinNameVersion(result.engine)],
   ];
 });
 
@@ -146,7 +149,7 @@ function taskState() {
 async function runNative(stateRef, command, args) {
   stateRef.value = { loading: true, data: null, error: "" };
   if (!isTauri) {
-    stateRef.value = { loading: false, data: null, error: "此检测需要在桌面应用中运行" };
+    stateRef.value = { loading: false, data: null, error: t("toolbox.network.needDesktop") };
     return;
   }
   try {
@@ -170,23 +173,23 @@ function errorMessage(error) {
 }
 
 function joinNameVersion(value) {
-  return [value?.name, value?.version].filter(Boolean).join(" ") || "未知";
+  return [value?.name, value?.version].filter(Boolean).join(" ") || t("toolbox.network.unknown");
 }
 
-async function copyText(value, label = "结果") {
-  if (!value) return props.showToast(`没有可复制的${label}`);
+async function copyText(value, label = t("toolbox.network.copyDefaultLabel")) {
+  if (!value) return props.showToast(t("toolbox.network.copyEmpty", { label }));
   try {
     await navigator.clipboard.writeText(String(value));
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.network.copied", { label }));
   } catch (error) {
-    props.showToast("复制失败：" + errorMessage(error));
+    props.showToast(t("toolbox.network.copyFailed", { err: errorMessage(error) }));
   }
 }
 </script>
 
 <template>
   <div class="network-tool">
-    <nav class="mode-tabs" aria-label="网络诊断类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.network.navLabel')">
       <button v-for="tab in TABS" :key="tab.key" type="button" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="selectTab(tab.key)">{{ tab.label }}</button>
     </nav>
 
@@ -196,35 +199,35 @@ async function copyText(value, label = "结果") {
       <template v-else-if="urlParts">
         <div class="url-layout">
           <section class="panel parts-panel">
-            <header class="panel-head"><b>组成部分</b><span v-if="urlParts.inferredProtocol">已补全 HTTPS</span></header>
+            <header class="panel-head"><b>{{ t("toolbox.network.partsTitle") }}</b><span v-if="urlParts.inferredProtocol">{{ t("toolbox.network.inferredHttps") }}</span></header>
             <dl class="detail-list">
-              <div><dt>协议</dt><dd>{{ urlParts.protocol }}</dd></div>
-              <div><dt>主机</dt><dd :title="urlParts.hostname">{{ urlParts.hostname }}</dd></div>
-              <div><dt>端口</dt><dd>{{ urlParts.port || "默认" }}</dd></div>
-              <div><dt>路径</dt><dd :title="urlParts.pathname">{{ urlParts.pathname }}</dd></div>
-              <div><dt>认证用户</dt><dd>{{ urlParts.username || "无" }}</dd></div>
-              <div><dt>片段</dt><dd :title="urlParts.hash">{{ urlParts.hash || "无" }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlProtocol") }}</dt><dd>{{ urlParts.protocol }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlHost") }}</dt><dd :title="urlParts.hostname">{{ urlParts.hostname }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlPort") }}</dt><dd>{{ urlParts.port || t("toolbox.network.portDefault") }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlPath") }}</dt><dd :title="urlParts.pathname">{{ urlParts.pathname }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlUser") }}</dt><dd>{{ urlParts.username || t("toolbox.network.valueNone") }}</dd></div>
+              <div><dt>{{ t("toolbox.network.urlFragment") }}</dt><dd :title="urlParts.hash">{{ urlParts.hash || t("toolbox.network.valueNone") }}</dd></div>
             </dl>
           </section>
           <section class="panel params-panel">
-            <header class="panel-head"><b>查询参数</b><button class="icon-btn xs" type="button" title="添加查询参数" @click="addUrlParam"><Icon name="plus" :size="14" /></button></header>
+            <header class="panel-head"><b>{{ t("toolbox.network.paramsTitle") }}</b><button class="icon-btn xs" type="button" :title="t('toolbox.network.addParamTitle')" @click="addUrlParam"><Icon name="plus" :size="14" /></button></header>
             <div class="param-list">
               <div v-for="(param, index) in urlParams" :key="index" class="param-row">
-                <input v-model="param.key" class="mono" aria-label="参数名" placeholder="参数名" />
-                <input v-model="param.value" class="mono" aria-label="参数值" placeholder="参数值" />
-                <button class="icon-btn xs" type="button" title="删除参数" @click="urlParams.splice(index, 1)"><Icon name="x" :size="13" /></button>
+                <input v-model="param.key" class="mono" :aria-label="t('toolbox.network.paramKeyPh')" :placeholder="t('toolbox.network.paramKeyPh')" />
+                <input v-model="param.value" class="mono" :aria-label="t('toolbox.network.paramValuePh')" :placeholder="t('toolbox.network.paramValuePh')" />
+                <button class="icon-btn xs" type="button" :title="t('toolbox.network.removeParamTitle')" @click="urlParams.splice(index, 1)"><Icon name="x" :size="13" /></button>
               </div>
-              <p v-if="!urlParams.length" class="empty-line">没有查询参数</p>
+              <p v-if="!urlParams.length" class="empty-line">{{ t("toolbox.network.noParams") }}</p>
             </div>
           </section>
         </div>
         <div class="result-strip">
           <code :title="rebuiltUrl">{{ rebuiltUrl }}</code>
-          <button class="btn-ghost xs" type="button" @click="applyRebuiltUrl">应用</button>
-          <button class="icon-btn xs" type="button" title="复制重建 URL" @click="copyText(rebuiltUrl, ' URL')"><Icon name="copy" :size="13" /></button>
+          <button class="btn-ghost xs" type="button" @click="applyRebuiltUrl">{{ t("toolbox.network.applyBtn") }}</button>
+          <button class="icon-btn xs" type="button" :title="t('toolbox.network.copyRebuiltTitle')" @click="copyText(rebuiltUrl, t('toolbox.network.urlCopyLabel'))"><Icon name="copy" :size="13" /></button>
         </div>
       </template>
-      <div v-else class="blank-state"><Icon name="link" :size="24" /><span>URL 解析结果</span></div>
+      <div v-else class="blank-state"><Icon name="link" :size="24" /><span>{{ t("toolbox.network.urlBlank") }}</span></div>
     </section>
 
     <section v-else-if="activeTab === 'cidr'" class="workspace cidr-workspace">
@@ -232,68 +235,68 @@ async function copyText(value, label = "结果") {
       <div v-if="cidrResult.error" class="inline-error"><Icon name="alert" :size="16" />{{ cidrResult.error }}</div>
       <template v-else-if="cidrResult.data">
         <div class="stats-grid"><div v-for="item in cidrItems" :key="item[0]" class="stat-item"><span>{{ item[0] }}</span><b :title="String(item[1])">{{ item[1] }}</b></div></div>
-        <div class="binary-row"><span>二进制</span><code>{{ cidrResult.data.binary }}</code><button class="icon-btn xs" title="复制二进制地址" @click="copyText(cidrResult.data.binary)"><Icon name="copy" :size="13" /></button></div>
+        <div class="binary-row"><span>{{ t("toolbox.network.binaryLabel") }}</span><code>{{ cidrResult.data.binary }}</code><button class="icon-btn xs" :title="t('toolbox.network.copyBinaryTitle')" @click="copyText(cidrResult.data.binary)"><Icon name="copy" :size="13" /></button></div>
       </template>
-      <div v-else class="blank-state"><Icon name="network" :size="24" /><span>IP 与网段计算结果</span></div>
+      <div v-else class="blank-state"><Icon name="network" :size="24" /><span>{{ t("toolbox.network.cidrBlank") }}</span></div>
     </section>
 
     <section v-else-if="activeTab === 'dns'" class="workspace task-workspace">
-      <div class="query-bar"><label class="field grow"><span>域名或主机名</span><input v-model="dnsHost" class="mono" placeholder="example.com" @keyup.enter="runDns" /></label><button class="btn-primary" type="button" :disabled="dnsState.loading" @click="runDns"><Icon name="search" :size="15" />查询</button></div>
+      <div class="query-bar"><label class="field grow"><span>{{ t("toolbox.network.dnsHostLabel") }}</span><input v-model="dnsHost" class="mono" placeholder="example.com" @keyup.enter="runDns" /></label><button class="btn-primary" type="button" :disabled="dnsState.loading" @click="runDns"><Icon name="search" :size="15" />{{ t("toolbox.network.queryBtn") }}</button></div>
       <div class="panel task-result">
-        <header class="panel-head"><b>解析结果</b><span v-if="dnsState.data">{{ dnsState.data.durationMs }} ms</span></header>
-        <div v-if="dnsState.loading" class="loading-state"><span class="spinner"></span>正在查询</div>
+        <header class="panel-head"><b>{{ t("toolbox.network.dnsResultTitle") }}</b><span v-if="dnsState.data">{{ dnsState.data.durationMs }} ms</span></header>
+        <div v-if="dnsState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.network.dnsLoading") }}</div>
         <div v-else-if="dnsState.error" class="error-state"><Icon name="alert" :size="20" /><span>{{ dnsState.error }}</span></div>
-        <div v-else-if="dnsState.data" class="address-list"><div v-for="item in dnsState.data.addresses" :key="item.address" class="address-row"><span class="type-chip">{{ item.family }}</span><code>{{ item.address }}</code><button class="icon-btn xs" title="复制地址" @click="copyText(item.address, '地址')"><Icon name="copy" :size="13" /></button></div></div>
-        <div v-else class="blank-state"><Icon name="globe" :size="24" /><span>DNS 地址记录</span></div>
+        <div v-else-if="dnsState.data" class="address-list"><div v-for="item in dnsState.data.addresses" :key="item.address" class="address-row"><span class="type-chip">{{ item.family }}</span><code>{{ item.address }}</code><button class="icon-btn xs" :title="t('toolbox.network.copyAddressTitle')" @click="copyText(item.address, t('toolbox.network.addressLabel'))"><Icon name="copy" :size="13" /></button></div></div>
+        <div v-else class="blank-state"><Icon name="globe" :size="24" /><span>{{ t("toolbox.network.dnsBlank") }}</span></div>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'tcp'" class="workspace task-workspace">
       <div class="query-bar tcp-bar">
-        <label class="field grow"><span>主机名或 IP</span><input v-model="tcpHost" class="mono" placeholder="example.com" @keyup.enter="runTcp" /></label>
-        <label class="field number-field"><span>端口</span><input v-model.number="tcpPort" type="number" min="1" max="65535" /></label>
-        <label class="field number-field"><span>超时（ms）</span><input v-model.number="tcpTimeout" type="number" min="200" max="30000" step="100" /></label>
-        <button class="btn-primary" type="button" :disabled="tcpState.loading" @click="runTcp"><Icon name="activity" :size="15" />检测</button>
+        <label class="field grow"><span>{{ t("toolbox.network.tcpHostLabel") }}</span><input v-model="tcpHost" class="mono" placeholder="example.com" @keyup.enter="runTcp" /></label>
+        <label class="field number-field"><span>{{ t("toolbox.network.portLabel") }}</span><input v-model.number="tcpPort" type="number" min="1" max="65535" /></label>
+        <label class="field number-field"><span>{{ t("toolbox.network.timeoutLabel") }}</span><input v-model.number="tcpTimeout" type="number" min="200" max="30000" step="100" /></label>
+        <button class="btn-primary" type="button" :disabled="tcpState.loading" @click="runTcp"><Icon name="activity" :size="15" />{{ t("toolbox.network.checkBtn") }}</button>
       </div>
       <div class="panel task-result">
-        <header class="panel-head"><b>检测结果</b><span v-if="tcpState.data">{{ tcpState.data.durationMs }} ms</span></header>
-        <div v-if="tcpState.loading" class="loading-state"><span class="spinner"></span>正在连接</div>
+        <header class="panel-head"><b>{{ t("toolbox.network.tcpResultTitle") }}</b><span v-if="tcpState.data">{{ tcpState.data.durationMs }} ms</span></header>
+        <div v-if="tcpState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.network.tcpLoading") }}</div>
         <div v-else-if="tcpState.error" class="error-state"><Icon name="alert" :size="20" /><span>{{ tcpState.error }}</span></div>
-        <div v-else-if="tcpState.data" class="tcp-result" :class="{ open: tcpState.data.open }"><span class="status-icon"><Icon :name="tcpState.data.open ? 'check' : 'x'" :size="24" /></span><b>{{ tcpState.data.open ? "端口开放" : "无法连接" }}</b><code>{{ tcpState.data.host }}:{{ tcpState.data.port }}</code><span v-if="tcpState.data.remoteAddress">解析地址 {{ tcpState.data.remoteAddress }}</span><span v-if="tcpState.data.error">{{ tcpState.data.error }}</span></div>
-        <div v-else class="blank-state"><Icon name="activity" :size="24" /><span>TCP 端口检测结果</span></div>
+        <div v-else-if="tcpState.data" class="tcp-result" :class="{ open: tcpState.data.open }"><span class="status-icon"><Icon :name="tcpState.data.open ? 'check' : 'x'" :size="24" /></span><b>{{ tcpState.data.open ? t("toolbox.network.tcpOpen") : t("toolbox.network.tcpClosed") }}</b><code>{{ tcpState.data.host }}:{{ tcpState.data.port }}</code><span v-if="tcpState.data.remoteAddress">{{ t("toolbox.network.tcpRemote", { address: tcpState.data.remoteAddress }) }}</span><span v-if="tcpState.data.error">{{ tcpState.data.error }}</span></div>
+        <div v-else class="blank-state"><Icon name="activity" :size="24" /><span>{{ t("toolbox.network.tcpBlank") }}</span></div>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'path'" class="workspace task-workspace">
       <div class="query-bar path-bar">
-        <div class="segmented"><button type="button" :class="{ on: pathMode === 'ping' }" @click="pathMode = 'ping'">Ping</button><button type="button" :class="{ on: pathMode === 'trace' }" @click="pathMode = 'trace'">路由跟踪</button></div>
-        <label class="field grow"><span>主机名或 IP</span><input v-model="pathTarget" class="mono" placeholder="example.com" @keyup.enter="runPath" /></label>
-        <label v-if="pathMode === 'ping'" class="field small-field"><span>次数</span><input v-model.number="pingCount" type="number" min="1" max="10" /></label>
-        <label v-else class="field small-field"><span>最大跳数</span><input v-model.number="maxHops" type="number" min="1" max="30" /></label>
-        <label class="field number-field"><span>等待（ms）</span><input v-model.number="pathTimeout" type="number" min="200" max="10000" step="100" /></label>
-        <button class="btn-primary" type="button" :disabled="pathState.loading" @click="runPath"><Icon name="terminal" :size="15" />运行</button>
+        <div class="segmented"><button type="button" :class="{ on: pathMode === 'ping' }" @click="pathMode = 'ping'">Ping</button><button type="button" :class="{ on: pathMode === 'trace' }" @click="pathMode = 'trace'">{{ t("toolbox.network.traceMode") }}</button></div>
+        <label class="field grow"><span>{{ t("toolbox.network.tcpHostLabel") }}</span><input v-model="pathTarget" class="mono" placeholder="example.com" @keyup.enter="runPath" /></label>
+        <label v-if="pathMode === 'ping'" class="field small-field"><span>{{ t("toolbox.network.countLabel") }}</span><input v-model.number="pingCount" type="number" min="1" max="10" /></label>
+        <label v-else class="field small-field"><span>{{ t("toolbox.network.maxHopsLabel") }}</span><input v-model.number="maxHops" type="number" min="1" max="30" /></label>
+        <label class="field number-field"><span>{{ t("toolbox.network.waitLabel") }}</span><input v-model.number="pathTimeout" type="number" min="200" max="10000" step="100" /></label>
+        <button class="btn-primary" type="button" :disabled="pathState.loading" @click="runPath"><Icon name="terminal" :size="15" />{{ t("toolbox.network.runBtn") }}</button>
       </div>
       <div class="panel task-result terminal-result">
-        <header class="panel-head"><b>{{ pathMode === 'ping' ? 'Ping 输出' : '路由跟踪输出' }}</b><span v-if="pathState.data">{{ pathState.data.durationMs }} ms</span></header>
-        <div v-if="pathState.loading" class="loading-state"><span class="spinner"></span>正在运行</div>
+        <header class="panel-head"><b>{{ pathMode === 'ping' ? t("toolbox.network.pingOutputTitle") : t("toolbox.network.traceOutputTitle") }}</b><span v-if="pathState.data">{{ pathState.data.durationMs }} ms</span></header>
+        <div v-if="pathState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.network.pathLoading") }}</div>
         <div v-else-if="pathState.error" class="error-state"><Icon name="alert" :size="20" /><span>{{ pathState.error }}</span></div>
-        <pre v-else-if="pathState.data" :class="{ failed: !pathState.data.success }">{{ pathState.data.output || "命令未返回文本" }}</pre>
-        <div v-else class="blank-state"><Icon name="terminal" :size="24" /><span>系统网络命令输出</span></div>
+        <pre v-else-if="pathState.data" :class="{ failed: !pathState.data.success }">{{ pathState.data.output || t("toolbox.network.noOutput") }}</pre>
+        <div v-else class="blank-state"><Icon name="terminal" :size="24" /><span>{{ t("toolbox.network.pathBlank") }}</span></div>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'local'" class="workspace task-workspace">
-      <div class="local-bar"><div><b>网络接口</b><span v-if="localState.data?.hostname">{{ localState.data.hostname }}</span></div><button class="btn-ghost sm" type="button" :disabled="localState.loading" @click="loadInterfaces"><Icon name="refresh" :size="14" />刷新</button></div>
+      <div class="local-bar"><div><b>{{ t("toolbox.network.localTitle") }}</b><span v-if="localState.data?.hostname">{{ localState.data.hostname }}</span></div><button class="btn-ghost sm" type="button" :disabled="localState.loading" @click="loadInterfaces"><Icon name="refresh" :size="14" />{{ t("toolbox.network.refreshBtn") }}</button></div>
       <div class="panel task-result">
-        <div v-if="localState.loading" class="loading-state"><span class="spinner"></span>正在读取</div>
+        <div v-if="localState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.network.localLoading") }}</div>
         <div v-else-if="localState.error" class="error-state"><Icon name="alert" :size="20" /><span>{{ localState.error }}</span></div>
-        <div v-else-if="localState.data" class="interface-list"><div v-for="(item, index) in localState.data.interfaces" :key="`${item.name}-${item.address}-${index}`" class="interface-row"><span class="interface-icon"><Icon name="network" :size="16" /></span><div><b :title="item.name">{{ item.name }}</b><code :title="item.address">{{ item.address }}</code></div><span class="type-chip">{{ item.family }}</span><span v-if="item.loopback" class="muted-chip">回环</span><button class="icon-btn xs" title="复制地址" @click="copyText(item.address, '地址')"><Icon name="copy" :size="13" /></button></div></div>
-        <div v-else class="blank-state"><Icon name="network" :size="24" /><span>本机网络接口</span></div>
+        <div v-else-if="localState.data" class="interface-list"><div v-for="(item, index) in localState.data.interfaces" :key="`${item.name}-${item.address}-${index}`" class="interface-row"><span class="interface-icon"><Icon name="network" :size="16" /></span><div><b :title="item.name">{{ item.name }}</b><code :title="item.address">{{ item.address }}</code></div><span class="type-chip">{{ item.family }}</span><span v-if="item.loopback" class="muted-chip">{{ t("toolbox.network.loopbackChip") }}</span><button class="icon-btn xs" :title="t('toolbox.network.copyAddressTitle')" @click="copyText(item.address, t('toolbox.network.addressLabel'))"><Icon name="copy" :size="13" /></button></div></div>
+        <div v-else class="blank-state"><Icon name="network" :size="24" /><span>{{ t("toolbox.network.localBlank") }}</span></div>
       </div>
     </section>
 
     <section v-else class="workspace ua-workspace">
-      <section class="panel ua-input"><header class="panel-head"><b>User-Agent</b><button class="icon-btn xs" title="使用当前 User-Agent" @click="userAgentInput = navigator.userAgent"><Icon name="refresh" :size="13" /></button></header><textarea v-model="userAgentInput" class="text-editor mono" spellcheck="false" placeholder="粘贴 User-Agent 字符串"></textarea></section>
+      <section class="panel ua-input"><header class="panel-head"><b>User-Agent</b><button class="icon-btn xs" :title="t('toolbox.network.uaUseCurrentTitle')" @click="userAgentInput = navigator.userAgent"><Icon name="refresh" :size="13" /></button></header><textarea v-model="userAgentInput" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.network.uaPh')"></textarea></section>
       <div class="ua-results"><div v-for="item in uaItems" :key="item[0]" class="ua-item"><span>{{ item[0] }}</span><b :title="item[1]">{{ item[1] }}</b></div></div>
     </section>
   </div>

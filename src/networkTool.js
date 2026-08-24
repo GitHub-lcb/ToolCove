@@ -1,18 +1,21 @@
 import Bowser from "bowser";
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 function ensureHttpUrl(input) {
   const value = String(input ?? "").trim();
-  if (!value) throw new Error("请输入 URL");
+  if (!value) throw new Error(t("toolbox.network.errEmptyUrl"));
   const hasProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(value);
   const normalized = hasProtocol ? value : `https://${value}`;
   let url;
   try {
     url = new URL(normalized);
   } catch {
-    throw new Error("URL 格式无效");
+    throw new Error(t("toolbox.network.errInvalidUrl"));
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("仅支持 HTTP 或 HTTPS URL");
+    throw new Error(t("toolbox.network.errProtocol"));
   }
   return { url, inferredProtocol: !hasProtocol };
 }
@@ -36,9 +39,9 @@ export function parseUrl(input) {
 
 export function rebuildUrl(parts, params = parts?.params || []) {
   const protocol = String(parts?.protocol || "https").replace(/:$/, "");
-  if (protocol !== "http" && protocol !== "https") throw new Error("仅支持 HTTP 或 HTTPS URL");
+  if (protocol !== "http" && protocol !== "https") throw new Error(t("toolbox.network.errProtocol"));
   const hostname = String(parts?.hostname || "").trim();
-  if (!hostname) throw new Error("URL 缺少主机名");
+  if (!hostname) throw new Error(t("toolbox.network.errNoHost"));
   const credentials = parts.username
     ? `${encodeURIComponent(parts.username)}${parts.password ? `:${encodeURIComponent(parts.password)}` : ""}@`
     : "";
@@ -57,7 +60,7 @@ export function rebuildUrl(parts, params = parts?.params || []) {
 function ipv4ToNumber(value) {
   const chunks = String(value ?? "").trim().split(".");
   if (chunks.length !== 4 || chunks.some((chunk) => !/^\d{1,3}$/.test(chunk) || Number(chunk) > 255)) {
-    throw new Error("请输入有效的 IPv4 地址");
+    throw new Error(t("toolbox.network.errInvalidIpv4"));
   }
   return chunks.reduce((result, chunk) => ((result << 8) | Number(chunk)) >>> 0, 0);
 }
@@ -79,7 +82,7 @@ export function analyzeCidr(input) {
   const [ipText, prefixText = "32"] = String(input ?? "").trim().split("/");
   const ipNumber = ipv4ToNumber(ipText);
   if (!/^\d{1,2}$/.test(prefixText) || Number(prefixText) > 32) {
-    throw new Error("CIDR 前缀必须是 0 到 32 的整数");
+    throw new Error(t("toolbox.network.errCidrPrefix"));
   }
   const prefix = Number(prefixText);
   const subnetMask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;

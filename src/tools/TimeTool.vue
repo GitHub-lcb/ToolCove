@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import {
   addDateTime,
@@ -15,40 +16,42 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
-const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
-const ZONES = [
-  { value: localZone, label: `本机 · ${localZone}` },
-  { value: "Asia/Shanghai", label: "上海 · UTC+8" },
-  { value: "UTC", label: "UTC · UTC+0" },
-  { value: "Asia/Tokyo", label: "东京 · UTC+9" },
-  { value: "America/New_York", label: "纽约" },
-  { value: "America/Los_Angeles", label: "洛杉矶" },
-  { value: "Europe/London", label: "伦敦" },
-  { value: "Europe/Berlin", label: "柏林" },
-  { value: "Australia/Sydney", label: "悉尼" },
-].filter((item, index, list) => list.findIndex((candidate) => candidate.value === item.value) === index);
+const { t, locale } = useI18n();
 
-const TABS = [
-  { key: "timestamp", label: "时间戳" },
-  { key: "timezone", label: "时区换算" },
-  { key: "calculate", label: "日期计算" },
-  { key: "cron", label: "Cron" },
-];
-const UNITS = [
-  { value: "years", label: "年" },
-  { value: "months", label: "月" },
-  { value: "weeks", label: "周" },
-  { value: "days", label: "天" },
-  { value: "hours", label: "小时" },
-  { value: "minutes", label: "分钟" },
-  { value: "seconds", label: "秒" },
-];
-const CRON_PRESETS = [
-  { label: "每 5 分钟", value: "*/5 * * * *" },
-  { label: "每天 0 点", value: "0 0 * * *" },
-  { label: "工作日 9 点", value: "0 9 * * 1-5" },
-  { label: "每月 1 日", value: "0 0 1 * *" },
-];
+const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
+const ZONES = computed(() => [
+  { value: localZone, label: t("toolbox.time.zoneLocal", { zone: localZone }) },
+  { value: "Asia/Shanghai", label: t("toolbox.time.zoneShanghai") },
+  { value: "UTC", label: "UTC · UTC+0" },
+  { value: "Asia/Tokyo", label: t("toolbox.time.zoneTokyo") },
+  { value: "America/New_York", label: t("toolbox.time.zoneNewYork") },
+  { value: "America/Los_Angeles", label: t("toolbox.time.zoneLosAngeles") },
+  { value: "Europe/London", label: t("toolbox.time.zoneLondon") },
+  { value: "Europe/Berlin", label: t("toolbox.time.zoneBerlin") },
+  { value: "Australia/Sydney", label: t("toolbox.time.zoneSydney") },
+].filter((item, index, list) => list.findIndex((candidate) => candidate.value === item.value) === index));
+
+const TABS = computed(() => [
+  { key: "timestamp", label: t("toolbox.time.tabTimestamp") },
+  { key: "timezone", label: t("toolbox.time.tabTimezone") },
+  { key: "calculate", label: t("toolbox.time.tabCalculate") },
+  { key: "cron", label: t("toolbox.time.tabCron") },
+]);
+const UNITS = computed(() => [
+  { value: "years", label: t("toolbox.time.unitYears") },
+  { value: "months", label: t("toolbox.time.unitMonths") },
+  { value: "weeks", label: t("toolbox.time.unitWeeks") },
+  { value: "days", label: t("toolbox.time.unitDays") },
+  { value: "hours", label: t("toolbox.time.unitHours") },
+  { value: "minutes", label: t("toolbox.time.unitMinutes") },
+  { value: "seconds", label: t("toolbox.time.unitSeconds") },
+]);
+const CRON_PRESETS = computed(() => [
+  { label: t("toolbox.time.presetEvery5"), value: "*/5 * * * *" },
+  { label: t("toolbox.time.presetDaily0"), value: "0 0 * * *" },
+  { label: t("toolbox.time.presetWorkday9"), value: "0 9 * * 1-5" },
+  { label: t("toolbox.time.presetMonth1"), value: "0 0 1 * *" },
+]);
 
 const activeTab = ref("timestamp");
 const nowMs = ref(Date.now());
@@ -132,34 +135,34 @@ function applyCronPreset(value) {
 }
 
 function formatNumber(value, digits = 0) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: digits }).format(value);
+  return new Intl.NumberFormat(locale.value, { maximumFractionDigits: digits }).format(value);
 }
 
 function durationText(data) {
-  if (!data || data.totalMilliseconds === 0) return "两个时刻相同";
-  const direction = data.totalMilliseconds > 0 ? "结束时间较晚" : "结束时间较早";
+  if (!data || data.totalMilliseconds === 0) return t("toolbox.time.durationSame");
+  const direction = data.totalMilliseconds > 0 ? t("toolbox.time.durationLater") : t("toolbox.time.durationEarlier");
   const parts = [];
-  if (data.days) parts.push(`${Math.abs(data.days)} 天`);
-  if (data.hours) parts.push(`${Math.abs(data.hours)} 小时`);
-  if (data.minutes) parts.push(`${Math.abs(data.minutes)} 分钟`);
-  if (data.seconds) parts.push(`${Math.abs(data.seconds)} 秒`);
-  return `${direction} · ${parts.join(" ") || "不足 1 秒"}`;
+  if (data.days) parts.push(t("toolbox.time.durDays", { count: Math.abs(data.days) }));
+  if (data.hours) parts.push(t("toolbox.time.durHours", { count: Math.abs(data.hours) }));
+  if (data.minutes) parts.push(t("toolbox.time.durMinutes", { count: Math.abs(data.minutes) }));
+  if (data.seconds) parts.push(t("toolbox.time.durSeconds", { count: Math.abs(data.seconds) }));
+  return `${direction} · ${parts.join(" ") || t("toolbox.time.durSubSecond")}`;
 }
 
 async function copyText(value, label) {
-  if (value === "" || value === null || value === undefined) return props.showToast("没有可复制的内容");
+  if (value === "" || value === null || value === undefined) return props.showToast(t("toolbox.time.copyEmpty"));
   try {
     await navigator.clipboard.writeText(String(value));
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.time.copied", { label }));
   } catch (e) {
-    props.showToast("复制失败：" + e);
+    props.showToast(t("toolbox.time.copyFailed", { err: String(e) }));
   }
 }
 </script>
 
 <template>
   <div class="time-tool">
-    <nav class="mode-tabs" aria-label="时间工具类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.time.navLabel')">
       <button v-for="tab in TABS" :key="tab.key" type="button" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">
         {{ tab.label }}
       </button>
@@ -168,29 +171,29 @@ async function copyText(value, label) {
     <section v-if="activeTab === 'timestamp'" class="tool-workspace timestamp-workspace">
       <div class="control-panel">
         <div class="live-time">
-          <span>当前时间戳</span>
-          <button type="button" title="使用当前秒级时间戳" @click="useCurrentTimestamp('seconds')">
-            <b>{{ currentTimestamp.seconds }}</b><small>秒</small>
+          <span>{{ t("toolbox.time.liveTitle") }}</span>
+          <button type="button" :title="t('toolbox.time.liveSecTitle')" @click="useCurrentTimestamp('seconds')">
+            <b>{{ currentTimestamp.seconds }}</b><small>{{ t("toolbox.time.secShort") }}</small>
           </button>
-          <button type="button" title="使用当前毫秒级时间戳" @click="useCurrentTimestamp('milliseconds')">
-            <b>{{ currentTimestamp.milliseconds }}</b><small>毫秒</small>
+          <button type="button" :title="t('toolbox.time.liveMsTitle')" @click="useCurrentTimestamp('milliseconds')">
+            <b>{{ currentTimestamp.milliseconds }}</b><small>{{ t("toolbox.time.msShort") }}</small>
           </button>
         </div>
         <label class="field wide">
-          <span>时间戳</span>
-          <input v-model.trim="timestampInput" class="mono" inputmode="numeric" placeholder="输入秒或毫秒时间戳" />
+          <span>{{ t("toolbox.time.timestampLabel") }}</span>
+          <input v-model.trim="timestampInput" class="mono" inputmode="numeric" :placeholder="t('toolbox.time.timestampPh')" />
         </label>
         <div class="field-row">
           <label class="field">
-            <span>单位</span>
+            <span>{{ t("toolbox.time.unitLabel") }}</span>
             <select v-model="timestampUnit">
-              <option value="auto">自动识别</option>
-              <option value="seconds">秒</option>
-              <option value="milliseconds">毫秒</option>
+              <option value="auto">{{ t("toolbox.time.unitAuto") }}</option>
+              <option value="seconds">{{ t("toolbox.time.unitSeconds") }}</option>
+              <option value="milliseconds">{{ t("toolbox.time.unitMilliseconds") }}</option>
             </select>
           </label>
           <label class="field">
-            <span>显示时区</span>
+            <span>{{ t("toolbox.time.zoneLabel") }}</span>
             <select v-model="timestampZone">
               <option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option>
             </select>
@@ -203,10 +206,10 @@ async function copyText(value, label) {
         <template v-else>
           <header class="result-head"><b>{{ timestampResult.data.formatted.dateTime }}</b><span>{{ timestampResult.data.formatted.weekday }} · {{ timestampResult.data.formatted.offset }}</span></header>
           <div class="result-rows">
-            <div class="result-row"><span>秒时间戳</span><code>{{ timestampResult.data.parsed.seconds }}</code><button class="icon-btn xs" title="复制秒时间戳" @click="copyText(timestampResult.data.parsed.seconds, '秒时间戳')"><Icon name="copy" :size="13" /></button></div>
-            <div class="result-row"><span>毫秒时间戳</span><code>{{ timestampResult.data.parsed.milliseconds }}</code><button class="icon-btn xs" title="复制毫秒时间戳" @click="copyText(timestampResult.data.parsed.milliseconds, '毫秒时间戳')"><Icon name="copy" :size="13" /></button></div>
-            <div class="result-row"><span>ISO 8601</span><code :title="timestampResult.data.formatted.iso">{{ timestampResult.data.formatted.iso }}</code><button class="icon-btn xs" title="复制 ISO 时间" @click="copyText(timestampResult.data.formatted.iso, ' ISO 时间')"><Icon name="copy" :size="13" /></button></div>
-            <div class="result-row"><span>UTC</span><code>{{ formatInstant(timestampResult.data.parsed.milliseconds, 'UTC').dateTime }}</code><button class="icon-btn xs" title="复制 UTC 时间" @click="copyText(formatInstant(timestampResult.data.parsed.milliseconds, 'UTC').dateTime, ' UTC 时间')"><Icon name="copy" :size="13" /></button></div>
+            <div class="result-row"><span>{{ t("toolbox.time.copySecLabel") }}</span><code>{{ timestampResult.data.parsed.seconds }}</code><button class="icon-btn xs" :title="t('toolbox.time.copySecTitle')" @click="copyText(timestampResult.data.parsed.seconds, t('toolbox.time.copySecLabel'))"><Icon name="copy" :size="13" /></button></div>
+            <div class="result-row"><span>{{ t("toolbox.time.copyMsLabel") }}</span><code>{{ timestampResult.data.parsed.milliseconds }}</code><button class="icon-btn xs" :title="t('toolbox.time.copyMsTitle')" @click="copyText(timestampResult.data.parsed.milliseconds, t('toolbox.time.copyMsLabel'))"><Icon name="copy" :size="13" /></button></div>
+            <div class="result-row"><span>ISO 8601</span><code :title="timestampResult.data.formatted.iso">{{ timestampResult.data.formatted.iso }}</code><button class="icon-btn xs" :title="t('toolbox.time.copyIsoTitle')" @click="copyText(timestampResult.data.formatted.iso, t('toolbox.time.copyIsoLabel'))"><Icon name="copy" :size="13" /></button></div>
+            <div class="result-row"><span>UTC</span><code>{{ formatInstant(timestampResult.data.parsed.milliseconds, 'UTC').dateTime }}</code><button class="icon-btn xs" :title="t('toolbox.time.copyUtcTitle')" @click="copyText(formatInstant(timestampResult.data.parsed.milliseconds, 'UTC').dateTime, t('toolbox.time.copyUtcLabel'))"><Icon name="copy" :size="13" /></button></div>
           </div>
         </template>
       </div>
@@ -214,11 +217,11 @@ async function copyText(value, label) {
 
     <section v-else-if="activeTab === 'timezone'" class="tool-workspace timezone-workspace">
       <div class="timezone-form">
-        <label class="field wide"><span>日期时间</span><input v-model="timezoneInput" type="datetime-local" step="1" /></label>
-        <button class="btn-ghost sm now-btn" type="button" @click="useTimezoneNow"><Icon name="clock" :size="14" />当前时间</button>
-        <label class="field"><span>源时区</span><select v-model="sourceZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
-        <button class="icon-btn swap-btn" type="button" title="交换源时区与目标时区" aria-label="交换源时区与目标时区" @click="swapZones"><Icon name="repeat" :size="16" /></button>
-        <label class="field"><span>目标时区</span><select v-model="targetZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
+        <label class="field wide"><span>{{ t("toolbox.time.datetimeLabel") }}</span><input v-model="timezoneInput" type="datetime-local" step="1" /></label>
+        <button class="btn-ghost sm now-btn" type="button" @click="useTimezoneNow"><Icon name="clock" :size="14" />{{ t("toolbox.time.nowBtn") }}</button>
+        <label class="field"><span>{{ t("toolbox.time.sourceZoneLabel") }}</span><select v-model="sourceZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
+        <button class="icon-btn swap-btn" type="button" :title="t('toolbox.time.swapTitle')" :aria-label="t('toolbox.time.swapTitle')" @click="swapZones"><Icon name="repeat" :size="16" /></button>
+        <label class="field"><span>{{ t("toolbox.time.targetZoneLabel") }}</span><select v-model="targetZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
       </div>
       <div v-if="timezoneResult.error" class="error-state full" role="alert"><Icon name="alert" :size="20" /><span>{{ timezoneResult.error }}</span></div>
       <div v-else class="zone-results">
@@ -229,41 +232,41 @@ async function copyText(value, label) {
     </section>
 
     <section v-else-if="activeTab === 'calculate'" class="tool-workspace calculate-workspace">
-      <div class="calc-switch" role="group" aria-label="日期计算方式">
-        <button type="button" :class="{ on: calcMode === 'add' }" @click="calcMode = 'add'">日期增减</button>
-        <button type="button" :class="{ on: calcMode === 'diff' }" @click="calcMode = 'diff'">时间间隔</button>
+      <div class="calc-switch" role="group" :aria-label="t('toolbox.time.calcAria')">
+        <button type="button" :class="{ on: calcMode === 'add' }" @click="calcMode = 'add'">{{ t("toolbox.time.calcModeAdd") }}</button>
+        <button type="button" :class="{ on: calcMode === 'diff' }" @click="calcMode = 'diff'">{{ t("toolbox.time.calcModeDiff") }}</button>
       </div>
-      <label class="field zone-field"><span>计算时区</span><select v-model="calcZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
+      <label class="field zone-field"><span>{{ t("toolbox.time.calcZoneLabel") }}</span><select v-model="calcZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
 
       <template v-if="calcMode === 'add'">
         <div class="calc-form">
-          <label class="field"><span>基准时间</span><input v-model="calcStart" type="datetime-local" step="1" /></label>
-          <label class="field amount-field"><span>增减数量</span><input v-model.number="calcAmount" type="number" /></label>
-          <label class="field unit-field"><span>单位</span><select v-model="calcUnit"><option v-for="unit in UNITS" :key="unit.value" :value="unit.value">{{ unit.label }}</option></select></label>
+          <label class="field"><span>{{ t("toolbox.time.baseTimeLabel") }}</span><input v-model="calcStart" type="datetime-local" step="1" /></label>
+          <label class="field amount-field"><span>{{ t("toolbox.time.amountLabel") }}</span><input v-model.number="calcAmount" type="number" /></label>
+          <label class="field unit-field"><span>{{ t("toolbox.time.unitLabel") }}</span><select v-model="calcUnit"><option v-for="unit in UNITS" :key="unit.value" :value="unit.value">{{ unit.label }}</option></select></label>
         </div>
         <div v-if="addResult.error" class="error-state full" role="alert"><Icon name="alert" :size="20" /><span>{{ addResult.error }}</span></div>
-        <div v-else class="calc-result"><span>计算结果</span><b>{{ addResult.data.dateTime }}</b><small>{{ addResult.data.weekday }} · {{ addResult.data.offset }}</small><button class="icon-btn" title="复制计算结果" @click="copyText(addResult.data.dateTime, '计算结果')"><Icon name="copy" :size="14" /></button></div>
+        <div v-else class="calc-result"><span>{{ t("toolbox.time.resultLabel") }}</span><b>{{ addResult.data.dateTime }}</b><small>{{ addResult.data.weekday }} · {{ addResult.data.offset }}</small><button class="icon-btn" :title="t('toolbox.time.copyResultTitle')" @click="copyText(addResult.data.dateTime, t('toolbox.time.copyResultLabel'))"><Icon name="copy" :size="14" /></button></div>
       </template>
 
       <template v-else>
         <div class="calc-form diff-form">
-          <label class="field"><span>开始时间</span><input v-model="calcStart" type="datetime-local" step="1" /></label>
-          <label class="field"><span>结束时间</span><input v-model="calcEnd" type="datetime-local" step="1" /></label>
+          <label class="field"><span>{{ t("toolbox.time.startLabel") }}</span><input v-model="calcStart" type="datetime-local" step="1" /></label>
+          <label class="field"><span>{{ t("toolbox.time.endLabel") }}</span><input v-model="calcEnd" type="datetime-local" step="1" /></label>
         </div>
         <div v-if="differenceResult.error" class="error-state full" role="alert"><Icon name="alert" :size="20" /><span>{{ differenceResult.error }}</span></div>
         <div v-else class="duration-result">
-          <header><b>{{ durationText(differenceResult.data) }}</b><span>{{ formatNumber(differenceResult.data.totalMilliseconds) }} 毫秒</span></header>
-          <div class="duration-stats"><span><b>{{ formatNumber(differenceResult.data.totalHours, 3) }}</b>小时</span><span><b>{{ formatNumber(differenceResult.data.totalMinutes, 3) }}</b>分钟</span><span><b>{{ formatNumber(differenceResult.data.totalSeconds, 3) }}</b>秒</span></div>
+          <header><b>{{ durationText(differenceResult.data) }}</b><span>{{ t("toolbox.time.totalMs", { count: formatNumber(differenceResult.data.totalMilliseconds) }) }}</span></header>
+          <div class="duration-stats"><span><b>{{ formatNumber(differenceResult.data.totalHours, 3) }}</b>{{ t("toolbox.time.unitHours") }}</span><span><b>{{ formatNumber(differenceResult.data.totalMinutes, 3) }}</b>{{ t("toolbox.time.unitMinutes") }}</span><span><b>{{ formatNumber(differenceResult.data.totalSeconds, 3) }}</b>{{ t("toolbox.time.unitSeconds") }}</span></div>
         </div>
       </template>
     </section>
 
     <section v-else class="tool-workspace cron-workspace">
       <div class="cron-form">
-        <label class="field cron-expression"><span>Cron 表达式</span><input v-model.trim="cronExpression" class="mono" placeholder="0 9 * * 1-5" /></label>
-        <label class="field"><span>执行时区</span><select v-model="cronZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
-        <label class="field"><span>起算时间</span><input v-model="cronBase" type="datetime-local" step="1" /></label>
-        <label class="field count-field"><span>次数</span><select v-model.number="cronCount"><option :value="5">5</option><option :value="10">10</option><option :value="20">20</option></select></label>
+        <label class="field cron-expression"><span>{{ t("toolbox.time.cronExprLabel") }}</span><input v-model.trim="cronExpression" class="mono" placeholder="0 9 * * 1-5" /></label>
+        <label class="field"><span>{{ t("toolbox.time.cronZoneLabel") }}</span><select v-model="cronZone"><option v-for="zone in ZONES" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select></label>
+        <label class="field"><span>{{ t("toolbox.time.cronBaseLabel") }}</span><input v-model="cronBase" type="datetime-local" step="1" /></label>
+        <label class="field count-field"><span>{{ t("toolbox.time.cronCountLabel") }}</span><select v-model.number="cronCount"><option :value="5">5</option><option :value="10">10</option><option :value="20">20</option></select></label>
       </div>
       <div class="preset-row"><button v-for="preset in CRON_PRESETS" :key="preset.value" type="button" :class="{ on: cronExpression === preset.value }" @click="applyCronPreset(preset.value)">{{ preset.label }}</button></div>
       <div v-if="cronResult.error" class="error-state full" role="alert"><Icon name="alert" :size="20" /><span>{{ cronResult.error }}</span></div>
