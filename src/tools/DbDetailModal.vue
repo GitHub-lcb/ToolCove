@@ -20,7 +20,7 @@ const emit = defineEmits(["close"]);
       <h2>{{ t("toolbox.db.detailTitle") }} <code class="dd-table-name">{{ detail.table }}</code></h2>
       <div class="dd-tabs">
         <button class="dd-tab" :class="{ on: detail.tab === 'indexes' }" @click="switchDetailTab('indexes')">
-          {{ t("toolbox.db.idxTab") }}<template v-if="detail.loaded.indexes">（{{ detail.indexes.length }}）</template>
+          {{ t("toolbox.db.idxTab") }}<template v-if="detail.loaded.indexes">{{ t("common.badgeCount", { n: detail.indexes.length }) }}</template>
         </button>
         <button class="dd-tab" :class="{ on: detail.tab === 'ddl' }" @click="switchDetailTab('ddl')">DDL</button>
       </div>

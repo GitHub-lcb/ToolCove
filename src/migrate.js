@@ -125,7 +125,7 @@ export function migrateSnippetsV4(snippets) {
 
 // 领域 codingProject 下沉 Pool：把领域的标识复制给其下未填的 Pool，再从领域删除该字段。
 // 就地改并返回 [domains, pools]（供单测断言）；幂等：重复跑结果不变。
-export function migrateCodingProjectToPools(domains, pools) {
+export function migrateLegacyProjectToPools(domains, pools) {
   if (!Array.isArray(domains) || !Array.isArray(pools)) return [domains, pools];
   domains.forEach((d) => {
     const proj = d && typeof d.codingProject === "string" ? d.codingProject.trim() : "";
@@ -171,7 +171,7 @@ const MIGRATIONS = [
     const domains = await loadKey("domains", []);
     const pools = await loadKey("pools", []);
     if (!Array.isArray(domains) || !Array.isArray(pools)) return;
-    migrateCodingProjectToPools(domains, pools);
+    migrateLegacyProjectToPools(domains, pools);
     await invoke("save_data", { key: "domains", data: domains });
     await invoke("save_data", { key: "pools", data: pools });
   },

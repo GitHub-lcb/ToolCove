@@ -183,10 +183,13 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-    let quick_note = MenuItem::with_id(app, "quick_note", "快速记问题", true, None::<&str>)?;
-    let check_update = MenuItem::with_id(app, "check_update", "检查更新", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    // 菜单文案从前端 i18n 字典读取（避免硬编码中文）；语言决议与前端 initLocale 对齐：
+    // 显式偏好 en-US 用英文，其余（含跟随系统/缺失）按应用主语言中文。
+    let tray_dict = tray_labels(app);
+    let quick_note = MenuItem::with_id(app, "quick_note", tray_dict[0].as_str(), true, None::<&str>)?;
+    let check_update = MenuItem::with_id(app, "check_update", tray_dict[1].as_str(), true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", tray_dict[2].as_str(), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tray_dict[3].as_str(), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&quick_note, &check_update, &show, &quit])?;
 
     fn show_main(app: &tauri::AppHandle) {
@@ -220,6 +223,36 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// 托盘菜单文案：编译期嵌入前端 i18n 字典，按 settings.ui.locale 显式 en-US 选英文，其余用中文
+fn tray_labels(app: &tauri::AppHandle) -> [String; 4] {
+    let dict = if let Ok(dir) = app.path().app_data_dir() {
+        if let Ok(raw) = std::fs::read_to_string(dir.join("settings.json")) {
+            if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if settings.pointer("/ui/locale").and_then(|v| v.as_str()) == Some("en-US") {
+                    include_str!("../../src/i18n/en-US.json")
+                } else {
+                    include_str!("../../src/i18n/zh-CN.json")
+                }
+            } else {
+                include_str!("../../src/i18n/zh-CN.json")
+            }
+        } else {
+            include_str!("../../src/i18n/zh-CN.json")
+        }
+    } else {
+        include_str!("../../src/i18n/zh-CN.json")
+    };
+    let value = serde_json::from_str::<serde_json::Value>(dict).unwrap_or_default();
+    let get = |path: &str| {
+        value
+            .pointer(path)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .unwrap_or_default()
+    };
+    [get("/tray/quickNote"), get("/tray/checkUpdate"), get("/tray/showMain"), get("/tray/quit")]
 }
 
 #[cfg(test)]

@@ -223,13 +223,13 @@ export async function buildReleaseXlsx(iteration) {
 
 // ===================== 工时统计 =====================
 // 收集迭代需求（子任务即工时 + 历史工时记录）与问题的按日工时，展平为统一条目
-// mineName 有值时只统计自己：带 Coding 处理人且不是本人的子任务不计入（无处理人的本地子任务视为自己的）
+// mineName 有值时只统计自己：带平台处理人且不是本人的子任务不计入（无处理人的本地子任务视为自己的）
 export function collectDayLogs(iterations, problems, mineName = "") {
   const entries = [];
   (iterations || []).forEach((it) =>
     (it.items || []).forEach((r) => {
       // 子任务工时（现行机制）：有工时且有归属日才进按日统计。
-      // 有 Coding 工时登记明细（logs）时按每条实际登记日逐条统计，跨天填写可正确拆分；
+      // 有平台工时登记明细（logs）时按每条实际登记日逐条统计，跨天填写可正确拆分；
       // 无明细（本地手工子任务或明细拉取失败）回退子任务累计工时与归属日。
       (r.subtasks || []).forEach((s) => {
         const detail = Array.isArray(s.logs) && s.logs.length ? s.logs : null;
@@ -318,7 +318,7 @@ export function subRemaining(s) {
   return Math.max(0, Math.round((total - pushed) * 10) / 10);
 }
 
-// 子任务已登记到 Coding 的工时合计（四舍五入到 0.1）
+// 子任务已登记到平台的工时合计（四舍五入到 0.1）
 export function subPushedHours(s) {
   const pushed = ((s && s.logs) || []).reduce((sum, l) => sum + (Number(l.hours) || 0), 0);
   return Math.round(pushed * 10) / 10;
@@ -548,7 +548,7 @@ export function renderMarkdown(src, opts = {}) {
   return out.join("");
 }
 
-// 错误对象转可读文案（原 coding.js errText，Coding 剥离后并入 shared）
+// 错误对象转可读文案（原工时模块 errText，平台逻辑剥离后并入 shared）
 export function errText(e) {
   if (e == null) return t("common.unknownError");
   if (typeof e === "string") return e;

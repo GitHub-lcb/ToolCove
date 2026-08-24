@@ -1,6 +1,6 @@
 // migrate.js 纯转换函数单测：结构升级 + 幂等性
 import { describe, it, expect } from "vitest";
-import { migrateIterationsV1, migrateIterationsV2, migrateIterationsV3, migrateIterationsV4, migrateSnippetsV3, migrateSnippetsV4, migrateProblemsV1, migrateReleasesV1, migrateCodingProjectToPools, SCHEMA_VERSION } from "./migrate.js";
+import { migrateIterationsV1, migrateIterationsV2, migrateIterationsV3, migrateIterationsV4, migrateSnippetsV3, migrateSnippetsV4, migrateProblemsV1, migrateReleasesV1, migrateLegacyProjectToPools, SCHEMA_VERSION } from "./migrate.js";
 
 describe("SCHEMA_VERSION", () => {
   it("是正整数", () => {
@@ -207,7 +207,7 @@ describe("migrateReleasesV1", () => {
   });
 });
 
-describe("migrateCodingProjectToPools", () => {
+describe("migrateLegacyProjectToPools", () => {
   it("领域 codingProject 复制给其下未填的 Pool，已填 Pool 不被覆盖", () => {
     const domains = [{ id: "d1", name: "云仓", codingProject: "ops-yuncang" }];
     const pools = [
@@ -215,7 +215,7 @@ describe("migrateCodingProjectToPools", () => {
       { id: "p2", domainId: "d1", name: "online.api", codingProject: "ops-online" },
       { id: "p3", domainId: "d2", name: "other.api" },
     ];
-    migrateCodingProjectToPools(domains, pools);
+    migrateLegacyProjectToPools(domains, pools);
     expect(pools[0].codingProject).toBe("ops-yuncang");
     expect(pools[1].codingProject).toBe("ops-online");
     expect(pools[2].codingProject).toBeUndefined();
@@ -223,21 +223,21 @@ describe("migrateCodingProjectToPools", () => {
 
   it("从领域删除 codingProject 字段", () => {
     const domains = [{ id: "d1", name: "云仓", codingProject: "ops-yuncang" }];
-    migrateCodingProjectToPools(domains, []);
+    migrateLegacyProjectToPools(domains, []);
     expect("codingProject" in domains[0]).toBe(false);
   });
 
   it("幂等：二次执行结果不变", () => {
     const domains = [{ id: "d1", name: "云仓", codingProject: "ops-yuncang" }];
     const pools = [{ id: "p1", domainId: "d1", name: "warehouse.api" }];
-    migrateCodingProjectToPools(domains, pools);
+    migrateLegacyProjectToPools(domains, pools);
     const once = JSON.stringify([domains, pools]);
-    migrateCodingProjectToPools(domains, pools);
+    migrateLegacyProjectToPools(domains, pools);
     expect(JSON.stringify([domains, pools])).toBe(once);
   });
 
   it("非数组原样返回", () => {
-    const out = migrateCodingProjectToPools(null, null);
+    const out = migrateLegacyProjectToPools(null, null);
     expect(out).toEqual([null, null]);
   });
 });

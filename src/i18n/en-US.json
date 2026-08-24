@@ -2110,5 +2110,11 @@
   },
   "json": {
     "sensitiveKeyWords": "密码|手机|电话|身份证|邮箱|地址|银行卡|账号|薪"
+  },
+  "tray": {
+    "quickNote": "Quick Note",
+    "checkUpdate": "Check Update",
+    "showMain": "Show Window",
+    "quit": "Quit"
   }
 }
