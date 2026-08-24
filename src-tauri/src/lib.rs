@@ -1,3 +1,8 @@
+mod ai;
+mod db;
+mod file_tool;
+mod network;
+mod secure;
 mod storage;
 
 use tauri::Emitter;
@@ -63,6 +68,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            db::init();
             setup_tray(app.handle())?;
             register_quick_note_shortcut(app.handle());
             sanitize_main_window(app.handle(), true);
@@ -99,7 +105,44 @@ pub fn run() {
             storage::backup_data,
             storage::restore_data,
             storage::auto_backup,
-            notify
+            notify,
+            // HTTP 通用代理（请求工具；源仓挂在 coding 模块，ToolCove 归入 network）
+            network::http_request,
+            // 网络诊断（网络工具）
+            network::local_ip,
+            network::network_dns_lookup,
+            network::network_tcp_check,
+            network::network_ping,
+            network::network_trace,
+            network::network_interfaces,
+            // 数据库工具
+            db::db_test,
+            db::db_connect,
+            db::db_query,
+            db::db_tables,
+            db::db_columns,
+            db::db_indexes,
+            db::db_ddl,
+            db::db_close,
+            db::db_drivers,
+            db::db_install_oracle_driver,
+            // 文件工具
+            file_tool::read_text_file,
+            file_tool::file_tool_inspect,
+            file_tool::file_tool_read_text,
+            file_tool::file_tool_write_text,
+            file_tool::file_tool_read_base64,
+            file_tool::file_tool_write_base64,
+            file_tool::file_tool_calculate_md5,
+            file_tool::file_tool_modify_md5,
+            file_tool::file_tool_list_directory,
+            file_tool::file_tool_batch_rename,
+            // AI 对话
+            ai::ai_chat,
+            ai::ai_chat_stream,
+            // 加密安全存储
+            secure::encrypt_text,
+            secure::decrypt_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
