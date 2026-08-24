@@ -27,3 +27,17 @@ serde_json = "1"
 base64 = "0.22"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+md-5 = "0.11"
+getrandom = "0.4"
+same-file = "1"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+tokio = { version = "1", features = ["time"] }
+futures-util = "0.3"
+mysql = "28.0.0"
+postgres = "0.19.14"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+odbc-api = "29.0.0"
+local-ip-address = "0.6"
+encoding_rs = "0.8"
+windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory"] }
