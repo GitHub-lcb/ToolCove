@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import Icon from "../Icon.vue";
@@ -17,30 +18,32 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
+const { t } = useI18n();
+
 const isTauri = !!window.__TAURI_INTERNALS__;
-const TABS = [
-  { key: "info", label: "文件信息" },
-  { key: "md5", label: "修改 MD5" },
-  { key: "encoding", label: "编码转换" },
+const TABS = computed(() => [
+  { key: "info", label: t("toolbox.file.tabInfo") },
+  { key: "md5", label: t("toolbox.file.tabMd5") },
+  { key: "encoding", label: t("toolbox.file.tabEncoding") },
   { key: "base64", label: "Base64" },
-  { key: "line", label: "换行符" },
-  { key: "rename", label: "批量重命名" },
-];
+  { key: "line", label: t("toolbox.file.tabLine") },
+  { key: "rename", label: t("toolbox.file.tabRename") },
+]);
 const ENCODINGS = ["AUTO", "UTF-8", "UTF-16LE", "UTF-16BE", "GBK"];
 const OUTPUT_ENCODINGS = ENCODINGS.slice(1);
 const activeTab = ref("info");
 
 function ensureDesktop() {
   if (isTauri) return true;
-  props.showToast("文件处理需要在桌面应用中使用");
+  props.showToast(t("toolbox.file.needDesktop"));
   return false;
 }
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 function formatDate(timestamp) {
-  if (!timestamp) return "未知";
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (!timestamp) return t("toolbox.file.unknown");
+  return new Intl.DateTimeFormat(t("toolbox.file.locale"), {
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   }).format(new Date(timestamp));
@@ -52,13 +55,13 @@ function siblingPath(path, suffix) {
   const next = dot > 0 ? `${name.slice(0, dot)}${suffix}${name.slice(dot)}` : `${name}${suffix}`;
   return value.slice(0, value.length - name.length) + next;
 }
-async function copyText(value, label = "内容") {
+async function copyText(value, label = t("toolbox.file.content")) {
   if (!value) return;
   try {
     await navigator.clipboard.writeText(String(value));
-    props.showToast(`${label}已复制`);
+    props.showToast(t("toolbox.file.copied", { label }));
   } catch {
-    props.showToast("复制失败，请手动复制");
+    props.showToast(t("toolbox.file.copyFailed"));
   }
 }
 
@@ -67,12 +70,12 @@ const infoItems = ref([]);
 const infoState = ref({ loading: false, error: "" });
 async function chooseInfoFiles() {
   if (!ensureDesktop()) return;
-  const paths = await openDialog({ multiple: true, title: "选择要查看的文件" });
+  const paths = await openDialog({ multiple: true, title: t("toolbox.file.pickInfoFiles") });
   if (paths) await inspectPaths(Array.isArray(paths) ? paths : [paths]);
 }
 async function chooseInfoDirectory() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ directory: true, title: "选择要查看的文件夹" });
+  const path = await openDialog({ directory: true, title: t("toolbox.file.pickInfoFolder") });
   if (path) await inspectPaths([path]);
 }
 async function inspectPaths(paths) {
@@ -92,11 +95,11 @@ const md5Result = ref(null);
 const md5State = ref({ loading: false, error: "", label: "" });
 async function chooseMd5File() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ title: "选择要修改 MD5 的文件" });
+  const path = await openDialog({ title: t("toolbox.file.pickMd5File") });
   if (!path) return;
   md5File.value = null;
   md5Result.value = null;
-  md5State.value = { loading: true, error: "", label: "正在计算原 MD5" };
+  md5State.value = { loading: true, error: "", label: t("toolbox.file.md5Calculating") };
   try {
     md5File.value = await invoke("file_tool_calculate_md5", { path });
     md5State.value = { loading: false, error: "", label: "" };
@@ -105,14 +108,14 @@ async function chooseMd5File() {
   }
 }
 async function generateMd5Copy() {
-  if (!ensureDesktop() || !md5File.value) return props.showToast("请先选择文件");
+  if (!ensureDesktop() || !md5File.value) return props.showToast(t("toolbox.file.needSelectFile"));
   const outputPath = await saveDialog({
-    title: "保存 MD5 副本",
+    title: t("toolbox.file.saveMd5Copy"),
     defaultPath: siblingPath(md5File.value.path, "_md5"),
   });
   if (!outputPath) return;
   md5Result.value = null;
-  md5State.value = { loading: true, error: "", label: "正在生成 MD5 副本" };
+  md5State.value = { loading: true, error: "", label: t("toolbox.file.md5Generating") };
   try {
     const result = await invoke("file_tool_modify_md5", {
       sourcePath: md5File.value.path,
@@ -125,7 +128,7 @@ async function generateMd5Copy() {
     };
     md5Result.value = result;
     md5State.value = { loading: false, error: "", label: "" };
-    props.showToast("MD5 副本已生成");
+    props.showToast(t("toolbox.file.md5CopyDone"));
   } catch (error) {
     md5State.value = { loading: false, error: errorMessage(error), label: "" };
   }
@@ -142,14 +145,14 @@ const encodingMeta = ref({ size: 0, hasBom: false, lossy: false });
 const encodingState = ref({ loading: false, error: "" });
 async function chooseEncodingFile() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ title: "选择文本文件" });
+  const path = await openDialog({ title: t("toolbox.file.pickTextFile") });
   if (path) {
     encodingPath.value = path;
     await loadEncodingFile();
   }
 }
 async function loadEncodingFile() {
-  if (!encodingPath.value) return props.showToast("请先选择文本文件");
+  if (!encodingPath.value) return props.showToast(t("toolbox.file.needSelectText"));
   encodingState.value = { loading: true, error: "" };
   try {
     const result = await invoke("file_tool_read_text", { path: encodingPath.value, encoding: inputEncoding.value });
@@ -164,8 +167,8 @@ async function loadEncodingFile() {
   }
 }
 async function saveEncodedFile() {
-  if (!ensureDesktop() || !encodingPath.value) return props.showToast("请先选择文本文件");
-  const path = await saveDialog({ title: "另存编码转换结果", defaultPath: siblingPath(encodingPath.value, `_${outputEncoding.value.toLowerCase()}`) });
+  if (!ensureDesktop() || !encodingPath.value) return props.showToast(t("toolbox.file.needSelectText"));
+  const path = await saveDialog({ title: t("toolbox.file.saveEncodedAs"), defaultPath: siblingPath(encodingPath.value, `_${outputEncoding.value.toLowerCase()}`) });
   if (!path) return;
   try {
     await invoke("file_tool_write_text", {
@@ -174,9 +177,9 @@ async function saveEncodedFile() {
       encoding: outputEncoding.value,
       bom: outputEncoding.value === "GBK" ? false : outputBom.value,
     });
-    props.showToast(`已保存为 ${outputEncoding.value}`);
+    props.showToast(t("toolbox.file.savedAs", { encoding: outputEncoding.value }));
   } catch (error) {
-    props.showToast(`保存失败：${errorMessage(error)}`);
+    props.showToast(t("toolbox.file.saveFailed", { error: errorMessage(error) }));
   }
 }
 
@@ -196,7 +199,7 @@ const base64Display = computed(() => {
 const decodedSize = computed(() => estimateBase64Bytes(base64Text.value));
 async function chooseBase64File() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ title: "选择要编码的文件" });
+  const path = await openDialog({ title: t("toolbox.file.pickEncodeFile") });
   if (!path) return;
   base64State.value = { loading: true, error: "" };
   try {
@@ -220,14 +223,14 @@ function switchBase64Mode(mode) {
 }
 async function saveDecodedFile() {
   if (!ensureDesktop()) return;
-  if (!base64Text.value.trim()) return props.showToast("请粘贴 Base64 内容");
-  const path = await saveDialog({ title: "保存 Base64 解码结果", defaultPath: "decoded.bin" });
+  if (!base64Text.value.trim()) return props.showToast(t("toolbox.file.needPasteBase64"));
+  const path = await saveDialog({ title: t("toolbox.file.saveDecodedAs"), defaultPath: "decoded.bin" });
   if (!path) return;
   base64State.value = { loading: true, error: "" };
   try {
     const bytes = await invoke("file_tool_write_base64", { path, content: base64Text.value });
     base64State.value = { loading: false, error: "" };
-    props.showToast(`已解码并保存 ${formatFileSize(bytes)}`);
+    props.showToast(t("toolbox.file.decodedSaved", { size: formatFileSize(bytes) }));
   } catch (error) {
     base64State.value = { loading: false, error: errorMessage(error) };
   }
@@ -244,7 +247,7 @@ const lineStats = computed(() => countLineEndings(lineText.value));
 const lineOutput = computed(() => convertLineEndings(lineText.value, lineTarget.value));
 async function chooseLineFile() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ title: "选择文本文件" });
+  const path = await openDialog({ title: t("toolbox.file.pickTextFile") });
   if (!path) return;
   lineState.value = { loading: true, error: "" };
   try {
@@ -259,14 +262,14 @@ async function chooseLineFile() {
   }
 }
 async function saveLineFile() {
-  if (!ensureDesktop() || !linePath.value) return props.showToast("请先选择文本文件");
-  const path = await saveDialog({ title: "另存换行符转换结果", defaultPath: siblingPath(linePath.value, `_${lineTarget.value.toLowerCase()}`) });
+  if (!ensureDesktop() || !linePath.value) return props.showToast(t("toolbox.file.needSelectText"));
+  const path = await saveDialog({ title: t("toolbox.file.saveLineAs"), defaultPath: siblingPath(linePath.value, `_${lineTarget.value.toLowerCase()}`) });
   if (!path) return;
   try {
     await invoke("file_tool_write_text", { path, text: lineOutput.value, encoding: lineEncoding.value, bom: lineHasBom.value });
-    props.showToast(`已转换为 ${lineTarget.value}`);
+    props.showToast(t("toolbox.file.convertedTo", { target: lineTarget.value }));
   } catch (error) {
-    props.showToast(`保存失败：${errorMessage(error)}`);
+    props.showToast(t("toolbox.file.saveFailed", { error: errorMessage(error) }));
   }
 }
 
@@ -295,7 +298,7 @@ const renameSummary = computed(() => ({
 const canRename = computed(() => renameSummary.value.changed > 0 && renameSummary.value.invalid === 0 && !renameState.value.loading);
 async function chooseRenameDirectory() {
   if (!ensureDesktop()) return;
-  const path = await openDialog({ directory: true, title: "选择批量重命名文件夹" });
+  const path = await openDialog({ directory: true, title: t("toolbox.file.pickRenameFolder") });
   if (path) await loadRenameDirectory(path);
 }
 async function loadRenameDirectory(path = renameDirectory.value) {
@@ -307,7 +310,7 @@ async function loadRenameDirectory(path = renameDirectory.value) {
     renameFiles.value = files;
     selectedRenamePaths.value = new Set(files.slice(0, 500).map((file) => file.path));
     renameState.value = { loading: false, error: "" };
-    if (files.length > 500) props.showToast("文件较多，已先选择前 500 个");
+    if (files.length > 500) props.showToast(t("toolbox.file.selectedFirst500"));
   } catch (error) {
     renameFiles.value = [];
     selectedRenamePaths.value = new Set();
@@ -318,7 +321,7 @@ function toggleRenameFile(path) {
   const next = new Set(selectedRenamePaths.value);
   if (next.has(path)) next.delete(path);
   else if (next.size < 500) next.add(path);
-  else return props.showToast("单次最多选择 500 个文件");
+  else return props.showToast(t("toolbox.file.max500Files"));
   selectedRenamePaths.value = next;
 }
 function toggleVisibleRenameFiles() {
@@ -338,9 +341,9 @@ async function executeRename() {
   if (!canRename.value) return;
   const count = renameSummary.value.changed;
   const ok = await askConfirm({
-    title: "执行批量重命名",
-    message: `将重命名 ${count} 个文件。请确认预览结果无误后继续。`,
-    okText: "执行重命名",
+    title: t("toolbox.file.renameConfirmTitle"),
+    message: t("toolbox.file.renameConfirmMsg", { count }),
+    okText: t("toolbox.file.renameConfirmOk"),
     danger: false,
   });
   if (!ok) return;
@@ -348,7 +351,7 @@ async function executeRename() {
   try {
     const items = renamePreview.value.filter((item) => item.changed).map((item) => ({ path: item.path, targetName: item.targetName }));
     const renamed = await invoke("file_tool_batch_rename", { items });
-    props.showToast(`已重命名 ${renamed} 个文件`);
+    props.showToast(t("toolbox.file.renamedCount", { count: renamed }));
     await loadRenameDirectory();
   } catch (error) {
     renameState.value = { loading: false, error: errorMessage(error) };
@@ -358,150 +361,150 @@ async function executeRename() {
 
 <template>
   <div class="file-tool">
-    <nav class="mode-tabs" aria-label="文件处理类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.file.ariaLabel')">
       <button v-for="tab in TABS" :key="tab.key" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">{{ tab.label }}</button>
     </nav>
 
     <section v-if="activeTab === 'info'" class="workspace column-workspace">
       <div class="control-bar">
-        <button class="btn-primary" @click="chooseInfoFiles"><Icon name="file" :size="15" />选择文件</button>
-        <button class="btn-outline" @click="chooseInfoDirectory"><Icon name="folder" :size="15" />选择文件夹</button>
-        <span v-if="infoItems.length" class="summary-text">{{ infoItems.length }} 项</span>
+        <button class="btn-primary" @click="chooseInfoFiles"><Icon name="file" :size="15" />{{ t("toolbox.file.chooseFile") }}</button>
+        <button class="btn-outline" @click="chooseInfoDirectory"><Icon name="folder" :size="15" />{{ t("toolbox.file.chooseFolder") }}</button>
+        <span v-if="infoItems.length" class="summary-text">{{ t("toolbox.file.countItems", { count: infoItems.length }) }}</span>
       </div>
-      <div v-if="infoState.loading" class="panel state-panel"><div class="loading-state"><span class="spinner"></span>正在读取文件信息</div></div>
+      <div v-if="infoState.loading" class="panel state-panel"><div class="loading-state"><span class="spinner"></span>{{ t("toolbox.file.readingInfo") }}</div></div>
       <div v-else-if="infoState.error" class="panel state-panel"><div class="error-state"><Icon name="alert" :size="20" />{{ infoState.error }}</div></div>
       <div v-else-if="infoItems.length" class="info-list">
         <article v-for="item in infoItems" :key="item.path" class="info-card">
-          <header><span class="file-type"><Icon :name="item.isDirectory ? 'folder' : 'file'" :size="18" /></span><b :title="item.name">{{ item.name }}</b><span class="type-chip">{{ item.isDirectory ? "文件夹" : (item.extension || "无扩展名") }}</span></header>
+          <header><span class="file-type"><Icon :name="item.isDirectory ? 'folder' : 'file'" :size="18" /></span><b :title="item.name">{{ item.name }}</b><span class="type-chip">{{ item.isDirectory ? t("toolbox.file.folder") : (item.extension || t("toolbox.file.noExtension")) }}</span></header>
           <dl>
-            <div><dt>大小</dt><dd>{{ item.isDirectory ? "不计算目录内容" : formatFileSize(item.size) }}</dd></div>
-            <div><dt>修改时间</dt><dd>{{ formatDate(item.modifiedAt) }}</dd></div>
-            <div><dt>创建时间</dt><dd>{{ formatDate(item.createdAt) }}</dd></div>
-            <div><dt>属性</dt><dd>{{ item.readonly ? "只读" : "可写" }}</dd></div>
+            <div><dt>{{ t("toolbox.file.size") }}</dt><dd>{{ item.isDirectory ? t("toolbox.file.noDirContent") : formatFileSize(item.size) }}</dd></div>
+            <div><dt>{{ t("toolbox.file.modifiedAt") }}</dt><dd>{{ formatDate(item.modifiedAt) }}</dd></div>
+            <div><dt>{{ t("toolbox.file.createdAt") }}</dt><dd>{{ formatDate(item.createdAt) }}</dd></div>
+            <div><dt>{{ t("toolbox.file.attributes") }}</dt><dd>{{ item.readonly ? t("toolbox.file.readonly") : t("toolbox.file.writable") }}</dd></div>
           </dl>
-          <footer><code :title="item.path">{{ item.path }}</code><button class="icon-btn xs" title="复制路径" @click="copyText(item.path, '路径')"><Icon name="copy" :size="13" /></button></footer>
+          <footer><code :title="item.path">{{ item.path }}</code><button class="icon-btn xs" :title="t('toolbox.file.copyPathTitle')" @click="copyText(item.path, t('toolbox.file.copyPath'))"><Icon name="copy" :size="13" /></button></footer>
         </article>
       </div>
-      <div v-else class="panel state-panel"><div class="blank-state"><Icon name="file" :size="26" /><span>选择文件或文件夹查看大小、时间、类型和路径</span></div></div>
+      <div v-else class="panel state-panel"><div class="blank-state"><Icon name="file" :size="26" /><span>{{ t("toolbox.file.infoBlank") }}</span></div></div>
     </section>
 
     <section v-else-if="activeTab === 'md5'" class="workspace column-workspace">
       <div class="control-bar">
-        <button class="btn-outline" :disabled="md5State.loading" @click="chooseMd5File"><Icon name="file" :size="15" />选择文件</button>
+        <button class="btn-outline" :disabled="md5State.loading" @click="chooseMd5File"><Icon name="file" :size="15" />{{ t("toolbox.file.chooseFile") }}</button>
         <span v-if="md5File" class="source-file" :title="md5File.path">{{ md5File.name }} · {{ formatFileSize(md5File.size) }}</span>
-        <span class="warn-chip"><Icon name="alert" :size="13" />严格校验与数字签名将失效</span>
-        <button class="btn-primary push-right" :disabled="!md5File || md5State.loading" @click="generateMd5Copy"><Icon name="sparkles" :size="15" />生成副本</button>
+        <span class="warn-chip"><Icon name="alert" :size="13" />{{ t("toolbox.file.md5Warn") }}</span>
+        <button class="btn-primary push-right" :disabled="!md5File || md5State.loading" @click="generateMd5Copy"><Icon name="sparkles" :size="15" />{{ t("toolbox.file.generateCopy") }}</button>
       </div>
       <div v-if="md5State.error" class="inline-error"><Icon name="alert" :size="16" />{{ md5State.error }}</div>
       <div v-if="md5State.loading" class="panel state-panel"><div class="loading-state"><span class="spinner"></span>{{ md5State.label }}</div></div>
       <section v-else-if="md5File" class="panel md5-panel">
         <header class="panel-head"><Icon name="shield" :size="16" /><b :title="md5File.name">{{ md5File.name }}</b><span>{{ formatFileSize(md5Result?.outputSize ?? md5File.size) }}</span></header>
         <div class="md5-result-body">
-          <div v-if="md5Result" class="md5-success"><Icon name="check" :size="15" /><b>副本已生成</b><span>增加 {{ formatFileSize(md5Result.appendedBytes) }}</span></div>
+          <div v-if="md5Result" class="md5-success"><Icon name="check" :size="15" /><b>{{ t("toolbox.file.copyGenerated") }}</b><span>{{ t("toolbox.file.appendedBytes", { size: formatFileSize(md5Result.appendedBytes) }) }}</span></div>
           <div class="md5-hash-list">
-            <div class="md5-hash-row"><span>原 MD5</span><code :title="md5File.md5">{{ md5File.md5 }}</code><button class="icon-btn xs" title="复制原 MD5" @click="copyText(md5File.md5, '原 MD5')"><Icon name="copy" :size="13" /></button></div>
-            <div v-if="md5Result" class="md5-hash-row changed"><span>新 MD5</span><code :title="md5Result.newMd5">{{ md5Result.newMd5 }}</code><button class="icon-btn xs" title="复制新 MD5" @click="copyText(md5Result.newMd5, '新 MD5')"><Icon name="copy" :size="13" /></button></div>
+            <div class="md5-hash-row"><span>{{ t("toolbox.file.originalMd5") }}</span><code :title="md5File.md5">{{ md5File.md5 }}</code><button class="icon-btn xs" :title="t('toolbox.file.copyOriginalMd5')" @click="copyText(md5File.md5, t('toolbox.file.originalMd5'))"><Icon name="copy" :size="13" /></button></div>
+            <div v-if="md5Result" class="md5-hash-row changed"><span>{{ t("toolbox.file.newMd5") }}</span><code :title="md5Result.newMd5">{{ md5Result.newMd5 }}</code><button class="icon-btn xs" :title="t('toolbox.file.copyNewMd5')" @click="copyText(md5Result.newMd5, t('toolbox.file.newMd5'))"><Icon name="copy" :size="13" /></button></div>
           </div>
           <div class="md5-path-list">
-            <div class="md5-path-row"><span>源文件</span><code :title="md5File.path">{{ md5File.path }}</code><button class="icon-btn xs" title="复制源文件路径" @click="copyText(md5File.path, '源文件路径')"><Icon name="copy" :size="13" /></button></div>
-            <div v-if="md5Result" class="md5-path-row"><span>输出副本</span><code :title="md5Result.outputPath">{{ md5Result.outputPath }}</code><button class="icon-btn xs" title="复制副本路径" @click="copyText(md5Result.outputPath, '副本路径')"><Icon name="copy" :size="13" /></button></div>
+            <div class="md5-path-row"><span>{{ t("toolbox.file.sourceFile") }}</span><code :title="md5File.path">{{ md5File.path }}</code><button class="icon-btn xs" :title="t('toolbox.file.copySourcePath')" @click="copyText(md5File.path, t('toolbox.file.sourcePath'))"><Icon name="copy" :size="13" /></button></div>
+            <div v-if="md5Result" class="md5-path-row"><span>{{ t("toolbox.file.outputCopy") }}</span><code :title="md5Result.outputPath">{{ md5Result.outputPath }}</code><button class="icon-btn xs" :title="t('toolbox.file.copyCopyPath')" @click="copyText(md5Result.outputPath, t('toolbox.file.copyPathFull'))"><Icon name="copy" :size="13" /></button></div>
           </div>
         </div>
       </section>
-      <div v-else class="panel state-panel"><div class="blank-state"><Icon name="shield" :size="26" /><span>选择文件后计算 MD5，并生成保留源文件的新副本</span></div></div>
+      <div v-else class="panel state-panel"><div class="blank-state"><Icon name="shield" :size="26" /><span>{{ t("toolbox.file.md5Blank") }}</span></div></div>
     </section>
 
     <section v-else-if="activeTab === 'encoding'" class="workspace column-workspace">
       <div class="control-bar encoding-controls">
-        <button class="btn-primary" @click="chooseEncodingFile"><Icon name="file" :size="15" />选择文本</button>
-        <label class="field encoding-field"><span>读取编码</span><select v-model="inputEncoding"><option v-for="encoding in ENCODINGS" :key="encoding">{{ encoding }}</option></select></label>
-        <button class="btn-ghost" :disabled="!encodingPath || encodingState.loading" @click="loadEncodingFile"><Icon name="refresh" :size="14" />重新读取</button>
+        <button class="btn-primary" @click="chooseEncodingFile"><Icon name="file" :size="15" />{{ t("toolbox.file.chooseText") }}</button>
+        <label class="field encoding-field"><span>{{ t("toolbox.file.readEncoding") }}</span><select v-model="inputEncoding"><option v-for="encoding in ENCODINGS" :key="encoding">{{ encoding }}</option></select></label>
+        <button class="btn-ghost" :disabled="!encodingPath || encodingState.loading" @click="loadEncodingFile"><Icon name="refresh" :size="14" />{{ t("toolbox.file.reread") }}</button>
         <span v-if="encodingPath" class="source-file" :title="encodingPath">{{ getFileName(encodingPath) }}</span>
-        <label class="field encoding-field output-field"><span>输出编码</span><select v-model="outputEncoding"><option v-for="encoding in OUTPUT_ENCODINGS" :key="encoding">{{ encoding }}</option></select></label>
-        <label v-if="outputEncoding !== 'GBK'" class="check-control"><input v-model="outputBom" type="checkbox" />写入 BOM</label>
-        <button class="btn-outline" :disabled="!encodingPath" @click="saveEncodedFile"><Icon name="download" :size="15" />另存为</button>
+        <label class="field encoding-field output-field"><span>{{ t("toolbox.file.outputEncoding") }}</span><select v-model="outputEncoding"><option v-for="encoding in OUTPUT_ENCODINGS" :key="encoding">{{ encoding }}</option></select></label>
+        <label v-if="outputEncoding !== 'GBK'" class="check-control"><input v-model="outputBom" type="checkbox" />{{ t("toolbox.file.writeBom") }}</label>
+        <button class="btn-outline" :disabled="!encodingPath" @click="saveEncodedFile"><Icon name="download" :size="15" />{{ t("toolbox.file.saveAs") }}</button>
       </div>
       <div v-if="encodingState.error" class="inline-error"><Icon name="alert" :size="16" />{{ encodingState.error }}</div>
-      <div v-if="encodingPath" class="meta-strip"><span>识别编码 <b>{{ detectedEncoding }}</b></span><span>{{ formatFileSize(encodingMeta.size) }}</span><span>{{ encodingMeta.hasBom ? "含 BOM" : "无 BOM" }}</span><span v-if="encodingMeta.lossy" class="warn-text">存在无法解码的字节</span></div>
+      <div v-if="encodingPath" class="meta-strip"><span>{{ t("toolbox.file.detectedEncoding") }} <b>{{ detectedEncoding }}</b></span><span>{{ formatFileSize(encodingMeta.size) }}</span><span>{{ encodingMeta.hasBom ? t("toolbox.file.hasBom") : t("toolbox.file.noBom") }}</span><span v-if="encodingMeta.lossy" class="warn-text">{{ t("toolbox.file.lossyBytes") }}</span></div>
       <section class="panel editor-panel">
-        <header class="panel-head"><b>文本内容</b><span>{{ encodingText.length }} 字符</span></header>
-        <div v-if="encodingState.loading" class="loading-state"><span class="spinner"></span>正在读取文本</div>
-        <textarea v-else v-model="encodingText" class="text-editor mono" spellcheck="false" placeholder="选择文本文件后可在这里预览和编辑"></textarea>
+        <header class="panel-head"><b>{{ t("toolbox.file.textContent") }}</b><span>{{ t("toolbox.file.charCount", { count: encodingText.length }) }}</span></header>
+        <div v-if="encodingState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.file.readingText") }}</div>
+        <textarea v-else v-model="encodingText" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.file.editPlaceholder')"></textarea>
       </section>
     </section>
 
     <section v-else-if="activeTab === 'base64'" class="workspace column-workspace">
       <div class="control-bar base64-controls">
-        <div class="segmented"><button :class="{ on: base64Mode === 'encode' }" @click="switchBase64Mode('encode')">文件转 Base64</button><button :class="{ on: base64Mode === 'decode' }" @click="switchBase64Mode('decode')">Base64 转文件</button></div>
+        <div class="segmented"><button :class="{ on: base64Mode === 'encode' }" @click="switchBase64Mode('encode')">{{ t("toolbox.file.fileToBase64") }}</button><button :class="{ on: base64Mode === 'decode' }" @click="switchBase64Mode('decode')">{{ t("toolbox.file.base64ToFile") }}</button></div>
         <template v-if="base64Mode === 'encode'">
-          <button class="btn-primary" @click="chooseBase64File"><Icon name="file" :size="15" />选择文件</button>
-          <label class="check-control"><input v-model="includeDataUrl" type="checkbox" />Data URL</label>
-          <label v-if="includeDataUrl" class="field mime-field"><span>媒体类型</span><input v-model="mimeType" class="mono" /></label>
+          <button class="btn-primary" @click="chooseBase64File"><Icon name="file" :size="15" />{{ t("toolbox.file.chooseFile") }}</button>
+          <label class="check-control"><input v-model="includeDataUrl" type="checkbox" />{{ t("toolbox.file.dataUrl") }}</label>
+          <label v-if="includeDataUrl" class="field mime-field"><span>{{ t("toolbox.file.mimeType") }}</span><input v-model="mimeType" class="mono" /></label>
           <span v-if="base64Name" class="source-file" :title="base64Path">{{ base64Name }} · {{ formatFileSize(base64Size) }}</span>
-          <button class="btn-outline push-right" :disabled="!base64Text" @click="copyText(base64Display, 'Base64')"><Icon name="copy" :size="15" />复制</button>
+          <button class="btn-outline push-right" :disabled="!base64Text" @click="copyText(base64Display, t('toolbox.file.base64'))"><Icon name="copy" :size="15" />{{ t("toolbox.file.copy") }}</button>
         </template>
         <template v-else>
-          <span class="summary-text">预计 {{ formatFileSize(decodedSize) }}</span>
-          <button class="btn-primary push-right" :disabled="!base64Text.trim() || base64State.loading" @click="saveDecodedFile"><Icon name="download" :size="15" />解码并保存</button>
+          <span class="summary-text">{{ t("toolbox.file.estimated", { size: formatFileSize(decodedSize) }) }}</span>
+          <button class="btn-primary push-right" :disabled="!base64Text.trim() || base64State.loading" @click="saveDecodedFile"><Icon name="download" :size="15" />{{ t("toolbox.file.decodeSave") }}</button>
         </template>
       </div>
       <div v-if="base64State.error" class="inline-error"><Icon name="alert" :size="16" />{{ base64State.error }}</div>
       <section class="panel editor-panel">
-        <header class="panel-head"><b>{{ base64Mode === 'encode' ? 'Base64 结果' : 'Base64 / Data URL' }}</b><span>{{ base64Display.length }} 字符</span></header>
-        <div v-if="base64State.loading" class="loading-state"><span class="spinner"></span>正在处理文件</div>
-        <textarea v-else-if="base64Mode === 'encode'" :value="base64Display" class="text-editor mono output" readonly spellcheck="false" placeholder="选择文件后生成 Base64"></textarea>
-        <textarea v-else v-model="base64Text" class="text-editor mono" spellcheck="false" placeholder="粘贴 Base64 或 data:...;base64,..."></textarea>
+        <header class="panel-head"><b>{{ base64Mode === 'encode' ? t('toolbox.file.base64Result') : t('toolbox.file.base64OrDataUrl') }}</b><span>{{ t("toolbox.file.charCount", { count: base64Display.length }) }}</span></header>
+        <div v-if="base64State.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.file.processing") }}</div>
+        <textarea v-else-if="base64Mode === 'encode'" :value="base64Display" class="text-editor mono output" readonly spellcheck="false" :placeholder="t('toolbox.file.encodePlaceholder')"></textarea>
+        <textarea v-else v-model="base64Text" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.file.decodePlaceholder')"></textarea>
       </section>
     </section>
 
     <section v-else-if="activeTab === 'line'" class="workspace column-workspace">
       <div class="control-bar">
-        <button class="btn-primary" @click="chooseLineFile"><Icon name="file" :size="15" />选择文本</button>
-        <label class="field line-field"><span>目标换行符</span><select v-model="lineTarget"><option>LF</option><option>CRLF</option><option>CR</option></select></label>
+        <button class="btn-primary" @click="chooseLineFile"><Icon name="file" :size="15" />{{ t("toolbox.file.chooseText") }}</button>
+        <label class="field line-field"><span>{{ t("toolbox.file.targetLineEnding") }}</span><select v-model="lineTarget"><option>LF</option><option>CRLF</option><option>CR</option></select></label>
         <span v-if="linePath" class="source-file" :title="linePath">{{ getFileName(linePath) }} · {{ lineEncoding }}</span>
-        <button class="btn-outline push-right" :disabled="!linePath" @click="saveLineFile"><Icon name="download" :size="15" />另存为</button>
+        <button class="btn-outline push-right" :disabled="!linePath" @click="saveLineFile"><Icon name="download" :size="15" />{{ t("toolbox.file.saveAs") }}</button>
       </div>
       <div v-if="lineState.error" class="inline-error"><Icon name="alert" :size="16" />{{ lineState.error }}</div>
-      <div v-if="linePath" class="line-stats"><span>总行数 <b>{{ lineStats.lines }}</b></span><span>CRLF <b>{{ lineStats.crlf }}</b></span><span>LF <b>{{ lineStats.lf }}</b></span><span>CR <b>{{ lineStats.cr }}</b></span><span v-if="lineStats.mixed" class="warn-chip">混合换行符</span></div>
+      <div v-if="linePath" class="line-stats"><span>{{ t("toolbox.file.totalLines") }} <b>{{ lineStats.lines }}</b></span><span>CRLF <b>{{ lineStats.crlf }}</b></span><span>LF <b>{{ lineStats.lf }}</b></span><span>CR <b>{{ lineStats.cr }}</b></span><span v-if="lineStats.mixed" class="warn-chip">{{ t("toolbox.file.mixedLineEndings") }}</span></div>
       <div class="split-workspace">
-        <section class="panel editor-panel"><header class="panel-head"><b>原始文本</b></header><div v-if="lineState.loading" class="loading-state"><span class="spinner"></span>正在读取文本</div><textarea v-else v-model="lineText" class="text-editor mono" spellcheck="false" placeholder="选择文本文件"></textarea></section>
-        <section class="panel editor-panel"><header class="panel-head"><b>{{ lineTarget }} 预览</b><button class="icon-btn xs" title="复制转换结果" :disabled="!lineOutput" @click="copyText(lineOutput, '转换结果')"><Icon name="copy" :size="13" /></button></header><textarea :value="lineOutput" class="text-editor mono output" readonly spellcheck="false"></textarea></section>
+        <section class="panel editor-panel"><header class="panel-head"><b>{{ t("toolbox.file.originalText") }}</b></header><div v-if="lineState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.file.readingText") }}</div><textarea v-else v-model="lineText" class="text-editor mono" spellcheck="false" :placeholder="t('toolbox.file.pickTextPlaceholder')"></textarea></section>
+        <section class="panel editor-panel"><header class="panel-head"><b>{{ t("toolbox.file.linePreview", { target: lineTarget }) }}</b><button class="icon-btn xs" :title="t('toolbox.file.copyConvertResult')" :disabled="!lineOutput" @click="copyText(lineOutput, t('toolbox.file.convertResult'))"><Icon name="copy" :size="13" /></button></header><textarea :value="lineOutput" class="text-editor mono output" readonly spellcheck="false"></textarea></section>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'rename'" class="workspace rename-workspace">
       <div class="rename-toolbar">
-        <button class="btn-primary" @click="chooseRenameDirectory"><Icon name="folder" :size="15" />选择文件夹</button>
+        <button class="btn-primary" @click="chooseRenameDirectory"><Icon name="folder" :size="15" />{{ t("toolbox.file.chooseFolder") }}</button>
         <span v-if="renameDirectory" class="source-file grow" :title="renameDirectory">{{ renameDirectory }}</span>
-        <span class="summary-text">已选 {{ renameSummary.selected }} · 将改名 {{ renameSummary.changed }} · 错误 {{ renameSummary.invalid }}</span>
-        <button class="btn-outline" :disabled="!canRename" @click="executeRename"><Icon name="edit" :size="15" />执行重命名</button>
+        <span class="summary-text">{{ t("toolbox.file.renameSummary", { selected: renameSummary.selected, changed: renameSummary.changed, invalid: renameSummary.invalid }) }}</span>
+        <button class="btn-outline" :disabled="!canRename" @click="executeRename"><Icon name="edit" :size="15" />{{ t("toolbox.file.executeRename") }}</button>
       </div>
       <div v-if="renameState.error" class="inline-error"><Icon name="alert" :size="16" />{{ renameState.error }}</div>
       <div class="rename-layout">
         <aside class="panel rules-panel">
-          <header class="panel-head"><b>命名规则</b></header>
+          <header class="panel-head"><b>{{ t("toolbox.file.namingRules") }}</b></header>
           <div class="rules-body">
-            <label class="field"><span>查找</span><input v-model="renameRules.find" class="mono" placeholder="留空则不替换" /></label>
-            <label class="field"><span>替换为</span><input v-model="renameRules.replace" class="mono" /></label>
-            <div class="check-row"><label class="check-control"><input v-model="renameRules.useRegex" type="checkbox" />正则</label><label class="check-control"><input v-model="renameRules.caseSensitive" type="checkbox" />区分大小写</label></div>
-            <div class="two-fields"><label class="field"><span>前缀</span><input v-model="renameRules.prefix" /></label><label class="field"><span>后缀</span><input v-model="renameRules.suffix" /></label></div>
-            <label class="field"><span>大小写</span><select v-model="renameRules.caseMode"><option value="keep">保持不变</option><option value="lower">转小写</option><option value="upper">转大写</option></select></label>
-            <label class="field"><span>序号位置</span><select v-model="renameRules.numbering"><option value="none">不添加</option><option value="prefix">文件名前</option><option value="suffix">文件名后</option></select></label>
-            <div v-if="renameRules.numbering !== 'none'" class="number-fields"><label class="field"><span>起始</span><input v-model.number="renameRules.numberStart" type="number" /></label><label class="field"><span>位数</span><input v-model.number="renameRules.numberPadding" type="number" min="1" max="12" /></label><label class="field"><span>分隔符</span><input v-model="renameRules.numberSeparator" /></label></div>
-            <label class="check-control"><input v-model="renameRules.preserveExtension" type="checkbox" />保留扩展名，不参与规则</label>
+            <label class="field"><span>{{ t("toolbox.file.find") }}</span><input v-model="renameRules.find" class="mono" :placeholder="t('toolbox.file.findPlaceholder')" /></label>
+            <label class="field"><span>{{ t("toolbox.file.replace") }}</span><input v-model="renameRules.replace" class="mono" /></label>
+            <div class="check-row"><label class="check-control"><input v-model="renameRules.useRegex" type="checkbox" />{{ t("toolbox.file.regex") }}</label><label class="check-control"><input v-model="renameRules.caseSensitive" type="checkbox" />{{ t("toolbox.file.caseSensitive") }}</label></div>
+            <div class="two-fields"><label class="field"><span>{{ t("toolbox.file.prefix") }}</span><input v-model="renameRules.prefix" /></label><label class="field"><span>{{ t("toolbox.file.suffix") }}</span><input v-model="renameRules.suffix" /></label></div>
+            <label class="field"><span>{{ t("toolbox.file.caseMode") }}</span><select v-model="renameRules.caseMode"><option value="keep">{{ t("toolbox.file.keepCase") }}</option><option value="lower">{{ t("toolbox.file.toLower") }}</option><option value="upper">{{ t("toolbox.file.toUpper") }}</option></select></label>
+            <label class="field"><span>{{ t("toolbox.file.numberingPos") }}</span><select v-model="renameRules.numbering"><option value="none">{{ t("toolbox.file.noNumbering") }}</option><option value="prefix">{{ t("toolbox.file.prefixPos") }}</option><option value="suffix">{{ t("toolbox.file.suffixPos") }}</option></select></label>
+            <div v-if="renameRules.numbering !== 'none'" class="number-fields"><label class="field"><span>{{ t("toolbox.file.numberStart") }}</span><input v-model.number="renameRules.numberStart" type="number" /></label><label class="field"><span>{{ t("toolbox.file.numberPadding") }}</span><input v-model.number="renameRules.numberPadding" type="number" min="1" max="12" /></label><label class="field"><span>{{ t("toolbox.file.numberSeparator") }}</span><input v-model="renameRules.numberSeparator" /></label></div>
+            <label class="check-control"><input v-model="renameRules.preserveExtension" type="checkbox" />{{ t("toolbox.file.preserveExtension") }}</label>
           </div>
         </aside>
         <section class="panel file-select-panel">
-          <header class="panel-head"><b>文件</b><span>{{ renameFiles.length }} 个</span></header>
-          <div class="file-filter"><input v-model="renameFilter" placeholder="筛选文件名" /><button class="btn-ghost xs" @click="toggleVisibleRenameFiles">全选/取消</button></div>
-          <div v-if="renameState.loading" class="loading-state"><span class="spinner"></span>正在读取文件夹</div>
+          <header class="panel-head"><b>{{ t("toolbox.file.files") }}</b><span>{{ t("toolbox.file.fileCount", { count: renameFiles.length }) }}</span></header>
+          <div class="file-filter"><input v-model="renameFilter" :placeholder="t('toolbox.file.filterPlaceholder')" /><button class="btn-ghost xs" @click="toggleVisibleRenameFiles">{{ t("toolbox.file.selectAll") }}</button></div>
+          <div v-if="renameState.loading" class="loading-state"><span class="spinner"></span>{{ t("toolbox.file.readingFolder") }}</div>
           <div v-else-if="renameFiles.length" class="select-list"><label v-for="file in visibleRenameFiles" :key="file.path" class="select-row"><input type="checkbox" :checked="selectedRenamePaths.has(file.path)" @change="toggleRenameFile(file.path)" /><Icon name="file" :size="14" /><span :title="file.name">{{ file.name }}</span><small>{{ formatFileSize(file.size) }}</small></label></div>
-          <div v-else class="blank-state compact"><Icon name="folder" :size="22" /><span>选择文件夹加载第一层文件</span></div>
+          <div v-else class="blank-state compact"><Icon name="folder" :size="22" /><span>{{ t("toolbox.file.folderBlank") }}</span></div>
         </section>
         <section class="panel preview-panel">
-          <header class="panel-head"><b>重命名预览</b><span>{{ renameSummary.changed }} 项变更</span></header>
-          <div v-if="renamePreview.length" class="preview-list"><div v-for="item in renamePreview" :key="item.path" class="preview-row" :class="{ invalid: !item.valid, unchanged: !item.changed }"><span class="old-name" :title="item.sourceName">{{ item.sourceName }}</span><Icon name="chevron-right" :size="14" /><span class="new-name" :title="item.targetName">{{ item.targetName }}</span><small v-if="item.error" :title="item.error">{{ item.error }}</small><Icon v-else-if="item.changed" name="check" :size="14" class="ok-icon" /><small v-else>无变化</small></div></div>
-          <div v-else class="blank-state compact"><Icon name="edit" :size="22" /><span>选择文件并设置规则后查看预览</span></div>
+          <header class="panel-head"><b>{{ t("toolbox.file.renamePreviewTitle") }}</b><span>{{ t("toolbox.file.changedCount", { count: renameSummary.changed }) }}</span></header>
+          <div v-if="renamePreview.length" class="preview-list"><div v-for="item in renamePreview" :key="item.path" class="preview-row" :class="{ invalid: !item.valid, unchanged: !item.changed }"><span class="old-name" :title="item.sourceName">{{ item.sourceName }}</span><Icon name="chevron-right" :size="14" /><span class="new-name" :title="item.targetName">{{ item.targetName }}</span><small v-if="item.error" :title="item.error">{{ item.error }}</small><Icon v-else-if="item.changed" name="check" :size="14" class="ok-icon" /><small v-else>{{ t("toolbox.file.noChange") }}</small></div></div>
+          <div v-else class="blank-state compact"><Icon name="edit" :size="22" /><span>{{ t("toolbox.file.previewBlank") }}</span></div>
         </section>
       </div>
     </section>

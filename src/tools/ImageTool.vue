@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import Icon from "../Icon.vue";
@@ -34,16 +35,18 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
 
+const { t } = useI18n();
+
 const isTauri = !!window.__TAURI_INTERNALS__;
-const TABS = [
-  { key: "convert", label: "格式转换" },
-  { key: "compress", label: "压缩优化" },
-  { key: "resize", label: "尺寸编辑" },
-  { key: "batch", label: "批量处理" },
-  { key: "palette", label: "颜色提取" },
-  { key: "icon", label: "图标生成" },
-  { key: "info", label: "图片信息" },
-];
+const TABS = computed(() => [
+  { key: "convert", label: t("toolbox.image.tabConvert") },
+  { key: "compress", label: t("toolbox.image.tabCompress") },
+  { key: "resize", label: t("toolbox.image.tabResize") },
+  { key: "batch", label: t("toolbox.image.tabBatch") },
+  { key: "palette", label: t("toolbox.image.tabPalette") },
+  { key: "icon", label: t("toolbox.image.tabIcon") },
+  { key: "info", label: t("toolbox.image.tabInfo") },
+]);
 const ICON_SIZES = [16, 32, 48, 64, 128, 256, 512];
 const activeTab = ref("convert");
 const singleInput = ref(null);
@@ -84,18 +87,19 @@ const selectedFormat = computed(() => imageFormat(
 ));
 const sourceSummary = computed(() => source.value
   ? `${source.value.width} × ${source.value.height} · ${formatFileSize(source.value.file.size)}`
-  : "未选择图片");
+  : t("toolbox.image.noImage"));
 const savedPercent = computed(() => {
   if (!source.value || !output.value) return 0;
   return Math.round((1 - output.value.blob.size / source.value.file.size) * 100);
 });
 const cropRatio = computed(() => CROP_RATIOS.find((item) => item.key === resizeOptions.crop)?.ratio || 0);
+const cropRatios = computed(() => CROP_RATIOS.map((r) => ({ ...r, label: r.labelKey ? t(`toolbox.image.${r.labelKey}`) : r.label })));
 const exifRows = computed(() => {
   const exif = source.value?.exif || {};
   const labels = {
-    make: "相机厂商", model: "相机型号", takenAt: "拍摄时间", modifiedAt: "修改时间",
-    exposureTime: "曝光时间", fNumber: "光圈", iso: "ISO", focalLength: "焦距",
-    orientation: "方向", pixelWidth: "EXIF 宽度", pixelHeight: "EXIF 高度", hasGps: "包含定位信息",
+    make: t("toolbox.image.exifMake"), model: t("toolbox.image.exifModel"), takenAt: t("toolbox.image.exifTakenAt"), modifiedAt: t("toolbox.image.exifModifiedAt"),
+    exposureTime: t("toolbox.image.exifExposure"), fNumber: t("toolbox.image.exifFNumber"), iso: "ISO", focalLength: t("toolbox.image.exifFocal"),
+    orientation: t("toolbox.image.exifOrientation"), pixelWidth: t("toolbox.image.exifPixelWidth"), pixelHeight: t("toolbox.image.exifPixelHeight"), hasGps: t("toolbox.image.exifHasGps"),
   };
   return Object.entries(labels)
     .filter(([key]) => exif[key] !== undefined)
@@ -109,8 +113,8 @@ function errorMessage(value) {
   return value instanceof Error ? value.message : String(value);
 }
 function formatExifValue(key, value) {
-  if (key === "hasGps") return value ? "是" : "否";
-  if (key === "exposureTime" && Number(value) > 0 && Number(value) < 1) return `1/${Math.round(1 / Number(value))} 秒`;
+  if (key === "hasGps") return value ? t("toolbox.image.yes") : t("toolbox.image.no");
+  if (key === "exposureTime" && Number(value) > 0 && Number(value) < 1) return t("toolbox.image.exifExposureFrac", { v: Math.round(1 / Number(value)) });
   if (key === "fNumber") return `f/${Number(value).toFixed(1).replace(/\.0$/, "")}`;
   if (key === "focalLength") return `${Number(value).toFixed(1).replace(/\.0$/, "")} mm`;
   return String(value).replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
@@ -145,16 +149,16 @@ function onDrop(event) {
   dragOver.value = false;
   if (activeTab.value === "icon") return;
   const files = [...(event.dataTransfer?.files || [])].filter((file) => file.type.startsWith("image/"));
-  if (!files.length) return props.showToast("没有识别到可处理的图片");
+  if (!files.length) return props.showToast(t("toolbox.image.noImgDetected"));
   if (activeTab.value === "batch") loadBatchFiles(files);
   else loadSingleFile(files[0]);
 }
 async function decodeImage(file) {
-  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件");
+  if (!file.type.startsWith("image/")) throw new Error(t("toolbox.image.pickImgFile"));
   const image = await createImageBitmap(file);
   if (!image.width || !image.height) {
     image.close?.();
-    throw new Error("无法读取图片尺寸");
+    throw new Error(t("toolbox.image.readSizeFail"));
   }
   return image;
 }
@@ -187,7 +191,7 @@ async function loadSingleFile(file) {
     await runActive();
   } catch (cause) {
     error.value = errorMessage(cause);
-    props.showToast(`读取失败：${error.value}`);
+    props.showToast(t("toolbox.image.readFail", { error: error.value }));
   } finally {
     busy.value = false;
   }
@@ -200,19 +204,19 @@ async function loadBatchFiles(files) {
   batchItems.value = files
     .filter((file) => file.type.startsWith("image/"))
     .map((file, index) => ({ id: `${file.name}-${file.lastModified}-${index}`, file, status: "waiting", error: "", output: null }));
-  if (batchItems.value.length) props.showToast(`已加入 ${batchItems.value.length} 张图片`);
+  if (batchItems.value.length) props.showToast(t("toolbox.image.addedCount", { n: batchItems.value.length }));
 }
 function formatSupportsQuality(key) {
   return imageFormat(key).supportsQuality;
 }
 async function renderImage(image, options) {
   const plan = calculateRenderPlan(image.width, image.height, options);
-  if (plan.outputWidth * plan.outputHeight > 80_000_000) throw new Error("输出图片像素过大，请缩小尺寸");
+  if (plan.outputWidth * plan.outputHeight > 80_000_000) throw new Error(t("toolbox.image.pixelTooLarge"));
   const canvas = document.createElement("canvas");
   canvas.width = plan.outputWidth;
   canvas.height = plan.outputHeight;
   const context = canvas.getContext("2d", { alpha: options.format !== "jpeg" });
-  if (!context) throw new Error("当前环境无法创建图片画布");
+  if (!context) throw new Error(t("toolbox.image.canvasFail"));
   if (options.format === "jpeg") {
     context.fillStyle = options.background || defaultJpegBackground;
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -234,11 +238,11 @@ async function renderImage(image, options) {
   } else {
     const format = imageFormat(options.format);
     blob = await new Promise((resolve, reject) => canvas.toBlob(
-      (value) => value ? resolve(value) : reject(new Error("图片编码失败")),
+      (value) => value ? resolve(value) : reject(new Error(t("toolbox.image.encodeFail"))),
       format.mime,
       clampQuality(Number(options.quality) / 100),
     ));
-    if (blob.type !== format.mime) throw new Error(`当前环境不支持 ${format.label} 编码`);
+    if (blob.type !== format.mime) throw new Error(t("toolbox.image.unsupportedEncode", { label: format.label }));
   }
   return { blob, width: canvas.width, height: canvas.height };
 }
@@ -250,7 +254,7 @@ async function runActive() {
   if (activeTab.value === "palette") return extractPalette();
 }
 async function processSingle(options, nameOptions) {
-  if (!source.value) return props.showToast("请先选择图片");
+  if (!source.value) return props.showToast(t("toolbox.image.pickImgFirst"));
   busy.value = true;
   error.value = "";
   try {
@@ -317,7 +321,7 @@ function rotate(direction) {
   resizeOptions.rotation = (resizeOptions.rotation + direction + 360) % 360;
 }
 async function runBatch() {
-  if (!batchItems.value.length || batchBusy.value) return props.showToast("请先选择图片");
+  if (!batchItems.value.length || batchBusy.value) return props.showToast(t("toolbox.image.pickImgFirst"));
   batchBusy.value = true;
   for (let index = 0; index < batchItems.value.length; index += 1) {
     const item = batchItems.value[index];
@@ -348,13 +352,13 @@ async function runBatch() {
   }
   batchBusy.value = false;
   const success = batchItems.value.filter((item) => item.status === "done").length;
-  props.showToast(`批量处理完成：${success}/${batchItems.value.length}`);
+  props.showToast(t("toolbox.image.batchDone", { success, total: batchItems.value.length }));
 }
 async function blobBase64(blob) {
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error || new Error("读取输出文件失败"));
+    reader.onerror = () => reject(reader.error || new Error(t("toolbox.image.readOutFail")));
     reader.readAsDataURL(blob);
   });
   return String(dataUrl).split(",")[1] || "";
@@ -371,25 +375,25 @@ async function saveBlob(blob, name) {
     return;
   }
   const format = imageFormat(name.split(".").pop() === "jpg" ? "jpeg" : name.split(".").pop());
-  const path = await saveDialog({ title: "保存处理后的图片", defaultPath: name, filters: [{ name: format.label, extensions: [format.extension] }] });
+  const path = await saveDialog({ title: t("toolbox.image.saveImgTitle"), defaultPath: name, filters: [{ name: format.label, extensions: [format.extension] }] });
   if (!path) return;
   await invoke("export_file_b64", { path, contentB64: await blobBase64(blob) });
 }
 async function saveOutput() {
-  if (!output.value) return props.showToast("请先生成处理结果");
+  if (!output.value) return props.showToast(t("toolbox.image.genFirst"));
   try {
     await saveBlob(output.value.blob, output.value.name);
-    props.showToast("图片已保存");
+    props.showToast(t("toolbox.image.imgSaved"));
   } catch (cause) {
-    props.showToast(`保存失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.saveFail", { error: errorMessage(cause) }));
   }
 }
 async function saveBatch() {
   const ready = batchItems.value.filter((item) => item.output);
-  if (!ready.length) return props.showToast("请先执行批量处理");
+  if (!ready.length) return props.showToast(t("toolbox.image.batchFirst"));
   try {
     if (isTauri) {
-      const directory = await openDialog({ directory: true, title: "选择批量图片保存目录" });
+      const directory = await openDialog({ directory: true, title: t("toolbox.image.pickBatchDir") });
       if (!directory) return;
       const separator = String(directory).includes("\\") ? "\\" : "/";
       for (const item of ready) {
@@ -402,13 +406,13 @@ async function saveBatch() {
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
     }
-    props.showToast(`已保存 ${ready.length} 张图片`);
+    props.showToast(t("toolbox.image.savedCount", { n: ready.length }));
   } catch (cause) {
-    props.showToast(`批量保存失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.batchSaveFail", { error: errorMessage(cause) }));
   }
 }
 async function exportCleanCopy() {
-  if (!source.value) return props.showToast("请先选择图片");
+  if (!source.value) return props.showToast(t("toolbox.image.pickImgFirst"));
   const detected = IMAGE_FORMATS.find((item) => item.mime === source.value.file.type) || IMAGE_FORMATS[0];
   await processSingle({
     width: source.value.width,
@@ -428,14 +432,14 @@ async function extractPalette() {
     canvas.width = size.width;
     canvas.height = size.height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("当前环境无法读取图片颜色");
+    if (!context) throw new Error(t("toolbox.image.readColorFail"));
     context.drawImage(source.value.image, 0, 0, canvas.width, canvas.height);
     palette.value = extractPaletteFromPixels(context.getImageData(0, 0, canvas.width, canvas.height).data, paletteCount.value);
     pickedColor.value = palette.value[0] || null;
     await drawPaletteCanvas();
   } catch (cause) {
     palette.value = [];
-    props.showToast(`颜色提取失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.paletteFail", { error: errorMessage(cause) }));
   } finally {
     paletteBusy.value = false;
   }
@@ -464,7 +468,7 @@ function pickCanvasColor(event) {
   const x = Math.min(canvas.width - 1, Math.floor(localX / scale));
   const y = Math.min(canvas.height - 1, Math.floor(localY / scale));
   const pixel = canvas.getContext("2d", { willReadFrequently: true })?.getImageData(x, y, 1, 1).data;
-  if (!pixel || pixel[3] === 0) return props.showToast("这里是透明像素");
+  if (!pixel || pixel[3] === 0) return props.showToast(t("toolbox.image.transparentPixel"));
   const hsl = rgbToHsl(pixel[0], pixel[1], pixel[2]);
   pickedColor.value = {
     r: pixel[0], g: pixel[1], b: pixel[2],
@@ -478,21 +482,21 @@ async function copyValue(value, key, label) {
   try {
     await navigator.clipboard.writeText(value);
     copiedColor.value = key;
-    props.showToast(`已复制${label}`);
+    props.showToast(t("toolbox.image.copied", { label }));
     setTimeout(() => {
       if (copiedColor.value === key) copiedColor.value = "";
     }, 1400);
   } catch (cause) {
-    props.showToast(`复制失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.copyFail", { error: errorMessage(cause) }));
   }
 }
 function copyPalette(type) {
   const value = type === "css" ? formatPaletteCss(palette.value, "palette") : formatPaletteJson(palette.value);
-  return copyValue(value, `palette-${type}`, type === "css" ? " CSS 变量" : "调色板 JSON");
+  return copyValue(value, `palette-${type}`, type === "css" ? t("toolbox.image.cssVars") : t("toolbox.image.paletteJson"));
 }
 function selectPaletteColor(color) {
   pickedColor.value = color;
-  copyValue(color.hex, `color-${color.hex}`, "颜色");
+  copyValue(color.hex, `color-${color.hex}`, t("toolbox.image.color"));
 }
 function toggleIconSize(size) {
   iconSizes.value = iconSizes.value.includes(size)
@@ -501,10 +505,10 @@ function toggleIconSize(size) {
 }
 async function generateAiIcon() {
   const prompt = aiIconOptions.prompt.trim();
-  if (!prompt) return props.showToast("请先描述要生成的图标");
+  if (!prompt) return props.showToast(t("toolbox.image.describeIcon"));
   if (!(await isAIConfigured())) {
     aiConfigured.value = false;
-    return props.showToast("请先在右上角设置中配置 AI 模型");
+    return props.showToast(t("toolbox.image.aiNeedConfig"));
   }
   aiIconBusy.value = true;
   try {
@@ -519,10 +523,10 @@ async function generateAiIcon() {
       },
     );
     aiIconSvg.value = sanitizeSvg(extractSvgFromAiText(reply));
-    props.showToast("AI 图标已生成");
+    props.showToast(t("toolbox.image.aiIconDone"));
   } catch (cause) {
     aiIconSvg.value = "";
-    props.showToast(`AI 图标生成失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.aiIconFail", { error: errorMessage(cause) }));
   } finally {
     aiIconBusy.value = false;
   }
@@ -537,12 +541,12 @@ function svgToPngBlob(svg, size) {
         canvas.width = size;
         canvas.height = size;
         const context = canvas.getContext("2d");
-        if (!context) throw new Error("当前环境无法创建图标画布");
+        if (!context) throw new Error(t("toolbox.image.iconCanvasFail"));
         context.drawImage(image, 0, 0, size, size);
         canvas.toBlob((blob) => {
           URL.revokeObjectURL(sourceUrl);
           if (blob) resolve(blob);
-          else reject(new Error("PNG 编码失败"));
+          else reject(new Error(t("toolbox.image.pngEncodeFail")));
         }, "image/png");
       } catch (cause) {
         URL.revokeObjectURL(sourceUrl);
@@ -551,7 +555,7 @@ function svgToPngBlob(svg, size) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(sourceUrl);
-      reject(new Error("SVG 无法渲染"));
+      reject(new Error(t("toolbox.image.svgRenderFail")));
     };
     image.src = sourceUrl;
   });
@@ -564,29 +568,29 @@ async function saveGenericBlob(blob, name, title, filter) {
   return true;
 }
 async function saveIconSvg() {
-  if (!currentIconSvg.value) return props.showToast("请先生成图标");
+  if (!currentIconSvg.value) return props.showToast(t("toolbox.image.iconFirst"));
   try {
     const saved = await saveGenericBlob(
       new Blob([currentIconSvg.value], { type: "image/svg+xml" }),
       iconOutputName(iconOptions.name, 512, "svg"),
-      "保存 SVG 图标",
+      t("toolbox.image.saveSvgTitle"),
       { name: "SVG", extensions: ["svg"] },
     );
-    if (saved !== false) props.showToast("SVG 图标已保存");
+    if (saved !== false) props.showToast(t("toolbox.image.svgSaved"));
   } catch (cause) {
-    props.showToast(`SVG 保存失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.svgSaveFail", { error: errorMessage(cause) }));
   }
 }
 async function saveIconPngs() {
-  if (!currentIconSvg.value) return props.showToast("请先生成图标");
-  if (!selectedIconSizes.value.length) return props.showToast("请至少选择一个输出尺寸");
+  if (!currentIconSvg.value) return props.showToast(t("toolbox.image.iconFirst"));
+  if (!selectedIconSizes.value.length) return props.showToast(t("toolbox.image.pickSizeFirst"));
   try {
     const outputs = [];
     for (const size of selectedIconSizes.value) {
       outputs.push({ size, blob: await svgToPngBlob(currentIconSvg.value, size) });
     }
     if (isTauri) {
-      const directory = await openDialog({ directory: true, title: "选择图标保存目录" });
+      const directory = await openDialog({ directory: true, title: t("toolbox.image.pickIconDir") });
       if (!directory) return;
       const separator = String(directory).includes("\\") ? "\\" : "/";
       for (const item of outputs) {
@@ -599,9 +603,9 @@ async function saveIconPngs() {
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
     }
-    props.showToast(`已保存 ${outputs.length} 个 PNG 图标`);
+    props.showToast(t("toolbox.image.pngSavedCount", { n: outputs.length }));
   } catch (cause) {
-    props.showToast(`图标保存失败：${errorMessage(cause)}`);
+    props.showToast(t("toolbox.image.iconSaveFail", { error: errorMessage(cause) }));
   }
 }
 
@@ -639,26 +643,26 @@ onBeforeUnmount(() => {
     <input ref="singleInput" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" @change="onSingleChange" />
     <input ref="batchInput" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" multiple @change="onBatchChange" />
 
-    <nav class="mode-tabs" aria-label="图片处理类型">
+    <nav class="mode-tabs" :aria-label="t('toolbox.image.procType')">
       <button v-for="tab in TABS" :key="tab.key" class="mode-tab" :class="{ on: activeTab === tab.key }" @click="activeTab = tab.key">{{ tab.label }}</button>
     </nav>
 
     <div v-if="activeTab !== 'batch' && activeTab !== 'icon'" class="source-bar">
-      <button class="btn-ghost" @click="singleInput?.click()"><Icon name="image" :size="15" />选择图片</button>
-      <span class="source-name" :title="source?.file.name || ''">{{ source?.file.name || "选择或拖入一张图片" }}</span>
+      <button class="btn-ghost" @click="singleInput?.click()"><Icon name="image" :size="15" />{{ t("toolbox.image.pickImg") }}</button>
+      <span class="source-name" :title="source?.file.name || ''">{{ source?.file.name || t("toolbox.image.pickOrDrop") }}</span>
       <span class="source-meta">{{ sourceSummary }}</span>
-      <button v-if="source" class="icon-btn xs" title="移除图片" @click="resetSource"><Icon name="x" :size="13" /></button>
+      <button v-if="source" class="icon-btn xs" :title="t('toolbox.image.removeImg')" @click="resetSource"><Icon name="x" :size="13" /></button>
     </div>
 
     <section v-if="activeTab === 'convert'" class="workspace single-layout">
       <aside class="panel controls-panel">
-        <header class="panel-head"><b>转换设置</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.convertSettings") }}</b></header>
         <div class="controls-body">
-          <label class="field"><span>输出格式</span><select v-model="convertOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label>
-          <label v-if="formatSupportsQuality(convertOptions.format)" class="field"><span>输出质量 <b>{{ convertOptions.quality }}%</b></span><input v-model.number="convertOptions.quality" type="range" min="10" max="100" /></label>
-          <label v-if="convertOptions.format === 'jpeg'" class="field"><span>透明区域背景</span><span class="color-control"><input v-model="convertOptions.background" type="color" /><code>{{ convertOptions.background }}</code></span></label>
-          <div class="format-note"><Icon name="image" :size="16" /><span>{{ selectedFormat.label }}</span><small>{{ output ? `${output.width} × ${output.height} · ${formatFileSize(output.blob.size)}` : "等待生成" }}</small></div>
-          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runConvert"><Icon name="repeat" :size="15" />{{ busy ? "处理中" : "转换图片" }}</button>
+          <label class="field"><span>{{ t("toolbox.image.outFormat") }}</span><select v-model="convertOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label>
+          <label v-if="formatSupportsQuality(convertOptions.format)" class="field"><span>{{ t("toolbox.image.outQuality") }} <b>{{ convertOptions.quality }}%</b></span><input v-model.number="convertOptions.quality" type="range" min="10" max="100" /></label>
+          <label v-if="convertOptions.format === 'jpeg'" class="field"><span>{{ t("toolbox.image.transparentBg") }}</span><span class="color-control"><input v-model="convertOptions.background" type="color" /><code>{{ convertOptions.background }}</code></span></label>
+          <div class="format-note"><Icon name="image" :size="16" /><span>{{ selectedFormat.label }}</span><small>{{ output ? `${output.width} × ${output.height} · ${formatFileSize(output.blob.size)}` : t("toolbox.image.waiting") }}</small></div>
+          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runConvert"><Icon name="repeat" :size="15" />{{ busy ? t("toolbox.image.processing") : t("toolbox.image.convertImg") }}</button>
         </div>
       </aside>
       <ImagePreview :source="source" :output="output" :error="error" @save="saveOutput" />
@@ -666,14 +670,14 @@ onBeforeUnmount(() => {
 
     <section v-else-if="activeTab === 'compress'" class="workspace single-layout">
       <aside class="panel controls-panel">
-        <header class="panel-head"><b>压缩设置</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.compressSettings") }}</b></header>
         <div class="controls-body">
-          <label class="field"><span>输出格式</span><select v-model="compressOptions.format"><option value="jpeg">JPEG</option><option value="webp">WebP</option><option value="png">PNG</option></select></label>
-          <label v-if="formatSupportsQuality(compressOptions.format)" class="field"><span>压缩质量 <b>{{ compressOptions.quality }}%</b></span><input v-model.number="compressOptions.quality" type="range" min="10" max="100" /></label>
-          <div class="two-fields"><label class="field"><span>最大宽度</span><input v-model.number="compressOptions.maxWidth" type="number" min="1" max="20000" /></label><label class="field"><span>最大高度</span><input v-model.number="compressOptions.maxHeight" type="number" min="1" max="20000" /></label></div>
-          <label class="check-control"><input v-model="compressOptions.allowUpscale" type="checkbox" />允许放大小图</label>
-          <div v-if="output" class="saving-stat" :class="{ negative: savedPercent < 0 }"><b>{{ savedPercent >= 0 ? `减少 ${savedPercent}%` : `增加 ${Math.abs(savedPercent)}%` }}</b><span>{{ formatFileSize(source.file.size) }} → {{ formatFileSize(output.blob.size) }}</span></div>
-          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runCompress"><Icon name="download" :size="15" />{{ busy ? "处理中" : "压缩图片" }}</button>
+          <label class="field"><span>{{ t("toolbox.image.outFormat") }}</span><select v-model="compressOptions.format"><option value="jpeg">JPEG</option><option value="webp">WebP</option><option value="png">PNG</option></select></label>
+          <label v-if="formatSupportsQuality(compressOptions.format)" class="field"><span>{{ t("toolbox.image.compressQuality") }} <b>{{ compressOptions.quality }}%</b></span><input v-model.number="compressOptions.quality" type="range" min="10" max="100" /></label>
+          <div class="two-fields"><label class="field"><span>{{ t("toolbox.image.maxWidth") }}</span><input v-model.number="compressOptions.maxWidth" type="number" min="1" max="20000" /></label><label class="field"><span>{{ t("toolbox.image.maxHeight") }}</span><input v-model.number="compressOptions.maxHeight" type="number" min="1" max="20000" /></label></div>
+          <label class="check-control"><input v-model="compressOptions.allowUpscale" type="checkbox" />{{ t("toolbox.image.allowUpscale") }}</label>
+          <div v-if="output" class="saving-stat" :class="{ negative: savedPercent < 0 }"><b>{{ savedPercent >= 0 ? t("toolbox.image.reducePct", { v: savedPercent }) : t("toolbox.image.increasePct", { v: Math.abs(savedPercent) }) }}</b><span>{{ formatFileSize(source.file.size) }} → {{ formatFileSize(output.blob.size) }}</span></div>
+          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runCompress"><Icon name="download" :size="15" />{{ busy ? t("toolbox.image.processing") : t("toolbox.image.compressImg") }}</button>
         </div>
       </aside>
       <ImagePreview :source="source" :output="output" :error="error" @save="saveOutput" />
@@ -681,14 +685,14 @@ onBeforeUnmount(() => {
 
     <section v-else-if="activeTab === 'resize'" class="workspace edit-layout">
       <aside class="panel controls-panel edit-controls">
-        <header class="panel-head"><b>尺寸与变换</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.resizeSettings") }}</b></header>
         <div class="controls-body">
-          <div class="two-fields"><label class="field"><span>宽度</span><input v-model.number="resizeOptions.width" type="number" min="1" max="20000" @input="updateResize('width')" /></label><label class="field"><span>高度</span><input v-model.number="resizeOptions.height" type="number" min="1" max="20000" @input="updateResize('height')" /></label></div>
-          <label class="check-control"><input v-model="resizeOptions.lock" type="checkbox" />锁定宽高比例</label>
-          <div class="field"><span>裁剪比例</span><div class="ratio-grid"><button v-for="ratio in CROP_RATIOS" :key="ratio.key" :class="{ on: resizeOptions.crop === ratio.key }" @click="chooseCrop(ratio.key)">{{ ratio.label }}</button></div></div>
-          <div class="field"><span>旋转与翻转</span><div class="icon-actions"><button class="icon-btn" title="向左旋转" @click="rotate(-90)"><Icon name="rotate-left" :size="16" /></button><button class="icon-btn" title="向右旋转" @click="rotate(90)"><Icon name="rotate-right" :size="16" /></button><button class="icon-btn" :class="{ active: resizeOptions.flipX }" title="水平翻转" @click="resizeOptions.flipX = !resizeOptions.flipX"><Icon name="flip-horizontal" :size="16" /></button><button class="icon-btn" :class="{ active: resizeOptions.flipY }" title="垂直翻转" @click="resizeOptions.flipY = !resizeOptions.flipY"><Icon name="flip-vertical" :size="16" /></button><span>{{ resizeOptions.rotation }}°</span></div></div>
-          <div class="two-fields"><label class="field"><span>输出格式</span><select v-model="resizeOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label><label v-if="formatSupportsQuality(resizeOptions.format)" class="field"><span>质量</span><input v-model.number="resizeOptions.quality" type="number" min="10" max="100" /></label></div>
-          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runResize"><Icon name="crop" :size="15" />{{ busy ? "处理中" : "应用编辑" }}</button>
+          <div class="two-fields"><label class="field"><span>{{ t("toolbox.image.width") }}</span><input v-model.number="resizeOptions.width" type="number" min="1" max="20000" @input="updateResize('width')" /></label><label class="field"><span>{{ t("toolbox.image.height") }}</span><input v-model.number="resizeOptions.height" type="number" min="1" max="20000" @input="updateResize('height')" /></label></div>
+          <label class="check-control"><input v-model="resizeOptions.lock" type="checkbox" />{{ t("toolbox.image.lockAspect") }}</label>
+          <div class="field"><span>{{ t("toolbox.image.cropRatio") }}</span><div class="ratio-grid"><button v-for="ratio in cropRatios" :key="ratio.key" :class="{ on: resizeOptions.crop === ratio.key }" @click="chooseCrop(ratio.key)">{{ ratio.label }}</button></div></div>
+          <div class="field"><span>{{ t("toolbox.image.rotateFlip") }}</span><div class="icon-actions"><button class="icon-btn" :title="t('toolbox.image.rotateLeft')" @click="rotate(-90)"><Icon name="rotate-left" :size="16" /></button><button class="icon-btn" :title="t('toolbox.image.rotateRight')" @click="rotate(90)"><Icon name="rotate-right" :size="16" /></button><button class="icon-btn" :class="{ active: resizeOptions.flipX }" :title="t('toolbox.image.flipH')" @click="resizeOptions.flipX = !resizeOptions.flipX"><Icon name="flip-horizontal" :size="16" /></button><button class="icon-btn" :class="{ active: resizeOptions.flipY }" :title="t('toolbox.image.flipV')" @click="resizeOptions.flipY = !resizeOptions.flipY"><Icon name="flip-vertical" :size="16" /></button><span>{{ resizeOptions.rotation }}°</span></div></div>
+          <div class="two-fields"><label class="field"><span>{{ t("toolbox.image.outFormat") }}</span><select v-model="resizeOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label><label v-if="formatSupportsQuality(resizeOptions.format)" class="field"><span>{{ t("toolbox.image.quality") }}</span><input v-model.number="resizeOptions.quality" type="number" min="10" max="100" /></label></div>
+          <button class="btn-primary full-btn" :disabled="busy || !source" @click="runResize"><Icon name="crop" :size="15" />{{ busy ? t("toolbox.image.processing") : t("toolbox.image.applyEdit") }}</button>
         </div>
       </aside>
       <ImagePreview :source="source" :output="output" :error="error" @save="saveOutput" />
@@ -696,103 +700,103 @@ onBeforeUnmount(() => {
 
     <section v-else-if="activeTab === 'batch'" class="workspace batch-layout">
       <div class="batch-toolbar">
-        <button class="btn-ghost" @click="batchInput?.click()"><Icon name="image" :size="15" />选择多张图片</button>
-        <label class="compact-field"><span>格式</span><select v-model="batchOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label>
-        <label v-if="formatSupportsQuality(batchOptions.format)" class="compact-field quality-field"><span>质量</span><input v-model.number="batchOptions.quality" type="number" min="10" max="100" /></label>
-        <label class="compact-field size-field"><span>最大宽</span><input v-model.number="batchOptions.maxWidth" type="number" min="1" max="20000" /></label>
-        <label class="compact-field size-field"><span>最大高</span><input v-model.number="batchOptions.maxHeight" type="number" min="1" max="20000" /></label>
-        <button class="btn-primary" :disabled="batchBusy || !batchItems.length" @click="runBatch"><Icon name="repeat" :size="15" />{{ batchBusy ? "处理中" : "开始处理" }}</button>
-        <button class="btn-outline" :disabled="!batchItems.some((item) => item.output)" @click="saveBatch"><Icon name="download" :size="15" />全部保存</button>
+        <button class="btn-ghost" @click="batchInput?.click()"><Icon name="image" :size="15" />{{ t("toolbox.image.pickMulti") }}</button>
+        <label class="compact-field"><span>{{ t("toolbox.image.format") }}</span><select v-model="batchOptions.format"><option v-for="format in IMAGE_FORMATS" :key="format.key" :value="format.key">{{ format.label }}</option></select></label>
+        <label v-if="formatSupportsQuality(batchOptions.format)" class="compact-field quality-field"><span>{{ t("toolbox.image.quality") }}</span><input v-model.number="batchOptions.quality" type="number" min="10" max="100" /></label>
+        <label class="compact-field size-field"><span>{{ t("toolbox.image.maxW") }}</span><input v-model.number="batchOptions.maxWidth" type="number" min="1" max="20000" /></label>
+        <label class="compact-field size-field"><span>{{ t("toolbox.image.maxH") }}</span><input v-model.number="batchOptions.maxHeight" type="number" min="1" max="20000" /></label>
+        <button class="btn-primary" :disabled="batchBusy || !batchItems.length" @click="runBatch"><Icon name="repeat" :size="15" />{{ batchBusy ? t("toolbox.image.processing") : t("toolbox.image.startBatch") }}</button>
+        <button class="btn-outline" :disabled="!batchItems.some((item) => item.output)" @click="saveBatch"><Icon name="download" :size="15" />{{ t("toolbox.image.saveAll") }}</button>
       </div>
       <div class="batch-options">
-        <label class="compact-field"><span>前缀</span><input v-model="batchOptions.prefix" /></label>
-        <label class="compact-field"><span>后缀</span><input v-model="batchOptions.suffix" /></label>
-        <label class="check-control"><input v-model="batchOptions.allowUpscale" type="checkbox" />允许放大</label>
-        <span>{{ batchItems.length }} 张</span>
+        <label class="compact-field"><span>{{ t("toolbox.image.prefix") }}</span><input v-model="batchOptions.prefix" /></label>
+        <label class="compact-field"><span>{{ t("toolbox.image.suffix") }}</span><input v-model="batchOptions.suffix" /></label>
+        <label class="check-control"><input v-model="batchOptions.allowUpscale" type="checkbox" />{{ t("toolbox.image.allowUpscaleBatch") }}</label>
+        <span>{{ t("toolbox.image.countImages", { n: batchItems.length }) }}</span>
       </div>
       <section class="panel batch-panel" :class="{ dragging: dragOver }">
-        <header class="batch-head"><span>文件</span><span>原始大小</span><span>输出尺寸</span><span>输出大小</span><span>状态</span></header>
+        <header class="batch-head"><span>{{ t("toolbox.image.colFile") }}</span><span>{{ t("toolbox.image.colOrigSize") }}</span><span>{{ t("toolbox.image.colOutSize") }}</span><span>{{ t("toolbox.image.colOutBytes") }}</span><span>{{ t("toolbox.image.colStatus") }}</span></header>
         <div v-if="batchItems.length" class="batch-list">
           <div v-for="item in batchItems" :key="item.id" class="batch-row" :class="item.status">
             <span class="batch-name" :title="item.file.name"><Icon name="image" :size="15" />{{ item.file.name }}</span>
             <span>{{ formatFileSize(item.file.size) }}</span>
             <span>{{ item.output ? `${item.output.width} × ${item.output.height}` : "-" }}</span>
             <span>{{ item.output ? formatFileSize(item.output.blob.size) : "-" }}</span>
-            <span class="batch-status" :title="item.error"><Icon :name="item.status === 'done' ? 'check' : item.status === 'error' ? 'alert' : item.status === 'processing' ? 'refresh' : 'clock'" :size="14" />{{ item.status === 'done' ? "完成" : item.status === 'error' ? "失败" : item.status === 'processing' ? "处理中" : "等待" }}</span>
+            <span class="batch-status" :title="item.error"><Icon :name="item.status === 'done' ? 'check' : item.status === 'error' ? 'alert' : item.status === 'processing' ? 'refresh' : 'clock'" :size="14" />{{ item.status === 'done' ? t("toolbox.image.done") : item.status === 'error' ? t("toolbox.image.failed") : item.status === 'processing' ? t("toolbox.image.processing") : t("toolbox.image.waiting") }}</span>
           </div>
         </div>
-        <div v-else class="drop-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>还没有待处理图片</b><button class="btn-outline" @click="batchInput?.click()">选择第一批图片</button></div>
+        <div v-else class="drop-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>{{ t("toolbox.image.noBatch") }}</b><button class="btn-outline" @click="batchInput?.click()">{{ t("toolbox.image.pickFirstBatch") }}</button></div>
       </section>
     </section>
 
     <section v-else-if="activeTab === 'palette'" class="workspace palette-layout">
       <section class="panel palette-preview">
-        <header class="panel-head"><b>图片取色</b><span>{{ pickedColor ? pickedColor.hex : "点击图片读取颜色" }}</span></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.paletteTitle") }}</b><span>{{ pickedColor ? pickedColor.hex : t("toolbox.image.clickToPick") }}</span></header>
         <div v-if="source" class="palette-canvas-wrap">
-          <canvas ref="paletteCanvas" class="palette-canvas" aria-label="点击图片提取颜色" @click="pickCanvasColor"></canvas>
+          <canvas ref="paletteCanvas" class="palette-canvas" :aria-label="t('toolbox.image.pickColorAria')" @click="pickCanvasColor"></canvas>
           <div v-if="pickedColor" class="picked-bar">
             <span class="picked-swatch" :style="{ background: pickedColor.hex }"></span>
-            <button class="color-code" title="复制 HEX" @click="copyValue(pickedColor.hex, 'picked-hex', ' HEX')">{{ pickedColor.hex }}<Icon :name="copiedColor === 'picked-hex' ? 'check' : 'copy'" :size="13" /></button>
-            <button class="color-code" title="复制 RGB" @click="copyValue(pickedColor.rgb, 'picked-rgb', ' RGB')">{{ pickedColor.rgb }}<Icon :name="copiedColor === 'picked-rgb' ? 'check' : 'copy'" :size="13" /></button>
-            <button class="color-code" title="复制 HSL" @click="copyValue(pickedColor.hsl, 'picked-hsl', ' HSL')">{{ pickedColor.hsl }}<Icon :name="copiedColor === 'picked-hsl' ? 'check' : 'copy'" :size="13" /></button>
+            <button class="color-code" :title="t('toolbox.image.copyHex')" @click="copyValue(pickedColor.hex, 'picked-hex', t('toolbox.image.hex'))">{{ pickedColor.hex }}<Icon :name="copiedColor === 'picked-hex' ? 'check' : 'copy'" :size="13" /></button>
+            <button class="color-code" :title="t('toolbox.image.copyRgb')" @click="copyValue(pickedColor.rgb, 'picked-rgb', t('toolbox.image.rgb'))">{{ pickedColor.rgb }}<Icon :name="copiedColor === 'picked-rgb' ? 'check' : 'copy'" :size="13" /></button>
+            <button class="color-code" :title="t('toolbox.image.copyHsl')" @click="copyValue(pickedColor.hsl, 'picked-hsl', t('toolbox.image.hsl'))">{{ pickedColor.hsl }}<Icon :name="copiedColor === 'picked-hsl' ? 'check' : 'copy'" :size="13" /></button>
           </div>
         </div>
-        <div v-else class="info-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>选择图片后提取颜色</b><button class="btn-outline" @click="singleInput?.click()">选择图片</button></div>
+        <div v-else class="info-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>{{ t("toolbox.image.pickThenExtract") }}</b><button class="btn-outline" @click="singleInput?.click()">{{ t("toolbox.image.pickImg") }}</button></div>
       </section>
       <aside class="panel palette-panel">
-        <header class="panel-head"><b>主色调色板</b><span>{{ palette.length }} 种颜色</span></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.paletteMain") }}</b><span>{{ t("toolbox.image.colorCount", { n: palette.length }) }}</span></header>
         <div class="palette-controls">
-          <label class="field"><span>颜色数量 <b>{{ paletteCount }}</b></span><input v-model.number="paletteCount" type="range" min="3" max="12" /></label>
-          <button class="btn-outline" :disabled="!source || paletteBusy" @click="extractPalette"><Icon name="refresh" :size="15" />{{ paletteBusy ? "提取中" : "重新提取" }}</button>
+          <label class="field"><span>{{ t("toolbox.image.colorAmount") }} <b>{{ paletteCount }}</b></span><input v-model.number="paletteCount" type="range" min="3" max="12" /></label>
+          <button class="btn-outline" :disabled="!source || paletteBusy" @click="extractPalette"><Icon name="refresh" :size="15" />{{ paletteBusy ? t("toolbox.image.extracting") : t("toolbox.image.reExtract") }}</button>
         </div>
         <div v-if="palette.length" class="palette-list">
-          <button v-for="color in palette" :key="color.hex" class="palette-row" :class="{ selected: pickedColor?.hex === color.hex }" :title="`复制 ${color.hex}`" @click="selectPaletteColor(color)">
+          <button v-for="color in palette" :key="color.hex" class="palette-row" :class="{ selected: pickedColor?.hex === color.hex }" :title="t('toolbox.image.copyColorTitle', { hex: color.hex })" @click="selectPaletteColor(color)">
             <span class="palette-swatch" :style="{ background: color.hex }"></span>
             <span class="palette-values"><b>{{ color.hex }}</b><small>{{ color.rgb }} · {{ color.hsl }}</small></span>
             <span class="palette-ratio">{{ color.percentage }}%</span>
             <Icon :name="copiedColor === `color-${color.hex}` ? 'check' : 'copy'" :size="14" />
           </button>
         </div>
-        <div v-else class="no-exif">{{ source ? "正在等待提取结果" : "还没有调色板" }}</div>
+        <div v-else class="no-exif">{{ source ? t("toolbox.image.waitingResult") : t("toolbox.image.noPalette") }}</div>
         <footer class="palette-actions">
-          <button class="btn-outline" :disabled="!palette.length" @click="copyPalette('css')"><Icon :name="copiedColor === 'palette-css' ? 'check' : 'copy'" :size="14" />复制 CSS</button>
-          <button class="btn-outline" :disabled="!palette.length" @click="copyPalette('json')"><Icon :name="copiedColor === 'palette-json' ? 'check' : 'copy'" :size="14" />复制 JSON</button>
+          <button class="btn-outline" :disabled="!palette.length" @click="copyPalette('css')"><Icon :name="copiedColor === 'palette-css' ? 'check' : 'copy'" :size="14" />{{ t("toolbox.image.copyCss") }}</button>
+          <button class="btn-outline" :disabled="!palette.length" @click="copyPalette('json')"><Icon :name="copiedColor === 'palette-json' ? 'check' : 'copy'" :size="14" />{{ t("toolbox.image.copyJson") }}</button>
         </footer>
       </aside>
     </section>
 
     <section v-else-if="activeTab === 'icon'" class="workspace icon-layout">
       <aside class="panel controls-panel icon-controls">
-        <header class="panel-head"><b>图标设计</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.iconDesign") }}</b></header>
         <div class="controls-body">
-          <div class="segmented icon-mode"><button :class="{ on: iconMode === 'local' }" @click="iconMode = 'local'">文字图标</button><button :class="{ on: iconMode === 'ai' }" @click="iconMode = 'ai'">AI 生成</button></div>
+          <div class="segmented icon-mode"><button :class="{ on: iconMode === 'local' }" @click="iconMode = 'local'">{{ t("toolbox.image.iconTextMode") }}</button><button :class="{ on: iconMode === 'ai' }" @click="iconMode = 'ai'">{{ t("toolbox.image.iconAiMode") }}</button></div>
           <template v-if="iconMode === 'local'">
-            <label class="field"><span>文字或字母</span><input v-model="iconOptions.text" maxlength="3" placeholder="ZG" /></label>
-            <div class="two-fields"><label class="field"><span>背景色</span><span class="color-control"><input v-model="iconOptions.background" type="color" /><code>{{ iconOptions.background }}</code></span></label><label class="field"><span>前景色</span><span class="color-control"><input v-model="iconOptions.foreground" type="color" /><code>{{ iconOptions.foreground }}</code></span></label></div>
-            <label class="field"><span>圆角 <b>{{ iconOptions.radius }}</b></span><input v-model.number="iconOptions.radius" type="range" min="0" max="256" /></label>
-            <label class="field"><span>文字大小 <b>{{ iconOptions.fontSize }}</b></span><input v-model.number="iconOptions.fontSize" type="range" min="80" max="360" /></label>
-            <label class="check-control"><input v-model="iconOptions.transparent" type="checkbox" />透明背景</label>
+            <label class="field"><span>{{ t("toolbox.image.iconText") }}</span><input v-model="iconOptions.text" maxlength="3" placeholder="ZG" /></label>
+            <div class="two-fields"><label class="field"><span>{{ t("toolbox.image.bgColor") }}</span><span class="color-control"><input v-model="iconOptions.background" type="color" /><code>{{ iconOptions.background }}</code></span></label><label class="field"><span>{{ t("toolbox.image.fgColor") }}</span><span class="color-control"><input v-model="iconOptions.foreground" type="color" /><code>{{ iconOptions.foreground }}</code></span></label></div>
+            <label class="field"><span>{{ t("toolbox.image.radius") }} <b>{{ iconOptions.radius }}</b></span><input v-model.number="iconOptions.radius" type="range" min="0" max="256" /></label>
+            <label class="field"><span>{{ t("toolbox.image.fontSize") }} <b>{{ iconOptions.fontSize }}</b></span><input v-model.number="iconOptions.fontSize" type="range" min="80" max="360" /></label>
+            <label class="check-control"><input v-model="iconOptions.transparent" type="checkbox" />{{ t("toolbox.image.transparentBg") }}</label>
           </template>
           <template v-else>
-            <label class="field"><span>图标描述</span><textarea v-model="aiIconOptions.prompt" class="icon-prompt" rows="5" spellcheck="false" placeholder="例：用于代码片段管理的简洁线性图标，主体是代码括号与书签"></textarea></label>
-            <label class="field"><span>主色</span><span class="color-control"><input v-model="aiIconOptions.color" type="color" /><code>{{ aiIconOptions.color }}</code></span></label>
-            <label class="check-control"><input v-model="aiIconOptions.transparent" type="checkbox" />透明背景</label>
-            <div v-if="!aiConfigured" class="ai-note"><Icon name="settings" :size="16" /><span>需要先在右上角设置中配置 AI 模型</span></div>
-            <button class="btn-primary" :disabled="aiIconBusy" @click="generateAiIcon"><Icon name="sparkles" :size="15" />{{ aiIconBusy ? "生成中" : aiIconSvg ? "重新生成" : "生成图标" }}</button>
+            <label class="field"><span>{{ t("toolbox.image.iconDesc") }}</span><textarea v-model="aiIconOptions.prompt" class="icon-prompt" rows="5" spellcheck="false" :placeholder="t('toolbox.image.iconDescPh')"></textarea></label>
+            <label class="field"><span>{{ t("toolbox.image.mainColor") }}</span><span class="color-control"><input v-model="aiIconOptions.color" type="color" /><code>{{ aiIconOptions.color }}</code></span></label>
+            <label class="check-control"><input v-model="aiIconOptions.transparent" type="checkbox" />{{ t("toolbox.image.transparentBg") }}</label>
+            <div v-if="!aiConfigured" class="ai-note"><Icon name="settings" :size="16" /><span>{{ t("toolbox.image.aiNeedConfig") }}</span></div>
+            <button class="btn-primary" :disabled="aiIconBusy" @click="generateAiIcon"><Icon name="sparkles" :size="15" />{{ aiIconBusy ? t("toolbox.image.generating") : aiIconSvg ? t("toolbox.image.reGenerate") : t("toolbox.image.genIcon") }}</button>
           </template>
         </div>
       </aside>
       <section class="panel icon-output">
-        <header class="panel-head"><b>图标预览</b><span>SVG · 512 × 512</span></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.iconPreview") }}</b><span>SVG · 512 × 512</span></header>
         <div class="icon-preview-area">
-          <div v-if="iconPreviewUrl" class="icon-preview-stage"><img :src="iconPreviewUrl" alt="生成的图标预览" /></div>
-          <div v-else class="info-empty"><span class="empty-ico"><Icon name="sparkles" :size="30" /></span><b>描述图标后开始生成</b></div>
-          <div v-if="currentIconSvg" class="mini-previews"><span v-for="size in [16, 32, 64]" :key="size"><img :src="iconPreviewUrl" :alt="`${size} 像素预览`" :width="size" :height="size" /><small>{{ size }}</small></span></div>
+          <div v-if="iconPreviewUrl" class="icon-preview-stage"><img :src="iconPreviewUrl" :alt="t('toolbox.image.iconPreviewAlt')" /></div>
+          <div v-else class="info-empty"><span class="empty-ico"><Icon name="sparkles" :size="30" /></span><b>{{ t("toolbox.image.describeThenGen") }}</b></div>
+          <div v-if="currentIconSvg" class="mini-previews"><span v-for="size in [16, 32, 64]" :key="size"><img :src="iconPreviewUrl" :alt="t('toolbox.image.pxPreview', { size })" :width="size" :height="size" /><small>{{ size }}</small></span></div>
         </div>
         <div class="icon-export">
-          <label class="field"><span>文件名</span><input v-model="iconOptions.name" placeholder="app-icon" /></label>
-          <div class="field"><span>PNG 尺寸</span><div class="size-chips"><button v-for="size in ICON_SIZES" :key="size" :class="{ on: iconSizes.includes(size) }" @click="toggleIconSize(size)">{{ size }}</button></div></div>
-          <div class="export-buttons"><button class="btn-outline" :disabled="!currentIconSvg" @click="saveIconSvg"><Icon name="download" :size="15" />保存 SVG</button><button class="btn-primary" :disabled="!currentIconSvg || !selectedIconSizes.length" @click="saveIconPngs"><Icon name="download" :size="15" />保存 {{ selectedIconSizes.length }} 个 PNG</button></div>
+          <label class="field"><span>{{ t("toolbox.image.fileName") }}</span><input v-model="iconOptions.name" placeholder="app-icon" /></label>
+          <div class="field"><span>{{ t("toolbox.image.pngSizes") }}</span><div class="size-chips"><button v-for="size in ICON_SIZES" :key="size" :class="{ on: iconSizes.includes(size) }" @click="toggleIconSize(size)">{{ size }}</button></div></div>
+          <div class="export-buttons"><button class="btn-outline" :disabled="!currentIconSvg" @click="saveIconSvg"><Icon name="download" :size="15" />{{ t("toolbox.image.saveSvg") }}</button><button class="btn-primary" :disabled="!currentIconSvg || !selectedIconSizes.length" @click="saveIconPngs"><Icon name="download" :size="15" />{{ t("toolbox.image.savePngCount", { n: selectedIconSizes.length }) }}</button></div>
         </div>
       </section>
     </section>
@@ -800,19 +804,19 @@ onBeforeUnmount(() => {
     <section v-else-if="activeTab === 'info'" class="workspace info-layout">
       <section v-if="source" class="panel info-preview"><img :src="source.url" :alt="source.file.name" /></section>
       <section class="panel info-panel">
-        <header class="panel-head"><b>基础信息</b></header>
+        <header class="panel-head"><b>{{ t("toolbox.image.baseInfo") }}</b></header>
         <div v-if="source" class="info-grid">
-          <div><span>文件名</span><b :title="source.file.name">{{ source.file.name }}</b></div><div><span>文件类型</span><b>{{ source.file.type || "未知" }}</b></div>
-          <div><span>图片尺寸</span><b>{{ source.width }} × {{ source.height }}</b></div><div><span>宽高比</span><b>{{ aspectRatioLabel(source.width, source.height) }}</b></div>
-          <div><span>文件大小</span><b>{{ formatFileSize(source.file.size) }}</b></div><div><span>最后修改</span><b>{{ new Date(source.file.lastModified).toLocaleString('zh-CN') }}</b></div>
-          <div><span>总像素</span><b>{{ (source.width * source.height / 1_000_000).toFixed(2) }} MP</b></div><div><span>透明通道</span><b>{{ source.file.type === 'image/png' || source.file.type === 'image/webp' ? '可能包含' : '不包含' }}</b></div>
+          <div><span>{{ t("toolbox.image.fileName") }}</span><b :title="source.file.name">{{ source.file.name }}</b></div><div><span>{{ t("toolbox.image.fileType") }}</span><b>{{ source.file.type || t("toolbox.image.unknown") }}</b></div>
+          <div><span>{{ t("toolbox.image.imgSize") }}</span><b>{{ source.width }} × {{ source.height }}</b></div><div><span>{{ t("toolbox.image.aspectRatio") }}</span><b>{{ aspectRatioLabel(source.width, source.height) }}</b></div>
+          <div><span>{{ t("toolbox.image.fileSize") }}</span><b>{{ formatFileSize(source.file.size) }}</b></div><div><span>{{ t("toolbox.image.lastModified") }}</span><b>{{ new Date(source.file.lastModified).toLocaleString(t("toolbox.image.locale")) }}</b></div>
+          <div><span>{{ t("toolbox.image.totalPixels") }}</span><b>{{ (source.width * source.height / 1_000_000).toFixed(2) }} MP</b></div><div><span>{{ t("toolbox.image.alphaChannel") }}</span><b>{{ source.file.type === 'image/png' || source.file.type === 'image/webp' ? t("toolbox.image.mayInclude") : t("toolbox.image.notInclude") }}</b></div>
         </div>
-        <div v-else class="info-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>还没有图片信息</b><button class="btn-outline" @click="singleInput?.click()">选择第一张图片</button></div>
-        <template v-if="source"><header class="panel-head sub-head"><b>EXIF 信息</b><span>{{ exifRows.length }} 项</span></header><div v-if="exifRows.length" class="exif-list"><div v-for="row in exifRows" :key="row.label"><span>{{ row.label }}</span><b>{{ row.value }}</b></div></div><div v-else class="no-exif">未检测到 EXIF 信息</div><footer class="info-actions"><button class="btn-outline" @click="exportCleanCopy"><Icon name="shield" :size="15" />导出无元数据副本</button></footer></template>
+        <div v-else class="info-empty"><span class="empty-ico"><Icon name="image" :size="30" /></span><b>{{ t("toolbox.image.noInfo") }}</b><button class="btn-outline" @click="singleInput?.click()">{{ t("toolbox.image.pickFirstImg") }}</button></div>
+        <template v-if="source"><header class="panel-head sub-head"><b>{{ t("toolbox.image.exifTitle") }}</b><span>{{ t("toolbox.image.countItems", { n: exifRows.length }) }}</span></header><div v-if="exifRows.length" class="exif-list"><div v-for="row in exifRows" :key="row.label"><span>{{ row.label }}</span><b>{{ row.value }}</b></div></div><div v-else class="no-exif">{{ t("toolbox.image.noExif") }}</div><footer class="info-actions"><button class="btn-outline" @click="exportCleanCopy"><Icon name="shield" :size="15" />{{ t("toolbox.image.exportClean") }}</button></footer></template>
       </section>
     </section>
 
-    <div v-if="dragOver && activeTab !== 'icon'" class="drop-overlay"><Icon name="image" :size="36" /><b>{{ activeTab === 'batch' ? '松开加入批量队列' : '松开读取图片' }}</b></div>
+    <div v-if="dragOver && activeTab !== 'icon'" class="drop-overlay"><Icon name="image" :size="36" /><b>{{ activeTab === 'batch' ? t('toolbox.image.dropBatch') : t('toolbox.image.dropRead') }}</b></div>
   </div>
 </template>
 

@@ -1,7 +1,10 @@
 <script setup>
 // 数据库连接编辑弹窗（DbTool 拆出）：表单数据由父组件持有，嵌套字段直接双向绑定
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { DB_TYPES } from "../db.js";
+
+const { t } = useI18n();
 
 const props = defineProps({
   editing: { type: Object, required: true },
@@ -22,89 +25,89 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
 <template>
   <div class="modal-mask">
     <div class="modal db-conn-modal">
-      <h2>{{ editingNew ? "新建连接" : "编辑连接" }}</h2>
+      <h2>{{ editingNew ? t("toolbox.db.connNew") : t("toolbox.db.connEdit") }}</h2>
       <label class="fld">
-        <span>类型</span>
+        <span>{{ t("toolbox.db.type") }}</span>
         <select v-model="editing.type">
-          <option v-for="t in DB_TYPES" :key="t.type" :value="t.type">{{ t.label }}</option>
+          <option v-for="t in DB_TYPES" :key="t.type" :value="t.type">{{ t('toolbox.db.' + t.labelKey) }}</option>
         </select>
       </label>
       <label class="fld">
-        <span>连接名（可选）</span>
-        <input v-model="editing.name" placeholder="例如：本地测试库" />
+        <span>{{ t("toolbox.db.connName") }}</span>
+        <input v-model="editing.name" placeholder="" :placeholder="t('toolbox.db.connNamePh')" />
       </label>
       <template v-if="editing.type === 'sqlite'">
         <label class="fld">
-          <span>数据库文件</span>
+          <span>{{ t("toolbox.db.dbFile") }}</span>
           <div class="fld-row">
-            <input v-model="editing.database" placeholder="选择或输入 .db 文件路径" />
-            <button class="mini-btn" @click="emit('pick-file')">选择</button>
+            <input v-model="editing.database" placeholder="" :placeholder="t('toolbox.db.dbFilePh')" />
+            <button class="mini-btn" @click="emit('pick-file')">{{ t("toolbox.db.pick") }}</button>
           </div>
         </label>
       </template>
       <template v-else>
         <div class="fld-2">
           <label class="fld">
-            <span>主机</span>
+            <span>{{ t("toolbox.db.host") }}</span>
             <input v-model="editing.host" placeholder="localhost" />
           </label>
           <label class="fld w60">
-            <span>端口</span>
+            <span>{{ t("toolbox.db.port") }}</span>
             <input v-model.number="editing.port" type="number" />
           </label>
         </div>
         <div class="fld-2">
           <label class="fld">
-            <span>用户名</span>
+            <span>{{ t("toolbox.db.user") }}</span>
             <input v-model="editing.user" placeholder="root" />
           </label>
           <label class="fld">
-            <span>密码</span>
+            <span>{{ t("toolbox.db.password") }}</span>
             <input v-model="editing.password" type="password" placeholder="••••••" />
           </label>
         </div>
         <label class="fld">
-          <span>{{ typeMeta(editing.type).dbLabel }}</span>
-          <input v-model="editing.database" placeholder="数据库名" />
+          <span>{{ t('toolbox.db.' + typeMeta(editing.type).dbLabelKey) }}</span>
+          <input v-model="editing.database" placeholder="" :placeholder="t('toolbox.db.dbNamePh')" />
         </label>
         <template v-if="editing.type === 'oracle'">
           <label class="fld">
-            <span>服务名（Service Name）</span>
-            <input v-model="editing.oracleService" placeholder="例如：ORCL" />
+            <span>{{ t("toolbox.db.serviceName") }}</span>
+            <input v-model="editing.oracleService" placeholder="" :placeholder="t('toolbox.db.serviceNamePh')" />
           </label>
           <label class="fld">
-            <span>ODBC 驱动</span>
+            <span>{{ t("toolbox.db.odbcDriver") }}</span>
             <div class="fld-row">
               <select v-model="editing.oracleDriver" :disabled="!oracleDrivers.length">
-                <option value="">请选择（需本机已安装）</option>
+                <option value="">{{ t("toolbox.db.selectDriver") }}</option>
                 <option v-for="d in oracleDrivers" :key="d" :value="d">{{ d }}</option>
               </select>
-              <button class="mini-btn" @click="emit('refresh-drivers')">刷新</button>
+              <button class="mini-btn" @click="emit('refresh-drivers')">{{ t("toolbox.db.refresh") }}</button>
             </div>
           </label>
-          <p v-if="oracleDrivers.length" class="form-tip">仅列出本机 Oracle 相关驱动；选其他驱动（如 SQL Server）连接会失败</p>
+          <p v-if="oracleDrivers.length" class="form-tip">{{ t("toolbox.db.oracleDriverTip") }}</p>
           <div v-else class="driver-install">
-            <p class="form-tip danger">未检测到 Oracle ODBC 驱动，可从内网服务器一键安装：</p>
+            <p class="form-tip danger">{{ t("toolbox.db.noDriverTip") }}</p>
             <div class="fld-row">
-              <input :value="driverUrl" placeholder="HTTPS 更新服务器地址" @input="emit('update:driverUrl', $event.target.value)" />
-              <button class="mini-btn" :disabled="installingDriver || !driverUrl.trim() || !driverSha256.trim()" @click="emit('install-driver')">{{ installingDriver ? "安装中…" : "一键安装" }}</button>
+              <input :value="driverUrl" placeholder="" :placeholder="t('toolbox.db.driverUrlPh')" @input="emit('update:driverUrl', $event.target.value)" />
+              <button class="mini-btn" :disabled="installingDriver || !driverUrl.trim() || !driverSha256.trim()" @click="emit('install-driver')">{{ installingDriver ? t("toolbox.db.installing") : t("toolbox.db.installOneClick") }}</button>
             </div>
             <label class="fld">
-              <span>安装包 SHA-256</span>
-              <input :value="driverSha256" placeholder="发布方提供的 64 位十六进制校验值" spellcheck="false" @input="emit('update:driverSha256', $event.target.value)" />
+              <span>{{ t("toolbox.db.sha256") }}</span>
+              <input :value="driverSha256" placeholder="" :placeholder="t('toolbox.db.sha256Ph')" spellcheck="false" @input="emit('update:driverSha256', $event.target.value)" />
             </label>
-            <p class="form-tip">驱动包固定放在服务器的 /devassistant/oracle-driver.zip；校验通过后才会请求 UAC 提权</p>
+            <p class="form-tip">{{ t("toolbox.db.driverPathTip") }}</p>
           </div>
         </template>
         <label class="fld check">
           <input v-model="editing.rememberPwd" type="checkbox" />
-          <span>记住密码（本地明文存储）</span>
+          <span>{{ t("toolbox.db.rememberPwd") }}</span>
         </label>
       </template>
       <div class="modal-foot">
-        <button class="btn ghost" @click="emit('cancel')">取消</button>
-        <button class="btn solid" @click="emit('test')">测试连接</button>
-        <button class="btn primary" @click="emit('save')">保存</button>
+        <button class="btn ghost" @click="emit('cancel')">{{ t("toolbox.db.cancel") }}</button>
+        <button class="btn solid" @click="emit('test')">{{ t("toolbox.db.testConn") }}</button>
+        <button class="btn primary" @click="emit('save')">{{ t("toolbox.db.save") }}</button>
       </div>
     </div>
   </div>

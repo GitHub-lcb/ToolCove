@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, inject } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import Icon from "../Icon.vue";
@@ -21,6 +22,8 @@ import {
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
+
+const { t } = useI18n();
 
 const HIST_MAX = 20;
 const isTauri = !!window.__TAURI_INTERNALS__;
@@ -46,7 +49,7 @@ const activeConn = computed(() => {
   if (!activeConnId.value) return null;
   return conns.value.find((c) => (connState.value[c.id] || {}).connId === activeConnId.value) || null;
 });
-const currentLabel = computed(() => (activeConn.value ? connLabel(activeConn.value) : "未连接"));
+const currentLabel = computed(() => (activeConn.value ? connLabel(activeConn.value) : t("toolbox.db.notConnected")));
 // 已连接：以真实连接状态为准（重启恢复的旧 connId 不视为已连接）
 const connected = computed(() => !!activeConn.value && !!connState.value[activeConn.value.id]?.connected);
 
@@ -60,7 +63,7 @@ async function loadConns() {
     try {
       await saveConns(conns.value);
     } catch (e) {
-      props.showToast("旧连接密码加密迁移失败，本次未写入明文：" + e);
+      props.showToast(t("toolbox.db.migrateFail", { error: e }));
     }
   }
   const s = await loadToolbox("db", {});
@@ -73,7 +76,7 @@ async function saveConns(list = conns.value) {
     "db-conns",
     list.map((c) => sanitizeForSave(c)),
     protectDbConnections,
-    (e) => props.showToast("连接配置加密失败：" + e)
+    (e) => props.showToast(t("toolbox.db.encryptFail", { error: e }))
   );
   await flushSecureToolbox("db-conns");
 }
@@ -111,11 +114,11 @@ async function saveConn() {
   try {
     await saveConns(next);
   } catch (e) {
-    return props.showToast("连接配置保存失败，未写入明文密码：" + e);
+    return props.showToast(t("toolbox.db.saveFail", { error: e }));
   }
   conns.value = next;
   cancelEdit();
-  props.showToast("连接配置已保存");
+  props.showToast(t("toolbox.db.saved"));
 }
 
 async function removeConn(conn) {
@@ -131,14 +134,14 @@ async function removeConn(conn) {
   try {
     await saveConns(next);
   } catch (e) {
-    return props.showToast("删除连接失败：" + e);
+    return props.showToast(t("toolbox.db.deleteFail", { error: e }));
   }
   conns.value = next;
-  props.showToast("连接已删除");
+  props.showToast(t("toolbox.db.deleted"));
 }
 
 async function pickSqliteFile() {
-  if (!isTauri) return props.showToast("请使用桌面端选择文件");
+  if (!isTauri) return props.showToast(t("toolbox.db.needDesktopPick"));
   const picked = await openDialog({
     multiple: false,
     filters: [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }],
@@ -157,7 +160,7 @@ async function loadDrivers() {
 function friendlyDbError(e, type) {
   const msg = String(e);
   if (type === "oracle" && /SQL Server/.test(msg)) {
-    return `${msg}（连接串被 SQL Server 驱动处理：请在表单中重新选择 Oracle 相关 ODBC 驱动）`;
+    return t("toolbox.db.errSqlServerHandled", { msg });
   }
   return msg;
 }
@@ -165,10 +168,10 @@ function friendlyDbError(e, type) {
 // 从内网服务器一键安装 Oracle ODBC 驱动（下载合并包 → 解压 → 提权注册）
 async function installDriver() {
   const url = driverInstallUrl(driverUrl.value);
-  if (!url) return props.showToast("请填写驱动服务器地址");
-  if (!isTrustedDriverUrl(url)) return props.showToast("驱动地址必须使用 HTTPS；仅本机开发地址允许 HTTP");
-  if (!isSha256(driverSha256.value)) return props.showToast("请填写发布方提供的 64 位 SHA-256 校验值");
-  if (!isTauri) return props.showToast("请使用桌面端安装驱动");
+  if (!url) return props.showToast(t("toolbox.db.needDriverUrl"));
+  if (!isTrustedDriverUrl(url)) return props.showToast(t("toolbox.db.needHttps"));
+  if (!isSha256(driverSha256.value)) return props.showToast(t("toolbox.db.needSha256"));
+  if (!isTauri) return props.showToast(t("toolbox.db.needDesktopInstall"));
   installingDriver.value = true;
   try {
     const name = await invoke("db_install_oracle_driver", { url, sha256: driverSha256.value.trim() });
@@ -176,7 +179,7 @@ async function installDriver() {
     saveToolbox("db-driver-sha256", driverSha256.value.trim());
     allDrivers.value = await invoke("db_drivers");
     editing.value.oracleDriver = name;
-    props.showToast(`驱动安装成功：${name}，可测试连接`);
+    props.showToast(t("toolbox.db.driverInstalled", { name }));
   } catch (e) {
     props.showToast(friendlyDbError(e, "oracle"));
   } finally {
@@ -187,7 +190,7 @@ async function installDriver() {
 // 选中连接：已连接则切换为活动连接（不关其他连接，支持多连接并存）；
 // 未连接则自动建立连接
 async function selectConn(conn) {
-  if (!isTauri) return props.showToast("数据库工具需要桌面端运行");
+  if (!isTauri) return props.showToast(t("toolbox.db.needDesktop"));
   const st = connState.value[conn.id] || {};
   if (st.connecting) return;
   // 已连接：直接设为活动（用 Rust 侧 connId），加载其表结构
@@ -208,7 +211,7 @@ async function selectConn(conn) {
     closeAllTabs();
     error.value = "";
     persistStore();
-    props.showToast(`已连接 ${connLabel(conn)}`);
+    props.showToast(t("toolbox.db.connectedTo", { name: connLabel(conn) }));
     loadTables();
   } catch (e) {
     connState.value = { ...connState.value, [conn.id]: { connected: false, connecting: false, error: String(e) } };
@@ -219,13 +222,13 @@ async function selectConn(conn) {
 async function testEditingConn() {
   const errors = validateConn(editing.value);
   if (errors.length) return props.showToast(errors[0]);
-  if (!isTauri) return props.showToast("数据库工具需要桌面端运行");
+  if (!isTauri) return props.showToast(t("toolbox.db.needDesktop"));
   const form = editing.value;
   const st = connState.value.__testing || {};
   connState.value = { ...connState.value, __testing: { ...st, connecting: true } };
   try {
     const r = await invoke("db_test", { opts: form });
-    props.showToast(`连接成功，耗时 ${r.durationMs} ms`);
+    props.showToast(t("toolbox.db.testOk", { ms: r.durationMs }));
   } catch (e) {
     props.showToast(friendlyDbError(e, form.type));
   } finally {
@@ -243,7 +246,7 @@ async function disconnect() {
   expanded.value = {};
   closeAllTabs();
   persistStore();
-  props.showToast("已断开连接");
+  props.showToast(t("toolbox.db.disconnected"));
 }
 
 // ---------- 表结构树 ----------
@@ -314,7 +317,7 @@ async function updateSuggest() {
   if (ctx.mode === "table") {
     const list = meta.value.tables
       .filter((t) => (t.name || "").toLowerCase().startsWith(ctx.prefix.toLowerCase()))
-      .map((t) => ({ name: t.name, kind: t.kind === "view" ? "视图" : "表" }));
+      .map((t) => ({ name: t.name, kind: t.kind === "view" ? t("toolbox.db.view") : t("toolbox.db.table") }));
     showSuggest(ctx, list, pos);
     return;
   }
@@ -443,27 +446,27 @@ async function loadColumns(table) {
 function onTreeNameClick(t) {
   sql.value = `SELECT * FROM ${quoteIdent(t.name, activeConn.value?.type)} ${limitClause(activeConn.value?.type)}`;
   if (!expanded.value[t.name]) toggleTable(t);
-  props.showToast("SELECT 已填入编辑器，Ctrl+Enter 执行（双击表名打开表数据）");
+  props.showToast(t("toolbox.db.selectFilled"));
 }
 
 // ---------- 表树右键菜单（全局 openCtxMenu，App.vue provide） ----------
 const openCtxMenu = inject("openCtxMenu");
 function onTreeCtx(e, t) {
   openCtxMenu(e, [
-    { label: "打开表数据", icon: "database", fn: () => quickQuery(t) },
-    { label: "生成 SELECT 模板", icon: "note", fn: () => genSelectTemplate(t) },
-    { label: "生成 INSERT 模板", icon: "plus", fn: () => genInsertTemplate(t) },
-    { label: "生成 UPDATE 模板", icon: "edit", fn: () => genUpdateTemplate(t) },
-    { label: "查看索引", icon: "layers", fn: () => openDetail(t, "indexes") },
-    { label: "查看 DDL", icon: "note", fn: () => openDetail(t, "ddl") },
-    { label: "复制表名", icon: "copy", fn: () => copyTableName(t) },
+    { label: t("toolbox.db.ctxOpenData"), icon: "database", fn: () => quickQuery(t) },
+    { label: t("toolbox.db.ctxGenSelect"), icon: "note", fn: () => genSelectTemplate(t) },
+    { label: t("toolbox.db.ctxGenInsert"), icon: "plus", fn: () => genInsertTemplate(t) },
+    { label: t("toolbox.db.ctxGenUpdate"), icon: "edit", fn: () => genUpdateTemplate(t) },
+    { label: t("toolbox.db.ctxIndexes"), icon: "layers", fn: () => openDetail(t, "indexes") },
+    { label: t("toolbox.db.ctxDdl"), icon: "note", fn: () => openDetail(t, "ddl") },
+    { label: t("toolbox.db.ctxCopyTable"), icon: "copy", fn: () => copyTableName(t) },
   ]);
 }
 function onColCtx(e, t, c) {
   openCtxMenu(e, [
-    { label: "插入列名到编辑器", icon: "edit", fn: () => insertColumn(c.name) },
-    { label: "复制列名", icon: "copy", fn: () => copyTableName({ name: c.name }) },
-    { label: "生成 WHERE 条件", icon: "filter", fn: () => genWhereCond(c.name) },
+    { label: t("toolbox.db.ctxInsertCol"), icon: "edit", fn: () => insertColumn(c.name) },
+    { label: t("toolbox.db.ctxCopyCol"), icon: "copy", fn: () => copyTableName({ name: c.name }) },
+    { label: t("toolbox.db.ctxWhere"), icon: "filter", fn: () => genWhereCond(c.name) },
   ]);
 }
 
@@ -506,44 +509,44 @@ function switchDetailTab(tab) {
 }
 async function copyDetailDDL() {
   const ok = await copyText(detail.value.ddl);
-  props.showToast(ok ? "DDL 已复制" : "复制失败");
+  props.showToast(ok ? t("toolbox.db.ddlCopied") : t("toolbox.db.copyFailed"));
 }
 function useDetailDDL() {
   sql.value = detail.value.ddl;
   detail.value = null;
-  props.showToast("DDL 已填入编辑器");
+  props.showToast(t("toolbox.db.ddlFilled"));
 }
 function tableIdent(t) {
   return quoteIdent(t.name, activeConn.value?.type);
 }
 function genSelectTemplate(t) {
   sql.value = `SELECT * FROM ${tableIdent(t)} WHERE 1=1`;
-  props.showToast("SELECT 模板已填入编辑器");
+  props.showToast(t("toolbox.db.selectTemplateFilled"));
 }
 function genInsertTemplate(t) {
   const cols = (meta.value.columns[t.name] || []).filter((c) => !c.pk);
-  if (!cols.length) return props.showToast("请先展开表加载列信息");
+  if (!cols.length) return props.showToast(t("toolbox.db.needExpandCols"));
   const names = cols.map((c) => quoteIdent(c.name, activeConn.value?.type)).join(", ");
   const vals = cols.map(() => "?").join(", ");
   sql.value = `INSERT INTO ${tableIdent(t)} (${names}) VALUES (${vals});`;
-  props.showToast("INSERT 模板已填入编辑器（? 替换为实际值）");
+  props.showToast(t("toolbox.db.insertTemplateFilled"));
 }
 function genUpdateTemplate(t) {
   const cols = (meta.value.columns[t.name] || []).filter((c) => !c.pk);
   const pks = (meta.value.columns[t.name] || []).filter((c) => c.pk);
-  if (!cols.length || !pks.length) return props.showToast("需要主键与列信息（先展开表），才能生成 UPDATE 模板");
+  if (!cols.length || !pks.length) return props.showToast(t("toolbox.db.needPkUpdate"));
   const sets = cols.map((c) => `${quoteIdent(c.name, activeConn.value?.type)} = ?`).join(",\n  ");
   const where = pks.map((c) => `${quoteIdent(c.name, activeConn.value?.type)} = ?`).join(" AND ");
   sql.value = `UPDATE ${tableIdent(t)}\nSET ${sets}\nWHERE ${where};`;
-  props.showToast("UPDATE 模板已填入编辑器（? 替换为实际值）");
+  props.showToast(t("toolbox.db.updateTemplateFilled"));
 }
 async function copyTableName(t) {
   const ok = await copyText(t.name);
-  props.showToast(ok ? `已复制：${t.name}` : "复制失败");
+  props.showToast(ok ? t("toolbox.db.copiedName", { name: t.name }) : t("toolbox.db.copyFailed"));
 }
 function genWhereCond(col) {
   sql.value += (sql.value.trim() ? (/\bWHERE\b/i.test(sql.value) ? "\n  AND " : "\nWHERE ") : "WHERE ") + `${quoteIdent(col, activeConn.value?.type)} = ?`;
-  props.showToast("WHERE 条件已追加到编辑器");
+  props.showToast(t("toolbox.db.whereAppended"));
 }
 
 // 双击列名：把带引号的列名插入 SQL 编辑器光标处
@@ -635,9 +638,9 @@ function closeAllTabs() {
 }
 function onTabCtx(e, t) {
   openCtxMenu(e, [
-    { label: "关闭标签", icon: "x", fn: () => closeTab(t.id) },
-    { label: "关闭其他标签", icon: "minus", fn: () => closeOtherTabs(t.id) },
-    { label: "关闭全部标签", icon: "trash", fn: () => closeAllTabs() },
+    { label: t("toolbox.db.ctxCloseTab"), icon: "x", fn: () => closeTab(t.id) },
+    { label: t("toolbox.db.ctxCloseOthers"), icon: "minus", fn: () => closeOtherTabs(t.id) },
+    { label: t("toolbox.db.ctxCloseAll"), icon: "trash", fn: () => closeAllTabs() },
   ]);
 }
 
@@ -693,16 +696,16 @@ function stripLimit(sqlText) {
 // record=false 表示内部刷新（表数据/排序/过滤），不写入历史
 async function runSql(selectedText, opts = {}) {
   const { targetId, record = true } = opts;
-  if (!connected.value) return props.showToast("请先选择并连接数据库");
+  if (!connected.value) return props.showToast(t("toolbox.db.needConnect"));
   const exec = (selectedText && selectedText.trim()) ? selectedText.trim() : sql.value.trim();
   if (!exec) return;
-  if (!isTauri) return props.showToast("数据库工具需要桌面端运行");
+  if (!isTauri) return props.showToast(t("toolbox.db.needDesktop"));
   if (record && !isReadOnlySql(exec)) {
     const ok = await askConfirm({
-      title: "执行写 SQL",
-      message: "该语句可能修改数据库数据或结构。执行后无法由本工具自动撤销，确认继续吗？",
-      okText: "确认执行",
-      cancelText: "取消",
+      title: t("toolbox.db.writeConfirmTitle"),
+      message: t("toolbox.db.writeConfirmMsg"),
+      okText: t("toolbox.db.writeConfirmOk"),
+      cancelText: t("toolbox.db.cancel"),
       danger: true,
     });
     if (!ok) return;
@@ -762,7 +765,7 @@ async function loadMore() {
   try {
     const r = await invoke("db_query", { connId: activeConnId.value, sql: sqlText });
     if (!r.columns || !r.columns.length) {
-      props.showToast("没有更多数据了");
+      props.showToast(t("toolbox.db.noMore"));
       return;
     }
     t.result = { ...t.result, rows: [...t.result.rows, ...(r.rows || [])], truncated: r.truncated || t.result.truncated };
@@ -867,10 +870,10 @@ async function saveCellEdit() {
     t.editMeta.table, columns, row, [ec.col],
     t.result.colTypes, activeConn.value?.type, t.editMeta.pk
   );
-  if (!sqlText) return props.showToast("该列不可更新（无主键或为主键列）");
+  if (!sqlText) return props.showToast(t("toolbox.db.colNotUpdatable"));
   try {
     await invoke("db_query", { connId: activeConnId.value, sql: sqlText });
-    props.showToast("已更新 1 行");
+    props.showToast(t("toolbox.db.updated1"));
     await runSql(t.sql, { targetId: t.id, record: false });
   } catch (e) {
     props.showToast(String(e));
@@ -891,14 +894,14 @@ async function deleteSelected() {
   const t = activeTab.value;
   if (!t) return;
   const rows = [...t.selectedRows];
-  if (!rows.length) return props.showToast("请先勾选要删除的行");
+  if (!rows.length) return props.showToast(t("toolbox.db.needSelectRows"));
   const byPk = t.editMeta.pk.length > 0;
   const ok = await askConfirm({
-    title: "删除选中行",
+    title: t("toolbox.db.delTitle"),
     message: byPk
-      ? `将删除 ${rows.length} 行数据，此操作不可撤销。确定继续吗？`
-      : `该表无主键，将按整行值匹配删除（${rows.length} 行，若有完全相同的重复行会一并删除）。确定继续吗？`,
-    okText: "删除",
+      ? t("toolbox.db.delMsgPk", { count: rows.length })
+      : t("toolbox.db.delMsgNoPk", { count: rows.length }),
+    okText: t("toolbox.db.delOk"),
   });
   if (!ok) return;
   let done = 0;
@@ -913,11 +916,11 @@ async function deleteSelected() {
             t.editMeta.table, t.result.columns, t.result.rows[ri],
             t.result.colTypes, activeConn.value?.type
           );
-      if (!sqlText) return props.showToast("无法生成删除语句");
+      if (!sqlText) return props.showToast(t("toolbox.db.noDelSql"));
       await invoke("db_query", { connId: activeConnId.value, sql: sqlText });
       done++;
     }
-    props.showToast(`已删除 ${done} 行`);
+    props.showToast(t("toolbox.db.deletedRows", { count: done }));
     await runSql(t.sql, { targetId: t.id, record: false });
   } catch (e) {
     props.showToast(String(e));
@@ -946,7 +949,7 @@ async function saveNewRow() {
   t.editingNewRow = false;
   try {
     await invoke("db_query", { connId: activeConnId.value, sql: sqlText });
-    props.showToast("已插入 1 行");
+    props.showToast(t("toolbox.db.inserted1"));
     await runSql(t.sql, { targetId: t.id, record: false });
   } catch (e) {
     props.showToast(String(e));
@@ -963,7 +966,7 @@ const aiReply = ref("");
 
 async function ensureAI() {
   const ok = await isAIConfigured();
-  if (!ok) props.showToast("请先在右上角设置里配置 AI 接口（地址 / Key / 模型）");
+  if (!ok) props.showToast(t("toolbox.db.needAiConfig"));
   return ok;
 }
 
@@ -996,13 +999,13 @@ function openAIGen() {
 function dialectContext() {
   const conn = activeConn.value;
   if (!conn) return null;
-  return `${typeMeta(conn.type).label}：${dialectHint(conn.type)}`;
+  return `${t("toolbox.db." + typeMeta(conn.type).labelKey)}：${dialectHint(conn.type)}`;
 }
 
 async function aiGenSQL() {
-  if (!aiPrompt.value.trim()) return props.showToast("请描述你要生成的 SQL 需求");
+  if (!aiPrompt.value.trim()) return props.showToast(t("toolbox.db.needDescribe"));
   const dialect = dialectContext();
-  if (!dialect) return props.showToast("请先连接数据库，AI 才能按对应方言生成 SQL");
+  if (!dialect) return props.showToast(t("toolbox.db.needConnectAi"));
   if (!(await ensureAI())) return;
   aiLoading.value = true;
   aiError.value = "";
@@ -1026,7 +1029,7 @@ async function aiGenSQL() {
 function useAISQL() {
   sql.value = cleanSQLBlock(aiReply.value);
   persistStore();
-  props.showToast("已填入编辑器，Ctrl+Enter 执行");
+  props.showToast(t("toolbox.db.filledRun"));
 }
 
 // 解释最近一次报错
@@ -1059,7 +1062,7 @@ async function aiExplainError() {
 
 // 当前 SQL 优化建议
 async function aiOptimize() {
-  if (!sql.value.trim()) return props.showToast("请先输入要优化的 SQL");
+  if (!sql.value.trim()) return props.showToast(t("toolbox.db.needSqlOptimize"));
   if (!(await ensureAI())) return;
   aiMode.value = "optimize";
   aiLoading.value = true;
@@ -1093,10 +1096,10 @@ function saveFavs() {
 
 // 收藏当前编辑器里的 SQL（去重置顶）
 function addFav() {
-  if (!sql.value.trim()) return props.showToast("没有可收藏的 SQL");
+  if (!sql.value.trim()) return props.showToast(t("toolbox.db.noFavSql"));
   favs.value = pushFav(favs.value, { sql: sql.value });
   saveFavs();
-  props.showToast("已收藏，可在收藏夹里快速取用");
+  props.showToast(t("toolbox.db.favSaved"));
 }
 
 function useFav(f) {
@@ -1114,8 +1117,8 @@ function removeFav(f) {
 // 导出当前标签结果集：CSV（带 BOM，Excel 可直开）/ JSON 对象数组
 async function exportResult(fmt) {
   const t = activeTab.value;
-  if (!t?.result || !t.result.columns.length) return props.showToast("没有可导出的数据");
-  if (!isTauri) return props.showToast("导出需要桌面端运行");
+  if (!t?.result || !t.result.columns.length) return props.showToast(t("toolbox.db.noExport"));
+  if (!isTauri) return props.showToast(t("toolbox.db.exportNeedDesktop"));
   const { columns, rows } = t.result;
   const content =
     fmt === "csv"
@@ -1130,7 +1133,7 @@ async function exportResult(fmt) {
   if (typeof path !== "string" || !path) return; // 用户取消
   try {
     await invoke("export_file", { path, content });
-    props.showToast(`已导出 ${rows.length} 行到 ${path.split(/[\\/]/).pop()}`);
+    props.showToast(t("toolbox.db.exported", { count: rows.length, name: path.split(/[\\/]/).pop() }));
   } catch (e) {
     props.showToast(String(e));
   }
@@ -1138,7 +1141,7 @@ async function exportResult(fmt) {
 
 // 导入 .sql 文件：读入后填入编辑器（不自动执行，由用户确认）
 async function importSQL() {
-  if (!isTauri) return props.showToast("导入需要桌面端运行");
+  if (!isTauri) return props.showToast(t("toolbox.db.importNeedDesktop"));
   const picked = await openDialog({
     multiple: false,
     filters: [{ name: "SQL", extensions: ["sql"] }],
@@ -1147,7 +1150,7 @@ async function importSQL() {
   try {
     sql.value = await invoke("read_text_file", { path: picked });
     persistStore();
-    props.showToast("已导入 .sql 文件，Ctrl+Enter 执行");
+    props.showToast(t("toolbox.db.imported"));
   } catch (e) {
     props.showToast(String(e));
   }
@@ -1180,11 +1183,11 @@ function escapeLike(v) {
 async function applyFilter() {
   const t = activeTab.value;
   const st = t?.pageState;
-  if (!t || !st?.sortable) return props.showToast("当前结果不支持条件过滤（请用简单 SELECT）");
+  if (!t || !st?.sortable) return props.showToast(t("toolbox.db.noFilter"));
   const conds = (t.result?.columns || [])
     .filter((c) => (t.filterDraft[c] || "").trim() !== "")
     .map((c) => `${quoteIdent(c, activeConn.value?.type)} LIKE '%${escapeLike(t.filterDraft[c].trim())}%'`);
-  if (!conds.length) return props.showToast("请至少填一个过滤条件");
+  if (!conds.length) return props.showToast(t("toolbox.db.needFilter"));
   const sqlText = `${stripLimit(st.sql)} WHERE ${conds.join(" AND ")}`;
   t.filterMode = false;
   t.sql = sqlText;
@@ -1230,9 +1233,9 @@ async function copyResult() {
   const t = activeTab.value;
   if (!t?.result) return;
   const text = toMarkdownTable(t.result.columns, t.result.rows);
-  if (!text) return props.showToast("没有可复制的内容");
+  if (!text) return props.showToast(t("toolbox.db.noCopy"));
   const ok = await copyText(text);
-  props.showToast(ok ? `已复制 ${t.result.rows.length} 行数据（含标题）` : "复制失败，请手动选择复制");
+  props.showToast(ok ? t("toolbox.db.copiedRows", { count: t.result.rows.length }) : t("toolbox.db.copyManual"));
 }
 
 // 点击单元格复制单值：NULL 复制空字符串（与 Navicat 等工具一致），toast 提示 + 单元格闪绿反馈
@@ -1241,11 +1244,11 @@ let copiedCellTimer = null;
 async function copyCell(v, ri, ci) {
   const text = v === null || v === undefined ? "" : String(v);
   const ok = await copyText(text);
-  if (!ok) return props.showToast("复制失败");
+  if (!ok) return props.showToast(t("toolbox.db.copyFailed"));
   copiedCell.value = { ri, ci };
   clearTimeout(copiedCellTimer);
   copiedCellTimer = setTimeout(() => (copiedCell.value = null), 600);
-  props.showToast(text ? `已复制：${text.length > 30 ? text.slice(0, 30) + "…" : text}` : "已复制（NULL 空值）");
+  props.showToast(text ? t("toolbox.db.copiedValue", { value: text.length > 30 ? text.slice(0, 30) + "…" : text }) : t("toolbox.db.copiedNull"));
 }
 
 onMounted(async () => {
@@ -1280,10 +1283,10 @@ function onWinKey(e) {
     <!-- 左栏：连接管理 -->
     <aside class="conn-pane">
       <div class="pane-head">
-        <b>连接管理</b>
+        <b>{{ t("toolbox.db.connMgmt") }}</b>
         <span class="pane-ops">
-          <button class="mini-btn" @click="startEdit(null)"><Icon name="plus" :size="13" />新建</button>
-          <button class="mini-btn icon" title="收起连接管理，给 SQL 工作区更大空间" @click="toggleCollapsed"><Icon name="chevrons-left" :size="14" /></button>
+          <button class="mini-btn" @click="startEdit(null)"><Icon name="plus" :size="13" />{{ t("toolbox.db.create") }}</button>
+          <button class="mini-btn icon" :title="t('toolbox.db.collapseTip')" @click="toggleCollapsed"><Icon name="chevrons-left" :size="14" /></button>
         </span>
       </div>
 
@@ -1299,15 +1302,15 @@ function onWinKey(e) {
           <div class="ci-main">
             <span class="ci-name">{{ connLabel(c) }}</span>
             <span class="ci-sub">
-              {{ typeMeta(c.type).label }}<template v-if="connState[c.id]?.error"> · 连接失败</template>
+              {{ t("toolbox.db." + typeMeta(c.type).labelKey) }}<template v-if="connState[c.id]?.error"> · {{ t("toolbox.db.connFailed") }}</template>
             </span>
           </div>
           <span class="ci-ops">
-            <button class="mini-btn" title="编辑" @click.stop="startEdit(c)"><Icon name="edit" :size="13" /></button>
-            <button class="mini-btn danger" title="删除" @click.stop="removeConn(c)"><Icon name="trash" :size="13" /></button>
+            <button class="mini-btn" :title="t('toolbox.db.edit')" @click.stop="startEdit(c)"><Icon name="edit" :size="13" /></button>
+            <button class="mini-btn danger" :title="t('toolbox.db.delete')" @click.stop="removeConn(c)"><Icon name="trash" :size="13" /></button>
           </span>
         </div>
-        <p v-if="!conns.length" class="pane-empty">还没有连接配置，点「新建」添加一个吧</p>
+        <p v-if="!conns.length" class="pane-empty">{{ t("toolbox.db.connEmpty") }}</p>
       </div>
 
       <!-- 表结构树：点表快捷查询前 100 行，展开看列，双击列名插入 SQL（详见 DbTableTree） -->
@@ -1361,14 +1364,14 @@ function onWinKey(e) {
     <!-- 右栏：SQL 工作区 -->
     <section class="work">
       <div class="work-head">
-        <button v-if="collapsed" class="btn ghost sm" title="展开连接管理" @click="toggleCollapsed"><Icon name="chevrons-right" :size="14" />连接管理</button>
+        <button v-if="collapsed" class="btn ghost sm" :title="t('toolbox.db.expandTip')" @click="toggleCollapsed"><Icon name="chevrons-right" :size="14" />{{ t("toolbox.db.connMgmt") }}</button>
         <span class="cur-state" :class="{ on: connected }">
           <span class="dot" :class="connected ? 'dot-on' : 'dot-off'"></span>
-          {{ connected ? "已连接" : "未连接" }}
+          {{ connected ? t("toolbox.db.connected") : t("toolbox.db.notConnected") }}
         </span>
         <span class="cur-name" :title="currentLabel">{{ currentLabel }}</span>
         <span class="spacer"></span>
-        <button v-if="connected" class="btn ghost sm" @click="disconnect">断开</button>
+        <button v-if="connected" class="btn ghost sm" @click="disconnect">{{ t("toolbox.db.disconnect") }}</button>
       </div>
 
       <div class="sql-area">
@@ -1381,7 +1384,7 @@ function onWinKey(e) {
             v-model="sql"
             class="sql-input"
             spellcheck="false"
-            placeholder="输入 SQL，Ctrl+Enter 执行（选中片段则只执行选中部分）；FROM/JOIN 后提示表名，表名. 后提示列名"
+            :placeholder="t('toolbox.db.sqlPlaceholder')"
             @keydown.ctrl.enter.prevent="onRunSql"
             @keydown.meta.enter.prevent="onRunSql"
             @keydown="onSqlKeydown"
@@ -1405,19 +1408,19 @@ function onWinKey(e) {
             </button>
           </div>
         </div>
-        <div class="resizer" :class="{ dragging }" title="拖拽调整编辑区高度，双击重置" @mousedown="onResizeDown" @dblclick="sqlHeight = 160"></div>
+        <div class="resizer" :class="{ dragging }" :title="t('toolbox.db.resizeTip')" @mousedown="onResizeDown" @dblclick="sqlHeight = 160"></div>
         <div class="sql-bar">
           <button class="btn primary sm" :disabled="!canRun" @click="onRunSql">
-            <span v-if="running" class="spinner"></span>{{ running ? "执行中…" : "执行" }}
+            <span v-if="running" class="spinner"></span>{{ running ? t("toolbox.db.running") : t("toolbox.db.run") }}
             <kbd>Ctrl+Enter</kbd>
           </button>
-          <button class="btn ghost sm ai" title="用自然语言描述需求，AI 生成 SQL" @click="openAIGen"><Icon name="sparkles" :size="13" />AI 生成</button>
-          <button class="btn ghost sm ai" title="让 AI 分析当前 SQL 的性能优化建议" :disabled="!sql.trim()" @click="aiOptimize"><Icon name="sparkles" :size="13" />优化建议</button>
-          <button class="btn ghost sm" @click="sql = ''">清空</button>
-          <button class="btn ghost sm" @click="showHistory = !showHistory; if (showHistory) showFavs = false">历史<template v-if="history.length">（{{ history.length }}）</template></button>
-          <button class="btn ghost sm" title="收藏当前 SQL" :disabled="!sql.trim()" @click="addFav">收藏</button>
-          <button class="btn ghost sm" @click="showFavs = !showFavs; if (showFavs) showHistory = false">收藏夹<template v-if="favs.length">（{{ favs.length }}）</template></button>
-          <button class="btn ghost sm" title="导入 .sql 文件到编辑器" @click="importSQL"><Icon name="download" :size="13" />导入 .sql</button>
+          <button class="btn ghost sm ai" :title="t('toolbox.db.aiGenTip')" @click="openAIGen"><Icon name="sparkles" :size="13" />{{ t("toolbox.db.aiGen") }}</button>
+          <button class="btn ghost sm ai" :title="t('toolbox.db.aiOptTip')" :disabled="!sql.trim()" @click="aiOptimize"><Icon name="sparkles" :size="13" />{{ t("toolbox.db.aiOpt") }}</button>
+          <button class="btn ghost sm" @click="sql = ''">{{ t("toolbox.db.clear") }}</button>
+          <button class="btn ghost sm" @click="showHistory = !showHistory; if (showHistory) showFavs = false">{{ t("toolbox.db.history") }}<template v-if="history.length">（{{ history.length }}）</template></button>
+          <button class="btn ghost sm" :title="t('toolbox.db.favTip')" :disabled="!sql.trim()" @click="addFav">{{ t("toolbox.db.fav") }}</button>
+          <button class="btn ghost sm" @click="showFavs = !showFavs; if (showFavs) showHistory = false">{{ t("toolbox.db.favs") }}<template v-if="favs.length">（{{ favs.length }}）</template></button>
+          <button class="btn ghost sm" :title="t('toolbox.db.importTip')" @click="importSQL"><Icon name="download" :size="13" />{{ t("toolbox.db.importSql") }}</button>
           <span class="spacer"></span>
         </div>
       </div>
@@ -1428,7 +1431,7 @@ function onWinKey(e) {
           <code class="hist-sql">{{ h.sql }}</code>
           <span class="hist-time">{{ relativeTime(h.ts) }}</span>
         </div>
-        <p v-if="!history.length" class="pane-empty">还没有执行记录</p>
+        <p v-if="!history.length" class="pane-empty">{{ t("toolbox.db.noHistory") }}</p>
       </div>
 
       <!-- SQL 收藏夹 -->
@@ -1436,39 +1439,39 @@ function onWinKey(e) {
         <div v-for="(f, i) in favs" :key="i" class="hist-item" :title="f.sql" @click="useFav(f)">
           <code class="hist-sql">{{ favLabel(f) }}</code>
           <span class="hist-time">{{ relativeTime(f.ts) }}</span>
-          <button class="mini-btn icon danger" title="取消收藏" @click.stop="removeFav(f)"><Icon name="trash" :size="11" /></button>
+          <button class="mini-btn icon danger" :title="t('toolbox.db.unfavTip')" @click.stop="removeFav(f)"><Icon name="trash" :size="11" /></button>
         </div>
-        <p v-if="!favs.length" class="pane-empty">还没有收藏的 SQL，执行前点「收藏」即可保存</p>
+        <p v-if="!favs.length" class="pane-empty">{{ t("toolbox.db.noFavs") }}</p>
       </div>
 
       <!-- AI 辅助面板：生成 SQL / 报错解释 / 优化建议 -->
       <div v-if="aiMode" class="ai-panel">
         <div class="ai-head">
-          <b>{{ aiMode === "gen" ? "AI 生成 SQL" : aiMode === "explain" ? "AI 解释报错" : "AI 优化建议" }}</b>
-          <span v-if="aiMode === 'gen'" class="ai-tip">描述需求时可用表名/列名，AI 会参考当前库结构</span>
+          <b>{{ aiMode === "gen" ? t("toolbox.db.aiGenSql") : aiMode === "explain" ? t("toolbox.db.aiExplain") : t("toolbox.db.aiOptimize") }}</b>
+          <span v-if="aiMode === 'gen'" class="ai-tip">{{ t("toolbox.db.aiTip") }}</span>
           <span class="spacer"></span>
-          <button class="mini-btn" @click="aiMode = ''"><Icon name="x" :size="12" />关闭</button>
+          <button class="mini-btn" @click="aiMode = ''"><Icon name="x" :size="12" />{{ t("toolbox.db.close") }}</button>
         </div>
         <textarea
           v-if="aiMode === 'gen'"
           v-model="aiPrompt"
           class="ai-input"
           spellcheck="false"
-          placeholder="例如：查询 users 表近 7 天注册且状态为 1 的用户，按注册时间倒序，只取 id、姓名、邮箱"
+          :placeholder="t('toolbox.db.aiPromptPh')"
           @keydown.ctrl.enter.prevent="aiGenSQL"
         ></textarea>
         <div v-if="aiMode === 'gen'" class="ai-ops">
           <button class="btn primary sm" :disabled="aiLoading || !aiPrompt.trim()" @click="aiGenSQL">
-            <span v-if="aiLoading" class="spinner dark"></span>{{ aiLoading ? "生成中…" : "生成 SQL" }}
+            <span v-if="aiLoading" class="spinner dark"></span>{{ aiLoading ? t("toolbox.db.generating") : t("toolbox.db.genSql") }}
             <kbd>Ctrl+Enter</kbd>
           </button>
         </div>
-        <div v-if="aiLoading" class="ai-state">AI 思考中…</div>
+        <div v-if="aiLoading" class="ai-state">{{ t("toolbox.db.aiThinking") }}</div>
         <div v-else-if="aiError" class="ai-state err">{{ aiError }}</div>
         <div v-else-if="aiReply" class="ai-reply">
           <pre>{{ aiReply }}</pre>
           <div v-if="aiMode === 'gen'" class="ai-ops">
-            <button class="btn solid sm" @click="useAISQL">填入编辑器</button>
+            <button class="btn solid sm" @click="useAISQL">{{ t("toolbox.db.fillEditor") }}</button>
           </div>
         </div>
       </div>
@@ -1482,50 +1485,50 @@ function onWinKey(e) {
             :key="t.id"
             class="db-tab"
             :class="{ on: t.id === activeTabId }"
-            :title="t.kind === 'table' ? `表数据：${t.table}` : `查询：${t.sql}`"
+            :title="t.kind === 'table' ? t('toolbox.db.tabTable', { name: t.table }) : t('toolbox.db.tabQuery', { sql: t.sql })"
             @click="switchTab(t.id)"
             @contextmenu.prevent="onTabCtx($event, t)"
           >
             <Icon :name="t.kind === 'table' ? 'database' : 'note'" :size="13" />
             <span v-if="t.running" class="tab-spin"></span>
             <span class="db-tab-title">{{ t.title }}</span>
-            <span class="db-tab-x" title="关闭标签" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></span>
+            <span class="db-tab-x" :title="t('toolbox.db.closeTabTip')" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></span>
           </button>
-          <span class="tab-bar-tip">双击左侧表名打开表数据</span>
+          <span class="tab-bar-tip">{{ t("toolbox.db.tabBarTip") }}</span>
         </div>
         <div v-if="error" class="err">
-          <span class="err-tag">SQL 执行失败</span>
+          <span class="err-tag">{{ t("toolbox.db.sqlFailed") }}</span>
           <span class="err-msg" :title="error">{{ error }}</span>
           <span class="spacer"></span>
-          <button class="btn ghost sm ai" title="让 AI 解释报错原因并给出修复建议" @click="aiExplainError"><Icon name="sparkles" :size="13" />AI 解释</button>
+          <button class="btn ghost sm ai" :title="t('toolbox.db.aiExplainTip')" @click="aiExplainError"><Icon name="sparkles" :size="13" />{{ t("toolbox.db.aiExplainBtn") }}</button>
         </div>
         <div v-else-if="activeTab && activeTab.result" class="result">
           <div class="result-meta">
-            <span v-if="activeTab.kind === 'table'" class="tab-src">表数据</span>
-            <span>耗时 <b>{{ activeTab.result.durationMs }}</b> ms</span>
-            <span v-if="activeTab.result.rowCount">已显示 <b>{{ activeTab.result.rows.length }}</b> 行</span>
-            <span v-if="activeTab.result.truncated" class="trunc">已截断（最多 1000 行）</span>
-            <span v-else-if="activeTab.result.affected !== null && activeTab.result.affected !== undefined">影响 <b>{{ activeTab.result.affected }}</b> 行</span>
+            <span v-if="activeTab.kind === 'table'" class="tab-src">{{ t("toolbox.db.tableData") }}</span>
+            <span>{{ t("toolbox.db.costMs", { ms: activeTab.result.durationMs }) }}</span>
+            <span v-if="activeTab.result.rowCount">{{ t("toolbox.db.shownRows", { count: activeTab.result.rows.length }) }}</span>
+            <span v-if="activeTab.result.truncated" class="trunc">{{ t("toolbox.db.truncated") }}</span>
+            <span v-else-if="activeTab.result.affected !== null && activeTab.result.affected !== undefined">{{ t("toolbox.db.affectedRows", { count: activeTab.result.affected }) }}</span>
             <span class="spacer"></span>
             <span v-if="canEdit" class="edit-ops">
-              <span class="edit-hint" :title="canEditRows ? '双击单元格可修改，修改后自动按主键 UPDATE' : '该表无主键，仅支持添加行'">
-                {{ activeTab.editMeta.table }}<template v-if="canEditRows"> · 双击改值</template>
+              <span class="edit-hint" :title="canEditRows ? t('toolbox.db.editCellTip') : t('toolbox.db.noPkTip')">
+                {{ activeTab.editMeta.table }}<template v-if="canEditRows"> · {{ t("toolbox.db.dblClickEdit") }}</template>
               </span>
-              <button v-if="canEdit" class="btn ghost sm" title="插入一行新数据" @click="startAddRow"><Icon name="plus" :size="13" />添加行</button>
+              <button v-if="canEdit" class="btn ghost sm" :title="t('toolbox.db.addRowTip')" @click="startAddRow"><Icon name="plus" :size="13" />{{ t("toolbox.db.addRow") }}</button>
               <button v-if="canDeleteRows" class="btn ghost sm danger" :disabled="!activeTab.selectedRows.size" @click="deleteSelected">
-                删除选中<template v-if="activeTab.selectedRows.size">（{{ activeTab.selectedRows.size }}）</template>
+                {{ t("toolbox.db.deleteSelected") }}<template v-if="activeTab.selectedRows.size">（{{ activeTab.selectedRows.size }}）</template>
               </button>
             </span>
             <span class="meta-sep"></span>
-            <button v-if="activeTab.pageState.sortable" class="btn ghost sm" :class="{ on: activeTab.filterMode }" title="按列值过滤当前结果（LIKE 模糊匹配）" @click="activeTab.filterMode ? (activeTab.filterMode = false) : startFilter()"><Icon name="search" :size="13" />过滤</button>
+            <button v-if="activeTab.pageState.sortable" class="btn ghost sm" :class="{ on: activeTab.filterMode }" :title="t('toolbox.db.filterTip')" @click="activeTab.filterMode ? (activeTab.filterMode = false) : startFilter()"><Icon name="search" :size="13" />{{ t("toolbox.db.filter") }}</button>
             <span class="meta-sep"></span>
-            <button class="btn ghost sm" title="导出为 CSV（带 BOM，Excel 可直接打开）" @click="exportResult('csv')"><Icon name="download" :size="13" />CSV</button>
-            <button class="btn ghost sm" title="导出为 JSON 对象数组" @click="exportResult('json')"><Icon name="download" :size="13" />JSON</button>
-            <button class="btn ghost sm" title="复制为 Markdown 表格（含列名）" @click="copyResult">
-              <Icon name="copy" :size="13" />复制表格
+            <button class="btn ghost sm" :title="t('toolbox.db.exportCsvTip')" @click="exportResult('csv')"><Icon name="download" :size="13" />CSV</button>
+            <button class="btn ghost sm" :title="t('toolbox.db.exportJsonTip')" @click="exportResult('json')"><Icon name="download" :size="13" />JSON</button>
+            <button class="btn ghost sm" :title="t('toolbox.db.copyMdTip')" @click="copyResult">
+              <Icon name="copy" :size="13" />{{ t("toolbox.db.copyTable") }}
             </button>
           </div>
-          <div v-if="activeTab.result.columns.length" class="tbl-wrap" title="Shift+滚轮 或 拖动底部滚动条 横向滚动；首列（勾选/行号）固定">
+          <div v-if="activeTab.result.columns.length" class="tbl-wrap" :title="t('toolbox.db.scrollTip')">
             <!-- 过滤行：每列输入值，Enter 应用 / Esc 取消 -->
             <div v-if="activeTab.filterMode" class="filter-row">
               <div v-for="c in activeTab.result.columns" :key="c" class="filter-cell">
@@ -1533,24 +1536,24 @@ function onWinKey(e) {
                   v-model="activeTab.filterDraft[c]"
                   class="cell-input"
                   :placeholder="c"
-                  title="LIKE 模糊匹配，Enter 应用"
+                  :title="t('toolbox.db.likeTip')"
                   @keydown.enter.prevent="applyFilter"
                   @keydown.esc.prevent="activeTab.filterMode = false"
                 />
               </div>
-              <button class="btn primary sm" :disabled="activeTab.running" @click="applyFilter"><Icon name="search" :size="13" />应用</button>
-              <button class="btn ghost sm" @click="activeTab.filterMode = false">取消</button>
+              <button class="btn primary sm" :disabled="activeTab.running" @click="applyFilter"><Icon name="search" :size="13" />{{ t("toolbox.db.apply") }}</button>
+              <button class="btn ghost sm" @click="activeTab.filterMode = false">{{ t("toolbox.db.cancel") }}</button>
             </div>
             <table class="tbl">
               <thead>
                 <tr>
                   <th v-if="canEdit" class="chk-col"></th>
-                  <th class="rowno-col" title="行号">#</th>
+                  <th class="rowno-col" :title="t('toolbox.db.rowNoTip')">#</th>
                   <th v-for="col in activeTab.result.columns" :key="col">
                     <span
                       class="th-sort"
                       :class="{ sortable: activeTab.pageState.sortable, asc: activeTab.pageState.sortDir === col && activeTab.pageState.sortAsc, desc: activeTab.pageState.sortDir === col && !activeTab.pageState.sortAsc }"
-                      :title="activeTab.pageState.sortable ? '点击按此列排序' : col"
+                      :title="activeTab.pageState.sortable ? t('toolbox.db.sortTip') : col"
                       @click="sortBy(col)"
                     >{{ col }}</span>
                   </th>
@@ -1560,7 +1563,7 @@ function onWinKey(e) {
                 <!-- 添加行：整行输入，Enter 保存 / Esc 取消 -->
                 <tr v-if="activeTab.editingNewRow" class="new-row">
                   <td v-if="canEdit" class="chk-col" @click.stop>
-                    <button class="row-cancel" title="取消添加（Esc）" @click="activeTab.editingNewRow = false"><Icon name="x" :size="12" /></button>
+                    <button class="row-cancel" :title="t('toolbox.db.cancelAddTip')" @click="activeTab.editingNewRow = false"><Icon name="x" :size="12" /></button>
                   </td>
                   <td class="rowno-col"></td>
                   <td v-for="name in activeTab.result.columns" :key="name">
@@ -1582,18 +1585,18 @@ function onWinKey(e) {
                     <input
                       type="checkbox"
                       :checked="activeTab.selectedRows.has(ri)"
-                      :title="canDeleteRows ? '勾选后点「删除选中」' : ''"
+                      :title="canDeleteRows ? t('toolbox.db.checkTip') : ''"
                       @change="toggleSelect(ri)"
                     />
                   </td>
-                  <td class="rowno-col" title="行号">{{ ri + 1 }}</td>
+                  <td class="rowno-col" :title="t('toolbox.db.rowNoTip')">{{ ri + 1 }}</td>
                   <td
                     v-for="(cell, ci) in row"
                     :key="ci"
                     :class="{ nul: isNull(cell), num: isNumCol(ci), editing: activeTab.editingCell && activeTab.editingCell.row === ri && activeTab.editingCell.col === ci, copied: copiedCell && copiedCell.ri === ri && copiedCell.ci === ci }"
                     :title="canEditRows
-                      ? (isNull(cell) ? 'NULL' : cellText(cell)) + '（点击复制，双击编辑）'
-                      : (isNull(cell) ? 'NULL' : cellText(cell)) + '（点击复制）'"
+                      ? t('toolbox.db.clickCopyEdit', { value: isNull(cell) ? 'NULL' : cellText(cell) })
+                      : t('toolbox.db.clickCopy', { value: isNull(cell) ? 'NULL' : cellText(cell) })"
                     @click="copyCell(cell, ri, ci)"
                     @dblclick="startCellEdit(ri, ci)"
                   >
@@ -1615,14 +1618,14 @@ function onWinKey(e) {
             <!-- 加载更多：简单 SELECT 且已取满一页时显示 -->
             <div v-if="activeTab.pageState.pageable && activeTab.result.rows.length >= PAGE" class="more-bar">
               <button class="btn ghost sm" :disabled="activeTab.running" @click="loadMore">
-                <Icon name="chevron" :size="13" />{{ activeTab.running ? "加载中…" : `加载更多（已显示 ${activeTab.result.rows.length} 行）` }}
+                <Icon name="chevron" :size="13" />{{ activeTab.running ? t("toolbox.db.loadingMore") : t("toolbox.db.loadMore", { count: activeTab.result.rows.length }) }}
               </button>
             </div>
           </div>
-          <div v-else class="done-tip">执行成功</div>
+          <div v-else class="done-tip">{{ t("toolbox.db.done") }}</div>
         </div>
         <div v-else class="result-empty">
-          <p>双击左侧表名打开表数据，或在编辑器中执行 SQL，结果将显示在这里</p>
+          <p>{{ t("toolbox.db.resultEmpty") }}</p>
         </div>
       </div>
     </section>

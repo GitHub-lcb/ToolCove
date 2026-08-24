@@ -1,18 +1,23 @@
 // AI 对话工具的会话纯逻辑：创建/删除/标题/裁剪/上下文构建/默认提示词。
 // 与组件解耦，便于 vitest 单测（项目「纯函数抽 .js + .test.js」约定）。
+// 界面文案走 i18n（默认预设 name 为字典键；content 为 AI 提示词功能数据，保留中文）。
+
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
 
 export const DEFAULT_PRESETS = [
-  { id: "general", name: "通用助手", content: "你是一个乐于助人的研发助手。回答准确、简洁，代码使用 Markdown 围栏代码块。" },
-  { id: "regex", name: "正则生成", content: "你是正则表达式专家。根据用户描述生成正则表达式，并简要解释每个组成部分。" },
-  { id: "code-explain", name: "代码解释", content: "你是资深研发工程师。解释用户贴出的代码：作用、关键实现点、潜在问题与改进建议。" },
-  { id: "polish", name: "文案润色", content: "你是中文文案专家。润色用户提供的文本，保持原意，语气自然专业，直接输出润色结果。" },
-  { id: "test-data", name: "测试数据", content: "你是测试数据生成助手。按用户要求生成真实感强的虚构数据，不要使用真实隐私信息。" },
+  { id: "general", nameKey: "presetGeneral", content: "你是一个乐于助人的研发助手。回答准确、简洁，代码使用 Markdown 围栏代码块。" },
+  { id: "regex", nameKey: "presetRegex", content: "你是正则表达式专家。根据用户描述生成正则表达式，并简要解释每个组成部分。" },
+  { id: "code-explain", nameKey: "presetCodeExplain", content: "你是资深研发工程师。解释用户贴出的代码：作用、关键实现点、潜在问题与改进建议。" },
+  { id: "polish", nameKey: "presetPolish", content: "你是中文文案专家。润色用户提供的文本，保持原意，语气自然专业，直接输出润色结果。" },
+  { id: "test-data", nameKey: "presetTestData", content: "你是测试数据生成助手。按用户要求生成真实感强的虚构数据，不要使用真实隐私信息。" },
 ];
 
 export function createSession(presetId = "") {
   return {
     id: crypto.randomUUID(),
-    title: "新对话",
+    title: t("toolbox.ai.newSession"),
     presetId,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -35,9 +40,9 @@ export function sessionTitle(messages) {
               .trim()
           : "";
     if (text) return text.slice(0, 20);
-    if (Array.isArray(m.images) && m.images.length) return "图片对话";
+    if (Array.isArray(m.images) && m.images.length) return t("toolbox.ai.imageSession");
   }
-  return "新对话";
+  return t("toolbox.ai.newSession");
 }
 
 export function renameSession(session, title) {

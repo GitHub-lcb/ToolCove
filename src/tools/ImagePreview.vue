@@ -1,6 +1,9 @@
 <script setup>
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { formatFileSize } from "../fileTool.js";
+
+const { t } = useI18n();
 
 defineProps({
   source: { type: Object, default: null },
@@ -13,26 +16,26 @@ defineEmits(["save"]);
 <template>
   <section class="preview-panel">
     <header class="panel-head">
-      <b>图片预览</b>
+      <b>{{ t("toolbox.image.previewTitle") }}</b>
       <span v-if="output">{{ output.width }} × {{ output.height }}</span>
-      <button v-if="output" class="icon-btn xs" title="保存图片" @click="$emit('save')"><Icon name="download" :size="13" /></button>
+      <button v-if="output" class="icon-btn xs" :title="t('toolbox.image.saveImg')" @click="$emit('save')"><Icon name="download" :size="13" /></button>
     </header>
     <div v-if="error" class="preview-error"><Icon name="alert" :size="22" />{{ error }}</div>
     <div v-else-if="source" class="preview-grid">
       <figure>
         <img :src="source.url" :alt="source.file.name" />
-        <figcaption>原图 · {{ source.width }} × {{ source.height }}</figcaption>
+        <figcaption>{{ t("toolbox.image.imgOriginal", { width: source.width, height: source.height }) }}</figcaption>
       </figure>
       <figure>
         <img v-if="output" :src="output.url" :alt="output.name" />
         <span v-else class="preview-wait"><Icon name="image" :size="28" /></span>
-        <figcaption>{{ output ? `处理结果 · ${output.name}` : "等待生成" }}</figcaption>
+        <figcaption>{{ output ? t("toolbox.image.imgResult", { name: output.name }) : t("toolbox.image.imgWaiting") }}</figcaption>
       </figure>
     </div>
-    <div v-else class="preview-empty"><span class="empty-ico"><Icon name="image" :size="32" /></span><b>还没有待处理图片</b></div>
+    <div v-else class="preview-empty"><span class="empty-ico"><Icon name="image" :size="32" /></span><b>{{ t("toolbox.image.imgEmpty") }}</b></div>
     <footer v-if="output" class="preview-footer">
       <span>{{ output.name }} · {{ formatFileSize(output.blob.size) }}</span>
-      <button class="btn-primary sm" @click="$emit('save')"><Icon name="download" :size="14" />保存图片</button>
+      <button class="btn-primary sm" @click="$emit('save')"><Icon name="download" :size="14" />{{ t("toolbox.image.saveImg") }}</button>
     </footer>
   </section>
 </template>

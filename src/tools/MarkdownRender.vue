@@ -1,7 +1,10 @@
 <script setup>
 // AI 回复的 Markdown 渲染：v-html 输出 renderMarkdown（highlight 开启），代码块复制走事件委托
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { renderMarkdown } from "../shared.js";
+
+const { t } = useI18n();
 
 const props = defineProps({
   text: { type: String, default: "" },
@@ -18,8 +21,8 @@ function onMdClick(e) {
   if (!code) return;
   navigator.clipboard
     ?.writeText(code.textContent || "")
-    .then(() => props.showToast("已复制代码"))
-    .catch(() => props.showToast("复制失败"));
+    .then(() => props.showToast(t("toolbox.ai.codeCopied")))
+    .catch(() => props.showToast(t("toolbox.ai.copyFail")));
 }
 </script>
 

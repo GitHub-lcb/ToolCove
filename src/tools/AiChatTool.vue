@@ -15,7 +15,10 @@ import {
   buildContextMessages,
 } from "../chatSession.js";
 import { askConfirm } from "../confirm.js";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+
+const { t } = useI18n();
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -42,8 +45,11 @@ const msgsRef = ref(null);
 
 const active = computed(() => sessions.value.find((s) => s.id === activeId.value) || null);
 const sortedSessions = computed(() => [...sessions.value].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
-const allPresets = computed(() => [...DEFAULT_PRESETS, ...presets.value]);
-const activePreset = computed(() => allPresets.value.find((p) => p.id === active.value?.presetId) || DEFAULT_PRESETS[0]);
+const allPresets = computed(() => [
+  ...DEFAULT_PRESETS.map((p) => ({ ...p, name: t(`toolbox.ai.${p.nameKey}`) })),
+  ...presets.value,
+]);
+const activePreset = computed(() => allPresets.value.find((p) => p.id === active.value?.presetId) || allPresets.value[0]);
 const canSend = computed(() => (input.value.trim() || images.value.length > 0) && !sending.value);
 
 // ---------- 持久化 ----------
@@ -90,7 +96,7 @@ async function switchTo(s) {
   await loadSessionImages(s);
 }
 async function removeSession(s) {
-  if (!(await askConfirm({ title: "删除会话", message: `确定删除「${s.title}」？对话记录将不可恢复。` }))) return;
+  if (!(await askConfirm({ title: t("toolbox.ai.deleteSessionTitle"), message: t("toolbox.ai.deleteSessionMsg", { title: s.title }) }))) return;
   const others = sessions.value.filter((x) => x.id !== s.id);
   // 清理孤儿图片：仅当没有其他会话引用时才删（复用 delete_image，SnippetView 同款先例）
   const referenced = new Set();
@@ -143,15 +149,15 @@ async function loadSessionImages(s) {
 function addImages(e) {
   const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
   e.target.value = "";
-  if (!files.length) return props.showToast("请选择图片文件");
+  if (!files.length) return props.showToast(t("toolbox.ai.imgPickRequired"));
   const remain = IMG_MAX - images.value.length;
-  if (remain <= 0) return props.showToast(`最多附带 ${IMG_MAX} 张图片`);
+  if (remain <= 0) return props.showToast(t("toolbox.ai.imgMax", { max: IMG_MAX }));
   const pick = files.slice(0, remain);
-  if (pick.length < files.length) props.showToast(`最多附带 ${IMG_MAX} 张图片，已截取前 ${pick.length} 张`);
+  if (pick.length < files.length) props.showToast(t("toolbox.ai.imgMaxTruncated", { max: IMG_MAX, picked: pick.length }));
   for (const f of pick) {
     const r = new FileReader();
     r.onload = () => images.value.push({ url: String(r.result || "") });
-    r.onerror = () => props.showToast("读取图片失败：" + f.name);
+    r.onerror = () => props.showToast(t("toolbox.ai.imgReadFail", { name: f.name }));
     r.readAsDataURL(f);
   }
 }
@@ -166,7 +172,7 @@ function blobToB64(dataUrl) {
 // ---------- 发送 / 流式 ----------
 async function send() {
   if (!canSend.value) return;
-  if (!(await isAIConfigured())) return props.showToast("请先在右上角设置中配置 AI 模型");
+  if (!(await isAIConfigured())) return props.showToast(t("toolbox.ai.aiNotConfigured"));
   let session = active.value;
   if (!session) {
     session = createSession(activePreset.value.id);
@@ -184,7 +190,7 @@ async function send() {
       imgCache.set(name, img.url);
       contentBlocks.push({ type: "image_url", image_url: { url: img.url } });
     } catch {
-      props.showToast("图片保存失败，已跳过该图");
+      props.showToast(t("toolbox.ai.imgSaveFail"));
     }
   }
   const text = input.value.trim();
@@ -214,7 +220,7 @@ async function send() {
     },
     onDone: () => finalizeAssistant(),
     onError: (err) => {
-      props.showToast("对话失败：" + (err?.message || err));
+      props.showToast(t("toolbox.ai.chatFail", { error: err?.message || err }));
       finalizeAssistant();
     },
   });
@@ -277,12 +283,12 @@ function setActivePreset(id) {
 function addPreset() {
   const name = presetDraftName.value.trim();
   const content = presetDraftContent.value.trim();
-  if (!name || !content) return props.showToast("请填写模板名称与内容");
+  if (!name || !content) return props.showToast(t("toolbox.ai.presetRequired"));
   presets.value.push({ id: "p-" + crypto.randomUUID(), name, content });
   saveToolbox("chatPresets", presets.value);
   presetDraftName.value = "";
   presetDraftContent.value = "";
-  props.showToast("已添加提示词模板");
+  props.showToast(t("toolbox.ai.presetAdded"));
 }
 function removePreset(p) {
   presets.value = presets.value.filter((x) => x.id !== p.id);
@@ -297,7 +303,7 @@ function removePreset(p) {
 <template>
   <div class="ai-chat">
     <aside class="side">
-      <button class="new-btn" @click="newChat"><Icon name="plus" :size="14" />新建对话</button>
+      <button class="new-btn" @click="newChat"><Icon name="plus" :size="14" />{{ t("toolbox.ai.newChat") }}</button>
       <div class="sess-list">
         <div
           v-for="s in sortedSessions"
@@ -317,16 +323,16 @@ function removePreset(p) {
           <template v-else>
             <span class="sess-title" :title="s.title">{{ s.title }}</span>
             <span class="sess-ops">
-              <button class="op" title="重命名" @click.stop="startRename(s)"><Icon name="edit" :size="13" /></button>
-              <button class="op danger" title="删除" @click.stop="removeSession(s)"><Icon name="trash" :size="13" /></button>
+              <button class="op" :title="t('toolbox.ai.rename')" @click.stop="startRename(s)"><Icon name="edit" :size="13" /></button>
+              <button class="op danger" :title="t('toolbox.ai.delete')" @click.stop="removeSession(s)"><Icon name="trash" :size="13" /></button>
             </span>
           </template>
         </div>
-        <p v-if="!sortedSessions.length" class="side-empty">还没有会话，点「新建对话」开始</p>
+        <p v-if="!sortedSessions.length" class="side-empty">{{ t("toolbox.ai.noSession") }}</p>
       </div>
       <div class="preset-bar">
         <button class="preset-btn" @click="presetOpen = !presetOpen"><Icon name="sparkles" :size="13" />{{ activePreset.name }}</button>
-        <button class="op" title="管理提示词模板" @click="presetManage = true"><Icon name="settings" :size="13" /></button>
+        <button class="op" :title="t('toolbox.ai.managePresets')" @click="presetManage = true"><Icon name="settings" :size="13" /></button>
       </div>
       <div v-if="presetOpen" class="preset-menu">
         <button
@@ -366,27 +372,27 @@ function removePreset(p) {
             </div>
           </div>
         </template>
-        <p v-else class="msgs-empty">输入下方内容开始第一段对话，或先选一个提示词模板</p>
+        <p v-else class="msgs-empty">{{ t("toolbox.ai.msgsEmpty") }}</p>
       </div>
 
       <div class="composer">
         <div v-if="images.length" class="img-row">
           <div v-for="(img, i) in images" :key="i" class="pick-img">
             <img :src="img.url" alt="" />
-            <button class="rm" title="移除" @click="removeImage(i)"><Icon name="x" :size="12" /></button>
+            <button class="rm" :title="t('toolbox.ai.removeImg')" @click="removeImage(i)"><Icon name="x" :size="12" /></button>
           </div>
         </div>
         <textarea
           v-model="input"
           class="input"
           rows="3"
-          :placeholder="sending ? 'AI 正在回复…' : '输入消息，Enter 发送，Shift+Enter 换行'"
+          :placeholder="sending ? t('toolbox.ai.aiReplying') : t('toolbox.ai.inputPh')"
           @keydown.enter.exact.prevent="send"
         ></textarea>
         <div class="actions">
-          <label class="act img-btn"><Icon name="image" :size="15" />图片<input type="file" accept="image/*" multiple hidden @change="addImages" /></label>
-          <button v-if="sending" class="act stop" @click="stopSend"><Icon name="square" :size="13" />停止</button>
-          <button v-else class="act send" :disabled="!canSend" @click="send"><Icon name="send" :size="13" />发送</button>
+          <label class="act img-btn"><Icon name="image" :size="15" />{{ t("toolbox.ai.imgBtn") }}<input type="file" accept="image/*" multiple hidden @change="addImages" /></label>
+          <button v-if="sending" class="act stop" @click="stopSend"><Icon name="square" :size="13" />{{ t("toolbox.ai.stop") }}</button>
+          <button v-else class="act send" :disabled="!canSend" @click="send"><Icon name="send" :size="13" />{{ t("toolbox.ai.send") }}</button>
         </div>
       </div>
     </section>
@@ -394,21 +400,21 @@ function removePreset(p) {
     <div v-if="presetManage" class="mask" @click.self="presetManage = false">
       <div class="preset-dlg">
         <div class="dlg-head">
-          <b>提示词模板</b>
+          <b>{{ t("toolbox.ai.presetsTitle") }}</b>
           <button class="x" @click="presetManage = false"><Icon name="x" :size="14" /></button>
         </div>
         <div class="dlg-body">
           <div v-for="p in allPresets" :key="p.id" class="preset-row">
             <b class="pr-name">{{ p.name }}</b>
             <span class="pr-content" :title="p.content">{{ p.content }}</span>
-            <button v-if="!DEFAULT_PRESETS.some((d) => d.id === p.id)" class="pr-del" title="删除" @click="removePreset(p)">
+            <button v-if="!DEFAULT_PRESETS.some((d) => d.id === p.id)" class="pr-del" :title="t('toolbox.ai.delete')" @click="removePreset(p)">
               <Icon name="trash" :size="13" />
             </button>
           </div>
           <div class="preset-add">
-            <input v-model="presetDraftName" placeholder="模板名称" />
-            <input v-model="presetDraftContent" placeholder="模板内容（system 提示词）" />
-            <button @click="addPreset"><Icon name="plus" :size="13" />添加</button>
+            <input v-model="presetDraftName" :placeholder="t('toolbox.ai.presetNamePh')" />
+            <input v-model="presetDraftContent" :placeholder="t('toolbox.ai.presetContentPh')" />
+            <button @click="addPreset"><Icon name="plus" :size="13" />{{ t("toolbox.ai.add") }}</button>
           </div>
         </div>
       </div>

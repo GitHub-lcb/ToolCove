@@ -1,6 +1,9 @@
 <script setup>
 // 表详情弹窗（DbTool 拆出）：索引 / DDL 双 Tab，懒加载由父组件负责
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
+
+const { t } = useI18n();
 
 const props = defineProps({
   detail: { type: Object, required: true },
@@ -14,14 +17,14 @@ const emit = defineEmits(["close"]);
 <template>
   <div class="modal-mask" @click.self="emit('close')">
     <div class="modal db-detail-modal">
-      <h2>表详情 <code class="dd-table-name">{{ detail.table }}</code></h2>
+      <h2>{{ t("toolbox.db.detailTitle") }} <code class="dd-table-name">{{ detail.table }}</code></h2>
       <div class="dd-tabs">
         <button class="dd-tab" :class="{ on: detail.tab === 'indexes' }" @click="switchDetailTab('indexes')">
-          索引<template v-if="detail.loaded.indexes">（{{ detail.indexes.length }}）</template>
+          {{ t("toolbox.db.idxTab") }}<template v-if="detail.loaded.indexes">（{{ detail.indexes.length }}）</template>
         </button>
         <button class="dd-tab" :class="{ on: detail.tab === 'ddl' }" @click="switchDetailTab('ddl')">DDL</button>
       </div>
-      <div v-if="detail.loading" class="meta-tip">加载中…</div>
+      <div v-if="detail.loading" class="meta-tip">{{ t("toolbox.db.loading") }}</div>
       <div v-else-if="detail.error" class="meta-tip err">{{ detail.error }}</div>
       <template v-else>
         <!-- 索引 Tab：索引名 / 唯一 / 列 / 定义 -->
@@ -29,33 +32,33 @@ const emit = defineEmits(["close"]);
           <table v-if="detail.indexes.length" class="tbl idx-tbl">
             <thead>
               <tr>
-                <th>索引名</th>
-                <th>唯一</th>
-                <th>列</th>
-                <th>定义</th>
+                <th>{{ t("toolbox.db.idxName") }}</th>
+                <th>{{ t("toolbox.db.idxUnique") }}</th>
+                <th>{{ t("toolbox.db.idxCols") }}</th>
+                <th>{{ t("toolbox.db.idxDef") }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="ix in detail.indexes" :key="ix.name">
                 <td class="idx-name" :title="ix.name">{{ ix.name }}</td>
-                <td :class="{ uni: ix.unique }">{{ ix.unique ? "是" : "否" }}</td>
+                <td :class="{ uni: ix.unique }">{{ ix.unique ? t("toolbox.db.yes") : t("toolbox.db.no") }}</td>
                 <td class="idx-cols" :title="(ix.columns || []).join(', ')">{{ (ix.columns || []).join(", ") }}</td>
                 <td class="idx-def" :title="ix.def">{{ ix.def }}</td>
               </tr>
             </tbody>
           </table>
-          <p v-else class="meta-tip">该表没有索引</p>
+          <p v-else class="meta-tip">{{ t("toolbox.db.noIdx") }}</p>
         </div>
         <!-- DDL Tab：建表语句全文 -->
         <div v-else class="dd-body">
           <pre v-if="detail.ddl" class="ddl-pre">{{ detail.ddl }}</pre>
-          <p v-else class="meta-tip">未能获取 DDL</p>
+          <p v-else class="meta-tip">{{ t("toolbox.db.noDDL") }}</p>
         </div>
       </template>
       <div class="modal-foot">
-        <button v-if="detail.tab === 'ddl' && detail.ddl" class="btn solid" @click="copyDetailDDL()"><Icon name="copy" :size="13" />复制 DDL</button>
-        <button v-if="detail.tab === 'ddl' && detail.ddl" class="btn solid" @click="useDetailDDL()"><Icon name="edit" :size="13" />填入编辑器</button>
-        <button class="btn primary" @click="emit('close')">关闭</button>
+        <button v-if="detail.tab === 'ddl' && detail.ddl" class="btn solid" @click="copyDetailDDL()"><Icon name="copy" :size="13" />{{ t("toolbox.db.copyDDL") }}</button>
+        <button v-if="detail.tab === 'ddl' && detail.ddl" class="btn solid" @click="useDetailDDL()"><Icon name="edit" :size="13" />{{ t("toolbox.db.fillEditor") }}</button>
+        <button class="btn primary" @click="emit('close')">{{ t("toolbox.db.close") }}</button>
       </div>
     </div>
   </div>

@@ -1,3 +1,7 @@
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 export const IMAGE_FORMATS = [
   { key: "png", label: "PNG", mime: "image/png", extension: "png", supportsQuality: false },
   { key: "jpeg", label: "JPEG", mime: "image/jpeg", extension: "jpg", supportsQuality: true },
@@ -6,8 +10,8 @@ export const IMAGE_FORMATS = [
 ];
 
 export const CROP_RATIOS = [
-  { key: "original", label: "原始比例", ratio: 0 },
-  { key: "free", label: "自由尺寸", ratio: 0 },
+  { key: "original", labelKey: "cropOriginal", ratio: 0 },
+  { key: "free", labelKey: "cropFree", ratio: 0 },
   { key: "1:1", label: "1:1", ratio: 1 },
   { key: "4:3", label: "4:3", ratio: 4 / 3 },
   { key: "3:2", label: "3:2", ratio: 3 / 2 },
@@ -31,10 +35,10 @@ export function clampQuality(value) {
 }
 
 export function calculateContainSize(width, height, maxWidth, maxHeight, allowUpscale = false) {
-  const sourceWidth = positiveInteger(width, "图片宽度");
-  const sourceHeight = positiveInteger(height, "图片高度");
-  const limitWidth = positiveInteger(maxWidth || sourceWidth, "最大宽度");
-  const limitHeight = positiveInteger(maxHeight || sourceHeight, "最大高度");
+  const sourceWidth = positiveInteger(width, t("toolbox.image.imgWidth"));
+  const sourceHeight = positiveInteger(height, t("toolbox.image.imgHeight"));
+  const limitWidth = positiveInteger(maxWidth || sourceWidth, t("toolbox.image.maxWidth"));
+  const limitHeight = positiveInteger(maxHeight || sourceHeight, t("toolbox.image.maxHeight"));
   let scale = Math.min(limitWidth / sourceWidth, limitHeight / sourceHeight);
   if (!allowUpscale) scale = Math.min(1, scale);
   return {
@@ -45,8 +49,8 @@ export function calculateContainSize(width, height, maxWidth, maxHeight, allowUp
 }
 
 export function calculateCenterCrop(width, height, ratio) {
-  const sourceWidth = positiveInteger(width, "图片宽度");
-  const sourceHeight = positiveInteger(height, "图片高度");
+  const sourceWidth = positiveInteger(width, t("toolbox.image.imgWidth"));
+  const sourceHeight = positiveInteger(height, t("toolbox.image.imgHeight"));
   const targetRatio = Number(ratio);
   if (!Number.isFinite(targetRatio) || targetRatio <= 0) {
     return { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
@@ -65,8 +69,8 @@ export function calculateCenterCrop(width, height, ratio) {
 
 export function calculateRenderPlan(sourceWidth, sourceHeight, options = {}) {
   const crop = calculateCenterCrop(sourceWidth, sourceHeight, options.cropRatio);
-  const width = positiveInteger(options.width || crop.width, "输出宽度");
-  const height = positiveInteger(options.height || crop.height, "输出高度");
+  const width = positiveInteger(options.width || crop.width, t("toolbox.image.outWidth"));
+  const height = positiveInteger(options.height || crop.height, t("toolbox.image.outHeight"));
   const rotation = normalizeRotation(options.rotation);
   return {
     crop,
@@ -81,13 +85,13 @@ export function calculateRenderPlan(sourceWidth, sourceHeight, options = {}) {
 }
 
 export function resizeWithAspect(width, height, nextWidth, nextHeight, changed = "width") {
-  const sourceWidth = positiveInteger(width, "图片宽度");
-  const sourceHeight = positiveInteger(height, "图片高度");
+  const sourceWidth = positiveInteger(width, t("toolbox.image.imgWidth"));
+  const sourceHeight = positiveInteger(height, t("toolbox.image.imgHeight"));
   if (changed === "height") {
-    const targetHeight = positiveInteger(nextHeight, "输出高度");
+    const targetHeight = positiveInteger(nextHeight, t("toolbox.image.outHeight"));
     return { width: Math.max(1, Math.round(targetHeight * sourceWidth / sourceHeight)), height: targetHeight };
   }
-  const targetWidth = positiveInteger(nextWidth, "输出宽度");
+  const targetWidth = positiveInteger(nextWidth, t("toolbox.image.outWidth"));
   return { width: targetWidth, height: Math.max(1, Math.round(targetWidth * sourceHeight / sourceWidth)) };
 }
 
@@ -106,8 +110,8 @@ export function buildImageOutputName(sourceName, options = {}) {
 }
 
 export function aspectRatioLabel(width, height) {
-  const w = positiveInteger(width, "图片宽度");
-  const h = positiveInteger(height, "图片高度");
+  const w = positiveInteger(width, t("toolbox.image.imgWidth"));
+  const h = positiveInteger(height, t("toolbox.image.imgHeight"));
   const divisor = gcd(w, h);
   return `${w / divisor}:${h / divisor}`;
 }
@@ -135,12 +139,12 @@ export function parseExif(arrayBuffer) {
 }
 
 export function encodeBmp(width, height, rgba) {
-  const w = positiveInteger(width, "图片宽度");
-  const h = positiveInteger(height, "图片高度");
+  const w = positiveInteger(width, t("toolbox.image.imgWidth"));
+  const h = positiveInteger(height, t("toolbox.image.imgHeight"));
   const pixels = rgba instanceof Uint8ClampedArray || rgba instanceof Uint8Array
     ? rgba
     : new Uint8ClampedArray(rgba || []);
-  if (pixels.length !== w * h * 4) throw new Error("像素数据长度与图片尺寸不匹配");
+  if (pixels.length !== w * h * 4) throw new Error(t("toolbox.image.errPixelMismatch"));
   const rowSize = Math.ceil((w * 3) / 4) * 4;
   const pixelBytes = rowSize * h;
   const output = new Uint8Array(54 + pixelBytes);
@@ -177,7 +181,7 @@ export function rgbToHex(red, green, blue) {
 export function hexToRgb(value) {
   const input = String(value || "").trim().replace(/^#/, "");
   const normalized = input.length === 3 ? input.split("").map((char) => char + char).join("") : input;
-  if (!/^[\da-f]{6}$/i.test(normalized)) throw new Error("颜色必须是 3 位或 6 位 HEX");
+  if (!/^[\da-f]{6}$/i.test(normalized)) throw new Error(t("toolbox.image.errHexColor"));
   return {
     r: Number.parseInt(normalized.slice(0, 2), 16),
     g: Number.parseInt(normalized.slice(2, 4), 16),
@@ -212,7 +216,7 @@ export function colorDistance(first, second) {
 
 export function extractPaletteFromPixels(rgba, colorCount = 6, options = {}) {
   const pixels = rgba instanceof Uint8Array || rgba instanceof Uint8ClampedArray ? rgba : new Uint8ClampedArray(rgba || []);
-  if (pixels.length % 4 !== 0) throw new Error("像素数据长度必须是 4 的倍数");
+  if (pixels.length % 4 !== 0) throw new Error(t("toolbox.image.errPixelMultiple"));
   const targetCount = Math.min(12, Math.max(1, Math.round(Number(colorCount) || 6)));
   const alphaThreshold = Math.min(255, Math.max(0, Number(options.alphaThreshold ?? 24)));
   const maxSamples = Math.max(100, Number(options.maxSamples) || 50000);
@@ -310,13 +314,13 @@ export function extractSvgFromAiText(value) {
   const fenced = text.match(/```(?:svg|xml)?\s*([\s\S]*?)```/i)?.[1] || text;
   const start = fenced.search(/<svg\b/i);
   const end = fenced.toLowerCase().lastIndexOf("</svg>");
-  if (start < 0 || end < start) throw new Error("AI 未返回可识别的 SVG");
+  if (start < 0 || end < start) throw new Error(t("toolbox.image.errNoSvg"));
   return fenced.slice(start, end + 6).trim();
 }
 
 export function sanitizeSvg(value) {
   const input = extractSvgFromAiText(value);
-  if (/<!DOCTYPE|<!ENTITY|<\?xml/i.test(input)) throw new Error("SVG 包含不安全声明");
+  if (/<!DOCTYPE|<!ENTITY|<\?xml/i.test(input)) throw new Error(t("toolbox.image.errSvgUnsafe"));
   const tokens = input.match(/<[^>]+>|[^<]+/g) || [];
   const output = [];
   const stack = [];
@@ -367,7 +371,7 @@ export function sanitizeSvg(value) {
   while (stack.length) output.push(`</${stack.pop()}>`);
   const sanitized = output.join("");
   if (!sanitized.startsWith("<svg") || !/<(?:path|circle|rect|line|polyline|polygon|ellipse)\b/.test(sanitized)) {
-    throw new Error("SVG 中没有可用的图形");
+    throw new Error(t("toolbox.image.errSvgNoShape"));
   }
   return sanitized;
 }
@@ -466,7 +470,7 @@ function normalizeRotation(value) {
 
 function positiveInteger(value, label) {
   const number = Math.round(Number(value));
-  if (!Number.isFinite(number) || number <= 0) throw new Error(`${label}必须大于 0`);
+  if (!Number.isFinite(number) || number <= 0) throw new Error(t("toolbox.image.positiveErr", { label }));
   return number;
 }
 

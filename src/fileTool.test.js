@@ -7,14 +7,15 @@ import {
   formatFileSize,
   getFileName,
 } from "./fileTool.js";
+import { i18n } from "./i18n/index.js";
 
-describe("文件路径与大小", () => {
-  it("兼容 Windows 和 Unix 路径", () => {
+describe("file paths and sizes", () => {
+  it("supports Windows and Unix paths", () => {
     expect(getFileName("C:\\work\\demo.txt")).toBe("demo.txt");
     expect(getFileName("/tmp/demo.txt")).toBe("demo.txt");
   });
 
-  it("格式化文件大小并估算 Base64 解码体积", () => {
+  it("formats file sizes and estimates Base64 bytes", () => {
     expect(formatFileSize(0)).toBe("0 B");
     expect(formatFileSize(1536)).toBe("1.5 KB");
     expect(formatFileSize(2 * 1024 ** 2)).toBe("2 MB");
@@ -22,13 +23,13 @@ describe("文件路径与大小", () => {
   });
 });
 
-describe("换行符处理", () => {
-  it("分别统计 CRLF、LF 和 CR，且不重复计算", () => {
+describe("line ending handling", () => {
+  it("counts CRLF, LF and CR without double counting", () => {
     expect(countLineEndings("a\r\nb\nc\rd")).toEqual({ crlf: 1, lf: 1, cr: 1, lines: 4, mixed: true });
     expect(countLineEndings("")).toEqual({ crlf: 0, lf: 0, cr: 0, lines: 0, mixed: false });
   });
 
-  it("统一转换为指定换行符", () => {
+  it("converts to the target line ending", () => {
     const input = "a\r\nb\nc\rd";
     expect(convertLineEndings(input, "LF")).toBe("a\nb\nc\nd");
     expect(convertLineEndings(input, "CRLF")).toBe("a\r\nb\r\nc\r\nd");
@@ -36,13 +37,13 @@ describe("换行符处理", () => {
   });
 });
 
-describe("批量重命名预览", () => {
+describe("batch rename preview", () => {
   const files = [
     { path: "C:\\demo\\Photo One.JPG", name: "Photo One.JPG" },
     { path: "C:\\demo\\Photo Two.JPG", name: "Photo Two.JPG" },
   ];
 
-  it("组合替换、前后缀、大小写和补位序号，并保留扩展名", () => {
+  it("combines replace, affixes, case and padded numbering", () => {
     const result = buildRenamePreview(files, {
       find: "Photo ",
       replace: "",
@@ -62,7 +63,7 @@ describe("批量重命名预览", () => {
     expect(result.every((item) => item.valid && item.changed)).toBe(true);
   });
 
-  it("支持正则和大小写敏感替换", () => {
+  it("supports regex and case-sensitive replace", () => {
     const result = buildRenamePreview(files, {
       find: "photo\\s+",
       replace: "shot-",
@@ -73,20 +74,20 @@ describe("批量重命名预览", () => {
     expect(result.map((item) => item.targetName)).toEqual(["shot-One.JPG", "shot-Two.JPG"]);
   });
 
-  it("标记重复目标、非法文件名和无效正则", () => {
+  it("flags duplicate targets, invalid names and bad regex", () => {
     const duplicate = buildRenamePreview(files, { find: "Photo One", replace: "Photo Two" });
     expect(duplicate.every((item) => item.valid === false)).toBe(true);
-    expect(duplicate[0].error).toContain("重复");
+    expect(duplicate[0].error).toContain(i18n.global.t("toolbox.file.errDupName"));
 
     const invalid = buildRenamePreview(files.slice(0, 1), { prefix: "bad:" });
-    expect(invalid[0]).toMatchObject({ valid: false, error: "文件名包含非法字符" });
+    expect(invalid[0]).toMatchObject({ valid: false, error: i18n.global.t("toolbox.file.errInvalidChar") });
 
     const regex = buildRenamePreview(files.slice(0, 1), { find: "[", useRegex: true });
     expect(regex[0].valid).toBe(false);
-    expect(regex[0].error).toContain("正则表达式");
+    expect(regex[0].error).toContain(i18n.global.t("toolbox.file.errRegex", { error: "" }));
   });
 
-  it("Windows 下大小写变化仍视为有效改名", () => {
+  it("treats case-only changes as valid renames on Windows", () => {
     const result = buildRenamePreview(files.slice(0, 1), { caseMode: "lower", preserveExtension: false });
     expect(result[0]).toMatchObject({ targetName: "photo one.jpg", valid: true, changed: true });
   });

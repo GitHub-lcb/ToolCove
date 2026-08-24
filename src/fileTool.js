@@ -1,3 +1,7 @@
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const INVALID_FILE_NAME = /[<>:"/\\|?*\u0000-\u001f]/;
 
@@ -39,7 +43,7 @@ export function countLineEndings(text) {
 
 export function convertLineEndings(text, target = "LF") {
   const endings = { LF: "\n", CRLF: "\r\n", CR: "\r" };
-  if (!endings[target]) throw new Error("不支持的换行符类型");
+  if (!endings[target]) throw new Error(t("toolbox.file.errLineEnding"));
   return String(text ?? "").replace(/\r\n|\r|\n/g, endings[target]);
 }
 
@@ -49,7 +53,7 @@ export function buildRenamePreview(files, options = {}) {
   try {
     replacer = createReplacer(options);
   } catch (error) {
-    return source.map((file) => previewError(file, `正则表达式无效：${error.message}`));
+    return source.map((file) => previewError(file, t("toolbox.file.errRegex", { error: error.message })));
   }
 
   const result = source.map((file, index) => {
@@ -88,7 +92,7 @@ export function buildRenamePreview(files, options = {}) {
     if (indexes.length < 2) continue;
     indexes.forEach((index) => {
       result[index].valid = false;
-      result[index].error = "目标文件名重复";
+      result[index].error = t("toolbox.file.errDupName");
     });
   }
   return result;
@@ -129,11 +133,11 @@ function formatSequence(index, options) {
 }
 
 function validateFileName(name) {
-  if (!name || name === "." || name === "..") return "文件名不能为空";
-  if (INVALID_FILE_NAME.test(name)) return "文件名包含非法字符";
-  if (/[. ]$/.test(name)) return "文件名不能以空格或句点结尾";
-  if (WINDOWS_RESERVED.test(name)) return "文件名是 Windows 保留名称";
-  if (new TextEncoder().encode(name).length > 255) return "文件名超过 255 字节";
+  if (!name || name === "." || name === "..") return t("toolbox.file.errEmptyName");
+  if (INVALID_FILE_NAME.test(name)) return t("toolbox.file.errInvalidChar");
+  if (/[. ]$/.test(name)) return t("toolbox.file.errTrailing");
+  if (WINDOWS_RESERVED.test(name)) return t("toolbox.file.errReserved");
+  if (new TextEncoder().encode(name).length > 255) return t("toolbox.file.errTooLong");
   return "";
 }
 

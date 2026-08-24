@@ -1,7 +1,10 @@
 <script setup>
 // 表结构树（DbTool 拆出）：只读展示 + 交互委托给父组件（父持有 meta/展开态等状态）
+import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { quoteIdent } from "../db.js";
+
+const { t } = useI18n();
 
 const props = defineProps({
   meta: { type: Object, required: true },
@@ -27,64 +30,64 @@ const emit = defineEmits(["update:tableFilter"]);
   <!-- 表结构树：点表快捷查询前 100 行，展开看列，双击列名插入 SQL -->
   <div class="meta-pane">
     <div class="pane-head">
-      <b>表结构</b>
+      <b>{{ t("toolbox.db.treeTitle") }}</b>
       <span class="pane-ops">
-        <button class="mini-btn icon" title="刷新表清单" @click="loadTables()"><Icon name="repeat" :size="13" /></button>
+        <button class="mini-btn icon" :title="t('toolbox.db.refreshTables')" @click="loadTables()"><Icon name="repeat" :size="13" /></button>
       </span>
     </div>
-    <div v-if="meta.loading" class="meta-tip">加载表清单…</div>
+    <div v-if="meta.loading" class="meta-tip">{{ t("toolbox.db.loadingTables") }}</div>
     <div v-else-if="meta.error" class="meta-tip err">{{ meta.error }}</div>
-    <div v-else-if="!meta.tables.length" class="meta-tip">未发现表或视图</div>
+    <div v-else-if="!meta.tables.length" class="meta-tip">{{ t("toolbox.db.noTables") }}</div>
       <template v-else>
         <!-- 表名过滤 -->
       <input
         :value="tableFilter"
         class="table-filter"
         type="text"
-        placeholder="过滤表名…"
-        title="输入关键字过滤表/视图（不区分大小写）"
+        :placeholder="t('toolbox.db.filterPh')"
+        :title="t('toolbox.db.filterTitle')"
         @input="emit('update:tableFilter', $event.target.value)"
       />
-      <div v-if="!filteredTables.length" class="meta-tip">没有匹配「{{ tableFilter.trim() }}」的表</div>
+      <div v-if="!filteredTables.length" class="meta-tip">{{ t("toolbox.db.noMatch", { q: tableFilter.trim() }) }}</div>
       <template v-else>
         <!-- 分组渲染：表 / 视图（Navicat 对象树习惯）。统一滚动容器避免对象过多时被截断。 -->
         <div class="meta-scroll">
           <div v-for="(group, g) in tableGroups" :key="g" class="nav-group">
             <div class="nav-group-title">
               <Icon :name="g === 'table' ? 'box' : 'layers'" :size="12" />
-              <span>{{ g === "table" ? "表" : "视图" }}</span>
+              <span>{{ g === "table" ? t("toolbox.db.groupTable") : t("toolbox.db.groupView") }}</span>
               <span class="nav-group-cnt">{{ group.length }}</span>
             </div>
             <div class="meta-tree">
               <div v-for="t in group" :key="t.name" class="tree-item" @contextmenu.prevent="onTreeCtx($event, t)">
                 <div class="tree-row">
-                  <span class="tree-caret" title="展开列结构" @click="toggleTable(t)">
+                  <span class="tree-caret" :title="t('toolbox.db.expandCols')" @click="toggleTable(t)">
                     <Icon :name="expanded[t.name] ? 'chevron' : 'chevron-right'" :size="12" />
                   </span>
-                  <span class="tree-name" :title="`单击：填充 SELECT 并展开字段；双击：打开表数据`" @click="onTreeNameClick(t)" @dblclick="quickQuery(t)">{{ t.name }}</span>
+                  <span class="tree-name" :title="t('toolbox.db.treeNameTitle')" @click="onTreeNameClick(t)" @dblclick="quickQuery(t)">{{ t.name }}</span>
                   <span class="tree-actions">
-                    <button class="tree-action" title="查看索引" aria-label="查看索引" @click.stop="openDetail(t, 'indexes')"><Icon name="layers" :size="12" /></button>
-                    <button class="tree-action" title="查看 DDL" aria-label="查看 DDL" @click.stop="openDetail(t, 'ddl')"><Icon name="note" :size="12" /></button>
+                    <button class="tree-action" :title="t('toolbox.db.viewIdx')" :aria-label="t('toolbox.db.viewIdx')" @click.stop="openDetail(t, 'indexes')"><Icon name="layers" :size="12" /></button>
+                    <button class="tree-action" :title="t('toolbox.db.viewDDL')" :aria-label="t('toolbox.db.viewDDL')" @click.stop="openDetail(t, 'ddl')"><Icon name="note" :size="12" /></button>
                   </span>
-                  <span class="tree-kind" :class="t.kind">{{ t.kind === "view" ? "视图" : "表" }}</span>
+                  <span class="tree-kind" :class="t.kind">{{ t.kind === "view" ? t("toolbox.db.groupView") : t("toolbox.db.groupTable") }}</span>
                 </div>
                 <div v-if="expanded[t.name]" class="tree-cols">
-                  <div v-if="loadingCols[t.name]" class="meta-tip">加载列…</div>
+                  <div v-if="loadingCols[t.name]" class="meta-tip">{{ t("toolbox.db.loadingCols") }}</div>
                   <template v-else>
                     <div
                       v-for="c in meta.columns[t.name] || []"
                       :key="c.name"
                       class="tree-col"
-                      :title="`双击插入列名 ${quoteIdent(c.name, activeConn?.type)}`"
+                      :title="t('toolbox.db.colTitle', { ident: quoteIdent(c.name, activeConn?.type) })"
                       @dblclick="insertColumn(c.name)"
                       @contextmenu.prevent="onColCtx($event, t, c)"
                     >
-                      <span class="col-pk" :class="{ on: c.pk }" title="主键">PK</span>
+                      <span class="col-pk" :class="{ on: c.pk }" :title="t('toolbox.db.pk')">PK</span>
                       <span class="col-name">{{ c.name }}</span>
                       <span class="col-type" :title="c.type">{{ c.type }}</span>
                       <span v-if="c.comment" class="col-comment" :title="c.comment">{{ c.comment }}</span>
                     </div>
-                    <p v-if="!(meta.columns[t.name] || []).length" class="meta-tip">无列信息</p>
+                    <p v-if="!(meta.columns[t.name] || []).length" class="meta-tip">{{ t("toolbox.db.noCols") }}</p>
                   </template>
                 </div>
               </div>

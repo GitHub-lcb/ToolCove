@@ -1,39 +1,43 @@
 // 数据库工具纯逻辑：类型元数据、连接参数校验、SQL 历史与连接配置管理。
 // 持久化由上层（DbTool.vue）经 toolboxStore 走 load_data/save_data 落盘 AppData。
 
+import { i18n } from "./i18n/index.js";
+
+const t = (key, params) => i18n.global.t(key, params);
+
 // 支持的数据库类型元数据（顺序即表单下拉顺序）
 export const DB_TYPES = [
   {
     type: "mysql",
-    label: "MySQL",
+    labelKey: "typeMysql",
     defaultPort: 3306,
-    hostLabel: "主机",
-    dbLabel: "数据库名",
-    hint: "示例：localhost:3306",
+    hostLabelKey: "hostLabel",
+    dbLabelKey: "dbLabel",
+    hintKey: "hintMysql",
   },
   {
     type: "postgres",
-    label: "PostgreSQL",
+    labelKey: "typePostgres",
     defaultPort: 5432,
-    hostLabel: "主机",
-    dbLabel: "数据库名",
-    hint: "示例：localhost:5432",
+    hostLabelKey: "hostLabel",
+    dbLabelKey: "dbLabel",
+    hintKey: "hintPostgres",
   },
   {
     type: "sqlite",
-    label: "SQLite 本地文件",
+    labelKey: "typeSqlite",
     defaultPort: null,
-    hostLabel: "",
-    dbLabel: "数据库文件",
-    hint: "选择 .db / .sqlite 文件，无服务器",
+    hostLabelKey: "",
+    dbLabelKey: "sqliteDbLabel",
+    hintKey: "hintSqlite",
   },
   {
     type: "oracle",
-    label: "Oracle",
+    labelKey: "typeOracle",
     defaultPort: 1521,
-    hostLabel: "主机",
-    dbLabel: "数据库（可不填）",
-    hint: "需本机安装 Oracle ODBC 驱动",
+    hostLabelKey: "hostLabel",
+    dbLabelKey: "oracleDbLabel",
+    hintKey: "hintOracle",
   },
 ];
 
@@ -127,20 +131,20 @@ export function validateConn(conn) {
   const errors = [];
   const c = conn || {};
   const type = c.type;
-  if (!type) return ["请选择数据库类型"];
+  if (!type) return [t("toolbox.db.errNeedType")];
   if (type === "sqlite") {
-    if (!String(c.database || "").trim()) errors.push("请选择 SQLite 数据库文件");
+    if (!String(c.database || "").trim()) errors.push(t("toolbox.db.errNeedSqliteFile"));
     return errors;
   }
-  if (!String(c.host || "").trim()) errors.push("请填写主机地址");
-  if (!c.port) errors.push("请填写端口");
-  if (!String(c.user || "").trim()) errors.push("请填写用户名");
-  if (!String(c.database || "").trim()) errors.push("请填写数据库名");
+  if (!String(c.host || "").trim()) errors.push(t("toolbox.db.errNeedHost"));
+  if (!c.port) errors.push(t("toolbox.db.errNeedPort"));
+  if (!String(c.user || "").trim()) errors.push(t("toolbox.db.errNeedUser"));
+  if (!String(c.database || "").trim()) errors.push(t("toolbox.db.errNeedDb"));
   if (type === "oracle") {
-    if (!String(c.oracleService || "").trim()) errors.push("请填写 Oracle 服务名（Service Name）");
+    if (!String(c.oracleService || "").trim()) errors.push(t("toolbox.db.errNeedOracleService"));
     const driver = String(c.oracleDriver || "").trim();
-    if (!driver) errors.push("请选择 Oracle ODBC 驱动");
-    else if (!isOracleDriver(driver)) errors.push(`「${driver}」不是 Oracle ODBC 驱动，请选择 Oracle 相关驱动`);
+    if (!driver) errors.push(t("toolbox.db.errNeedOracleDriver"));
+    else if (!isOracleDriver(driver)) errors.push(t("toolbox.db.errBadOracleDriver", { driver }));
   }
   return errors;
 }
@@ -149,7 +153,7 @@ export function validateConn(conn) {
 export function connLabel(conn) {
   const c = conn || {};
   if (String(c.name || "").trim()) return c.name.trim();
-  if (c.type === "sqlite") return c.database || "SQLite 文件";
+  if (c.type === "sqlite") return c.database || t("toolbox.db.sqliteFile");
   const port = c.port ? `:${c.port}` : "";
   return `${c.host || "?"}${port}/${c.database || ""}`;
 }
