@@ -10,11 +10,12 @@ import { fmtDate } from "./shared.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import ToolWindow from "./ToolWindow.vue";
 import ToolboxView from "./ToolboxView.vue";
+import GlobalSearch from "./GlobalSearch.vue";
 import pkg from "../package.json";
 
 const { t } = useI18n();
 
-// ------- 模块导航配置（首版三模块，M1/M2 迁入真实视图后替换懒加载目标） -------
+// ------- 模块导航配置 -------
 const MODULES = [
   { key: "toolbox", labelKey: "nav.toolbox", descKey: "module.toolboxDesc", icon: "wrench" },
   { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
@@ -44,9 +45,12 @@ const activeModule = ref("toolbox");
 const collapsed = ref(true);
 const toast = ref(null);
 const jump = ref(null);
+const gsRef = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
-const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: WelcomeView, problem: WelcomeView };
+const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
+const ProblemView = defineAsyncComponent(() => import("./ProblemView.vue"));
+const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: SnippetView, problem: ProblemView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
@@ -160,8 +164,13 @@ onUnmounted(() => {
 });
 provide("openCtxMenu", openCtxMenu);
 
-// ------- 全局快捷键（Ctrl+数字切模块；Ctrl+K 待 M3 GlobalSearch 迁入后启用） -------
+// ------- 全局快捷键（Ctrl+数字切模块；Ctrl+K 开全局搜索） -------
 function onKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+    e.preventDefault();
+    gsRef.value?.openPalette();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key >= "1" && e.key <= String(MODULES.length)) {
     e.preventDefault();
     activeModule.value = MODULES[Number(e.key) - 1].key;
@@ -170,7 +179,14 @@ function onKeydown(e) {
 onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
-// 托盘/全局快捷键动作：quick-note 待 M2 问题视图迁入后生效
+// 全局搜索导航：切模块并深链到具体记录（带 id 时）
+function onGlobalNavigate({ module, id }) {
+  if (!MODULES.some((m) => m.key === module)) return;
+  activeModule.value = module;
+  if (id) jump.value = { module, id, ts: Date.now() };
+}
+
+// 托盘/全局快捷键动作：quick-note 切到问题视图并唤起新建弹窗
 async function handleTrayAction(action) {
   if (action === "quick-note") {
     activeModule.value = "problem";
@@ -285,6 +301,7 @@ onMounted(() => {
           <span class="tb-ver"><span class="tbv-txt">v{{ version }}</span></span>
         </div>
         <div class="top-actions">
+          <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
           <button class="theme-btn" :title="t('common.manual')" @click="openManual">
             <Icon name="book-open" :size="16" />
           </button>
@@ -302,7 +319,13 @@ onMounted(() => {
       </header>
 
       <div class="body">
-        <component :is="activeViewComp" :key="activeModule" :show-toast="showToast" @navigate="(p) => (activeModule = p.module)" />
+        <component
+          :is="activeViewComp"
+          :key="activeModule"
+          :show-toast="showToast"
+          :jump-id="jump && jump.module === activeModule ? jump : null"
+          @navigate="(p) => (activeModule = p.module)"
+        />
       </div>
     </div>
 
