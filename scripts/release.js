@@ -1,7 +1,8 @@
 // ToolCove 发布构建脚本：注入更新签名密钥构建，生成 latest.json 并发布到 GitHub Releases。
 // 用法：
 //   npm run release -- "更新说明"   # 版本发布：签名构建 → 上传安装包与 latest.json 到 Release v<version> → 发布上线
-//   npm run release -- --drivers    # 一次性上传 Oracle 驱动（release-out/oracle-driver.zip）到 tag drivers
+//   node scripts/release.js --drivers    # 一次性上传 Oracle 驱动（release-out/oracle-driver.zip）到 tag drivers
+// 注意：带 -- 的旗标参数不能用 npm run 转发（npm 会当作自身 cli config 吞掉），必须 node 直调。
 // 前置：环境变量 GITHUB_TOKEN（PAT，scope 需含 repo）。
 // 用 Node 而非 PowerShell：PowerShell 无法设置空字符串环境变量（会被当成删除变量），
 // 而签名私钥无密码时 CLI 需要 TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" 才不会交互式卡住。

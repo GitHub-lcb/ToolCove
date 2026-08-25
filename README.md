@@ -57,8 +57,11 @@ Releases are built and published locally (the signing key never leaves your mach
 
 ```powershell
 npm run release -- "release notes"   # build, sign, create GitHub Release, upload assets
-npm run release -- --drivers         # upload oracle-driver.zip to the `drivers` tag (once)
+node scripts/release.js --drivers     # upload oracle-driver.zip to the `drivers` tag (once)
 ```
+
+> Note: use `node scripts/release.js` directly for flag-style arguments (`--drivers`);
+> `npm run release -- --drivers` would swallow the flag as an npm config.
 
 Requires a `GITHUB_TOKEN` environment variable (PAT with `repo` scope).
 
