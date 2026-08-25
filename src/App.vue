@@ -23,6 +23,8 @@ const MODULES = [
   { key: "task", labelKey: "nav.task", descKey: "module.taskDesc", icon: "repeat" },
   { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
   { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
+  { key: "iteration", labelKey: "nav.iteration", descKey: "module.iterationDesc", icon: "git-branch" },
+  { key: "requirement", labelKey: "nav.requirement", descKey: "module.requirementDesc", icon: "bar-chart" },
 ];
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
@@ -55,7 +57,9 @@ const TaskView = defineAsyncComponent(() => import("./TaskView.vue"));
 const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
 const ProblemView = defineAsyncComponent(() => import("./ProblemView.vue"));
 const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
-const VIEW_COMPONENTS = { toolbox: ToolboxView, task: TaskView, snippet: SnippetView, problem: ProblemView, settings: SettingsView };
+const IterationView = defineAsyncComponent(() => import("./IterationView.vue"));
+const RequirementBoardView = defineAsyncComponent(() => import("./RequirementBoardView.vue"));
+const VIEW_COMPONENTS = { toolbox: ToolboxView, task: TaskView, snippet: SnippetView, problem: ProblemView, settings: SettingsView, iteration: IterationView, requirement: RequirementBoardView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
@@ -379,7 +383,7 @@ onUnmounted(() => {
           :show-toast="showToast"
           :section="settingsSection"
           :jump-id="jump && jump.module === activeModule ? jump : null"
-          @navigate="(p) => (activeModule = p.module)"
+          @navigate="onGlobalNavigate"
         />
       </div>
     </div>

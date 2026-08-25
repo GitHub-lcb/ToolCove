@@ -44,6 +44,8 @@ const NAV_MODULE_OPTIONS = [
   { key: "task", labelKey: "nav.task" },
   { key: "snippet", labelKey: "nav.snippet" },
   { key: "problem", labelKey: "nav.problem" },
+  { key: "iteration", labelKey: "nav.iteration" },
+  { key: "requirement", labelKey: "nav.requirement" },
 ];
 function isNavModuleVisible(key) {
   return !form.value.ui.hiddenModules.includes(key);
