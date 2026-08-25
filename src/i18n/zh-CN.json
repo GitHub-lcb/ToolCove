@@ -8,6 +8,8 @@
     "task": "任务",
     "snippet": "速记",
     "problem": "问题",
+    "iteration": "迭代",
+    "requirement": "需求大盘",
     "settings": "设置",
     "expand": "展开",
     "collapse": "收起"
@@ -17,6 +19,8 @@
     "taskDesc": "任务与工时 · 周报素材",
     "snippetDesc": "随时可复制的常用数据",
     "problemDesc": "问题跟踪",
+    "iterationDesc": "迭代与上线包 · 需求任务树",
+    "requirementDesc": "需求看板 · 预估/实际工时指标",
     "settingsDesc": "应用配置与维护"
   },
   "welcome": {
