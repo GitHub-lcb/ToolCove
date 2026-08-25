@@ -5,6 +5,7 @@
   },
   "nav": {
     "toolbox": "工具箱",
+    "task": "任务",
     "snippet": "速记",
     "problem": "问题",
     "settings": "设置",
@@ -13,6 +14,7 @@
   },
   "module": {
     "toolboxDesc": "研发小工具 · 即贴即用",
+    "taskDesc": "任务与工时 · 周报素材",
     "snippetDesc": "随时可复制的常用数据",
     "problemDesc": "问题跟踪",
     "settingsDesc": "应用配置与维护"

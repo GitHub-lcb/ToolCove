@@ -41,6 +41,7 @@ const currentMeta = computed(() => SECTIONS.find((s) => s.key === section.value)
 // 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致）
 const NAV_MODULE_OPTIONS = [
   { key: "toolbox", labelKey: "nav.toolbox" },
+  { key: "task", labelKey: "nav.task" },
   { key: "snippet", labelKey: "nav.snippet" },
   { key: "problem", labelKey: "nav.problem" },
 ];

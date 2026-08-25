@@ -20,6 +20,7 @@ const { t } = useI18n();
 // ------- 模块导航配置 -------
 const MODULES = [
   { key: "toolbox", labelKey: "nav.toolbox", descKey: "module.toolboxDesc", icon: "wrench" },
+  { key: "task", labelKey: "nav.task", descKey: "module.taskDesc", icon: "repeat" },
   { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
   { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
 ];
@@ -50,10 +51,11 @@ const jump = ref(null);
 const gsRef = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
+const TaskView = defineAsyncComponent(() => import("./TaskView.vue"));
 const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
 const ProblemView = defineAsyncComponent(() => import("./ProblemView.vue"));
 const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
-const VIEW_COMPONENTS = { toolbox: ToolboxView, snippet: SnippetView, problem: ProblemView, settings: SettingsView };
+const VIEW_COMPONENTS = { toolbox: ToolboxView, task: TaskView, snippet: SnippetView, problem: ProblemView, settings: SettingsView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
