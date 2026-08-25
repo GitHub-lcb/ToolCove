@@ -17,14 +17,17 @@ import pkg from "../package.json";
 
 const { t } = useI18n();
 
-// ------- 模块导航配置 -------
+// ------- 模块导航配置（九视图：toolbox 为默认启动视图，Ctrl+1~9 直切） -------
 const MODULES = [
-  { key: "toolbox", labelKey: "nav.toolbox", descKey: "module.toolboxDesc", icon: "wrench" },
-  { key: "task", labelKey: "nav.task", descKey: "module.taskDesc", icon: "repeat" },
-  { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
-  { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
+  { key: "home", labelKey: "nav.home", descKey: "module.homeDesc", icon: "home" },
+  { key: "domain", labelKey: "nav.domain", descKey: "module.domainDesc", icon: "layers" },
   { key: "iteration", labelKey: "nav.iteration", descKey: "module.iterationDesc", icon: "git-branch" },
   { key: "requirement", labelKey: "nav.requirement", descKey: "module.requirementDesc", icon: "bar-chart" },
+  { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
+  { key: "release", labelKey: "nav.release", descKey: "module.releaseDesc", icon: "upload" },
+  { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
+  { key: "task", labelKey: "nav.task", descKey: "module.taskDesc", icon: "repeat" },
+  { key: "toolbox", labelKey: "nav.toolbox", descKey: "module.toolboxDesc", icon: "wrench" },
 ];
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
@@ -53,13 +56,16 @@ const jump = ref(null);
 const gsRef = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
+const HomeView = defineAsyncComponent(() => import("./HomeView.vue"));
+const DomainView = defineAsyncComponent(() => import("./DomainView.vue"));
 const TaskView = defineAsyncComponent(() => import("./TaskView.vue"));
 const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
 const ProblemView = defineAsyncComponent(() => import("./ProblemView.vue"));
 const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
 const IterationView = defineAsyncComponent(() => import("./IterationView.vue"));
 const RequirementBoardView = defineAsyncComponent(() => import("./RequirementBoardView.vue"));
-const VIEW_COMPONENTS = { toolbox: ToolboxView, task: TaskView, snippet: SnippetView, problem: ProblemView, settings: SettingsView, iteration: IterationView, requirement: RequirementBoardView };
+const ReleaseView = defineAsyncComponent(() => import("./ReleaseView.vue"));
+const VIEW_COMPONENTS = { home: HomeView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, problem: ProblemView, release: ReleaseView, snippet: SnippetView, task: TaskView, toolbox: ToolboxView, settings: SettingsView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
@@ -423,7 +429,7 @@ onUnmounted(() => {
   --grad-brand: linear-gradient(135deg, #0969da, #4493f8 55%, #79c0ff);
   --card-border: #e3e8ee;
   --shadow-tile: 0 5px 14px rgba(31, 35, 40, 0.13);
-  /* 排版 token：字号 7 档 + 行高 2 档 + 等宽字体栈；新样式禁止再写裸 px 字号（邮件内联样式 mail.js 除外） */
+  /* 排版 token：字号 7 档 + 行高 2 档 + 等宽字体栈；新样式禁止再写裸 px 字号（邮件内联样式除外） */
   --fs-xs: 11px;    /* 徽标、kbd、代码块、表格辅助 */
   --fs-sm: 12.5px;  /* 辅助说明、desc、chip、时间戳 */
   --fs-md: 13.5px;  /* 正文默认：列表、按钮、标签 */

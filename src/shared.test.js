@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   fmtDate,
   weekday,
+  isWorkday,
   nextReleaseDate,
   startOfWeek,
   collectDayLogs,
@@ -33,6 +34,20 @@ describe("weekday", () => {
   it("空串或非法日期返回空", () => {
     expect(weekday("")).toBe("");
     expect(weekday("not-a-date")).toBe("");
+  });
+});
+
+describe("isWorkday", () => {
+  it("周一至周五为工作日", () => {
+    expect(isWorkday("2026-07-22")).toBe(true); // 周三
+    expect(isWorkday("2026-07-20")).toBe(true); // 周一
+    expect(isWorkday("2026-07-24")).toBe(true); // 周五
+  });
+  it("周末与非法日期不是工作日", () => {
+    expect(isWorkday("2026-07-25")).toBe(false); // 周六
+    expect(isWorkday("2026-07-26")).toBe(false); // 周日
+    expect(isWorkday("bad-date")).toBe(false);
+    expect(isWorkday("")).toBe(false);
   });
 });
 

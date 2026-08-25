@@ -12,7 +12,10 @@
     "requirement": "需求大盘",
     "settings": "设置",
     "expand": "展开",
-    "collapse": "收起"
+    "collapse": "收起",
+    "home": "首页",
+    "domain": "领域",
+    "release": "发布"
   },
   "module": {
     "toolboxDesc": "研发小工具 · 即贴即用",
@@ -21,11 +24,14 @@
     "problemDesc": "问题跟踪",
     "iterationDesc": "迭代与上线包 · 需求任务树",
     "requirementDesc": "需求看板 · 预估/实际工时指标",
-    "settingsDesc": "应用配置与维护"
+    "settingsDesc": "应用配置与维护",
+    "homeDesc": "今日行动 · 一览全局",
+    "domainDesc": "领域与 Pool 管理",
+    "releaseDesc": "发布记录 · 状态总览"
   },
   "welcome": {
     "title": "欢迎使用 ToolCove",
-    "body": "纯本地、无账号、开箱即用的开发者效率工作台。工具箱等模块正在陆续迁入。"
+    "body": "纯本地、无账号、开箱即用的开发者效率工作台。任务、迭代、需求、发布等模块已全部迁入。"
   },
   "common": {
     "confirm": "确定",
@@ -52,14 +58,16 @@
     "updateDownloading": "正在下载更新，完成后将自动重启…",
     "updateFailed": "检查更新失败：{err}",
     "toolWindowHint": "独立窗口，可拖动 / 缩放",
-    "gsTriggerTitle": "全局搜索 (跨问题/速记/工具)",
-    "gsTriggerPh": "搜索问题、速记、工具...",
-    "gsPlaceholder": "搜索问题 / 速记 / 工具...",
+    "gsTriggerTitle": "全局搜索 (跨领域/迭代/需求/问题/速记/任务/工具)",
+    "gsTriggerPh": "搜索功能、需求、问题...",
+    "gsPlaceholder": "搜索领域 / Pool / 迭代 / 需求 / 问题 / 速记 / 任务 / 工具...",
     "gsHistory": "最近搜索",
     "gsClear": "清空",
     "gsHint": "输入关键词，跨所有模块实时检索。",
     "gsNoMatch": "没有匹配「{q}」的结果。",
     "gsGroupTool": "工具",
+    "gsGroupPool": "Pool",
+    "gsDocTag": "文档",
     "gsJumpGroup": "跳到 {label} 首个结果",
     "gsResolution": "结论：{text}",
     "gsUntitled": "无标题",

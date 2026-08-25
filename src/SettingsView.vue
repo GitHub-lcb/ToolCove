@@ -38,14 +38,17 @@ watch(
 );
 const currentMeta = computed(() => SECTIONS.find((s) => s.key === section.value) || SECTIONS[1]);
 
-// 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致）
+// 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致，九视图）
 const NAV_MODULE_OPTIONS = [
-  { key: "toolbox", labelKey: "nav.toolbox" },
-  { key: "task", labelKey: "nav.task" },
-  { key: "snippet", labelKey: "nav.snippet" },
-  { key: "problem", labelKey: "nav.problem" },
+  { key: "home", labelKey: "nav.home" },
+  { key: "domain", labelKey: "nav.domain" },
   { key: "iteration", labelKey: "nav.iteration" },
   { key: "requirement", labelKey: "nav.requirement" },
+  { key: "problem", labelKey: "nav.problem" },
+  { key: "release", labelKey: "nav.release" },
+  { key: "snippet", labelKey: "nav.snippet" },
+  { key: "task", labelKey: "nav.task" },
+  { key: "toolbox", labelKey: "nav.toolbox" },
 ];
 function isNavModuleVisible(key) {
   return !form.value.ui.hiddenModules.includes(key);

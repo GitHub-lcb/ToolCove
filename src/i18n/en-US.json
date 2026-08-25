@@ -12,7 +12,10 @@
     "requirement": "Requirements",
     "settings": "Settings",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "home": "Home",
+    "domain": "Domains",
+    "release": "Releases"
   },
   "module": {
     "toolboxDesc": "Dev tools, ready to paste",
@@ -21,11 +24,14 @@
     "problemDesc": "Issue tracking",
     "iterationDesc": "Iterations & release packages, requirement task tree",
     "requirementDesc": "Requirement board, estimate/actual hours",
-    "settingsDesc": "App configuration & maintenance"
+    "settingsDesc": "App configuration & maintenance",
+    "homeDesc": "Daily actions · overview",
+    "domainDesc": "Domains & pools",
+    "releaseDesc": "Release history · status"
   },
   "welcome": {
     "title": "Welcome to ToolCove",
-    "body": "A local-first, account-free developer workbench. Toolbox and more modules are moving in."
+    "body": "A local-first, account-free developer workbench. Tasks, iterations, requirements and releases are all onboard now."
   },
   "common": {
     "confirm": "OK",
@@ -52,14 +58,16 @@
     "updateDownloading": "Downloading update, restarting when done…",
     "updateFailed": "Update check failed: {err}",
     "toolWindowHint": "Standalone window, drag / resize",
-    "gsTriggerTitle": "Global search (issues / snippets / tools)",
-    "gsTriggerPh": "Search issues, snippets, tools...",
-    "gsPlaceholder": "Search issues / snippets / tools...",
+    "gsTriggerTitle": "Global search (domains/iterations/issues/snippets/tasks/tools)",
+    "gsTriggerPh": "Search features, requirements, issues...",
+    "gsPlaceholder": "Search domains / pools / iterations / requirements / issues / snippets / tasks / tools...",
     "gsHistory": "Recent searches",
     "gsClear": "Clear",
     "gsHint": "Type a keyword to search across all modules in real time.",
     "gsNoMatch": "No results matching “{q}”.",
     "gsGroupTool": "Tools",
+    "gsGroupPool": "Pools",
+    "gsDocTag": "doc",
     "gsJumpGroup": "Jump to the first result in {label}",
     "gsResolution": "Resolution: {text}",
     "gsUntitled": "Untitled",

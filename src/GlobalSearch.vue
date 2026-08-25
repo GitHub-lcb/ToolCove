@@ -17,16 +17,24 @@ const open = ref(false);
 const q = ref("");
 const inputRef = ref(null);
 const copiedId = ref(null); // 刚复制的结果 copyKey（瞬态打勾）
-const data = ref({ problems: [], snippets: [] });
+const data = ref({ domains: [], pools: [], iterations: [], problems: [], tasks: [], snippets: [] });
 
 async function loadAll() {
   try {
-    const [problems, snippets] = await Promise.all([
+    const [domains, pools, iterations, problems, tasks, snippets] = await Promise.all([
+      invoke("load_data", { key: "domains" }),
+      invoke("load_data", { key: "pools" }),
+      invoke("load_data", { key: "iterations" }),
       invoke("load_data", { key: "problems" }),
+      invoke("load_data", { key: "tasks" }),
       invoke("load_data", { key: "snippets" }),
     ]);
     data.value = {
+      domains: domains || [],
+      pools: pools || [],
+      iterations: iterations || [],
       problems: problems || [],
+      tasks: tasks || [],
       snippets: snippets || [],
     };
   } catch (e) {
@@ -71,11 +79,21 @@ watch(open, (v) => {
 });
 
 const GROUPS = {
+  domain: { labelKey: "nav.domain", icon: "layers" },
+  pool: { labelKey: "common.gsGroupPool", icon: "box" },
+  iteration: { labelKey: "nav.iteration", icon: "repeat" },
+  req: { labelKey: "nav.requirement", icon: "note" },
   problem: { labelKey: "nav.problem", icon: "alert" },
   snippet: { labelKey: "nav.snippet", icon: "copy" },
+  task: { labelKey: "nav.task", icon: "clock" },
   tool: { labelKey: "common.gsGroupTool", icon: "wrench" },
 };
 const GROUP_BY_KEY = new Map(TOOLBOX_GROUPS.map((g) => [g.key, g]));
+
+function domainName(id) {
+  const d = data.value.domains.find((x) => x.id === id);
+  return d ? d.name : "";
+}
 
 const results = computed(() => {
   const kw = q.value.trim().toLowerCase();
@@ -83,6 +101,22 @@ const results = computed(() => {
   const out = [];
   const hit = (s) => s && s.toLowerCase().includes(kw);
 
+  for (const d of data.value.domains) {
+    if (hit(d.name) || hit(d.note)) out.push({ group: "domain", title: d.name, sub: d.note || "", module: "domain", id: d.id });
+  }
+  for (const p of data.value.pools) {
+    if (hit(p.name) || hit(p.note)) out.push({ group: "pool", title: p.name, sub: domainName(p.domainId), module: "domain", id: p.domainId, content: p.name, copyKey: "pool-" + p.id });
+  }
+  for (const it of data.value.iterations) {
+    if (hit(it.title) || hit(it.version) || hit(it.goal))
+      out.push({ group: "iteration", title: it.title, sub: it.version || "", module: "iteration", id: it.id });
+    for (const r of it.items || []) {
+      if (hit(r.name)) out.push({ group: "req", title: r.name, sub: it.title, module: "iteration", id: it.id });
+    }
+    for (const doc of it.docs || []) {
+      if (hit(doc.title)) out.push({ group: "iteration", title: doc.title, sub: it.title + " · " + t("common.gsDocTag"), module: "iteration", id: it.id });
+    }
+  }
   for (const p of data.value.problems) {
     if (hit(p.title) || hit(p.note) || (p.tags || []).join(" ").toLowerCase().includes(kw))
       out.push({ group: "problem", title: p.title, sub: p.note || "", module: "problem", id: p.id });
@@ -92,6 +126,9 @@ const results = computed(() => {
   for (const s of data.value.snippets) {
     if (hit(s.title) || hit(s.content) || hit(s.category))
       out.push({ group: "snippet", title: s.title || t("common.gsUntitled"), sub: s.category || (s.content || "").slice(0, 40), module: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
+  }
+  for (const t of data.value.tasks) {
+    if (hit(t.title) || hit(t.code)) out.push({ group: "task", title: t.title, sub: t.code || "", module: "task", id: t.id });
   }
   const toolResults = searchToolboxTools(kw).map((tool) => {
     const group = GROUP_BY_KEY.get(tool.category) || {};

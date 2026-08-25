@@ -1,5 +1,5 @@
 // 本地任务/工时数据层（纯函数，可单测）
-// 数据落在 iterations.json（versionedData 版本化保存，与迭代/需求/发布共用同一数据源）：
+// 数据落在本地 iterations.json（与迭代/需求/发布共用同一数据源）
 //   iteration   = { id, title, status: "plan"|"dev"|"done", releaseDate, version, items: [requirement], updatedAt }
 //   requirement = { id, name, done, subtasks: [subtask] }
 //   subtask     = { id, name, hours, date, done, logs: [{ date, hours, name }] }

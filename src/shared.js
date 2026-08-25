@@ -58,6 +58,12 @@ export function weekday(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return isNaN(d) ? "" : t(WEEKDAY_KEYS[d.getDay()]);
 }
+// 是否工作日（周一~周五；非法日期返回 false）
+export function isWorkday(date) {
+  const value = date instanceof Date ? date : new Date(`${date}T12:00:00`);
+  const day = value.getDay();
+  return Number.isFinite(value.getTime()) && day >= 1 && day <= 5;
+}
 // 下一个周二 / 周四（含今天）
 export function nextReleaseDate() {
   const today = new Date();
