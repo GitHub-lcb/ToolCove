@@ -1,0 +1,42 @@
+ToolCove License
+=================
+
+Copyright (c) 2026 GitHub-lcb. All rights reserved.
+
+本软件（ToolCove，含全部源代码、图标、文档及其它仓库内容）为专有软件，
+受中华人民共和国著作权法及国际版权公约保护。
+
+未经版权所有者的明确书面授权，任何人不得：
+- 复制、分发、再发布本软件的任何部分（含源代码与二进制产物）；
+- 修改、反编译、反汇编、逆向工程或基于本软件创作衍生作品；
+- 将本软件（或其修改版本）用于任何形式的商业再分发。
+
+允许的用途：
+- 从官方渠道（GitHub Releases）下载安装本软件，供个人或内部使用；
+- 通过 GitHub Issues 报告缺陷或提出功能建议。
+
+免责声明：本软件按「现状」提供，不附带任何明示或默示的担保，
+包括但不限于适销性、特定用途适用性与非侵权担保。
+因使用本软件造成的任何直接或间接损失，版权所有者概不负责。
+
+---
+
+This software (ToolCove, including all source code, icons, documentation,
+and any other repository content) is proprietary software protected by
+copyright law. All rights reserved.
+
+Without the explicit written permission of the copyright holder, no one may:
+- Copy, distribute, or republish any part of this software (source or binaries);
+- Modify, decompile, reverse engineer, or create derivative works from it;
+- Redistribute this software (or modified versions) for any commercial purpose.
+
+Permitted use:
+- Download and install the official release from GitHub Releases for
+  personal or internal use;
+- Report bugs or request features via GitHub Issues.
+
+DISCLAIMER: THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
