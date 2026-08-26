@@ -64,7 +64,7 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 - 写入统一走 `data_io_lock()` + `ensure_data_writable()` 后 `write_json_file`（与备份/恢复无竞态）；读侧特判：文件不存在或内容为空数组（read_json_file 的缺省返回）一律映射为「未激活」免费态。
 - 单测：用测试密钥对验签、篡改 payload/签名各错误路径、过期校验（用固定 32 字节 seed 的 `SigningKey::from_bytes`，不依赖随机源）。
 - 数据文件独立为 `license.json`（复用 storage.rs 的 `data_path`，key=license）。
-- **备份/恢复隔离（审查修订 V3）**：storage.rs 无「备份清单」，是三段目录扫描逻辑，需在**三处**显式排除 license.json（复用既有 `is_license_json` 判定）：① `run_backup` 的 `fs::read_dir` 扫描循环跳过 license.json（新备份不含授权）；② `read_restore_archive` 过滤 license.json 条目（**过滤跳过而非拒错**，否则含授权的旧备份整体恢复失败）；③ `managed_json_files` / `run_restore` 的 current 清单排除 license.json（否则当前授权文件会被移入 rollback 后删除，任何恢复都会丢授权）。集成测试断言三方向：新备份不含 license.json / 恢复含 license.json 的旧备份不复活授权 / 恢复任意备份后当前 license.json 原样保留。
+- **备份/恢复隔离（审查修订 V3）**：storage.rs 无「备份清单」，是三段目录扫描逻辑，需在**三处**显式排除 license.json（由本批新增的 `is_license_json` 判定收口，定义于 license.rs 导出、storage.rs 三处过滤点引用，避免硬编码字符串）：① `run_backup` 的 `fs::read_dir` 扫描循环跳过 license.json（新备份不含授权）；② `read_restore_archive` 过滤 license.json 条目（**过滤跳过而非拒错**，否则含授权的旧备份整体恢复失败）；③ `managed_json_files` / `run_restore` 的 current 清单排除 license.json（否则当前授权文件会被移入 rollback 后删除，任何恢复都会丢授权）。集成测试断言三方向：新备份不含 license.json / 恢复含 license.json 的旧备份不复活授权 / 恢复任意备份后当前 license.json 原样保留。
 
 ### 4.3 前端
 
