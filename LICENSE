@@ -40,3 +40,14 @@ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
 OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+商业授权条款（Commercial License Terms）
+========================================
+
+1. 免费版（Free Plan）：任何人可从官方渠道（GitHub Releases 等）下载并安装本软件，供个人或内部使用，无需付费。免费版的范围以软件内标注为准。
+2. Pro 授权（Pro License）：Pro 功能须持有由版权所有者签发的 license key 方可使用。单个 license key 允许在持有人的一台（家庭使用者）或多台（家庭内）设备上激活；不得转售、出租、公开发布或分享 license key 以规避购买。
+3. 授权期间：买断授权包含自购买日起 2 年的免费更新；到期后 Pro 功能在已安装版本上继续可用，但不再获得新版本。
+4. 退款：买断授权自购买之日起 14 天内可申请全额退款（联系邮箱见下）；退款后授权立即失效。
+5. 订阅（如未来推出）：按周期自动续费，用户可随时取消，取消后当期已付周期内 Pro 功能保持可用至周期结束。
+6. 与 EULA 的关系：本文件与《终端用户许可协议》（见 docs/commercial/EULA.md）共同构成完整授权文本；两者冲突时以 EULA 为准。
+7. 联系方式：toolcove@example.com（官方渠道上线前为占位）。

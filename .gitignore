@@ -19,6 +19,9 @@ tmp
 # 自动更新签名私钥（红线：绝不入库）
 src-tauri/updater.key
 
+# license 私钥（红线：绝不入库，签发脚本默认输出目录）
+scripts/.license-secrets/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -28,6 +28,18 @@ assistance — into one offline-first desktop app.
 no telemetry, no cloud sync. HTTP requests (including AI) go through a built-in Rust proxy —
 the only outbound traffic is what you explicitly trigger.
 
+## Pro（商业化）
+
+ToolCove 采用 Freemium：**12 个内置工具、速记、问题跟踪等核心功能永久免费**；Pro 授权解锁进阶能力（当前为 数据库结果集 Excel 导出、自定义主题色）。授权为离线 Ed25519 签名 key：无账号、不上云，在「设置 → Pro」中输入 key 激活。
+
+- 定价：Pro 买断 ¥99（一次买断 · 包 2 年更新），正式售卖即将推出。
+- 支持开发：[爱发电](https://afdian.com/a/toolcove)（占位链接）
+- 授权协议：见 [LICENSE](LICENSE) 与 [docs/commercial/EULA.md](docs/commercial/EULA.md)
+
+## 隐私说明
+
+应用默认**不发送任何网络请求**（AI 请求除外，需你主动配置并触发）。可选「使用统计」默认关闭：开启后仅在本机聚合功能打开次数，**不上传任何内容数据、不采集 IP**；当前版本即使开启也不会发送（遥测服务器尚未上线），可在 设置 → 系统设置 → 使用统计 中随时关闭。
+
 ## Download & Update
 
 - Download the latest installer from [GitHub Releases](https://github.com/GitHub-lcb/ToolCove/releases).
