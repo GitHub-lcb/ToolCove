@@ -1,15 +1,20 @@
 <script setup>
 // 设置页（UI 2.0 工作台式）：左侧分类导航 + 右侧内容区，替代原设置弹窗。
 // 分类：AI 模型 / 系统设置；保存后 dispatch settings-saved 供全局刷新。
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, inject } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import Icon from "./Icon.vue";
 import { testAI, AI_PRESETS } from "./ai.js";
 import { checkForUpdate } from "./updater.js";
 import { encryptValue, decryptValue } from "./secure.js";
+import { loadLicenseStatus, activateLicense, deactivateLicense, subscribeLicenseChanged } from "./license.js";
+import { isFeatureEnabled, PRO_FEATURES } from "./features.js";
+import { ACCENT_PRESETS, saveAccentKey, loadAccentKey } from "./accentTheme.js";
+import { getConfig as telemetryGetConfig, consent as telemetryConsent } from "./telemetry.js";
 import { askConfirm } from "./confirm.js";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
@@ -27,6 +32,7 @@ const props = defineProps({
 
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
+  { key: "pro", labelKey: "settings.navPro", icon: "star", descKey: "settings.navProDesc" },
   { key: "general", labelKey: "settings.navGeneral", icon: "settings", descKey: "settings.navGeneralDesc" },
 ];
 const section = ref(SECTIONS.some((s) => s.key === props.section) ? props.section : "general");
@@ -36,7 +42,8 @@ watch(
     if (SECTIONS.some((s) => s.key === v)) section.value = v;
   }
 );
-const currentMeta = computed(() => SECTIONS.find((s) => s.key === section.value) || SECTIONS[1]);
+// 兜底显式指向 general（插入 pro 后 SECTIONS[1] 不再等于 general，评审注意项）
+const currentMeta = computed(() => SECTIONS.find((s) => s.key === section.value) || SECTIONS.find((s) => s.key === "general") || SECTIONS[0]);
 
 // 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致，九视图）
 const NAV_MODULE_OPTIONS = [
@@ -70,6 +77,103 @@ const form = ref(newSettings());
 const settingsLoadError = ref("");
 // 开机启动是系统状态不是应用数据：进入页面时读真实状态，保存时写回，不落 settings.json
 const autostartOn = ref(false);
+// ---------- Pro 授权（pro 分区；与 App.vue 共享同一 licenseStatus 引用） ----------
+const licenseStatus = inject("licenseStatus", ref({ pro: false, error: null }));
+const licenseKeyInput = ref("");
+const activating = ref(false);
+const deactivating = ref(false);
+const licenseError = ref("");
+const licenseErrorKey = ref("");
+const licenseLoaded = ref(false);
+function licenseErrKey(code) {
+  const map = {
+    malformed: "license.errMalformed",
+    "bad-signature": "license.errBadSignature",
+    expired: "license.errExpired",
+    "unsupported-plan": "license.errUnsupportedPlan",
+    "coming-soon": "license.errComingSoon",
+  };
+  return map[code] || "license.errUnknown";
+}
+async function refreshLicense() {
+  licenseStatus.value = await loadLicenseStatus();
+  licenseLoaded.value = true;
+  licenseError.value = "";
+  licenseErrorKey.value = "";
+  if (licenseStatus.value && licenseStatus.value.error && !licenseStatus.value.pro) {
+    licenseErrorKey.value = licenseErrKey(licenseStatus.value.error);
+  }
+}
+async function doActivate() {
+  const key = licenseKeyInput.value.trim();
+  if (!key) {
+    licenseErrorKey.value = "license.errEmpty";
+    return;
+  }
+  activating.value = true;
+  licenseError.value = "";
+  licenseErrorKey.value = "";
+  try {
+    const status = await activateLicense(key);
+    licenseStatus.value = status;
+    if (status.pro) {
+      licenseKeyInput.value = "";
+      window.dispatchEvent(new CustomEvent("license-changed"));
+      props.showToast(t("license.activated", { name: status.name || "" }));
+    } else {
+      licenseErrorKey.value = licenseErrKey(status.error || "unknown");
+    }
+  } catch (e) {
+    licenseError.value = String(e);
+    licenseErrorKey.value = "license.errUnknown";
+  } finally {
+    activating.value = false;
+  }
+}
+async function doDeactivate() {
+  const ok = await askConfirm({
+    title: t("license.deactivateTitle"),
+    message: t("license.deactivateMsg"),
+    okText: t("license.deactivateOk"),
+  });
+  if (!ok) return;
+  deactivating.value = true;
+  try {
+    licenseStatus.value = await deactivateLicense();
+    window.dispatchEvent(new CustomEvent("license-changed"));
+    props.showToast(t("license.deactivated"));
+  } catch (e) {
+    licenseErrorKey.value = "license.errUnknown";
+    licenseError.value = String(e);
+  } finally {
+    deactivating.value = false;
+  }
+}
+// ---------- 遥测隐私开关（即改即存，不走表单保存路径） ----------
+const telemetryOn = ref(false);
+async function loadTelemetryPref() {
+  const cfg = await telemetryGetConfig().catch(() => ({ enabled: false }));
+  telemetryOn.value = !!cfg.enabled;
+}
+async function toggleTelemetry(ev) {
+  const next = !!ev.target.checked;
+  telemetryOn.value = next;
+  await telemetryConsent(next).catch(() => {});
+  props.showToast(next ? t("telemetry.onMsg") : t("telemetry.offMsg"));
+}
+// ---------- 支持与链接 ----------
+function openAfdian() {
+  openUrl("https://afdian.com/a/toolcove").catch((e) => props.showToast(String(e)));
+}
+// ---------- 自定义主题色（Pro） ----------
+const accentKey = ref(loadAccentKey() || "");
+async function pickAccent(key) {
+  if (!isFeatureEnabled(licenseStatus.value, "theme-custom")) return;
+  saveAccentKey(key || "");
+  accentKey.value = key || "";
+  window.dispatchEvent(new CustomEvent("accent-changed"));
+  props.showToast(key ? t("pro.accentApplied") : t("pro.accentReset"));
+}
 
 function validate() {
   const err = {};
@@ -125,7 +229,14 @@ async function loadSettings() {
   fieldErr.value = {};
   dirty.value = false;
 }
-onMounted(loadSettings);
+onMounted(() => {
+  loadSettings();
+  refreshLicense();
+  loadTelemetryPref();
+  subscribeLicenseChanged((s) => {
+    licenseStatus.value = s;
+  });
+});
 // 任意字段改动标记未保存（排除程序化回填）
 watch(
   () => JSON.stringify({ f: form.value, a: autostartOn.value }),
@@ -358,6 +469,103 @@ async function restoreNow() {
             <button class="btn-ghost sm" :disabled="testingAI" @click="testAIConn"><Icon name="sparkles" :size="14" /> {{ testingAI ? t("settings.aiTesting") : t("settings.aiTest") }}</button>
           </div>
         </div>
+        <!-- ============ Pro / 商业化 ============ -->
+        <div v-show="section === 'pro'" class="sect pro">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="star" :size="15" class="sect-ico" /> {{ t("pro.title") }}</span>
+            <span v-if="licenseStatus.pro" class="ver-tag pro-tag">PRO ✓</span>
+            <span v-else class="ver-tag">{{ t("pro.freePlan") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("pro.desc") }}</p>
+
+          <!-- 状态卡 + 激活框 -->
+          <div class="pro-card" :class="{ on: licenseStatus.pro }">
+            <template v-if="licenseStatus.pro">
+              <div class="pro-state">
+                <b>{{ t("pro.activatedTitle") }}</b>
+                <span class="pro-name">{{ licenseStatus.name }}<template v-if="licenseStatus.expiresAt"> · {{ t("pro.expiresAt", { date: licenseStatus.expiresAt }) }}</template></span>
+                <div class="pro-features">
+                  <span v-for="f in licenseStatus.features" v-show="PRO_FEATURES[f]" :key="f" class="pro-feat-chip">{{ t(PRO_FEATURES[f].labelKey) }}</span>
+                </div>
+              </div>
+              <div class="pro-actions">
+                <button class="btn-ghost sm" :disabled="deactivating" @click="doDeactivate"><Icon name="lock" :size="14" /> {{ t("license.deactivateBtn") }}</button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="pro-activate">
+                <input v-model="licenseKeyInput" :placeholder="t('license.keyPh')" spellcheck="false" class="lic-input" />
+                <button class="btn-primary sm" :disabled="activating" @click="doActivate"><Icon name="key" :size="14" /> {{ activating ? t("license.activating") : t("license.activateBtn") }}</button>
+                <button class="btn-ghost sm" disabled :title="t('license.onlineComingSoon')">{{ t("license.onlineBtn") }}</button>
+              </div>
+              <p v-if="licenseErrorKey" class="field-err">{{ t(licenseErrorKey) }}</p>
+              <p v-if="licenseError" class="field-err">{{ licenseError }}</p>
+            </template>
+          </div>
+
+          <!-- 定价卡 -->
+          <div class="pro-grid">
+            <div class="pricing-card">
+              <div class="price-name">{{ t("pro.freeName") }}</div>
+              <div class="price-num">¥0</div>
+              <ul class="price-list">
+                <li>{{ t("pro.freeItem1") }}</li>
+                <li>{{ t("pro.freeItem2") }}</li>
+                <li>{{ t("pro.freeItem3") }}</li>
+              </ul>
+            </div>
+            <div class="pricing-card hot">
+              <div class="price-name">{{ t("pro.proName") }} <span class="soon-tag">{{ t("pro.soon") }}</span></div>
+              <div class="price-num">¥99 <span class="price-note">{{ t("pro.lifetime") }}</span></div>
+              <ul class="price-list">
+                <li>{{ t("pro.proItem1") }}</li>
+                <li>{{ t("pro.proItem2") }}</li>
+                <li>{{ t("pro.proItem3") }}</li>
+                <li>{{ t("pro.proItem4") }}</li>
+              </ul>
+              <button class="btn-primary sm full" disabled>{{ t("pro.soon") }}</button>
+            </div>
+            <div class="pricing-card">
+              <div class="price-name">{{ t("pro.teamName") }} <span class="soon-tag">{{ t("pro.soon") }}</span></div>
+              <div class="price-num">—</div>
+              <ul class="price-list">
+                <li>{{ t("pro.teamItem1") }}</li>
+                <li>{{ t("pro.teamItem2") }}</li>
+              </ul>
+              <button class="btn-ghost sm full" disabled>{{ t("pro.soon") }}</button>
+            </div>
+          </div>
+
+          <!-- 功能对比表 -->
+          <div class="pro-compare">
+            <table class="cmp-table">
+              <thead><tr><th></th><th>{{ t("pro.freePlan") }}</th><th>{{ t("pro.proPlan") }}</th></tr></thead>
+              <tbody>
+                <tr><td>{{ t("pro.cmpTools") }}</td><td>✓</td><td>✓</td></tr>
+                <tr><td>{{ t("pro.cmpSnippets") }}</td><td>✓</td><td>✓</td></tr>
+                <tr><td>{{ t("pro.cmpLocal") }}</td><td>✓</td><td>✓</td></tr>
+                <tr><td>{{ t("pro.cmpDbXlsx") }}</td><td>—</td><td>✓</td></tr>
+                <tr><td>{{ t("pro.cmpTheme") }}</td><td>—</td><td>✓</td></tr>
+                <tr><td>{{ t("pro.cmpUpdate") }}</td><td>{{ t("pro.cmpUpdateFree") }}</td><td>{{ t("pro.cmpUpdatePro") }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 自定义主题色（Pro 专属） -->
+          <div class="accent-head">
+            <span class="sect-title"><Icon name="palette" :size="15" /> {{ t("pro.accentTitle") }} <span class="soon-tag" v-if="!isFeatureEnabled(licenseStatus, 'theme-custom')">Pro</span></span>
+          </div>
+          <div class="accent-row">
+            <button v-for="p in ACCENT_PRESETS" :key="p.key" class="accent-dot" :class="{ on: accentKey === p.key }" :style="{ background: p.light['--primary'] }" :title="t(p.labelKey)" :disabled="!isFeatureEnabled(licenseStatus, 'theme-custom')" @click="pickAccent(p.key)"></button>
+            <button class="accent-dot reset" :class="{ on: !accentKey }" :title="t('pro.accentDefault')" :disabled="!isFeatureEnabled(licenseStatus, 'theme-custom')" @click="pickAccent('')">✕</button>
+          </div>
+
+          <!-- 支持开发（爱发电占位） -->
+          <div class="sect-foot">
+            <button class="btn-ghost sm" @click="openAfdian"><Icon name="heart" :size="14" /> {{ t("pro.afdianBtn") }}</button>
+            <span class="sect-desc inline">{{ t("pro.afdianHint") }}</span>
+          </div>
+</div>
 
         <!-- ============ 系统设置 ============ -->
         <div v-show="section === 'general'" class="sect gen">
@@ -408,6 +616,19 @@ async function restoreNow() {
             </select>
           </div>
           <p class="sect-desc">{{ t("settings.langDesc") }}</p>
+        </div>
+
+        <div v-show="section === 'general'" class="sect gen">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="shield" :size="15" /> {{ t("telemetry.title") }}</span>
+            <label class="switch">
+              <input type="checkbox" :checked="telemetryOn" @change="toggleTelemetry" />
+              <span class="track"></span>
+              <span>{{ t("telemetry.enable") }}</span>
+            </label>
+          </div>
+          <p class="sect-desc">{{ t("telemetry.desc") }}</p>
+          <p class="sect-desc sub">{{ t("telemetry.privacyNote") }}</p>
         </div>
 
         <div v-show="section === 'general'" class="sect gen">
@@ -567,5 +788,84 @@ async function restoreNow() {
   .field .select { background: var(--card-raised); }
   .preset-chip { background: var(--card-raised); }
   .preset-chip.on { background: var(--accent-soft-deep); color: var(--accent-soft-text); }
+  .lic-input { background: var(--card-raised); }
+}
+
+/* ============ Pro / 商业化分区样式 ============ */
+.pro-tag { color: var(--success); font-weight: 700; }
+.pro-card {
+  margin: 6px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  background: var(--card-soft);
+}
+.pro-card.on { border-color: var(--border-blue); background: linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 55%, var(--card)), var(--card)); }
+.pro-state { display: flex; flex-direction: column; gap: 6px; }
+.pro-state b { font-size: var(--fs-base); }
+.pro-name { font-size: var(--fs-sm); color: var(--muted); }
+.pro-features { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pro-feat-chip {
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--grad-brand);
+  color: var(--text-invert);
+  font-weight: 600;
+}
+.pro-actions { margin-top: 10px; display: flex; gap: 8px; }
+.pro-activate { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lic-input {
+  flex: 1;
+  min-width: 240px;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--input-bg, var(--card));
+  color: var(--text);
+}
+.pro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 10px 0 18px; }
+.pricing-card {
+  padding: 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pricing-card.hot { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); box-shadow: var(--glow-sm); }
+.price-name { font-size: var(--fs-md); font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.price-num { font-size: var(--fs-xl); font-weight: 700; font-family: var(--font-num); }
+.price-note { font-size: var(--fs-xs); color: var(--muted); font-weight: 500; }
+.soon-tag { font-size: var(--fs-xs); font-weight: 700; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 999px; padding: 1px 7px; }
+.price-list { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); color: var(--text-weak); flex: 1; }
+.price-list li { margin-bottom: 6px; padding-left: 16px; position: relative; }
+.price-list li::before { content: "✓"; position: absolute; left: 0; color: var(--success); font-size: var(--fs-xs); }
+.btn.full { width: 100%; justify-content: center; }
+.pro-compare { margin: 6px 0 18px; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.cmp-table th, .cmp-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--card-border); }
+.cmp-table th:not(:first-child), .cmp-table td:not(:first-child) { width: 16%; text-align: center; }
+.cmp-table tr:last-child td { border-bottom: none; }
+.cmp-table thead th { background: var(--ghost); color: var(--text-weak); font-weight: 600; }
+.accent-head { margin-top: 4px; }
+.accent-row { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; }
+.accent-dot {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid var(--card-border);
+  cursor: pointer; padding: 0;
+  transition: transform 0.12s, border-color 0.12s;
+}
+.accent-dot:hover:not(:disabled) { transform: scale(1.12); border-color: var(--primary); }
+.accent-dot.on { border-color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
+.accent-dot:disabled { cursor: not-allowed; opacity: 0.45; }
+.accent-dot.reset { background: var(--well); color: var(--muted); font-size: var(--fs-xs); display: grid; place-items: center; }
+.sect-desc.inline { display: inline; margin: 0; }
+
+@media (max-width: 900px) {
+  .pro-grid { grid-template-columns: 1fr; }
 }
 </style>

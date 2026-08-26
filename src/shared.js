@@ -188,6 +188,31 @@ function addXlsxTable(ws, title, cols, rows, maxSpan) {
   ws.addRow([]);
 }
 
+// 生成数据库结果集 Excel（Pro 功能 db-export-xlsx）：列名 + 行数据 → base64 xlsx
+// 与 buildReleaseXlsx 同一惯例：exceljs 惰性导入，返回 base64 供 invoke("export_file_b64")
+export async function buildDbResultXlsx(cols, rows) {
+  const { default: ExcelJS } = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(t("common.dbSheet") || "Result");
+  ws.columns = cols.map((c) => ({ width: Math.max(10, Math.min(46, String(c).length + 6)) }));
+  const head = ws.addRow(cols);
+  head.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Microsoft YaHei" };
+  head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0a6e65" } };
+  head.alignment = { vertical: "middle" };
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  for (const row of rows) {
+    ws.addRow(row.map((v) => (v === null || v === undefined ? "" : v)));
+  }
+  // 与 buildReleaseXlsx 同一转换路径：writeBuffer → 分块二进制串 → btoa（webview 无 Buffer）
+  const buf = await wb.xlsx.writeBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
 // 生成上线包 Excel（真正的 .xlsx 二进制工作簿），返回 base64 字符串供原生侧写文件
 // exceljs 体积较大，导出时才动态加载，避免拖慢启动
 export async function buildReleaseXlsx(iteration) {

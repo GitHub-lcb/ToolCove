@@ -8,8 +8,13 @@ import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { fmtDate } from "./shared.js";
 import { normalizeHiddenModules } from "./settingsConfig.js";
+import { loadLicenseStatus, subscribeLicenseChanged } from "./license.js";
+import { isFeatureEnabled } from "./features.js";
+import { shouldPrompt, mergePromptDecision, consent as telemetryConsent, track as telemetryTrack, flush as telemetryFlush, getConfig as telemetryGetConfig, invalidateConfigCache as telemetryInvalidateCache } from "./telemetry.js";
+import { applyAccent, resetAccent, loadAccentKey, saveAccentKey } from "./accentTheme.js";
 import { checkForUpdate } from "./updater.js";
 import ConfirmDialog from "./ConfirmDialog.vue";
+import { askConfirm } from "./confirm.js";
 import ToolWindow from "./ToolWindow.vue";
 import ToolboxView from "./ToolboxView.vue";
 import GlobalSearch from "./GlobalSearch.vue";
@@ -52,6 +57,18 @@ async function revealToolWindow() {
 const activeModule = ref("toolbox");
 const collapsed = ref(true);
 const toast = ref(null);
+// 视图埋点（节流 10s；可选遥测未开启时只本地计数）
+let viewTrackTs = {};
+watch(activeModule, (key) => {
+  const now = Date.now();
+  if (now - (viewTrackTs[key] || 0) < 10000) return;
+  viewTrackTs[key] = now;
+  telemetryTrack("view." + key);
+});
+// Pro 授权状态：挂载时拉取 + license-changed 全局事件刷新；provide 给全树（含注入锁定的工具）
+const licenseStatus = ref({ pro: false, error: null });
+provide("licenseStatus", licenseStatus);
+const isProReady = computed(() => !!(licenseStatus.value && licenseStatus.value.pro));
 const jump = ref(null);
 const gsRef = ref(null);
 
@@ -93,6 +110,9 @@ async function refreshUiSettings() {
 // 保存设置后刷新界面设置（密度 / 侧边栏模块展示）
 function onSettingsSaved() {
   refreshUiSettings();
+  telemetryInvalidateCache();
+  telemetryFlush().catch(() => {}); // 设置保存即冲刷待发计数（P1-1 flush 时机②）
+  applyThemeAccent();
 }
 
 // ------- 全局页脚 -------
@@ -249,7 +269,18 @@ async function applyTheme(mode) {
   } finally {
     document.documentElement.removeAttribute("data-boot-theme");
     document.documentElement.style.colorScheme = mode === "system" ? "light dark" : mode;
+    applyThemeAccent();
   }
+}
+// 按当前主题/系统偏好重放自定义主题色（Pro 功能 theme-custom）
+function applyThemeAccent() {
+  const key = loadAccentKey();
+  if (!key || !isProReady.value) {
+    resetAccent();
+    return;
+  }
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches || false;
+  if (!applyAccent(key, themeMode.value, prefersDark)) resetAccent();
 }
 function cycleTheme() {
   const i = THEME_MODES.findIndex((x) => x.key === themeMode.value);
@@ -281,18 +312,59 @@ async function onCheckVersion() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (toolMode) setTimeout(revealToolWindow, 3000);
   applyTheme(themeMode.value);
   listen("tray-action", (e) => handleTrayAction(e.payload));
   window.addEventListener("settings-saved", onSettingsSaved);
+  window.addEventListener("accent-changed", applyThemeAccent);
   refreshUiSettings();
   setTimeout(autoBackup, 3000);
   // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
   setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+  if (!isTauri) return;
+  // Pro 授权态（含 license-changed 全局事件：工具子窗口激活后主窗口同步刷新）
+  subscribeLicenseChanged((s) => {
+    licenseStatus.value = s;
+    applyThemeAccent();
+  });
+  licenseStatus.value = await loadLicenseStatus();
+  applyThemeAccent();
+  // 可选遥测：首启询问一次（askConfirm，同意/拒绝即时落盘；失败不阻断启动）
+  const telemetryCfg = await telemetryGetConfig().catch(() => null);
+  if (telemetryCfg && shouldPrompt({ telemetry: telemetryCfg })) {
+    const allow = await askConfirm({
+      title: t("telemetry.promptTitle"),
+      message: t("telemetry.promptBody"),
+      okText: t("telemetry.allow"),
+      cancelText: t("telemetry.deny"),
+      danger: false,
+    });
+    await telemetryConsent(allow);
+  }
+  // 定时 flush（P1-1 flush 时机①：启用期间每 10 分钟）
+  telemetryTimer = setInterval(() => telemetryFlush().catch(() => {}), 10 * 60 * 1000);
+  // 系统深浅切换时重放 accent（themeMode=system 场景）
+  const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+  mqUnlisten = null;
+  if (mq && mq.addEventListener) {
+    const onMq = () => applyThemeAccent();
+    mq.addEventListener("change", onMq);
+    mqUnlisten = () => mq.removeEventListener("change", onMq);
+  }
+  // 关闭前尽力冲刷（P1-1 flush 时机③：fire-and-forget）
+  window.addEventListener("beforeunload", () => { telemetryFlush().catch(() => {}); });
 });
+let telemetryTimer = null;
+let mqUnlisten = null;
 onUnmounted(() => {
   window.removeEventListener("settings-saved", onSettingsSaved);
+  window.removeEventListener("accent-changed", applyThemeAccent);
+  if (telemetryTimer) {
+    clearInterval(telemetryTimer);
+    telemetryTimer = null;
+  }
+  mqUnlisten && mqUnlisten();
 });
 </script>
 
@@ -337,6 +409,19 @@ onUnmounted(() => {
       </nav>
 
       <div class="side-foot">
+        <!-- 商业化入口：免费版显示升级按钮，Pro 显示授权微章 -->
+        <template v-if="isProReady">
+          <button class="collapse pro-badge" :title="t('pro.activatedTip', { name: licenseStatus.name || '' })" @click="openSettings('pro')">
+            <span class="clp-ico"><Icon name="star" :size="15" /></span>
+            <span class="nav-label">{{ t("pro.sideBadge") }}</span>
+          </button>
+        </template>
+        <template v-else-if="isTauri">
+          <button class="collapse upgrade-pro" :title="t('pro.upgradeTip')" @click="openSettings('pro')">
+            <span class="clp-ico"><Icon name="star" :size="15" /></span>
+            <span class="nav-label">{{ t("pro.upgrade") }}</span>
+          </button>
+        </template>
         <button class="collapse" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" @click="openSettings('general')">
           <span class="clp-ico"><Icon name="settings" :size="15" /></span>
           <span class="nav-label">{{ t("nav.settings") }}</span>
@@ -911,6 +996,13 @@ body {
 .collapse:hover { background: var(--card); border-color: var(--card-border); color: var(--primary); }
 .collapse.on { background: var(--grad-selected); border-color: var(--border-blue); color: var(--primary-hover); }
 .collapse:hover .clp-ico { background: var(--primary-soft); color: var(--primary); }
+/* Pro 商业化入口：升级按钮金色渐变主题，与品牌一致但不抢主导航焦点 */
+.upgrade-pro { border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
+.upgrade-pro:hover { background: linear-gradient(135deg, color-mix(in srgb, var(--warn-soft) 70%, var(--card)), var(--card)); border-color: var(--warn); }
+.upgrade-pro .clp-ico { background: var(--warn-soft); color: var(--warn); }
+.upgrade-pro.on { background: var(--grad-selected); color: var(--warn); }
+.pro-badge .clp-ico { background: var(--grad-brand); color: var(--text-invert); }
+.pro-badge { color: var(--primary-hover); }
 .clp-ico {
   width: 26px;
   height: 26px;

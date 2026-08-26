@@ -7,7 +7,8 @@ import Icon from "../Icon.vue";
 import DbConnModal from "./DbConnModal.vue";
 import DbTableTree from "./DbTableTree.vue";
 import DbDetailModal from "./DbDetailModal.vue";
-import { relativeTime } from "../shared.js";
+import { relativeTime, buildDbResultXlsx } from "../shared.js";
+import { isFeatureEnabled, proLockHint } from "../features.js";
 import { askConfirm } from "../confirm.js";
 import { aiComplete, aiChat, isAIConfigured } from "../ai.js";
 import { loadToolbox, saveToolbox, flushToolbox } from "../toolboxStore.js";
@@ -22,6 +23,9 @@ import {
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
+// Pro 授权（工具窗口由 ToolWindow provide；主窗口内嵌由 App.vue provide）
+const licenseStatus = inject("licenseStatus", ref({ pro: false, error: null }));
+const dbXlsxOk = computed(() => isFeatureEnabled(licenseStatus.value, "db-export-xlsx"));
 
 const { t } = useI18n();
 
@@ -1108,18 +1112,36 @@ function removeFav(f) {
   saveFavs();
 }
 
-// 导出当前标签结果集：CSV（带 BOM，Excel 可直开）/ JSON 对象数组
+// 导出当前标签结果集：CSV（带 BOM，Excel 可直开）/ JSON 对象数组 / XLSX（Pro 功能 db-export-xlsx）
 async function exportResult(fmt) {
   const t = activeTab.value;
   if (!t?.result || !t.result.columns.length) return props.showToast(t("toolbox.db.noExport"));
   if (!isTauri) return props.showToast(t("toolbox.db.exportNeedDesktop"));
+  if (fmt === "xlsx" && !dbXlsxOk.value) {
+    return props.showToast(t(proLockHint())); // Pro 功能：提示到主窗口 设置 → Pro 激活
+  }
   const { columns, rows } = t.result;
+  const base = t.editMeta?.table || "query-result";
+  if (fmt === "xlsx") {
+    const path = await saveDialog({
+      defaultPath: `${base}-${Date.now().toString().slice(-6)}.xlsx`,
+      filters: [{ name: "Excel", extensions: ["xlsx"] }],
+    });
+    if (typeof path !== "string" || !path) return;
+    try {
+      const contentB64 = await buildDbResultXlsx(columns, rows);
+      await invoke("export_file_b64", { path, contentB64 });
+      props.showToast(t("toolbox.db.exported", { count: rows.length, name: path.split(/[\\/]/).pop() }));
+    } catch (e) {
+      props.showToast(String(e));
+    }
+    return;
+  }
   const content =
     fmt === "csv"
       ? toCSV(columns, rows)
       : JSON.stringify(toJSONExport(columns, rows), null, 2);
   const ext = fmt === "csv" ? "csv" : "json";
-  const base = t.editMeta?.table || "query-result";
   const path = await saveDialog({
     defaultPath: `${base}-${Date.now().toString().slice(-6)}.${ext}`,
     filters: [{ name: fmt.toUpperCase(), extensions: [ext] }],
@@ -1518,6 +1540,7 @@ function onWinKey(e) {
             <span class="meta-sep"></span>
             <button class="btn ghost sm" :title="t('toolbox.db.exportCsvTip')" @click="exportResult('csv')"><Icon name="download" :size="13" />CSV</button>
             <button class="btn ghost sm" :title="t('toolbox.db.exportJsonTip')" @click="exportResult('json')"><Icon name="download" :size="13" />JSON</button>
+            <button class="btn ghost sm" :class="{ 'pro-locked': !dbXlsxOk }" :title="dbXlsxOk ? t('toolbox.db.exportXlsxTip') : t(proLockHint())" @click="exportResult('xlsx')"><Icon name="download" :size="13" />XLSX<template v-if="!dbXlsxOk"> 🔒</template></button>
             <button class="btn ghost sm" :title="t('toolbox.db.copyMdTip')" @click="copyResult">
               <Icon name="copy" :size="13" />{{ t("toolbox.db.copyTable") }}
             </button>

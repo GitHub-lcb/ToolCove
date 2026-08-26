@@ -11,6 +11,7 @@ import { createJsonHandoffQueue, JSON_HANDOFF_EVENT } from "./tools/jsonHandoff.
 import { prepareJsonHandoff } from "./tools/jsonWorkspace.js";
 import { groupToolboxTools, TOOLBOX_TOOLS } from "./toolboxTools.js";
 import { getToolComponent } from "./toolComponents.js";
+import { track } from "./telemetry.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -115,6 +116,7 @@ async function resolveToolWindowTheme() {
 async function openTool(tool) {
   if (!tool.ready) return props.showToast(t("toolbox.comingSoon", { name: t(tool.labelKey) }));
   recordRecent(tool);
+  track("tool." + tool.key); // 可选遥测：工具打开计数
   if (isTauri) await openToolWindow(tool);
   else activeTool.value = tool.key;
 }

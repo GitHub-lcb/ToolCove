@@ -1,7 +1,9 @@
 <script setup>
 // 工具箱工具独立窗口容器：迷你标题栏（拖拽区 + 最小化/关闭）+ 工具组件
-import { computed, onBeforeUnmount, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { loadLicenseStatus, subscribeLicenseChanged } from "./license.js";
+import { applyAccent, resetAccent, loadAccentKey } from "./accentTheme.js";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { TOOLBOX_TOOLS } from "./toolboxTools.js";
@@ -17,6 +19,21 @@ const emit = defineEmits(["ready"]);
 
 const { t } = useI18n();
 
+// 工具窗口是独立 JS realm：授权态由本容器 provide 给工具组件，并订阅
+// license-changed 全局事件 + 窗口 focus 兜底重拉（主窗口激活后工具窗口立即解锁）
+const licenseStatus = ref({ pro: false, error: null });
+provide("licenseStatus", licenseStatus);
+const themeAccentMode = ref("system");
+function applyWindowAccent() {
+  const key = loadAccentKey();
+  if (!key || !licenseStatus.value || !licenseStatus.value.pro) {
+    resetAccent();
+    return;
+  }
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches || false;
+  if (!applyAccent(key, themeAccentMode.value, prefersDark)) resetAccent();
+}
+
 const meta = computed(() => TOOLBOX_TOOLS.find((t) => t.key === props.tool) || TOOLBOX_TOOLS.find((t) => t.key === "json"));
 const toolComponent = computed(() => getToolComponent(props.tool));
 
@@ -27,8 +44,33 @@ const toolComponent = computed(() => getToolComponent(props.tool));
 // 因此 capabilities 必须授予 core:window:allow-destroy，否则窗口无法关闭。
 let unlistenClose = null;
 let closing = false;
-onMounted(() => {
+// 授权态：挂载拉取 + 全局事件订阅 + focus 兜底重拉 + 主题色重放
+let unlistenLicense = null;
+let unlistenFocus = null;
+onMounted(async () => {
   if (!window.__TAURI_INTERNALS__) return;
+  subscribeLicenseChanged((s) => {
+    licenseStatus.value = s;
+    applyWindowAccent();
+  }).then((un) => {
+    unlistenLicense = un;
+  });
+  licenseStatus.value = await loadLicenseStatus();
+  getCurrentWindow()
+    .onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        loadLicenseStatus().then((s) => {
+          licenseStatus.value = s;
+          applyWindowAccent();
+        });
+      }
+    })
+    .then((un) => {
+      unlistenFocus = un;
+    });
+  themeAccentMode.value = localStorage.getItem("themeMode") || "system";
+  applyWindowAccent();
+  // 关闭窗口前冲刷待写草稿（原有逻辑，保留在授权初始化之后注册）
   getCurrentWindow().onCloseRequested(async (event) => {
     // 每个关闭请求都阻止默认行为，统一走「冲刷 → destroy」路径；
     // 冲刷期间的重复关闭请求不再重复处理，由首次处理者完成关闭
@@ -51,6 +93,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unlistenClose?.();
   unlistenClose = null;
+  unlistenLicense?.();
+  unlistenLicense = null;
+  unlistenFocus?.();
+  unlistenFocus = null;
   flushToolbox();
   flushSecureToolbox();
 });
