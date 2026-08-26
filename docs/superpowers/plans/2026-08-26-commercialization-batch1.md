@@ -181,3 +181,14 @@
 - [ ] 生成一组真实测试 license（keygen 脚本）手动验证：激活→状态卡变化→xlsx 按钮解锁→主题色可选→重置
 - [ ] 待发布时：keygen 生成正式密钥对，公钥替换 license.rs 占位值
 - [ ] 全部提交干净
+
+## V3 修订（2026-08-26，设计复审后同步）
+
+- 错误码统一：Rust license_activate 仅返回 4 码 `malformed`（前缀/分段/base64/JSON 结构）/ `bad-signature`（验签失败）/ `expired` / `unsupported-plan`；license.js 归一与 SettingsView i18n 映射一一对应。（覆盖原 Task1/Task6 中 invalid-key 等旧码）
+- license 写入改走 `replace_json_file`（storage.rs:83，与 save_data 同款，含损坏保护），仍在 data_io_lock + ensure_data_writable 内。（覆盖 Task1 写文件步骤）
+- 恢复后写保护场景：`DATA_RESTORE_COMPLETE` 置位期间 ensure_data_writable 拒绝写入——激活/停用失败时 UI 提示「数据已从备份恢复，请重启应用后重试」。（Task 6 状态卡错误态补充）
+- 备份/恢复隔离三处排除（Task 4 补充）：① run_backup 的 read_dir 扫描循环跳过 license.json；② read_restore_archive 过滤 license.json 条目（过滤跳过而非拒错）；③ managed_json_files 排除 license.json。集成测试断言：新备份不含 / 旧备份不复活 / 恢复后当前 license.json 原样保留。
+- telemetry.js 抽纯函数 `shouldPrompt(settings)`（!telemetry?.prompted，undefined 计入）与 `mergePromptDecision(settings, allow)`；App.vue 只调用 + save_data。（Task 3 覆盖）
+- SettingsView：插入 pro 分区后 `currentMeta` 兜底不得再依赖 `SECTIONS[1]` 下标（会变成 pro），改为显式 `find(s => s.key === "general")`；（Task 6 补充）`openSettings("pro")` 依赖 SECTIONS 校验，联调确认。
+- accentTheme 测试并入 Task 8（预设结构/apply/reset/深浅补丁），telemetry.rs 单测并入 Task 4。
+- 工具窗口只读不 flush 遥测；isEnabled 缓存失效与 settings-saved 的窗口级作用域配套——工具窗口挂载时读盘一次即可。

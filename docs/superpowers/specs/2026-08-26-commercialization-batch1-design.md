@@ -56,13 +56,15 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 | 命令 | 说明 |
 |---|---|
 | `license_status` | 读 `license.json`，验签/过期检查，返回 `{pro, plan, name, email, expiresAt, features, error?}` |
-| `license_activate(key)` | 验签通过则写 `license.json` 并返回状态；失败返回错误码（invalid / expired / malformed / unsupported-plan） |
+| `license_activate(key)` | 验签通过则写 `license.json` 并返回状态；失败返回统一错误码（malformed / bad-signature / expired / unsupported-plan），见表下说明 |
 | `license_deactivate` | 删除 license.json，回到免费版 |
+
+> 错误码定义（**审查修订 V3 统一**）：`malformed`（TCV1 前缀/分段/base64/JSON 结构错误）、`bad-signature`（验签失败，payload 或签名被篡改）、`expired`（expires 已过）、`unsupported-plan`（plan 非 pro）。前端 i18n 四个键一一对应。
 
 - 写入统一走 `data_io_lock()` + `ensure_data_writable()` 后 `write_json_file`（与备份/恢复无竞态）；读侧特判：文件不存在或内容为空数组（read_json_file 的缺省返回）一律映射为「未激活」免费态。
 - 单测：用测试密钥对验签、篡改 payload/签名各错误路径、过期校验（用固定 32 字节 seed 的 `SigningKey::from_bytes`，不依赖随机源）。
 - 数据文件独立为 `license.json`（复用 storage.rs 的 `data_path`，key=license）。
-- **备份/恢复隔离（审查修订）**：license.json 不参与 run_backup/run_restore（storage.rs 备份清单排除 license 键），恢复旧备份不会复活旧授权、也不会覆盖当前授权；补一条集成测试。
+- **备份/恢复隔离（审查修订 V3）**：storage.rs 无「备份清单」，是三段目录扫描逻辑，需在**三处**显式排除 license.json（复用既有 `is_license_json` 判定）：① `run_backup` 的 `fs::read_dir` 扫描循环跳过 license.json（新备份不含授权）；② `read_restore_archive` 过滤 license.json 条目（**过滤跳过而非拒错**，否则含授权的旧备份整体恢复失败）；③ `managed_json_files` / `run_restore` 的 current 清单排除 license.json（否则当前授权文件会被移入 rollback 后删除，任何恢复都会丢授权）。集成测试断言三方向：新备份不含 license.json / 恢复含 license.json 的旧备份不复活授权 / 恢复任意备份后当前 license.json 原样保留。
 
 ### 4.3 前端
 
@@ -88,7 +90,7 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 ### 5.1 配置与同意
 
 - settings.json 新增 `telemetry: { enabled: false, prompted: false, installId: "<uuid>" }`（settingsConfig.js 归一，旧数据自动补默认值）。
-- 首次启动询问一次：主窗口 onMounted、非 toolMode、`window.__TAURI_INTERNALS__` 存在且 **`!s.telemetry?.prompted`（undefined 视为未询问，审查修订）** 时，弹 askConfirm 确认框：文案声明「仅匿名统计功能使用次数，不上传任何内容数据」。
+- 首次启动询问一次：主窗口 onMounted、非 toolMode、`window.__TAURI_INTERNALS__` 存在，且 **`shouldPrompt(settings)`（telemetry.js 纯函数：`!telemetry?.prompted`，undefined 视为未询问，审查修订 V3）** 返回 true 时，弹 askConfirm 确认框：文案声明「仅匿名统计功能使用次数，不上传任何内容数据」。
 - 同意/拒绝路径**立即 `save_data` 合并写回** settings.json（enabled+prompted，与设置表单保存路径分离，避免用户不点保存导致下次再问）；写回失败不阻断启动（try/catch 静默）。设置页可随时开关。
 
 ### 5.2 采集面（仅聚合计数）
@@ -111,7 +113,7 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 - SettingsView SECTIONS 增加 `{ key: "pro", labelKey: "settings.navPro", icon: "star", descKey: "settings.navProDesc" }`（置于 ai 之后）。
 - 内容块（自绘，沿用现有卡片/按钮样式）：
   1. **状态卡**：免费版 / Pro 已激活（授权名、到期时间、features 徽章）。
-  2. **激活框**：key 文本输入 → 激活按钮 → 错误提示（错误码映射 i18n：invalid-key/expired/unsupported-plan/bad-signature）；**状态机（审查修订）**：未激活→输入+激活按钮；已激活→显示「当前已激活」信息行并隐藏输入（或提供「重新激活」折叠）；「在线激活（即将推出）」disabled 按钮；「停用 Pro」按钮需 askConfirm 确认后 license_deactivate，成功后刷新状态卡并广播 license-changed。
+  2. **激活框**：key 文本输入 → 激活按钮 → 错误提示（错误码一一映射 i18n：malformed/bad-signature/expired/unsupported-plan）；**状态机（审查修订）**：未激活→输入+激活按钮；已激活→显示「当前已激活」信息行并隐藏输入（或提供「重新激活」折叠）；「在线激活（即将推出）」disabled 按钮；「停用 Pro」按钮需 askConfirm 确认后 license_deactivate，成功后刷新状态卡并广播 license-changed。
   3. **定价卡**：Pro 买断 ¥99 / $39（2 年更新）；团队版占位；均标注「即将推出」。
   4. **对比表**：免费 vs Pro 功能行（现有 12 个工具 × 5 个分组摘要 + Pro 专属行，措辞与 toolboxTools.js 的 TOOLBOX_GROUPS 一致）。
   5. **爱发电入口**：`openUrl("https://afdian.com/a/toolcove")`（占位链接，README 同步标注）。
@@ -140,8 +142,8 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 
 | 层 | 用例 |
 |---|---|
-| vitest | license.js：key 解析（合法/畸形/分隔符错误/base64 错误）、状态归一；features.js：开关矩阵；telemetry.js：计数聚合、上限、持久化、prompted 逻辑（不重复询问） |
-| Rust | license.rs 单测：验签、篡改 payload、篡改签名、过期、格式错误、命令返回结构 |
+| vitest | license.js：key 解析（合法/畸形/分隔符错误/base64 错误）、状态归一；features.js：开关矩阵；telemetry.js：计数聚合、上限、持久化、shouldPrompt 纯函数（不重复询问）、consent 落盘；accentTheme.js：预设结构/apply/reset/深浅补丁 |
+| Rust | license.rs 单测：验签、篡改 payload、篡改签名、过期、格式错误、命令返回结构；telemetry.rs 单测：空 endpoint 直接 Ok、事件结构；storage.rs 备份/恢复排除集成测试（三方向断言） |
 | 集成 | i18n 键对齐（已有）；migrate 兼容（settings.json 无新字段 → 默认值）；构建冒烟（npm run build + cargo check） |
 
 ## 9. 交付清单（文件级）
@@ -152,7 +154,7 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 
 ## 9.5 审查修订记录（V2，2026-08-26）
 
-审查子代理共提出 2 个 P1 + 7 个 P2，无事实性硬错误；全部修订已并入上文对应章节：
+审查子代理共提出 2 个 P1 + 9 个 P2（复审另补充 1 个 P1 + 3 个 P2，见 V3 修订记录），无事实性硬错误；全部修订已并入上文对应章节：
 - P1-1：定义 flush 触发时机（10 分钟定时 + 设置保存 + beforeunload 尽力）。
 - P1-2：license-changed 改走 Tauri 全局事件（Rust emit + App.vue/ToolWindow.vue listen + 工具窗口 focus 兜底重拉）。
 - P2-1：主题覆盖变量清单扩展至 primary 系/导航选中态；两主题共用强调色 + 按主题选深浅补丁。
@@ -164,6 +166,12 @@ TCV1-<base64url(payload_json)>.<base64url(signature_64bytes)>
 - P2-7：对比表措辞 12 个工具 × 5 分组；锁定提示含主窗口导航指引。
 - P2-8：ed25519-dalek pin 2；测试用固定 seed。
 - P2-9：激活状态机（已激活信息行、停用需确认）。
+
+### V3 修订（2026-08-26，复审）
+- P1：备份/恢复隔离修正为三处排除点（run_backup 扫描 / read_restore_archive 过滤 / managed_json_files 排除），集成测试断言三方向。
+- P2-1：错误码统一为 malformed / bad-signature / expired / unsupported-plan，前端键一一对应。
+- P2-2：§9.5 计数修正为 2 P1 + 9 P2。
+- P2-3：§8 测试表补 accentTheme 与 telemetry.rs；prompted 判定抽为 telemetry.js 纯函数 shouldPrompt（可单测）。
 
 ## 10. 风险与边界（明示）
 
