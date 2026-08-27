@@ -104,3 +104,13 @@ describe("归一化", () => {
     expect(normalizeEnvelope(null)).toEqual({ deviceId: "", ts: 0, record: null });
   });
 });
+
+describe("墓碑 realId（engine 反查后挂载）", () => {
+  it("无信封墓碑经 realId 定位删除；未知 realId 跳过", () => {
+    const local = [{ id: "r1", updatedAt: 100, title: "x" }];
+    const withReal = mergeRemote(local, [{ updatedAt: 900, tombstone: true, envelope: null, realId: "r1" }], "devA");
+    expect(withReal.ops).toEqual([{ type: "delete", record: expect.objectContaining({ id: "r1" }) }]);
+    const unknown = mergeRemote(local, [{ updatedAt: 900, tombstone: true, envelope: null, realId: null }], "devA");
+    expect(unknown.ops).toEqual([]);
+  });
+});

@@ -51,7 +51,8 @@ export function mergeRemote(localRecords, remoteItems, localDeviceId) {
   const ops = [];
   for (const item of remoteItems || []) {
     const env = normalizeEnvelope(item.envelope);
-    const recordId = env.record && env.record.id;
+    // 墓碑条目无信封：真实 id 由 engine 用混淆 id 反查本地记录后附在 item.realId
+    const recordId = item.realId || (env.record && env.record.id);
     if (!recordId || typeof recordId !== "string") continue;
     const local = byId.get(recordId);
     if (item.tombstone) {
