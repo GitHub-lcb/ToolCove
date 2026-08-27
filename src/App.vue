@@ -301,6 +301,7 @@ async function autoBackup() {
 }
 
 // ------- 版本更新（顶栏手动入口；启动静默检查与托盘入口走 updater.js） -------
+const syncDot = ref("disabled");
 const checkingVer = ref(false);
 async function onCheckVersion() {
   if (checkingVer.value) return;
@@ -318,6 +319,9 @@ onMounted(async () => {
   listen("tray-action", (e) => handleTrayAction(e.payload));
   window.addEventListener("settings-saved", onSettingsSaved);
   window.addEventListener("accent-changed", applyThemeAccent);
+  window.addEventListener("sync-status", (e) => {
+    syncDot.value = (e && e.detail && e.detail.status) || "disabled";
+  });
   refreshUiSettings();
   setTimeout(autoBackup, 3000);
   // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
@@ -448,6 +452,9 @@ onUnmounted(() => {
         </div>
         <div class="top-actions">
           <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
+          <button class="theme-btn sync-ind" :class="syncDot" :title="t('sync.statusTitle')" @click="openSettings('pro')">
+            <span class="sync-ind-dot"></span>
+          </button>
           <button class="theme-btn" :title="t('common.manual')" @click="openManual">
             <Icon name="book-open" :size="16" />
           </button>
@@ -1057,6 +1064,14 @@ body {
 .top-actions :deep(.gs-trigger) { flex-shrink: 1; min-width: 0; }
 .theme-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
 .theme-btn:hover { border-color: var(--primary); color: var(--primary); }
+/* 云同步指示灯：灰=未启用/蓝=同步中/绿=已同步/红=失败/琥珀=已吊销 */
+.sync-ind { display: grid; place-items: center; }
+.sync-ind-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); transition: background 0.2s; }
+.sync-ind.syncing .sync-ind-dot { background: var(--primary); animation: sync-ind-pulse 1.1s ease-in-out infinite; }
+.sync-ind.idle .sync-ind-dot { background: var(--success); }
+.sync-ind.error .sync-ind-dot { background: var(--danger); }
+.sync-ind.revoked .sync-ind-dot { background: var(--warn); }
+@keyframes sync-ind-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 /* 窗口控制按钮（自定义标题栏） */
 .win-ctrls { display: flex; align-items: center; gap: 2px; margin-left: 4px; }

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, inject } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import Icon from "./Icon.vue";
+import { enqueueSync } from "./sync/index.js";
 import AiExtract from "./AiExtract.vue";
 import { fmtDate, renderMarkdown, errText } from "./shared.js";
 import { askConfirm } from "./confirm.js";
@@ -67,6 +68,7 @@ async function load() {
 async function persist() {
   try {
     await invoke("save_data", { key: "problems", data: problems.value });
+    enqueueSync(["problems"]); // 云同步：变更入队（防抖）
   } catch (e) {
     props.showToast(t("problem.saveFailed", { err: errText(e) }));
   }

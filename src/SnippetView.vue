@@ -6,6 +6,7 @@ import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
 import AiExtract from "./AiExtract.vue";
 import { fieldsToContent, hasFields, fieldValue } from "./snippets.js";
+import { enqueueSync } from "./sync/index.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -41,6 +42,7 @@ async function load() {
 async function persist() {
   try {
     await invoke("save_data", { key: "snippets", data: snippets.value });
+    enqueueSync(["snippets"]); // 云同步：变更入队（防抖）
   } catch (e) {
     props.showToast(t("snippet.saveFailed", { err: e }));
   }

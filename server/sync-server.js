@@ -215,7 +215,7 @@ export function createSyncServer({ dataDir = "./data", rate = RATE_LIMIT } = {})
       const entries = Object.values(doc.items)
         .filter((v) => v.seq > since)
         .sort((a, b) => a.seq - b.seq)
-        .map((v) => ({ id: v.id, updatedAt: v.updatedAt, data: v.data, tombstone: !!v.tombstone, seq: v.seq }));
+        .map((v) => ({ id: v.id, updatedAt: v.updatedAt, deviceId: v.deviceId || "", data: v.data, tombstone: !!v.tombstone, seq: v.seq }));
       const page = entries.slice(0, limit);
       const hasMore = entries.length > limit;
       const nextSeq = page.length ? page[page.length - 1].seq : since;
@@ -239,13 +239,21 @@ export function createSyncServer({ dataDir = "./data", rate = RATE_LIMIT } = {})
           rejected.push({ id: it.id, reason: "item-too-large" });
           continue;
         }
+        const deviceId = typeof it.deviceId === "string" && it.deviceId.length <= 64 ? it.deviceId : "";
         const existing = doc.items[it.id];
-        // 幂等：同 updatedAt 同 data（含墓碑）不重复分配 seq
-        if (existing && existing.updatedAt === updatedAt && existing.data === data && !!existing.tombstone === tombstone) {
-          continue; // 无变化
+        if (existing) {
+          // 幂等：同 ts/同 deviceId/同 data → 无变化，不占新 seq
+          if (existing.updatedAt === updatedAt && existing.deviceId === deviceId && existing.data === data && !!existing.tombstone === tombstone) {
+            continue;
+          }
+          // 全序陈旧拒绝：(ts, deviceId) 与客户端 LWW 规则一致；旧版本不受理，杜绝双端推push干扰
+          if (updatedAt < existing.updatedAt || (updatedAt === existing.updatedAt && deviceId <= existing.deviceId)) {
+            rejected.push({ id: it.id, reason: "stale" });
+            continue;
+          }
         }
         doc.seq += 1;
-        doc.items[it.id] = { id: it.id, updatedAt, data, tombstone, seq: doc.seq };
+        doc.items[it.id] = { id: it.id, updatedAt, deviceId, data, tombstone, seq: doc.seq };
         accepted += 1;
       }
       if (accepted > 0) await store.persist(cid);

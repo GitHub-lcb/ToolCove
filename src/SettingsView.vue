@@ -15,6 +15,8 @@ import { loadLicenseStatus, activateLicense, deactivateLicense, subscribeLicense
 import { isFeatureEnabled, PRO_FEATURES } from "./features.js";
 import { ACCENT_PRESETS, saveAccentKey, loadAccentKey } from "./accentTheme.js";
 import { getConfig as telemetryGetConfig, consent as telemetryConsent } from "./telemetry.js";
+import { createSyncCollection, joinSyncCollectionFull, syncNowManual, listDevices, revokeDevice, regeneratePairingCode, getSyncSnapshot, setSyncEnabled, setSyncDeviceName, getEngine } from "./sync/index.js";
+import { isFeatureEnabled as syncProOk } from "./features.js";
 import { askConfirm } from "./confirm.js";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
@@ -161,7 +163,141 @@ async function toggleTelemetry(ev) {
   await telemetryConsent(next).catch(() => {});
   props.showToast(next ? t("telemetry.onMsg") : t("telemetry.offMsg"));
 }
-// ---------- 支持与链接 ----------
+// ---------- 云同步（Pro） ----------
+const syncCfg = ref(null); // normalizeSync 后的快照
+const syncStatus = ref("disabled");
+const syncBusy = ref(false);
+const syncErrKey = ref("");
+const syncCodeInput = ref("");
+const syncPassword = ref("");
+const syncJoinId = ref("");
+const syncDevices = ref([]);
+const pairingResult = ref({ code: "", expiresAt: 0 });
+const syncField = ref(""); // paint
+const showSyncPassword = ref(false);
+async function refreshSync() {
+  try {
+    syncCfg.value = await getSyncSnapshot();
+    syncStatus.value = isSyncPro() ? (syncCfg.value.status || "idle") : "disabled";
+    const e = await getEngine().catch(() => null);
+    if (e && syncCfg.value.enabled && syncCfg.value.tokenCipher) {
+      try { syncDevices.value = await listDevices(); } catch { /* 未就绪 */ }
+    }
+  } catch { /* 设置页仍可用 */ }
+}
+function isSyncPro() {
+  return isFeatureEnabled(licenseStatus.value, "cloud-sync");
+}
+async function toggleSync(ev) {
+  const next = !!ev.target.checked;
+  if (!isSyncPro()) {
+    props.showToast(t("sync.needPro"));
+    return;
+  }
+  try {
+    await setSyncEnabled(next);
+    await refreshSync();
+  } catch (e) {
+    props.showToast(String(e));
+  }
+}
+async function doCreateSync() {
+  syncBusy.value = true;
+  syncErrKey.value = "";
+  try {
+    if (syncPassword.value.length < 8) {
+      syncErrKey.value = "sync.errShortPw";
+      return;
+    }
+    const r = await createSyncCollection(syncField.value, syncPassword.value);
+    pairingResult.value = { code: r.pairingCode, expiresAt: r.expiresAt };
+    await refreshSync();
+    syncBusy.value = false;
+    props.showToast(t("sync.created"));
+  } catch (e) {
+    syncErrKey.value = String(e && e.message || e);
+    syncBusy.value = false;
+  }
+}
+async function doJoinSync() {
+  syncBusy.value = true;
+  syncErrKey.value = "";
+  try {
+    if (syncPassword.value.length < 8) { syncErrKey.value = "sync.errShortPw"; return; }
+    await joinSyncCollectionFull(syncField.value, syncJoinId.value.trim(), syncCodeInput.value.trim(), syncPassword.value);
+    await refreshSync();
+    syncBusy.value = false;
+    props.showToast(t("sync.joined"));
+  } catch (e) {
+    syncErrKey.value = String(e && e.message || e);
+    syncBusy.value = false;
+  }
+}
+async function doSyncNow() {
+  syncBusy.value = true;
+  try {
+    const e = await getEngine();
+    const st = await e.syncNow();
+    await refreshSync();
+    props.showToast(t("sync.syncNowOk", { pushed: st.pushed || 0, pulled: st.pulled || 0 }));
+  } catch (e) {
+    syncErrKey.value = String(e && e.message || e);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+async function doRegenCode() {
+  try {
+    const r = await regeneratePairingCode();
+    pairingResult.value = { code: r.pairingCode, expiresAt: r.expiresAt };
+  } catch (e) {
+    syncErrKey.value = String(e && e.message || e);
+  }
+}
+async function doRevoke(hash, self) {
+  const ok = await askConfirm({
+    title: t("sync.revokeTitle"),
+    message: self ? t("sync.revokeSelfMsg") : t("sync.revokeMsg"),
+    okText: t("sync.revokeBtn"),
+  });
+  if (!ok) return;
+  try {
+    await revokeDevice(hash, self);
+    await refreshSync();
+  } catch (e) {
+    syncErrKey.value = String(e && e.message || e);
+  }
+}
+function statusKey(st) {
+  const map = { disabled: "sync.statusDisabled", idle: "sync.statusIdle", syncing: "sync.statusSyncing", error: "sync.statusError", revoked: "sync.statusRevoked" };
+  return map[st] || "sync.statusIdle";
+}
+function fmtSyncTime(ts) {
+  return new Date(Number(ts)).toLocaleString();
+}
+async function copyPairing() {
+  try {
+    await navigator.clipboard.writeText(pairingResult.value.code);
+  } catch { /* 选中即复制，手抄兜底 */ }
+}
+function registerSyncRefresh() {
+  window.addEventListener("sync-status", refreshSyncListener);
+}
+function refreshSyncListener() {
+  refreshSync();
+}
+// 打开设置页时刷新 + 订阅状态
+onMounted(async () => {
+  loadSettings();
+  refreshLicense();
+  loadTelemetryPref();
+  subscribeLicenseChanged((s) => {
+    licenseStatus.value = s;
+  });
+  await refreshSync();
+  registerSyncRefresh();
+});
+// 支持与链接 ----------
 function openAfdian() {
   openUrl("https://afdian.com/a/toolcove").catch((e) => props.showToast(String(e)));
 }
@@ -229,14 +365,6 @@ async function loadSettings() {
   fieldErr.value = {};
   dirty.value = false;
 }
-onMounted(() => {
-  loadSettings();
-  refreshLicense();
-  loadTelemetryPref();
-  subscribeLicenseChanged((s) => {
-    licenseStatus.value = s;
-  });
-});
 // 任意字段改动标记未保存（排除程序化回填）
 watch(
   () => JSON.stringify({ f: form.value, a: autostartOn.value }),
@@ -560,6 +688,77 @@ async function restoreNow() {
             <button class="accent-dot reset" :class="{ on: !accentKey }" :title="t('pro.accentDefault')" :disabled="!isFeatureEnabled(licenseStatus, 'theme-custom')" @click="pickAccent('')">✕</button>
           </div>
 
+          <!-- 云同步组 -->
+
+          <!-- 云同步（Pro） -->
+          <div class="sync-head">
+            <span class="sect-title"><Icon name="refresh" :size="15" /> {{ t("sync.title") }} <span class="soon-tag" v-if="!isSyncPro()">Pro</span></span>
+            <label class="switch" v-if="isSyncPro()">
+              <input type="checkbox" :checked="syncCfg && syncCfg.enabled" @change="toggleSync" />
+              <span class="track"></span>
+              <span>{{ t("sync.enable") }}</span>
+            </label>
+          </div>
+          <p class="sect-desc">{{ t("sync.desc") }}</p>
+
+          <template v-if="isSyncPro()">
+            <!-- 服务器地址与配对（未入伙时） -->
+            <template v-if="!syncCfg || !syncCfg.collectionId">
+              <label class="field">
+                <span>{{ t("sync.serverUrl") }}</span>
+                <input v-model="syncField" :placeholder="t('sync.serverUrlPh')" />
+              </label>
+              <p v-if="syncField && !syncField.startsWith('https://')" class="field-err">{{ t("sync.serverUrlHttpWarn") }}</p>
+              <label class="field">
+                <span>{{ t("sync.syncPasswordPh") }} <span class="faint-hint">{{ t("sync.syncPasswordHint") }}</span></span>
+                <div class="token-row">
+                  <input :type="showSyncPassword ? 'text' : 'password'" v-model="syncPassword" :placeholder="t('sync.syncPasswordPh')" autocomplete="new-password" />
+                  <button type="button" class="btn-ghost sm" @click="showSyncPassword = !showSyncPassword">{{ showSyncPassword ? t("settings.hide") : t("settings.show") }}</button>
+                </div>
+              </label>
+              <div class="sync-actions">
+                <button class="btn-primary sm" :disabled="syncBusy" @click="doCreateSync"><Icon name="plus" :size="14" /> {{ t("sync.createBtn") }}</button>
+                <span class="sync-or">{{ t("sync.or") }}</span>
+                <input v-model="syncJoinId" :placeholder="t('sync.joinIdPh')" class="lic-input sm-input" />
+                <input v-model="syncCodeInput" :placeholder="t('sync.joinCodePh')" class="lic-input sm-input" />
+                <button class="btn-ghost sm" :disabled="syncBusy" @click="doJoinSync"><Icon name="link" :size="14" /> {{ t("sync.joinBtn") }}</button>
+              </div>
+              <p v-if="syncErrKey && !syncCfg.collectionId" class="field-err">{{ t(syncErrKey) }}</p>
+            </template>
+
+            <!-- 已入伙：状态 + 配对码 + 设备 + 操作 -->
+            <template v-else>
+              <div class="sync-state" :class="syncStatus">
+                <span class="sync-dot"></span>
+                <span>{{ t(statusKey(syncStatus)) }}<template v-if="syncCfg.lastSyncAt"> · {{ t("sync.lastSyncAt", { time: fmtSyncTime(syncCfg.lastSyncAt) }) }}</template></span>
+              </div>
+
+              <div class="sync-actions">
+                <button class="btn-primary sm" :disabled="syncBusy" @click="doSyncNow"><Icon name="refresh" :size="14" /> {{ t("sync.syncNowBtn") }}</button>
+                <button class="btn-ghost sm" @click="doRegenCode"><Icon name="repeat" :size="14" /> {{ t("sync.regenCodeBtn") }}</button>
+              </div>
+              <div v-if="pairingResult.code" class="pairing-box">
+                <div class="pairing-code" @click="copyPairing">{{ pairingResult.code }}</div>
+                <p class="sect-desc">{{ t("sync.pairingCodeHint") }}</p>
+              </div>
+
+              <div class="devices-box">
+                <div class="sect-title sm-title">{{ t("sync.devicesTitle") }}</div>
+                <div v-for="d in syncDevices" :key="d.tokenHash" class="device-row">
+                  <Icon name="laptop" :size="14" />
+                  <span class="dev-name">{{ d.name }}{{ d.self ? t("sync.selfTag") : "" }}</span>
+                  <span class="dev-tail">{{ d.tokenTail }}</span>
+                  <button class="btn-danger xs" :disabled="syncBusy" @click="doRevoke(d.tokenHash, d.self)">{{ t("sync.revokeBtn") }}</button>
+                </div>
+                <p v-if="!syncDevices.length" class="sect-desc">{{ t("sync.noDevices") }}</p>
+              </div>
+              <p v-if="syncErrKey" class="field-err">{{ t(syncErrKey) }}</p>
+              <p class="sect-desc sub">{{ t("sync.viewTip") }}</p>
+            </template>
+          </template>
+          <template v-else>
+            <p class="field-err">{{ t("sync.needPro") }}</p>
+          </template>
           <!-- 支持开发（爱发电占位） -->
           <div class="sect-foot">
             <button class="btn-ghost sm" @click="openAfdian"><Icon name="heart" :size="14" /> {{ t("pro.afdianBtn") }}</button>
@@ -868,4 +1067,27 @@ async function restoreNow() {
 @media (max-width: 900px) {
   .pro-grid { grid-template-columns: 1fr; }
 }
+
+/* ============ 云同步组样式 ============ */
+.sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.sync-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.sync-or { color: var(--faint); font-size: var(--fs-sm); }
+.sm-input { min-width: 150px; flex: 0 1 200px; }
+.faint-hint { color: var(--faint); font-size: var(--fs-xs); font-weight: 400; }
+.sync-state { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: var(--fs-sm); color: var(--text-weak); }
+.sync-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.sync-state.syncing .sync-dot { background: var(--primary); animation: sync-pulse 1.1s ease-in-out infinite; }
+.sync-state.idle .sync-dot { background: var(--success); }
+.sync-state.error .sync-dot { background: var(--danger); }
+.sync-state.revoked .sync-dot { background: var(--warn); }
+@keyframes sync-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.pairing-box { margin: 8px 0 12px; padding: 12px 14px; border: 1px dashed var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.pairing-code { font-family: var(--font-mono); font-size: var(--fs-xl); font-weight: 700; letter-spacing: 4px; text-align: center; color: var(--primary-hover); cursor: pointer; user-select: all; }
+.devices-box { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--card-soft); }
+.sm-title { font-size: var(--fs-sm); margin-bottom: 8px; }
+.device-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: var(--fs-sm); color: var(--text); }
+.dev-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-tail { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); }
+.btn-danger { background: none; border: 1px solid var(--border-danger); color: var(--danger); border-radius: var(--r-sm); padding: 3px 10px; font-size: var(--fs-xs); cursor: pointer; }
+.btn-danger:hover { background: var(--danger-soft); }
 </style>

@@ -3,7 +3,7 @@ import { PRO_FEATURES, isFeatureEnabled, proLockHint, proFeatureKeys } from "./f
 
 describe("PRO_FEATURES 注册表", () => {
   it("首批锁定 2 个真实功能", () => {
-    expect(proFeatureKeys()).toEqual(["db-export-xlsx", "theme-custom"]);
+    expect(proFeatureKeys()).toEqual(["db-export-xlsx", "theme-custom", "cloud-sync"]);
     for (const [key, meta] of Object.entries(PRO_FEATURES)) {
       expect(typeof meta.labelKey).toBe("string");
       expect(typeof meta.descKey).toBe("string");

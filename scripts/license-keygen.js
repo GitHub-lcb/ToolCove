@@ -5,7 +5,8 @@
 //   node scripts/license-keygen.js --gen --out scripts/.license-secrets
 //      生成 ed25519 密钥对：license.key（PKCS8 PEM 私钥，gitignore 红线）
 //      并在 stdout 打印 base64(32 字节原始公钥) —— 粘贴进 src-tauri/src/license.rs 的 PUBLIC_KEY_B64
-//   node scripts/license-keygen.js --sign --name "张三" [--email zhang@example.com] [--features db-export-xlsx,theme-custom] [--expires 2027-12-31]
+//   node scripts/license-keygen.js --sign --name "张三" [--email zhang@example.com] [--features db-export-xlsx,theme-custom,cloud-sync] [--expires 2027-12-31]
+//     推荐 features：db-export-xlsx,theme-custom,cloud-sync（云同步为第二批 Pro 功能）
 //      读取默认私钥签发 license，stdout 单行输出 TCV1-xxx 可直接粘贴到设置页激活
 //      可选 --key /path/to/license.key 指定私钥
 //

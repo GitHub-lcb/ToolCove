@@ -14,6 +14,11 @@ export const PRO_FEATURES = {
     descKey: "pro.featureThemeCustomDesc",
     icon: "palette",
   },
+  "cloud-sync": {
+    labelKey: "pro.featureCloudSync",
+    descKey: "pro.featureCloudSyncDesc",
+    icon: "refresh",
+  },
 };
 
 /** 某 Pro 功能是否对当前授权态可用 */

@@ -38,7 +38,8 @@
 | 操作 | 请求 | 说明 |
 |---|---|---|
 | 创建 | POST /v1/collection | 返回 collectionId + 配对码(8位/15分钟/一次性) + **salt** |
-| 加入 | POST /v1/pair {collectionId, code, deviceName} | 返回 token + **salt**；失败 5 次冷却 15 分钟 |
+| 加入 | POST /v1/pair {collectionId, code, deviceName} | 返回 token + **salt**；失败 5 次冷却 15 分钟；**配对码有效期内可被多台设备复用作废后失效** |
+| 重新生成配对码 | POST /v1/pairing-code（Bearer） | 作废旧码，返回新码（V2.2：多设备入伙必要；原文档「一次性消费」修正） |
 | 拉取 | GET /v1/items?since=<seq>&limit=500 | 增量按 **seq** 升序分页；返回 items + nextSeq/hasMore + serverTime |
 | 推送 | PUT /v1/items | 批量 ≤200 条/≤5MB；幂等：updatedAt+data 均同则跳过不占新 seq |
 | 设备列表 | GET /v1/devices | 返回 [{tokenTail, name, createdAt, lastSeen, revoked, self}] |
@@ -105,6 +106,6 @@ settings 配置：`sync: { enabled, serverUrl, collectionId, deviceName, deviceI
 
 ## 10. 流程记录
 
-- 2026-08-27：决策确认 → V1 展示（审批弹窗工具故障，按指令推进）→ 评审迭代1（5×P1+8×P2/P3）→ V2 全量修订 → 复审迭代2（上轮全部通过 + 新 P1：设备列表缺 tokenHash 致吊销不可实现；评审给出「修复后即 APPROVED」条件）→ V2.1 修订（设备列表补 tokenHash、DELETE 参数改名 tokenHash、revoked→401 语义、配对码一次性=删除 pair 对象并明示）→ 实施。
+- 2026-08-27：决策确认 → V1 展示（审批弹窗工具故障，按指令推进）→ 评审迭代1（5×P1+8×P2/P3）→ V2 修订 → 复审迭代2（全部通过 + 新 P1 设备列表 tokenHash →「修复后即 APPROVED」）→ V2.1（tokenHash 补全/参数更名/revoked 401）→ **V2.2（实施期自审发现：配对码「一次性」使第二台设备无法入伙 → 改为有效期内可复用 + POST /v1/pairing-code 重生成；明示修正）** → 实施。
 
-> V2.1 说明：配对码一次性消费=服务端删除 doc.pair 对象（不可再入伙，需重建集合）；被吊销设备请求由 findSession 过滤返回 401。
+> V2.1/V2.2 说明：被吊销设备请求由 findSession 过滤返回 401；配对码有效期内可多设备复用，持有者经 pairing-code 端点重生成（作废旧码）。

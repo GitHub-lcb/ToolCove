@@ -17,6 +17,14 @@ const DAILY_RETRY_CAP = 20;
 const TOMBSTONE_TTL_MS = 30 * 24 * 3600 * 1000;
 
 export function createSyncEngine(deps) {
+  let sourceCache = null;
+  function currentSources() {
+    // 支持静态 recordSources 或动态 sourceProvider（视图挂载后可注册）
+    if (deps.sourceProvider) return deps.sourceProvider();
+    sourceCache = sourceCache || deps.recordSources || [];
+    return sourceCache;
+  }
+
   const {
     transport,            // async ({method, url, headers, body}) => ({status, json})
     getConfig,             // () => sync settings 对象（含 enabled/serverUrl/.../cursor/lastPushedAt）
@@ -135,6 +143,7 @@ export function createSyncEngine(deps) {
 
   // ---------- 推送 ----------
   async function pushOnce() {
+    const recordSources = currentSources();
     const cfg = getConfig();
     const masterKey = await masterKeyProvider();
     const tomb = pruneTombstones(getTombstones(), Date.now(), TOMBSTONE_TTL_MS);
@@ -210,6 +219,7 @@ export function createSyncEngine(deps) {
 
   // ---------- 拉取 ----------
   async function pullOnce() {
+    const recordSources = currentSources();
     const cfg = getConfig();
     const masterKey = await masterKeyProvider();
     let cursor = cfg.cursor || 0;
@@ -274,6 +284,7 @@ export function createSyncEngine(deps) {
     if (!cfg.enabled || status === "disabled" || status === "revoked") return;
     if (retryCountToday >= DAILY_RETRY_CAP) return;
     busy = true;
+    const recordSources = currentSources();
     setStatus("syncing");
     try {
       const pushed = await pushOnce();
