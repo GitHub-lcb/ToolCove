@@ -1,0 +1,11 @@
+{
+  "name": "toolcove-sync-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ToolCove 云同步服务端（零依赖）",
+  "scripts": {
+    "start": "node sync-server.js",
+    "test": "node --test sync-server.test.js"
+  }
+}

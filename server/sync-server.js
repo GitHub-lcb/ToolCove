@@ -181,7 +181,7 @@ export function createSyncServer({ dataDir = "./data", rate = RATE_LIMIT } = {})
         const token = crypto.randomBytes(TOKEN_BYTES).toString("base64url");
         const tokenHash = sha256(token);
         doc.devices[tokenHash] = { name, tokenTail: tokenTail(token), createdAt: now(), lastSeen: now(), revoked: false };
-        delete doc.pair; // 一次性
+        // 配对码保留至过期（多设备共用）；持有者可另行重新生成（POST /v1/pairing-code）
         await store.persist(collectionId);
         return json(res, 200, { token, salt: doc.meta.salt });
       }
@@ -198,6 +198,15 @@ export function createSyncServer({ dataDir = "./data", rate = RATE_LIMIT } = {})
     if (!found) return json(res, 401, { error: "unauthorized" });
     const { cid, doc, device } = found;
     device.lastSeen = now();
+
+    if (method === "POST" && p === "/v1/pairing-code") {
+      // 重新生成配对码：作废旧 code（新 salt/新 code/重置失败计数），旧码立即失效
+      const code = genCode();
+      const codeSalt = crypto.randomBytes(16).toString("base64url");
+      doc.pair = { codeHash: sha256(code + codeSalt), codeSalt, expiresAt: now() + CODE_TTL_MS, fails: 0 };
+      await store.persist(cid);
+      return json(res, 200, { pairingCode: code, expiresAt: doc.pair.expiresAt });
+    }
 
     if (method === "GET" && p === "/v1/items") {
       const since = Math.max(0, Number(url.searchParams.get("since") || 0) || 0);
