@@ -105,4 +105,6 @@ settings 配置：`sync: { enabled, serverUrl, collectionId, deviceName, deviceI
 
 ## 10. 流程记录
 
-- 2026-08-27：brainstorming 确认决策；设计 V1 展示（审批弹窗工具故障，按指令推进）；架构评审 5×P1+8×P2/P3 → V2 修订全部并入 → 复审确认后实施。
+- 2026-08-27：决策确认 → V1 展示（审批弹窗工具故障，按指令推进）→ 评审迭代1（5×P1+8×P2/P3）→ V2 全量修订 → 复审迭代2（上轮全部通过 + 新 P1：设备列表缺 tokenHash 致吊销不可实现；评审给出「修复后即 APPROVED」条件）→ V2.1 修订（设备列表补 tokenHash、DELETE 参数改名 tokenHash、revoked→401 语义、配对码一次性=删除 pair 对象并明示）→ 实施。
+
+> V2.1 说明：配对码一次性消费=服务端删除 doc.pair 对象（不可再入伙，需重建集合）；被吊销设备请求由 findSession 过滤返回 401。
