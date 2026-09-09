@@ -48,3 +48,38 @@ export function normalizeHiddenModules(allKeys, hidden) {
   }
   return result;
 }
+
+// settings.json 由多方写入（设置页表单、telemetry.consent、sync.writeSyncConfig），而设置页表单只渲染
+// 部分分组。保存必须以磁盘快照为基底做浅合并，否则表单快照会删掉它没渲染的分组（曾导致云同步配置
+// 在改一次界面密度后静默丢失、设备失联）。
+export function mergeSettingsSnapshot(rawSnapshot, formSnapshot) {
+  const base = rawSnapshot && typeof rawSnapshot === "object" && !Array.isArray(rawSnapshot) ? rawSnapshot : {};
+  const form = formSnapshot && typeof formSnapshot === "object" && !Array.isArray(formSnapshot) ? formSnapshot : {};
+  return { ...base, ...form };
+}
+
+// 冻结：该数组被嵌进 PRO_LIMITS 常量，外层 Object.freeze 不会保护数组本身
+export const AGENT_CONFIRM_POLICIES = Object.freeze(["risky", "always", "never"]);
+// 与 runtime.js 的 bounded(options.maxSteps, 12, 50) 上限保持一致
+export const AGENT_MAX_STEPS_HARD_CAP = 50;
+export const AGENT_MAX_RETRIES = 3;
+
+// Agent 设置归一（旧数据/缺字段补默认）。用【停用清单】而非启用清单：将来新增的内置工具
+// 对老用户默认开启，与本文件既有的「旧数据自动补默认」惯例一致。
+export function normalizeAgent(raw, allToolNames) {
+  const a = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const names = Array.isArray(allToolNames) ? allToolNames.filter((n) => typeof n === "string") : [];
+  const maxSteps = Number.isInteger(a.maxSteps) && a.maxSteps > 0
+    ? Math.min(a.maxSteps, AGENT_MAX_STEPS_HARD_CAP)
+    : 12;
+  const retries = Number.isInteger(a.retries) && a.retries >= 0
+    ? Math.min(a.retries, AGENT_MAX_RETRIES)
+    : 1;
+  const requireConfirmation = AGENT_CONFIRM_POLICIES.includes(a.requireConfirmation) ? a.requireConfirmation : "risky";
+  let disabledTools = Array.isArray(a.disabledTools)
+    ? [...new Set(a.disabledTools.filter((n) => names.includes(n)))]
+    : [];
+  // 全关等于空 registry（Agent 什么都做不了），视为未配置
+  if (names.length && disabledTools.length >= names.length) disabledTools = [];
+  return { maxSteps, retries, requireConfirmation, disabledTools };
+}

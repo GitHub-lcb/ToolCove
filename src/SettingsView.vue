@@ -21,7 +21,7 @@ import { askConfirm } from "./confirm.js";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
 import { cloneJsonData } from "./jsonData.js";
-import { normalizeHiddenModules } from "./settingsConfig.js";
+import { normalizeHiddenModules, mergeSettingsSnapshot } from "./settingsConfig.js";
 import { applyLocale } from "./i18n/index.js";
 import pkg from "../package.json";
 
@@ -79,6 +79,9 @@ const form = ref(newSettings());
 const settingsLoadError = ref("");
 // 开机启动是系统状态不是应用数据：进入页面时读真实状态，保存时写回，不落 settings.json
 const autostartOn = ref(false);
+// 磁盘上的完整 settings 快照。表单只渲染 ai/ui，保存时以它为基底合并，
+// 否则 sync/telemetry 等未渲染分组会被表单快照整体覆盖掉。
+let rawSnapshot = {};
 // ---------- Pro 授权（pro 分区；与 App.vue 共享同一 licenseStatus 引用） ----------
 const licenseStatus = inject("licenseStatus", ref({ pro: false, error: null }));
 const licenseKeyInput = ref("");
@@ -337,6 +340,8 @@ async function loadSettings() {
   settingsLoadError.value = "";
   try {
     const s = (await invoke("load_data", { key: "settings" })) || {};
+    // load_data 对缺失文件返回 []，只接受真正的对象作为合并基底
+    rawSnapshot = s && typeof s === "object" && !Array.isArray(s) ? s : {};
     form.value = {
       ai: {
         baseUrl: s.ai?.baseUrl || "",
@@ -386,9 +391,20 @@ async function save() {
   saving.value = true;
   try {
     // 在独立副本里加密，失败时不污染表单中的明文草稿。
-    const payload = cloneJsonData(form.value);
-    payload.ai.apiKey = await encryptValue(payload.ai.apiKey);
+    const formCopy = cloneJsonData(form.value);
+    formCopy.ai.apiKey = await encryptValue(formCopy.ai.apiKey);
+    // 重读磁盘作为合并基底：本页的云同步与遥测开关是即改即存、不经表单的，
+    // 进页面时缓存的快照此时已过期，直接写会抹掉用户刚开启的配置。
+    let base = rawSnapshot;
+    try {
+      const disk = await invoke("load_data", { key: "settings" });
+      if (disk && typeof disk === "object" && !Array.isArray(disk)) base = disk;
+    } catch (e) {
+      // 重读失败退回进页面时的快照，仍比只写表单分组安全
+    }
+    const payload = mergeSettingsSnapshot(cloneJsonData(base), formCopy);
     await invoke("save_data", { key: "settings", data: payload });
+    rawSnapshot = payload;
     try {
       await invoke("autostart_set", { enabled: autostartOn.value });
     } catch (e) {}
@@ -406,6 +422,8 @@ async function save() {
 function applyAIPreset(p) {
   form.value.ai.baseUrl = p.baseUrl;
   if (!form.value.ai.model) form.value.ai.model = p.model;
+  // 本地服务（Ollama）不需要真实密钥，但配置校验要求非空；不覆盖用户已填的值
+  if (p.apiKey && !form.value.ai.apiKey) form.value.ai.apiKey = p.apiKey;
 }
 
 async function testAIConn() {
