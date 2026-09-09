@@ -2,12 +2,32 @@ import { describe, it, expect } from "vitest";
 import { PRO_FEATURES, isFeatureEnabled, proLockHint, proFeatureKeys } from "./features.js";
 
 describe("PRO_FEATURES 注册表", () => {
-  it("首批锁定 2 个真实功能", () => {
-    expect(proFeatureKeys()).toEqual(["db-export-xlsx", "theme-custom", "cloud-sync"]);
+  it("锁定 4 个真实功能，agent-pro 居首（Agent 优先产品）", () => {
+    expect(proFeatureKeys()).toEqual(["agent-pro", "db-export-xlsx", "theme-custom", "cloud-sync"]);
     for (const [key, meta] of Object.entries(PRO_FEATURES)) {
       expect(typeof meta.labelKey).toBe("string");
       expect(typeof meta.descKey).toBe("string");
     }
+  });
+});
+
+describe("特性蕴含（agent-pro 覆盖将来拆分的细粒度 SKU）", () => {
+  it("持有 agent-pro 时蕴含特性一并命中", () => {
+    const s = { pro: true, features: ["agent-pro"] };
+    expect(isFeatureEnabled(s, "agent-pro")).toBe(true);
+    expect(isFeatureEnabled(s, "agent-write")).toBe(true);
+    expect(isFeatureEnabled(s, "agent-unlimited")).toBe(true);
+  });
+
+  it("未声明蕴含的特性仍然 false", () => {
+    const s = { pro: true, features: ["agent-pro"] };
+    expect(isFeatureEnabled(s, "cloud-sync")).toBe(false);
+    expect(isFeatureEnabled(s, "db-export-xlsx")).toBe(false);
+  });
+
+  it("免费态下蕴含不生效", () => {
+    expect(isFeatureEnabled({ pro: false, features: ["agent-pro"] }, "agent-write")).toBe(false);
+    expect(isFeatureEnabled(null, "agent-write")).toBe(false);
   });
 });
 

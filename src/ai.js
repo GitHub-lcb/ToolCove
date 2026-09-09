@@ -16,6 +16,9 @@ export const AI_PRESETS = [
   { key: "moonshot", labelKey: "settings.aiPresetMoonshot", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
   { key: "dashscope", labelKey: "settings.aiPresetDashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
   { key: "siliconflow", labelKey: "settings.aiPresetSiliconflow", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+  // 本地 Ollama：Agent 首屏的零成本兜底，不需要第三方 key。
+  // Ollama 的 OpenAI 兼容端点接受任意非空密钥，而 isAIConfigured() 要求 apiKey 非空，故自带占位值。
+  { key: "ollama", labelKey: "settings.aiPresetOllama", baseUrl: "http://localhost:11434/v1", model: "qwen2.5:7b", apiKey: "ollama" },
 ];
 
 // 读取 settings.ai 配置
@@ -45,7 +48,8 @@ export async function isAIConfigured() {
 
 // 核心：发起一次对话补全。messages 为 [{role, content}] 数组。
 // 返回助手回复的纯文本；出错时 throw Error(message)。
-// opts：{ model, temperature, config }（config 可传入临时配置，用于「测试连接」时先于保存生效）
+// opts：{ model, temperature, config, onUsage }（config 可传入临时配置，用于「测试连接」时先于保存生效；
+//       onUsage(usage) 收到本次调用的 token 用量，仅在服务端返回 usage 时触发）
 export async function aiChat(messages, opts = {}) {
   const cfg = opts.config || (await loadAIConfig());
   if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
@@ -66,6 +70,16 @@ export async function aiChat(messages, opts = {}) {
     args.temperature = typeof opts.temperature === "number" ? opts.temperature : cfg.temperature;
   }
   const raw = await invoke("ai_chat", args);
+  if (typeof opts.onUsage === "function") {
+    const usage = extractUsage(raw);
+    if (usage) {
+      try {
+        opts.onUsage(usage);
+      } catch {
+        /* 计量回调异常不影响主流程 */
+      }
+    }
+  }
   return extractContent(raw);
 }
 
@@ -126,6 +140,17 @@ export function aiChatStream(messages, opts = {}, handlers = {}) {
     }
   })();
   return { stop };
+}
+
+// 从 OpenAI 兼容响应里取出 token 用量；缺失或非法返回 null。
+// 只有非流式路径带 usage —— 流式要在请求体加 stream_options.include_usage 并从 SSE 里另取一帧。
+export function extractUsage(raw) {
+  const u = raw && raw.usage;
+  if (!u || typeof u !== "object" || Array.isArray(u)) return null;
+  const n = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.trunc(Number(v)) : 0);
+  const promptTokens = n(u.prompt_tokens);
+  const completionTokens = n(u.completion_tokens);
+  return { promptTokens, completionTokens, totalTokens: n(u.total_tokens) || promptTokens + completionTokens };
 }
 
 // 从 OpenAI 兼容响应里取出文本内容
