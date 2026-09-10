@@ -1,15 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { emitTo } from "@tauri-apps/api/event";
+import { WebviewWindow } from "./platform/window.js";
+import { emitTo } from "./platform/events.js";
 import Icon from "./Icon.vue";
 import { relativeTime } from "./shared.js";
+import { openToolWindow, isTauriEnv } from "./toolWindow.js";
 import { loadToolbox, saveToolbox, saveToolboxNow, flushToolbox } from "./toolboxStore.js";
 import { createJsonHandoffQueue, JSON_HANDOFF_EVENT } from "./tools/jsonHandoff.js";
 import { prepareJsonHandoff } from "./tools/jsonWorkspace.js";
-import { groupToolboxTools, TOOLBOX_TOOLS } from "./toolboxTools.js";
+import { groupToolboxTools, visibleToolboxTools } from "./toolboxTools.js";
 import { getToolComponent } from "./toolComponents.js";
 import { track } from "./telemetry.js";
 
@@ -18,13 +18,14 @@ const props = defineProps({
   jumpId: { type: Object, default: null },
 });
 
-const isTauri = !!window.__TAURI_INTERNALS__;
+const isTauri = isTauriEnv();
 const RECENT_MAX = 8;
 
 const { t } = useI18n();
 
-// 工具注册表：ready=true 可打开，false 为规划中占位卡（key/label/icon 与独立窗口共用）
-const TOOLS = TOOLBOX_TOOLS;
+// 工具注册表：ready=true 可打开，false 为规划中占位卡（key/label/icon 与独立窗口共用）；
+// 浏览器端过滤掉依赖原生能力的工具（见 toolboxTools.js 的 desktopOnly）
+const TOOLS = visibleToolboxTools();
 const GROUPS = groupToolboxTools(TOOLS);
 
 const activeTool = ref(""); // "" = 画廊首页
@@ -65,59 +66,12 @@ function recordRecent(tool) {
   saveRecent();
 }
 
-// 打开工具：Tauri 下开独立窗口（可拖动、缩放；同工具单例，已开则聚焦）；浏览器降级为主窗口内嵌
-async function openToolWindow(tool) {
-  const label = "tool-" + tool.key;
-  try {
-    // Tauri v2：getByLabel 是 async（经 IPC 查询窗口），需 await 才是窗口实例
-    const existing = await WebviewWindow.getByLabel(label);
-    if (existing) {
-      await existing.unminimize();
-      await existing.setFocus();
-      return;
-    }
-    const theme = await resolveToolWindowTheme();
-    const win = new WebviewWindow(label, {
-      url: "/index.html?tool=" + tool.key,
-      title: t(tool.labelKey),
-      width: 980,
-      height: 720,
-      minWidth: 720,
-      minHeight: 520,
-      decorations: false,
-      center: true,
-      visible: false,
-      focus: false,
-      theme,
-      backgroundColor: theme === "dark" ? [13, 17, 23, 255] : [246, 248, 250, 255],
-    });
-    // 创建失败（如权限不足）：提示降级内嵌
-    win.once("tauri://error", (e) => {
-      console.error(t("common.toolWinFail", { err: JSON.stringify(e) }));
-      activeTool.value = tool.key;
-      props.showToast(t("toolbox.windowFailFallback"));
-    });
-  } catch (e) {
-    console.error(t("common.toolWinOpenFail", { err: e }));
-    activeTool.value = tool.key;
-  }
-}
-
-async function resolveToolWindowTheme() {
-  const mode = localStorage.getItem("themeMode") || "system";
-  if (mode === "light" || mode === "dark") return mode;
-  try {
-    return (await getCurrentWindow().theme()) || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  } catch {
-    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-}
-
+// 打开工具：Tauri 下开独立窗口（同工具单例，已开则聚焦）；浏览器或创建失败时降级为主窗口内嵌
 async function openTool(tool) {
   if (!tool.ready) return props.showToast(t("toolbox.comingSoon", { name: t(tool.labelKey) }));
   recordRecent(tool);
   track("tool." + tool.key); // 可选遥测：工具打开计数
-  if (isTauri) await openToolWindow(tool);
+  if (isTauri) await openToolWindow(tool, { showToast: props.showToast, onFallback: () => { activeTool.value = tool.key; } });
   else activeTool.value = tool.key;
 }
 function tryJump() {

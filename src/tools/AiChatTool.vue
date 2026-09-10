@@ -5,6 +5,8 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import Icon from "../Icon.vue";
 import MarkdownRender from "./MarkdownRender.vue";
 import { aiChatStream, isAIConfigured } from "../ai.js";
+import { payloadText } from "../agent/timeline.js";
+import { agentSession, initAgentSession, resolvePending, startAgentRun, stopAgentRun } from "../agent/session.js";
 import { loadToolbox, saveToolbox, flushToolbox } from "../toolboxStore.js";
 import {
   DEFAULT_PRESETS,
@@ -16,7 +18,7 @@ import {
 } from "../chatSession.js";
 import { askConfirm } from "../confirm.js";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke.js";
 
 const { t } = useI18n();
 
@@ -36,6 +38,12 @@ const input = ref("");
 const images = ref([]); // 待发送图片 [{ url }]
 const imgCache = new Map(); // 已落盘图片 name -> data URL
 const sending = ref(false);
+const mode = ref("chat");
+// Agent 任务模式不维护私有运行态：复用 src/agent/session.js 的单例，
+// 与 Agent 工作台共享配置、工具开关、确认卡与运行历史（同一份 agentRuns 落盘）。
+const agentSteps = computed(() => agentSession.steps);
+const agentRuns = computed(() => agentSession.runs);
+const agentBusy = computed(() => agentSession.status !== "idle");
 const currentAssistant = ref(null); // 正在流式生成的助手消息
 const streamText = ref(""); // 流式完整文本
 const streamShown = ref(""); // 节流后的渲染文本
@@ -50,7 +58,7 @@ const allPresets = computed(() => [
   ...presets.value,
 ]);
 const activePreset = computed(() => allPresets.value.find((p) => p.id === active.value?.presetId) || allPresets.value[0]);
-const canSend = computed(() => (input.value.trim() || images.value.length > 0) && !sending.value);
+const canSend = computed(() => (input.value.trim() || images.value.length > 0) && !sending.value && !(mode.value === "agent" && agentBusy.value));
 
 // ---------- 持久化 ----------
 function persist() {
@@ -67,6 +75,7 @@ onMounted(async () => {
     loadToolbox("chat", { sessions: [] }),
     loadToolbox("chatPresets", []),
   ]);
+  await initAgentSession();
   sessions.value = Array.isArray(chatData?.sessions) ? chatData.sessions : [];
   presets.value = Array.isArray(presetData) ? presetData : [];
   if (sessions.value.length) {
@@ -173,6 +182,7 @@ function blobToB64(dataUrl) {
 async function send() {
   if (!canSend.value) return;
   if (!(await isAIConfigured())) return props.showToast(t("toolbox.ai.aiNotConfigured"));
+  if (mode.value === "agent") return sendAgent();
   let session = active.value;
   if (!session) {
     session = createSession(activePreset.value.id);
@@ -225,6 +235,19 @@ async function send() {
     },
   });
 }
+
+// Agent 任务模式：起运行交给共享 session（用户配置、工具开关、确认卡、历史都在那边）
+async function sendAgent() {
+  const goal = input.value.trim();
+  if (!goal || agentBusy.value) return;
+  input.value = "";
+  if (!(await startAgentRun(goal))) input.value = goal;
+}
+
+const STEP_KEY = { tool_start: "agent.stepConfirm", tool_result: "agent.stepResult", tool_retry: "agent.stepRetry", tool_error: "agent.stepError", confirmation: "agent.confirmTitle", final: "agent.stepFinal" };
+const NOTICE_KEY = { stopped: "agent.stopped", max_steps: "agent.statusMaxSteps", failed: "agent.statusFailed" };
+const stepLabel = (step) => t(NOTICE_KEY[step.code] || STEP_KEY[step.type] || "agent.statusRunning");
+const onAgentDecide = (approved) => resolvePending(approved);
 function scheduleRender() {
   if (renderTimer) return;
   renderTimer = setTimeout(() => {
@@ -234,6 +257,10 @@ function scheduleRender() {
   }, RENDER_THROTTLE);
 }
 function stopSend() {
+  if (mode.value === "agent") {
+    stopAgentRun("user");
+    return;
+  }
   if (streamStop) {
     try {
       streamStop();
@@ -334,6 +361,14 @@ function removePreset(p) {
         <button class="preset-btn" @click="presetOpen = !presetOpen"><Icon name="sparkles" :size="13" />{{ activePreset.name }}</button>
         <button class="op" :title="t('toolbox.ai.managePresets')" @click="presetManage = true"><Icon name="settings" :size="13" /></button>
       </div>
+      <div class="mode-bar">
+        <button :class="{ cur: mode === 'chat' }" @click="mode = 'chat'">{{ t("toolbox.ai.modeChat") }}</button>
+        <button :class="{ cur: mode === 'agent' }" @click="mode = 'agent'">{{ t("toolbox.ai.modeAgent") }}</button>
+      </div>
+      <div v-if="mode === 'agent' && agentRuns.length" class="agent-history">
+        <span>{{ t("agent.history") }}</span>
+        <button v-for="run in agentRuns.slice(0, 5)" :key="run.id" @click="input = run.input">{{ String(run.input || "").slice(0, 18) }}</button>
+      </div>
       <div v-if="presetOpen" class="preset-menu">
         <button
           v-for="p in allPresets"
@@ -350,7 +385,30 @@ function removePreset(p) {
 
     <section class="main">
       <div ref="msgsRef" class="msgs">
-        <template v-if="active">
+        <div v-if="mode === 'agent'" class="agent-run">
+          <p v-if="!agentSteps.length" class="agent-empty">{{ t("agent.emptyTimeline") }}</p>
+          <div v-for="(step, i) in agentSteps" :key="i" class="agent-step">
+            <b>{{ stepLabel(step) }}</b>
+            <code v-if="step.tool">{{ step.tool }}</code>
+            <span v-if="step.question">{{ step.question }}</span>
+            <span v-if="typeof step.answer === 'boolean'">{{ step.answer ? t("agent.confirmAllow") : t("agent.confirmDeny") }}</span>
+            <span v-if="step.error" class="error">{{ step.error }}</span>
+            <pre v-if="step.result !== undefined">{{ payloadText(step.result) }}</pre>
+          </div>
+          <div v-if="agentSession.pending" class="agent-confirm">
+            <b>{{ agentSession.pending.kind === "tool" ? t("agent.confirmTitle") : agentSession.pending.question }}</b>
+            <code v-if="agentSession.pending.tool">{{ agentSession.pending.tool }}</code>
+            <pre v-if="agentSession.pending.args">{{ payloadText(agentSession.pending.args) }}</pre>
+            <div class="ac-actions">
+              <button class="act" @click="onAgentDecide(false)">{{ t("agent.confirmDeny") }}</button>
+              <button class="act send" @click="onAgentDecide(true)">{{ t("agent.confirmAllow") }}</button>
+            </div>
+          </div>
+          <div v-if="agentSession.answer" class="agent-answer">
+            <MarkdownRender :text="agentSession.answer" :show-toast="showToast" />
+          </div>
+        </div>
+        <template v-if="mode === 'chat' && active">
           <div v-for="m in active.messages" :key="m.id" class="msg" :class="m.role">
             <div class="bubble">
               <div v-if="m.images && m.images.length" class="msg-imgs">
@@ -372,7 +430,7 @@ function removePreset(p) {
             </div>
           </div>
         </template>
-        <p v-else class="msgs-empty">{{ t("toolbox.ai.msgsEmpty") }}</p>
+        <p v-else-if="mode === 'chat'" class="msgs-empty">{{ t("toolbox.ai.msgsEmpty") }}</p>
       </div>
 
       <div class="composer">
@@ -386,12 +444,12 @@ function removePreset(p) {
           v-model="input"
           class="input"
           rows="3"
-          :placeholder="sending ? t('toolbox.ai.aiReplying') : t('toolbox.ai.inputPh')"
+          :placeholder="sending ? t('toolbox.ai.aiReplying') : (mode === 'agent' ? t('agent.goalPh') : t('toolbox.ai.inputPh'))"
           @keydown.enter.exact.prevent="send"
         ></textarea>
         <div class="actions">
-          <label class="act img-btn"><Icon name="image" :size="15" />{{ t("toolbox.ai.imgBtn") }}<input type="file" accept="image/*" multiple hidden @change="addImages" /></label>
-          <button v-if="sending" class="act stop" @click="stopSend"><Icon name="square" :size="13" />{{ t("toolbox.ai.stop") }}</button>
+          <label v-if="mode === 'chat'" class="act img-btn"><Icon name="image" :size="15" />{{ t("toolbox.ai.imgBtn") }}<input type="file" accept="image/*" multiple hidden @change="addImages" /></label>
+          <button v-if="sending || agentBusy" class="act stop" @click="stopSend"><Icon name="square" :size="13" />{{ t("toolbox.ai.stop") }}</button>
           <button v-else class="act send" :disabled="!canSend" @click="send"><Icon name="send" :size="13" />{{ t("toolbox.ai.send") }}</button>
         </div>
       </div>
@@ -430,6 +488,23 @@ function removePreset(p) {
   min-height: 0;
   gap: 14px;
 }
+.mode-bar { display:flex; gap:4px; padding:6px 10px; border-bottom:1px solid var(--border); }
+.mode-bar button, .agent-history button { border:1px solid var(--border); background:var(--card); color:var(--text-dim); border-radius:6px; padding:4px 8px; cursor:pointer; }
+.mode-bar button.cur { background:var(--primary-soft); color:var(--primary); border-color:var(--primary); }
+.agent-history { display:flex; gap:6px; align-items:center; padding:5px 10px; font-size:12px; color:var(--text-dim); overflow:auto; }
+.agent-history button { white-space:nowrap; }
+/* Agent 任务模式：紧凑只读时间线 + 内联确认（完整视图在 Agent 工作台） */
+.agent-run { display:flex; flex-direction:column; gap:8px; padding:10px 12px; }
+.agent-empty { margin:0; font-size:12px; color:var(--text-dim); }
+.agent-step { display:flex; flex-direction:column; gap:4px; padding:8px 10px; font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
+.agent-step b { color:var(--text-dim); font-weight:600; }
+.agent-step code { color:var(--primary); }
+.agent-step pre { margin:0; padding:6px 8px; max-height:180px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
+.agent-step .error { color:var(--danger); }
+.agent-confirm { display:flex; flex-direction:column; gap:6px; padding:10px; font-size:12px; background:var(--card); border:1px solid var(--primary); border-radius:6px; }
+.agent-confirm pre { margin:0; padding:6px 8px; max-height:140px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
+.ac-actions { display:flex; gap:6px; justify-content:flex-end; }
+.agent-answer { padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
 .side {
   display: flex;
   flex-direction: column;

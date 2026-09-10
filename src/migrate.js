@@ -9,7 +9,7 @@
 // - 所有迁移步骤必须【幂等】——重复跑结果不变（升级完写版本号，下次秒退）。
 // - 纯转换逻辑抽成导出函数（migrate*V1），便于单测；invoke 编排只做 IO。
 // - 任何一步失败都不得阻断应用启动（main.js 里 catch 后照常挂载）。
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 
 // 当前数据结构版本。每次改动持久化结构时 +1，并在 MIGRATIONS 末尾补一步。
 export const SCHEMA_VERSION = 7;

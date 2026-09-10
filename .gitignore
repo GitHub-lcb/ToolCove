@@ -15,11 +15,12 @@ dist-ssr
 # 本地打包产物与临时文件
 release-out
 tmp
+tmp-deploy
+tmp-debug
 
 # 自动更新签名私钥（红线：绝不入库）
 src-tauri/updater.key
-
-# license 私钥（红线：绝不入库，签发脚本默认输出目录）
+# 商业化时期的授权私钥（相关功能已移除，留作本地存档也绝不入库）
 scripts/.license-secrets/
 
 # Editor directories and files

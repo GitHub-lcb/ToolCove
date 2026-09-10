@@ -1,7 +1,7 @@
 mod ai;
 mod db;
 mod file_tool;
-mod license;
+mod git;
 mod network;
 mod secure;
 mod storage;
@@ -143,6 +143,7 @@ pub fn run() {
             db::db_test,
             db::db_connect,
             db::db_query,
+            db::db_query_readonly,
             db::db_tables,
             db::db_columns,
             db::db_indexes,
@@ -161,14 +162,11 @@ pub fn run() {
             file_tool::file_tool_modify_md5,
             file_tool::file_tool_list_directory,
             file_tool::file_tool_batch_rename,
+            // 域名/Pool 工具：本地仓库拉取
+            git::git_pull,
             // AI 对话
             ai::ai_chat,
             ai::ai_chat_stream,
-            // Pro 授权（离线 Ed25519 验签）
-            license::license_status,
-            license::license_activate,
-            license::license_deactivate,
-            license::license_activate_online,
             // 可选遥测上报（端点默认空 = 不发送）
             telemetry::telemetry_submit,
             // 加密安全存储
@@ -374,62 +372,16 @@ mod lib_tests {
     }
 
     #[test]
-    fn backup_never_contains_license_file() {
-        // 方向①：新备份不含 license.json
-        let dir = temp_case("backup-no-license");
+    fn backup_captures_json_data_files() {
+        let dir = temp_case("backup-basic");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("settings.json"), br#"{"v":1}"#).unwrap();
-        fs::write(dir.join("license.json"), br#"{"key":"TCV1-x"}"#).unwrap();
         let dest = dir.join("backup.zip");
         let summary = run_backup(&dir, dest.to_str().unwrap()).unwrap();
         assert!(summary.contains("1 个数据文件"), "实际：{summary}");
         let (json_files, _images) = read_restore_archive(&dest).unwrap();
         let names: Vec<_> = json_files.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names, vec!["settings.json"]);
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn restore_skips_license_entries_in_old_backups() {
-        // 方向②：恢复含 license.json 的旧备份 → 过滤跳过而非报错，不复活旧授权
-        let dir = temp_case("restore-old-license");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("settings.json"), br#"{"old":1}"#).unwrap();
-        let source = dir.join("old.zip");
-        write_test_zip(
-            &source,
-            &[
-                ("settings.json", br#"{"new":1}"#),
-                ("license.json", br#"{"key":"TCV1-STALE"}"#),
-            ],
-        );
-        let (json_files, _images) = read_restore_archive(&source).unwrap();
-        let names: Vec<_> = json_files.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, vec!["settings.json"], "license.json 必须被过滤跳过");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn restore_keeps_current_license_intact() {
-        // 方向③：恢复任意备份后，当前 license.json 原样保留（不进入交换清单、不被删除）
-        let dir = temp_case("restore-keep-license");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("settings.json"), br#"{"old":1}"#).unwrap();
-        fs::write(dir.join("license.json"), br#"{"key":"TCV1-CURRENT"}"#).unwrap();
-        let source = dir.join("src.zip");
-        write_test_zip(
-            &source,
-            &[
-                ("settings.json", br#"{"new":1}"#),
-                ("items.json", br#"[{"id":1}]"#),
-            ],
-        );
-        let _ = run_restore(&dir, &source).unwrap();
-        assert_eq!(
-            fs::read(dir.join("license.json")).unwrap(),
-            br#"{"key":"TCV1-CURRENT"}"#,
-            "恢复后当前授权必须原样保留"
-        );
         let _ = fs::remove_dir_all(&dir);
     }
 

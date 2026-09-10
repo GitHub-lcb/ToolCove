@@ -1614,6 +1614,36 @@ mod tests {
         assert!(err.contains("不是有效的 zip"), "实际错误：{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// 只读 SQL 识别：只读放行、写操作与不可判定一律拒绝
+    #[test]
+    fn read_only_sql_guard() {
+        for sql in [
+            "SELECT * FROM t",
+            "select id, name from t where name = 'delete me'",
+            "WITH x AS (SELECT 1) SELECT * FROM x",
+            "SHOW TABLES",
+            "DESCRIBE t",
+            "SELECT 1 -- 注释里的 UPDATE t SET a=1",
+            "SELECT '插入' AS s",
+        ] {
+            assert!(is_read_only_sql(sql), "应判定为只读：{sql}");
+        }
+        for sql in [
+            "INSERT INTO t VALUES (1)",
+            "UPDATE t SET a = 1",
+            "DELETE FROM t",
+            "DROP TABLE t",
+            "SELECT * FROM t FOR UPDATE",
+            "SELECT * FROM t INTO OUTFILE '/tmp/x'",
+            "SELECT 1; DROP TABLE t",
+            "/*!50000 DELETE */ SELECT 1",
+            "",
+        ] {
+            let expected = sql.is_empty();
+            assert_eq!(is_read_only_sql(sql), expected, "只读判定不符预期：{sql}");
+        }
+    }
 }
 
 /// 测试数据库连接（建立后立即断开），返回耗时；失败返回 Err。
@@ -1632,6 +1662,102 @@ pub fn db_connect(opts: serde_json::Value) -> Result<String, String> {
 #[tauri::command]
 pub fn db_query(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
     query(&conn_id, &sql)
+}
+
+/// 只读查询：拒绝写入类 SQL（Agent 的 db.query_readonly 工具使用）。
+/// 前端也会先过滤一次；这里是第二道闸门，防止绕过前端直接调用命令。
+#[tauri::command]
+pub fn db_query_readonly(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
+    if !is_read_only_sql(&sql) {
+        return Err("只读查询仅允许 SELECT / WITH / SHOW / DESCRIBE 等只读语句".to_string());
+    }
+    query(&conn_id, &sql)
+}
+
+/// 保守识别只读 SQL：无法确定时按写操作处理（与前端 src/db.js 的 isReadOnlySql 语义对齐）
+pub fn is_read_only_sql(sql: &str) -> bool {
+    if sql.contains("/*!") {
+        return false; // MySQL 版本注释可藏写语句，一律按写操作处理
+    }
+    let tokens = sql_word_tokens(sql);
+    let Some(first) = tokens.first().map(String::as_str) else {
+        return true; // 空语句无副作用
+    };
+    if matches!(first, "SHOW" | "DESCRIBE" | "DESC") {
+        return true;
+    }
+    if first != "SELECT" && first != "WITH" {
+        return false;
+    }
+    const FORBIDDEN: [&str; 19] = [
+        "INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "UPSERT", "CREATE", "ALTER", "DROP",
+        "TRUNCATE", "GRANT", "REVOKE", "CALL", "EXEC", "EXECUTE", "VACUUM", "ATTACH", "DETACH", "INTO",
+    ];
+    for (i, token) in tokens.iter().enumerate() {
+        if FORBIDDEN.contains(&token.as_str()) {
+            return false;
+        }
+        // SELECT ... FOR UPDATE 是锁定写路径
+        if token == "FOR" && tokens.get(i + 1).map(String::as_str) == Some("UPDATE") {
+            return false;
+        }
+    }
+    true
+}
+
+/// 提取 SQL 中的「词」序列（大写）：先剥离注释与字符串字面量，再按非字母数字切分
+fn sql_word_tokens(sql: &str) -> Vec<String> {
+    let stripped = strip_sql_comments_and_strings(sql);
+    stripped
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_uppercase())
+        .collect()
+}
+
+/// 剥离注释与单引号字符串（含 '' 转义）；字符串内容不参与关键字判定
+fn strip_sql_comments_and_strings(sql: &str) -> String {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut out = String::with_capacity(sql.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '\'' {
+            i += 1;
+            while i < chars.len() {
+                if chars[i] == '\'' {
+                    if chars.get(i + 1) == Some(&'\'') {
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            out.push(' ');
+            continue;
+        }
+        if c == '-' && chars.get(i + 1) == Some(&'-') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            out.push(' ');
+            continue;
+        }
+        if c == '/' && chars.get(i + 1) == Some(&'*') {
+            i += 2;
+            while i < chars.len() && !(chars[i] == '*' && chars.get(i + 1) == Some(&'/')) {
+                i += 1;
+            }
+            i = (i + 2).min(chars.len());
+            out.push(' ');
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
 }
 
 pub const ORACLE_DRIVER_MAX_BYTES: usize = 200 * 1024 * 1024;

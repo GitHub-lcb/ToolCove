@@ -101,7 +101,7 @@ describe("collectPushes / pruneTombstones", () => {
 describe("归一化", () => {
   it("缺字段补默认", () => {
     expect(normalizeRemoteItem(null)).toEqual({ id: "", updatedAt: 0, data: "", tombstone: false, seq: 0 });
-    expect(normalizeEnvelope(null)).toEqual({ deviceId: "", ts: 0, record: null });
+    expect(normalizeEnvelope(null)).toEqual({ deviceId: "", ts: 0, record: null, kind: "" });
   });
 });
 

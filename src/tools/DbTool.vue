@@ -1,14 +1,13 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, inject } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "../platform/invoke.js";
+import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import Icon from "../Icon.vue";
 import DbConnModal from "./DbConnModal.vue";
 import DbTableTree from "./DbTableTree.vue";
 import DbDetailModal from "./DbDetailModal.vue";
 import { relativeTime, buildDbResultXlsx } from "../shared.js";
-import { isFeatureEnabled, proLockHint } from "../features.js";
 import { askConfirm } from "../confirm.js";
 import { aiComplete, aiChat, isAIConfigured } from "../ai.js";
 import { loadToolbox, saveToolbox, flushToolbox } from "../toolboxStore.js";
@@ -23,9 +22,6 @@ import {
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
-// Pro 授权（工具窗口由 ToolWindow provide；主窗口内嵌由 App.vue provide）
-const licenseStatus = inject("licenseStatus", ref({ pro: false, error: null }));
-const dbXlsxOk = computed(() => isFeatureEnabled(licenseStatus.value, "db-export-xlsx"));
 
 const { t } = useI18n();
 
@@ -1112,16 +1108,13 @@ function removeFav(f) {
   saveFavs();
 }
 
-// 导出当前标签结果集：CSV（带 BOM，Excel 可直开）/ JSON 对象数组 / XLSX（Pro 功能 db-export-xlsx）
+// 导出当前标签结果集：CSV（带 BOM，Excel 可直开）/ JSON 对象数组 / XLSX
 async function exportResult(fmt) {
-  const t = activeTab.value;
-  if (!t?.result || !t.result.columns.length) return props.showToast(t("toolbox.db.noExport"));
+  const tab = activeTab.value;
+  if (!tab?.result || !tab.result.columns.length) return props.showToast(t("toolbox.db.noExport"));
   if (!isTauri) return props.showToast(t("toolbox.db.exportNeedDesktop"));
-  if (fmt === "xlsx" && !dbXlsxOk.value) {
-    return props.showToast(t(proLockHint())); // Pro 功能：提示到主窗口 设置 → Pro 激活
-  }
-  const { columns, rows } = t.result;
-  const base = t.editMeta?.table || "query-result";
+  const { columns, rows } = tab.result;
+  const base = tab.editMeta?.table || "query-result";
   if (fmt === "xlsx") {
     const path = await saveDialog({
       defaultPath: `${base}-${Date.now().toString().slice(-6)}.xlsx`,
@@ -1540,7 +1533,7 @@ function onWinKey(e) {
             <span class="meta-sep"></span>
             <button class="btn ghost sm" :title="t('toolbox.db.exportCsvTip')" @click="exportResult('csv')"><Icon name="download" :size="13" />CSV</button>
             <button class="btn ghost sm" :title="t('toolbox.db.exportJsonTip')" @click="exportResult('json')"><Icon name="download" :size="13" />JSON</button>
-            <button class="btn ghost sm" :class="{ 'pro-locked': !dbXlsxOk }" :title="dbXlsxOk ? t('toolbox.db.exportXlsxTip') : t(proLockHint())" @click="exportResult('xlsx')"><Icon name="download" :size="13" />XLSX<template v-if="!dbXlsxOk"> 🔒</template></button>
+            <button class="btn ghost sm" :title="t('toolbox.db.exportXlsxTip')" @click="exportResult('xlsx')"><Icon name="download" :size="13" />XLSX</button>
             <button class="btn ghost sm" :title="t('toolbox.db.copyMdTip')" @click="copyResult">
               <Icon name="copy" :size="13" />{{ t("toolbox.db.copyTable") }}
             </button>

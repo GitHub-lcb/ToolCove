@@ -4,7 +4,7 @@
 // 每个 Pool 行内展示本地发布记录状态（pool.lastRelease 推导，纯本地数据，无云端依赖）；
 // 点击发布按钮打开 PoolPublish 弹窗：按 打包→上传→发布→验证 逐项记录发布时间。
 import { ref, computed, onMounted, nextTick } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import Icon from "./Icon.vue";
 import PoolPublish from "./PoolPublish.vue";
 import PoolStatus from "./PoolStatus.vue";

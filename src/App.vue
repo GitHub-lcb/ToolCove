@@ -1,15 +1,14 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { ref, computed, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent, watch } from "vue";
+import { invoke } from "./platform/invoke.js";
+import { getCurrentWindow } from "./platform/window.js";
+import { listen } from "./platform/events.js";
+import { openUrl } from "./platform/shell.js";
+import { isDesktop, capabilities } from "./platform/env.js";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { fmtDate } from "./shared.js";
 import { normalizeHiddenModules } from "./settingsConfig.js";
-import { loadLicenseStatus, subscribeLicenseChanged } from "./license.js";
-import { isFeatureEnabled } from "./features.js";
 import { shouldPrompt, mergePromptDecision, consent as telemetryConsent, track as telemetryTrack, flush as telemetryFlush, getConfig as telemetryGetConfig, invalidateConfigCache as telemetryInvalidateCache } from "./telemetry.js";
 import { applyAccent, resetAccent, loadAccentKey, saveAccentKey } from "./accentTheme.js";
 import { checkForUpdate } from "./updater.js";
@@ -22,8 +21,9 @@ import pkg from "../package.json";
 
 const { t } = useI18n();
 
-// ------- 模块导航配置（九视图：toolbox 为默认启动视图，Ctrl+1~9 直切） -------
+// ------- 模块导航配置（十视图：agent 为默认启动视图，Ctrl+1~9/0 直切） -------
 const MODULES = [
+  { key: "agent", labelKey: "nav.agent", descKey: "module.agentDesc", icon: "sparkles" },
   { key: "home", labelKey: "nav.home", descKey: "module.homeDesc", icon: "home" },
   { key: "domain", labelKey: "nav.domain", descKey: "module.domainDesc", icon: "layers" },
   { key: "iteration", labelKey: "nav.iteration", descKey: "module.iterationDesc", icon: "git-branch" },
@@ -39,7 +39,7 @@ const MODULES = [
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
 let toolWindowShown = false;
 async function revealToolWindow() {
-  if (!toolMode || toolWindowShown || !window.__TAURI_INTERNALS__) return;
+  if (!toolMode || toolWindowShown || !isTauri) return;
   toolWindowShown = true;
   try {
     await applyTheme(themeMode.value);
@@ -54,7 +54,7 @@ async function revealToolWindow() {
 }
 
 // ------- 状态 -------
-const activeModule = ref("toolbox");
+const activeModule = ref("agent");
 const collapsed = ref(true);
 const toast = ref(null);
 // 视图埋点（节流 10s；可选遥测未开启时只本地计数）
@@ -65,14 +65,11 @@ watch(activeModule, (key) => {
   viewTrackTs[key] = now;
   telemetryTrack("view." + key);
 });
-// Pro 授权状态：挂载时拉取 + license-changed 全局事件刷新；provide 给全树（含注入锁定的工具）
-const licenseStatus = ref({ pro: false, error: null });
-provide("licenseStatus", licenseStatus);
-const isProReady = computed(() => !!(licenseStatus.value && licenseStatus.value.pro));
 const jump = ref(null);
 const gsRef = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
+const AgentView = defineAsyncComponent(() => import("./AgentView.vue"));
 const HomeView = defineAsyncComponent(() => import("./HomeView.vue"));
 const DomainView = defineAsyncComponent(() => import("./DomainView.vue"));
 const TaskView = defineAsyncComponent(() => import("./TaskView.vue"));
@@ -82,7 +79,7 @@ const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
 const IterationView = defineAsyncComponent(() => import("./IterationView.vue"));
 const RequirementBoardView = defineAsyncComponent(() => import("./RequirementBoardView.vue"));
 const ReleaseView = defineAsyncComponent(() => import("./ReleaseView.vue"));
-const VIEW_COMPONENTS = { home: HomeView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, problem: ProblemView, release: ReleaseView, snippet: SnippetView, task: TaskView, toolbox: ToolboxView, settings: SettingsView };
+const VIEW_COMPONENTS = { agent: AgentView, home: HomeView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, problem: ProblemView, release: ReleaseView, snippet: SnippetView, task: TaskView, toolbox: ToolboxView, settings: SettingsView };
 const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
 
 const settingsSection = ref("general");
@@ -124,7 +121,7 @@ function openManual() {
 }
 
 // ------- 自定义标题栏（decorations:false，顶栏自绘窗口控制） -------
-const isTauri = !!window.__TAURI_INTERNALS__;
+const isTauri = isDesktop;
 const isMaximized = ref(false);
 async function refreshMaximized() {
   try {
@@ -220,16 +217,17 @@ onUnmounted(() => {
 });
 provide("openCtxMenu", openCtxMenu);
 
-// ------- 全局快捷键（Ctrl+数字切模块；Ctrl+K 开全局搜索） -------
+// ------- 全局快捷键（Ctrl+数字切模块，Ctrl+1~9 对应前九个、Ctrl+0 对应第十个；Ctrl+K 开全局搜索） -------
 function onKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
     e.preventDefault();
     gsRef.value?.openPalette();
     return;
   }
-  if ((e.ctrlKey || e.metaKey) && e.key >= "1" && e.key <= String(MODULES.length)) {
+  const slot = e.key === "0" ? 10 : /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
+  if ((e.ctrlKey || e.metaKey) && slot && slot <= MODULES.length) {
     e.preventDefault();
-    activeModule.value = MODULES[Number(e.key) - 1].key;
+    activeModule.value = MODULES[slot - 1].key;
   }
 }
 onMounted(() => window.addEventListener("keydown", onKeydown));
@@ -272,10 +270,10 @@ async function applyTheme(mode) {
     applyThemeAccent();
   }
 }
-// 按当前主题/系统偏好重放自定义主题色（Pro 功能 theme-custom）
+// 按当前主题/系统偏好重放自定义主题色
 function applyThemeAccent() {
   const key = loadAccentKey();
-  if (!key || !isProReady.value) {
+  if (!key) {
     resetAccent();
     return;
   }
@@ -323,16 +321,12 @@ onMounted(async () => {
     syncDot.value = (e && e.detail && e.detail.status) || "disabled";
   });
   refreshUiSettings();
-  setTimeout(autoBackup, 3000);
-  // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
-  setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+  if (isTauri) {
+    setTimeout(autoBackup, 3000);
+    // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
+    setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+  }
   if (!isTauri) return;
-  // Pro 授权态（含 license-changed 全局事件：工具子窗口激活后主窗口同步刷新）
-  subscribeLicenseChanged((s) => {
-    licenseStatus.value = s;
-    applyThemeAccent();
-  });
-  licenseStatus.value = await loadLicenseStatus();
   applyThemeAccent();
   // 可选遥测：首启询问一次（askConfirm，同意/拒绝即时落盘；失败不阻断启动）
   const telemetryCfg = await telemetryGetConfig().catch(() => null);
@@ -394,7 +388,7 @@ onUnmounted(() => {
     <!-- ============ 侧边栏 ============ -->
     <aside class="sidebar">
       <div class="brand" data-tauri-drag-region>
-        <span class="brand-logo"><Icon name="rocket" :size="20" /></span>
+        <span class="brand-logo"><Icon name="sparkles" :size="20" /></span>
         <span class="brand-name">ToolCove</span>
       </div>
 
@@ -413,19 +407,11 @@ onUnmounted(() => {
       </nav>
 
       <div class="side-foot">
-        <!-- 商业化入口：免费版显示升级按钮，Pro 显示授权微章 -->
-        <template v-if="isProReady">
-          <button class="collapse pro-badge" :title="t('pro.activatedTip', { name: licenseStatus.name || '' })" @click="openSettings('pro')">
-            <span class="clp-ico"><Icon name="star" :size="15" /></span>
-            <span class="nav-label">{{ t("pro.sideBadge") }}</span>
-          </button>
-        </template>
-        <template v-else-if="isTauri">
-          <button class="collapse upgrade-pro" :title="t('pro.upgradeTip')" @click="openSettings('pro')">
-            <span class="clp-ico"><Icon name="star" :size="15" /></span>
-            <span class="nav-label">{{ t("pro.upgrade") }}</span>
-          </button>
-        </template>
+        <!-- 赞助入口：项目免费开源，靠自愿赞助维持 -->
+        <button class="collapse sponsor-btn" :title="t('sponsor.sideTip')" @click="openSettings('sponsor')">
+          <span class="clp-ico"><Icon name="heart" :size="15" /></span>
+          <span class="nav-label">{{ t("sponsor.sideBadge") }}</span>
+        </button>
         <button class="collapse" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" @click="openSettings('general')">
           <span class="clp-ico"><Icon name="settings" :size="15" /></span>
           <span class="nav-label">{{ t("nav.settings") }}</span>
@@ -452,13 +438,13 @@ onUnmounted(() => {
         </div>
         <div class="top-actions">
           <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
-          <button class="theme-btn sync-ind" :class="syncDot" :title="t('sync.statusTitle')" @click="openSettings('pro')">
+          <button v-if="capabilities.cloudSync" class="theme-btn sync-ind" :class="syncDot" :title="t('sync.statusTitle')" @click="openSettings('sync')">
             <span class="sync-ind-dot"></span>
           </button>
           <button class="theme-btn" :title="t('common.manual')" @click="openManual">
             <Icon name="book-open" :size="16" />
           </button>
-          <button class="theme-btn" :title="checkingVer ? t('common.updateChecking') : t('common.updateCheckTip')" :disabled="checkingVer" @click="onCheckVersion">
+          <button v-if="capabilities.updater" class="theme-btn" :title="checkingVer ? t('common.updateChecking') : t('common.updateCheckTip')" :disabled="checkingVer" @click="onCheckVersion">
             <Icon name="repeat" :size="15" />
           </button>
           <button class="theme-btn" :title="t('common.appearance') + '：' + t(themeMeta.labelKey)" @click="cycleTheme">
@@ -1003,13 +989,10 @@ body {
 .collapse:hover { background: var(--card); border-color: var(--card-border); color: var(--primary); }
 .collapse.on { background: var(--grad-selected); border-color: var(--border-blue); color: var(--primary-hover); }
 .collapse:hover .clp-ico { background: var(--primary-soft); color: var(--primary); }
-/* Pro 商业化入口：升级按钮金色渐变主题，与品牌一致但不抢主导航焦点 */
-.upgrade-pro { border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
-.upgrade-pro:hover { background: linear-gradient(135deg, color-mix(in srgb, var(--warn-soft) 70%, var(--card)), var(--card)); border-color: var(--warn); }
-.upgrade-pro .clp-ico { background: var(--warn-soft); color: var(--warn); }
-.upgrade-pro.on { background: var(--grad-selected); color: var(--warn); }
-.pro-badge .clp-ico { background: var(--grad-brand); color: var(--text-invert); }
-.pro-badge { color: var(--primary-hover); }
+/* 赞助入口：金色主题，与品牌一致但不抢主导航焦点 */
+.sponsor-btn { color: var(--warn); }
+.sponsor-btn .clp-ico { background: var(--warn-soft); color: var(--warn); }
+.sponsor-btn:hover { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--warn-soft) 70%, var(--card)), var(--card)); }
 .clp-ico {
   width: 26px;
   height: 26px;

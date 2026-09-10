@@ -2,17 +2,7 @@
 
 零依赖 Node 服务：只存储**密文**（端到端加密），服务器永远无法读取任何内容。
 
-## 已部署环境（ToolCove 官方同步 · 2026-09-02）
-
-| 项 | 值 |
-|---|---|
-| 服务地址 | http://106.12.166.113:8090（**公网放行待安全组操作**；HTTPS 待域名） |
-| 服务器 | CentOS 8 · Node v20.19.4 · systemd 服务 toolcove-sync |
-| 代码/数据 | /opt/toolcove-sync/server · /opt/toolcove-sync/data |
-| 健康检查 | POST http://127.0.0.1:8090/v1/collection → 200 |
-| 运维与升级 | 见 docs/commercial/deployment.md（日常运维/升级/HTTPS Playbook/安全建议） |
-
-> ⚠️ 使用须知：当前为 HTTP 明文（客户端会提示）。正式对外使用前请完成：① 安全组放行 TCP 8090；② 域名解析 + 按 Playbook 配置 HTTPS。
+> 本仓库只包含服务端源码。官方托管的同步服务属于可选渠道，你也可以完全自托管——客户端默认不连接任何服务器，只有你显式填写服务地址并开启同步后才会通信。
 
 ---
 ## 快速开始

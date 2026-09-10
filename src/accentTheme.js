@@ -1,4 +1,4 @@
-// 自定义主题色（Pro 功能 theme-custom）：以预设色系覆盖主题强调变量。
+// 自定义主题色：以预设色系覆盖主题强调变量。
 // 深浅两套主题共用同一强调色系：内联 style 的优先级高于样式表内的两套
 // @media (prefers-color-scheme) 定义，因此按当前主题选对应补丁即可同时生效。
 // 变量清单与 App.vue 样式保持一致（primary 系为组件实际使用的主色 token）。
@@ -18,7 +18,7 @@ export const ACCENT_STORAGE_KEY = "tc.accent";
 export const ACCENT_PRESETS = [
   {
     key: "teal",
-    labelKey: "pro.accentTeal",
+    labelKey: "settings.accentTeal",
     light: {
       "--primary": "#0d8a7f", "--primary-hover": "#0a6e65", "--primary-light": "#2fb3a4",
       "--primary-bright": "#5cd4c3", "--primary-soft": "#e2f5f1", "--primary-soft-hover": "#cdece6",
@@ -46,7 +46,7 @@ export const ACCENT_PRESETS = [
   },
   {
     key: "violet",
-    labelKey: "pro.accentViolet",
+    labelKey: "settings.accentViolet",
     light: {
       "--primary": "#8250df", "--primary-hover": "#6d3fd0", "--primary-light": "#a17ef5",
       "--primary-bright": "#c9b6f9", "--primary-soft": "#f1eafd", "--primary-soft-hover": "#e6dbfb",
@@ -74,7 +74,7 @@ export const ACCENT_PRESETS = [
   },
   {
     key: "amber",
-    labelKey: "pro.accentAmber",
+    labelKey: "settings.accentAmber",
     light: {
       "--primary": "#bc4c00", "--primary-hover": "#a04000", "--primary-light": "#e0823d",
       "--primary-bright": "#f0a468", "--primary-soft": "#fdefe4", "--primary-soft-hover": "#fbe2cf",

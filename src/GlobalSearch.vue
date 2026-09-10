@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, nextTick, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
-import { searchToolboxTools, TOOLBOX_GROUPS } from "./toolboxTools.js";
+import { searchToolboxTools, visibleToolboxTools, TOOLBOX_GROUPS } from "./toolboxTools.js";
 
 const { t } = useI18n();
 
@@ -130,7 +130,7 @@ const results = computed(() => {
   for (const t of data.value.tasks) {
     if (hit(t.title) || hit(t.code)) out.push({ group: "task", title: t.title, sub: t.code || "", module: "task", id: t.id });
   }
-  const toolResults = searchToolboxTools(kw).map((tool) => {
+  const toolResults = searchToolboxTools(kw, visibleToolboxTools()).map((tool) => {
     const group = GROUP_BY_KEY.get(tool.category) || {};
     return {
       group: "tool",

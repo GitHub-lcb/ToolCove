@@ -3,7 +3,7 @@
 // 落盘统一用 { v: value } 包装，与「load_data 对不存在的文件返回 []」区分（避免类型歧义）。
 // 写路径带防抖（合并高频草稿写入，避免每次输入都触发磁盘原子写）+ 按 key 串行队列（保证读写顺序）；
 // 读路径先冲刷待写值，保证读到最新。
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 
 const DELAY = 200;
 const PREFIX = "toolbox-";

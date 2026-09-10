@@ -1,7 +1,7 @@
 // i18n 基建：vue-i18n 实例 + 字典键工具 + 语言决议。
 // 默认 zh-CN、回退 en-US；语言偏好（system | zh-CN | en-US）存 settings.json 的 ui.locale。
 import { createI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke.js";
 import zh from "./zh-CN.json";
 import en from "./en-US.json";
 

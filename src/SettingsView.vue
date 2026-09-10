@@ -1,22 +1,20 @@
 <script setup>
 // 设置页（UI 2.0 工作台式）：左侧分类导航 + 右侧内容区，替代原设置弹窗。
 // 分类：AI 模型 / 系统设置；保存后 dispatch settings-saved 供全局刷新。
-import { ref, computed, watch, onMounted, inject } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "./platform/invoke.js";
+import { capabilities } from "./platform/env.js";
+import { open as openDialog, save as saveDialog } from "./platform/dialog.js";
+import { relaunch } from "./platform/shell.js";
+import { openUrl } from "./platform/shell.js";
 import Icon from "./Icon.vue";
 import { testAI, AI_PRESETS } from "./ai.js";
 import { checkForUpdate } from "./updater.js";
 import { encryptValue, decryptValue } from "./secure.js";
-import { loadLicenseStatus, activateLicense, deactivateLicense, subscribeLicenseChanged } from "./license.js";
-import { isFeatureEnabled, PRO_FEATURES } from "./features.js";
 import { ACCENT_PRESETS, saveAccentKey, loadAccentKey } from "./accentTheme.js";
 import { getConfig as telemetryGetConfig, consent as telemetryConsent } from "./telemetry.js";
 import { createSyncCollection, joinSyncCollectionFull, syncNowManual, listDevices, revokeDevice, regeneratePairingCode, getSyncSnapshot, setSyncEnabled, setSyncDeviceName, getEngine } from "./sync/index.js";
-import { isFeatureEnabled as syncProOk } from "./features.js";
 import { askConfirm } from "./confirm.js";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
@@ -34,9 +32,12 @@ const props = defineProps({
 
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
-  { key: "pro", labelKey: "settings.navPro", icon: "star", descKey: "settings.navProDesc" },
+  { key: "sync", labelKey: "settings.navSync", icon: "refresh", descKey: "settings.navSyncDesc" },
+  { key: "sponsor", labelKey: "settings.navSponsor", icon: "heart", descKey: "settings.navSponsorDesc" },
   { key: "general", labelKey: "settings.navGeneral", icon: "settings", descKey: "settings.navGeneralDesc" },
 ];
+// 云同步依赖原生代理（服务端未开 CORS 前浏览器直连不可用），浏览器端整节隐藏
+const sections = computed(() => SECTIONS.filter((s) => s.key !== "sync" || capabilities.cloudSync));
 const section = ref(SECTIONS.some((s) => s.key === props.section) ? props.section : "general");
 watch(
   () => props.section,
@@ -45,10 +46,11 @@ watch(
   }
 );
 // 兜底显式指向 general（插入 pro 后 SECTIONS[1] 不再等于 general，评审注意项）
-const currentMeta = computed(() => SECTIONS.find((s) => s.key === section.value) || SECTIONS.find((s) => s.key === "general") || SECTIONS[0]);
+const currentMeta = computed(() => sections.value.find((s) => s.key === section.value) || SECTIONS.find((s) => s.key === "general") || SECTIONS[0]);
 
-// 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致，九视图）
+// 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致，十视图）
 const NAV_MODULE_OPTIONS = [
+  { key: "agent", labelKey: "nav.agent" },
   { key: "home", labelKey: "nav.home" },
   { key: "domain", labelKey: "nav.domain" },
   { key: "iteration", labelKey: "nav.iteration" },
@@ -82,78 +84,6 @@ const autostartOn = ref(false);
 // 磁盘上的完整 settings 快照。表单只渲染 ai/ui，保存时以它为基底合并，
 // 否则 sync/telemetry 等未渲染分组会被表单快照整体覆盖掉。
 let rawSnapshot = {};
-// ---------- Pro 授权（pro 分区；与 App.vue 共享同一 licenseStatus 引用） ----------
-const licenseStatus = inject("licenseStatus", ref({ pro: false, error: null }));
-const licenseKeyInput = ref("");
-const activating = ref(false);
-const deactivating = ref(false);
-const licenseError = ref("");
-const licenseErrorKey = ref("");
-const licenseLoaded = ref(false);
-function licenseErrKey(code) {
-  const map = {
-    malformed: "license.errMalformed",
-    "bad-signature": "license.errBadSignature",
-    expired: "license.errExpired",
-    "unsupported-plan": "license.errUnsupportedPlan",
-    "coming-soon": "license.errComingSoon",
-  };
-  return map[code] || "license.errUnknown";
-}
-async function refreshLicense() {
-  licenseStatus.value = await loadLicenseStatus();
-  licenseLoaded.value = true;
-  licenseError.value = "";
-  licenseErrorKey.value = "";
-  if (licenseStatus.value && licenseStatus.value.error && !licenseStatus.value.pro) {
-    licenseErrorKey.value = licenseErrKey(licenseStatus.value.error);
-  }
-}
-async function doActivate() {
-  const key = licenseKeyInput.value.trim();
-  if (!key) {
-    licenseErrorKey.value = "license.errEmpty";
-    return;
-  }
-  activating.value = true;
-  licenseError.value = "";
-  licenseErrorKey.value = "";
-  try {
-    const status = await activateLicense(key);
-    licenseStatus.value = status;
-    if (status.pro) {
-      licenseKeyInput.value = "";
-      window.dispatchEvent(new CustomEvent("license-changed"));
-      props.showToast(t("license.activated", { name: status.name || "" }));
-    } else {
-      licenseErrorKey.value = licenseErrKey(status.error || "unknown");
-    }
-  } catch (e) {
-    licenseError.value = String(e);
-    licenseErrorKey.value = "license.errUnknown";
-  } finally {
-    activating.value = false;
-  }
-}
-async function doDeactivate() {
-  const ok = await askConfirm({
-    title: t("license.deactivateTitle"),
-    message: t("license.deactivateMsg"),
-    okText: t("license.deactivateOk"),
-  });
-  if (!ok) return;
-  deactivating.value = true;
-  try {
-    licenseStatus.value = await deactivateLicense();
-    window.dispatchEvent(new CustomEvent("license-changed"));
-    props.showToast(t("license.deactivated"));
-  } catch (e) {
-    licenseErrorKey.value = "license.errUnknown";
-    licenseError.value = String(e);
-  } finally {
-    deactivating.value = false;
-  }
-}
 // ---------- 遥测隐私开关（即改即存，不走表单保存路径） ----------
 const telemetryOn = ref(false);
 async function loadTelemetryPref() {
@@ -166,7 +96,7 @@ async function toggleTelemetry(ev) {
   await telemetryConsent(next).catch(() => {});
   props.showToast(next ? t("telemetry.onMsg") : t("telemetry.offMsg"));
 }
-// ---------- 云同步（Pro） ----------
+// ---------- 云同步 ----------
 const syncCfg = ref(null); // normalizeSync 后的快照
 const syncStatus = ref("disabled");
 const syncBusy = ref(false);
@@ -181,22 +111,15 @@ const showSyncPassword = ref(false);
 async function refreshSync() {
   try {
     syncCfg.value = await getSyncSnapshot();
-    syncStatus.value = isSyncPro() ? (syncCfg.value.status || "idle") : "disabled";
+    syncStatus.value = syncCfg.value.status || "idle";
     const e = await getEngine().catch(() => null);
     if (e && syncCfg.value.enabled && syncCfg.value.tokenCipher) {
       try { syncDevices.value = await listDevices(); } catch { /* 未就绪 */ }
     }
   } catch { /* 设置页仍可用 */ }
 }
-function isSyncPro() {
-  return isFeatureEnabled(licenseStatus.value, "cloud-sync");
-}
 async function toggleSync(ev) {
   const next = !!ev.target.checked;
-  if (!isSyncPro()) {
-    props.showToast(t("sync.needPro"));
-    return;
-  }
   try {
     await setSyncEnabled(next);
     await refreshSync();
@@ -289,14 +212,11 @@ function registerSyncRefresh() {
 function refreshSyncListener() {
   refreshSync();
 }
-// 打开设置页时刷新 + 订阅状态
+// 打开设置页时刷新 + 订阅状态（遥测与云同步都是桌面端专属，浏览器端跳过）
 onMounted(async () => {
   loadSettings();
-  refreshLicense();
-  loadTelemetryPref();
-  subscribeLicenseChanged((s) => {
-    licenseStatus.value = s;
-  });
+  if (capabilities.telemetryUpload) loadTelemetryPref();
+  if (!capabilities.cloudSync) return;
   await refreshSync();
   registerSyncRefresh();
 });
@@ -304,14 +224,16 @@ onMounted(async () => {
 function openAfdian() {
   openUrl("https://afdian.com/a/toolcove").catch((e) => props.showToast(String(e)));
 }
-// ---------- 自定义主题色（Pro） ----------
+function openRepo() {
+  openUrl("https://github.com/GitHub-lcb/ToolCove").catch((e) => props.showToast(String(e)));
+}
+// ---------- 自定义主题色 ----------
 const accentKey = ref(loadAccentKey() || "");
 async function pickAccent(key) {
-  if (!isFeatureEnabled(licenseStatus.value, "theme-custom")) return;
   saveAccentKey(key || "");
   accentKey.value = key || "";
   window.dispatchEvent(new CustomEvent("accent-changed"));
-  props.showToast(key ? t("pro.accentApplied") : t("pro.accentReset"));
+  props.showToast(key ? t("settings.accentApplied") : t("settings.accentReset"));
 }
 
 function validate() {
@@ -362,10 +284,12 @@ async function loadSettings() {
     settingsLoadError.value = e && e.message ? e.message : String(e);
     props.showToast(t("settings.loadFailed", { err: settingsLoadError.value }));
   }
-  try {
-    autostartOn.value = !!(await invoke("autostart_status"));
-  } catch (e) {
-    autostartOn.value = false;
+  if (capabilities.autostart) {
+    try {
+      autostartOn.value = !!(await invoke("autostart_status"));
+    } catch (e) {
+      autostartOn.value = false;
+    }
   }
   fieldErr.value = {};
   dirty.value = false;
@@ -406,7 +330,7 @@ async function save() {
     await invoke("save_data", { key: "settings", data: payload });
     rawSnapshot = payload;
     try {
-      await invoke("autostart_set", { enabled: autostartOn.value });
+      if (capabilities.autostart) await invoke("autostart_set", { enabled: autostartOn.value });
     } catch (e) {}
     window.dispatchEvent(new CustomEvent("settings-saved"));
     applyLocale(form.value.ui.locale); // 界面语言即时生效，无需重启
@@ -514,7 +438,7 @@ async function restoreNow() {
     <aside class="sv-side">
       <div class="sv-title">{{ t("nav.settings") }}</div>
       <button
-        v-for="s in SECTIONS"
+        v-for="s in sections"
         :key="s.key"
         class="sv-nav"
         :class="{ on: section === s.key }"
@@ -615,103 +539,11 @@ async function restoreNow() {
             <button class="btn-ghost sm" :disabled="testingAI" @click="testAIConn"><Icon name="sparkles" :size="14" /> {{ testingAI ? t("settings.aiTesting") : t("settings.aiTest") }}</button>
           </div>
         </div>
-        <!-- ============ Pro / 商业化 ============ -->
-        <div v-show="section === 'pro'" class="sect pro">
+        <!-- ============ 云同步（端到端加密，免费内置） ============ -->
+        <div v-if="capabilities.cloudSync" v-show="section === 'sync'" class="sect sync">
           <div class="sect-head">
-            <span class="sect-title"><Icon name="star" :size="15" class="sect-ico" /> {{ t("pro.title") }}</span>
-            <span v-if="licenseStatus.pro" class="ver-tag pro-tag">PRO ✓</span>
-            <span v-else class="ver-tag">{{ t("pro.freePlan") }}</span>
-          </div>
-          <p class="sect-desc">{{ t("pro.desc") }}</p>
-
-          <!-- 状态卡 + 激活框 -->
-          <div class="pro-card" :class="{ on: licenseStatus.pro }">
-            <template v-if="licenseStatus.pro">
-              <div class="pro-state">
-                <b>{{ t("pro.activatedTitle") }}</b>
-                <span class="pro-name">{{ licenseStatus.name }}<template v-if="licenseStatus.expiresAt"> · {{ t("pro.expiresAt", { date: licenseStatus.expiresAt }) }}</template></span>
-                <div class="pro-features">
-                  <span v-for="f in licenseStatus.features" v-show="PRO_FEATURES[f]" :key="f" class="pro-feat-chip">{{ t(PRO_FEATURES[f].labelKey) }}</span>
-                </div>
-              </div>
-              <div class="pro-actions">
-                <button class="btn-ghost sm" :disabled="deactivating" @click="doDeactivate"><Icon name="lock" :size="14" /> {{ t("license.deactivateBtn") }}</button>
-              </div>
-            </template>
-            <template v-else>
-              <div class="pro-activate">
-                <input v-model="licenseKeyInput" :placeholder="t('license.keyPh')" spellcheck="false" class="lic-input" />
-                <button class="btn-primary sm" :disabled="activating" @click="doActivate"><Icon name="key" :size="14" /> {{ activating ? t("license.activating") : t("license.activateBtn") }}</button>
-                <button class="btn-ghost sm" disabled :title="t('license.onlineComingSoon')">{{ t("license.onlineBtn") }}</button>
-              </div>
-              <p v-if="licenseErrorKey" class="field-err">{{ t(licenseErrorKey) }}</p>
-              <p v-if="licenseError" class="field-err">{{ licenseError }}</p>
-            </template>
-          </div>
-
-          <!-- 定价卡 -->
-          <div class="pro-grid">
-            <div class="pricing-card">
-              <div class="price-name">{{ t("pro.freeName") }}</div>
-              <div class="price-num">¥0</div>
-              <ul class="price-list">
-                <li>{{ t("pro.freeItem1") }}</li>
-                <li>{{ t("pro.freeItem2") }}</li>
-                <li>{{ t("pro.freeItem3") }}</li>
-              </ul>
-            </div>
-            <div class="pricing-card hot">
-              <div class="price-name">{{ t("pro.proName") }} <span class="soon-tag">{{ t("pro.soon") }}</span></div>
-              <div class="price-num">¥99 <span class="price-note">{{ t("pro.lifetime") }}</span></div>
-              <ul class="price-list">
-                <li>{{ t("pro.proItem1") }}</li>
-                <li>{{ t("pro.proItem2") }}</li>
-                <li>{{ t("pro.proItem3") }}</li>
-                <li>{{ t("pro.proItem4") }}</li>
-              </ul>
-              <button class="btn-primary sm full" disabled>{{ t("pro.soon") }}</button>
-            </div>
-            <div class="pricing-card">
-              <div class="price-name">{{ t("pro.teamName") }} <span class="soon-tag">{{ t("pro.soon") }}</span></div>
-              <div class="price-num">—</div>
-              <ul class="price-list">
-                <li>{{ t("pro.teamItem1") }}</li>
-                <li>{{ t("pro.teamItem2") }}</li>
-              </ul>
-              <button class="btn-ghost sm full" disabled>{{ t("pro.soon") }}</button>
-            </div>
-          </div>
-
-          <!-- 功能对比表 -->
-          <div class="pro-compare">
-            <table class="cmp-table">
-              <thead><tr><th></th><th>{{ t("pro.freePlan") }}</th><th>{{ t("pro.proPlan") }}</th></tr></thead>
-              <tbody>
-                <tr><td>{{ t("pro.cmpTools") }}</td><td>✓</td><td>✓</td></tr>
-                <tr><td>{{ t("pro.cmpSnippets") }}</td><td>✓</td><td>✓</td></tr>
-                <tr><td>{{ t("pro.cmpLocal") }}</td><td>✓</td><td>✓</td></tr>
-                <tr><td>{{ t("pro.cmpDbXlsx") }}</td><td>—</td><td>✓</td></tr>
-                <tr><td>{{ t("pro.cmpTheme") }}</td><td>—</td><td>✓</td></tr>
-                <tr><td>{{ t("pro.cmpUpdate") }}</td><td>{{ t("pro.cmpUpdateFree") }}</td><td>{{ t("pro.cmpUpdatePro") }}</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- 自定义主题色（Pro 专属） -->
-          <div class="accent-head">
-            <span class="sect-title"><Icon name="palette" :size="15" /> {{ t("pro.accentTitle") }} <span class="soon-tag" v-if="!isFeatureEnabled(licenseStatus, 'theme-custom')">Pro</span></span>
-          </div>
-          <div class="accent-row">
-            <button v-for="p in ACCENT_PRESETS" :key="p.key" class="accent-dot" :class="{ on: accentKey === p.key }" :style="{ background: p.light['--primary'] }" :title="t(p.labelKey)" :disabled="!isFeatureEnabled(licenseStatus, 'theme-custom')" @click="pickAccent(p.key)"></button>
-            <button class="accent-dot reset" :class="{ on: !accentKey }" :title="t('pro.accentDefault')" :disabled="!isFeatureEnabled(licenseStatus, 'theme-custom')" @click="pickAccent('')">✕</button>
-          </div>
-
-          <!-- 云同步组 -->
-
-          <!-- 云同步（Pro） -->
-          <div class="sync-head">
-            <span class="sect-title"><Icon name="refresh" :size="15" /> {{ t("sync.title") }} <span class="soon-tag" v-if="!isSyncPro()">Pro</span></span>
-            <label class="switch" v-if="isSyncPro()">
+            <span class="sect-title"><Icon name="refresh" :size="15" class="sect-ico" /> {{ t("sync.title") }}</span>
+            <label class="switch">
               <input type="checkbox" :checked="syncCfg && syncCfg.enabled" @change="toggleSync" />
               <span class="track"></span>
               <span>{{ t("sync.enable") }}</span>
@@ -719,72 +551,111 @@ async function restoreNow() {
           </div>
           <p class="sect-desc">{{ t("sync.desc") }}</p>
 
-          <template v-if="isSyncPro()">
-            <!-- 服务器地址与配对（未入伙时） -->
-            <template v-if="!syncCfg || !syncCfg.collectionId">
-              <label class="field">
-                <span>{{ t("sync.serverUrl") }}</span>
-                <input v-model="syncField" :placeholder="t('sync.serverUrlPh')" />
-              </label>
-              <p v-if="syncField && !syncField.startsWith('https://')" class="field-err">{{ t("sync.serverUrlHttpWarn") }}</p>
-              <label class="field">
-                <span>{{ t("sync.syncPasswordPh") }} <span class="faint-hint">{{ t("sync.syncPasswordHint") }}</span></span>
-                <div class="token-row">
-                  <input :type="showSyncPassword ? 'text' : 'password'" v-model="syncPassword" :placeholder="t('sync.syncPasswordPh')" autocomplete="new-password" />
-                  <button type="button" class="btn-ghost sm" @click="showSyncPassword = !showSyncPassword">{{ showSyncPassword ? t("settings.hide") : t("settings.show") }}</button>
-                </div>
-              </label>
-              <div class="sync-actions">
-                <button class="btn-primary sm" :disabled="syncBusy" @click="doCreateSync"><Icon name="plus" :size="14" /> {{ t("sync.createBtn") }}</button>
-                <span class="sync-or">{{ t("sync.or") }}</span>
-                <input v-model="syncJoinId" :placeholder="t('sync.joinIdPh')" class="lic-input sm-input" />
-                <input v-model="syncCodeInput" :placeholder="t('sync.joinCodePh')" class="lic-input sm-input" />
-                <button class="btn-ghost sm" :disabled="syncBusy" @click="doJoinSync"><Icon name="link" :size="14" /> {{ t("sync.joinBtn") }}</button>
+          <!-- 服务器地址与配对（未入伙时） -->
+          <template v-if="!syncCfg || !syncCfg.collectionId">
+            <label class="field">
+              <span>{{ t("sync.serverUrl") }}</span>
+              <input v-model="syncField" :placeholder="t('sync.serverUrlPh')" />
+            </label>
+            <p v-if="syncField && !syncField.startsWith('https://')" class="field-err">{{ t("sync.serverUrlHttpWarn") }}</p>
+            <label class="field">
+              <span>{{ t("sync.syncPasswordPh") }} <span class="faint-hint">{{ t("sync.syncPasswordHint") }}</span></span>
+              <div class="token-row">
+                <input :type="showSyncPassword ? 'text' : 'password'" v-model="syncPassword" :placeholder="t('sync.syncPasswordPh')" autocomplete="new-password" />
+                <button type="button" class="btn-ghost sm" @click="showSyncPassword = !showSyncPassword">{{ showSyncPassword ? t("settings.hide") : t("settings.show") }}</button>
               </div>
-              <p v-if="syncErrKey && !syncCfg.collectionId" class="field-err">{{ t(syncErrKey) }}</p>
-            </template>
-
-            <!-- 已入伙：状态 + 配对码 + 设备 + 操作 -->
-            <template v-else>
-              <div class="sync-state" :class="syncStatus">
-                <span class="sync-dot"></span>
-                <span>{{ t(statusKey(syncStatus)) }}<template v-if="syncCfg.lastSyncAt"> · {{ t("sync.lastSyncAt", { time: fmtSyncTime(syncCfg.lastSyncAt) }) }}</template></span>
-              </div>
-
-              <div class="sync-actions">
-                <button class="btn-primary sm" :disabled="syncBusy" @click="doSyncNow"><Icon name="refresh" :size="14" /> {{ t("sync.syncNowBtn") }}</button>
-                <button class="btn-ghost sm" @click="doRegenCode"><Icon name="repeat" :size="14" /> {{ t("sync.regenCodeBtn") }}</button>
-              </div>
-              <div v-if="pairingResult.code" class="pairing-box">
-                <div class="pairing-code" @click="copyPairing">{{ pairingResult.code }}</div>
-                <p class="sect-desc">{{ t("sync.pairingCodeHint") }}</p>
-              </div>
-
-              <div class="devices-box">
-                <div class="sect-title sm-title">{{ t("sync.devicesTitle") }}</div>
-                <div v-for="d in syncDevices" :key="d.tokenHash" class="device-row">
-                  <Icon name="laptop" :size="14" />
-                  <span class="dev-name">{{ d.name }}{{ d.self ? t("sync.selfTag") : "" }}</span>
-                  <span class="dev-tail">{{ d.tokenTail }}</span>
-                  <button class="btn-danger xs" :disabled="syncBusy" @click="doRevoke(d.tokenHash, d.self)">{{ t("sync.revokeBtn") }}</button>
-                </div>
-                <p v-if="!syncDevices.length" class="sect-desc">{{ t("sync.noDevices") }}</p>
-              </div>
-              <p v-if="syncErrKey" class="field-err">{{ t(syncErrKey) }}</p>
-              <p class="sect-desc sub">{{ t("sync.viewTip") }}</p>
-            </template>
+            </label>
+            <div class="sync-actions">
+              <button class="btn-primary sm" :disabled="syncBusy" @click="doCreateSync"><Icon name="plus" :size="14" /> {{ t("sync.createBtn") }}</button>
+              <span class="sync-or">{{ t("sync.or") }}</span>
+              <input v-model="syncJoinId" :placeholder="t('sync.joinIdPh')" class="lic-input sm-input" />
+              <input v-model="syncCodeInput" :placeholder="t('sync.joinCodePh')" class="lic-input sm-input" />
+              <button class="btn-ghost sm" :disabled="syncBusy" @click="doJoinSync"><Icon name="link" :size="14" /> {{ t("sync.joinBtn") }}</button>
+            </div>
+            <p v-if="syncErrKey && !syncCfg.collectionId" class="field-err">{{ t(syncErrKey) }}</p>
           </template>
+
+          <!-- 已入伙：状态 + 配对码 + 设备 + 操作 -->
           <template v-else>
-            <p class="field-err">{{ t("sync.needPro") }}</p>
+            <div class="sync-state" :class="syncStatus">
+              <span class="sync-dot"></span>
+              <span>{{ t(statusKey(syncStatus)) }}<template v-if="syncCfg.lastSyncAt"> · {{ t("sync.lastSyncAt", { time: fmtSyncTime(syncCfg.lastSyncAt) }) }}</template></span>
+            </div>
+
+            <div class="sync-actions">
+              <button class="btn-primary sm" :disabled="syncBusy" @click="doSyncNow"><Icon name="refresh" :size="14" /> {{ t("sync.syncNowBtn") }}</button>
+              <button class="btn-ghost sm" @click="doRegenCode"><Icon name="repeat" :size="14" /> {{ t("sync.regenCodeBtn") }}</button>
+            </div>
+            <div v-if="pairingResult.code" class="pairing-box">
+              <div class="pairing-code" @click="copyPairing">{{ pairingResult.code }}</div>
+              <p class="sect-desc">{{ t("sync.pairingCodeHint") }}</p>
+            </div>
+
+            <div class="devices-box">
+              <div class="sect-title sm-title">{{ t("sync.devicesTitle") }}</div>
+              <div v-for="d in syncDevices" :key="d.tokenHash" class="device-row">
+                <Icon name="laptop" :size="14" />
+                <span class="dev-name">{{ d.name }}{{ d.self ? t("sync.selfTag") : "" }}</span>
+                <span class="dev-tail">{{ d.tokenTail }}</span>
+                <button class="btn-danger xs" :disabled="syncBusy" @click="doRevoke(d.tokenHash, d.self)">{{ t("sync.revokeBtn") }}</button>
+              </div>
+              <p v-if="!syncDevices.length" class="sect-desc">{{ t("sync.noDevices") }}</p>
+            </div>
+            <p v-if="syncErrKey" class="field-err">{{ t(syncErrKey) }}</p>
+            <p class="sect-desc sub">{{ t("sync.viewTip") }}</p>
           </template>
-          <!-- 支持开发（爱发电占位） -->
-          <div class="sect-foot">
-            <button class="btn-ghost sm" @click="openAfdian"><Icon name="heart" :size="14" /> {{ t("pro.afdianBtn") }}</button>
-            <span class="sect-desc inline">{{ t("pro.afdianHint") }}</span>
+        </div>
+
+        <!-- ============ 赞助与开源（全面免费，自愿支持） ============ -->
+        <div v-show="section === 'sponsor'" class="sect sponsor">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="heart" :size="15" class="sect-ico" /> {{ t("sponsor.title") }}</span>
+            <span class="free-tag">{{ t("sponsor.freeTag") }}</span>
           </div>
-</div>
+          <p class="sect-desc">{{ t("sponsor.desc") }}</p>
+
+          <div class="sponsor-card">
+            <div class="sponsor-ico"><Icon name="heart" :size="22" /></div>
+            <div class="sponsor-txt">
+              <b>{{ t("sponsor.whyTitle") }}</b>
+              <p>{{ t("sponsor.whyBody") }}</p>
+            </div>
+          </div>
+
+          <div class="sect-foot">
+            <button class="btn-primary sm" @click="openAfdian"><Icon name="heart" :size="14" /> {{ t("sponsor.afdianBtn") }}</button>
+            <button class="btn-ghost sm" @click="openRepo"><Icon name="star" :size="14" /> {{ t("sponsor.starBtn") }}</button>
+            <span class="sect-desc inline">{{ t("sponsor.afdianHint") }}</span>
+          </div>
+
+          <div class="oss-box">
+            <div class="sect-title sm-title">{{ t("sponsor.ossTitle") }}</div>
+            <p class="sect-desc">{{ t("sponsor.ossDesc") }}</p>
+          </div>
+        </div>
+
 
         <!-- ============ 系统设置 ============ -->
+        <div v-show="section === 'general'" class="sect gen">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="palette" :size="15" /> {{ t("settings.accentTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.accentDesc") }}</p>
+          <div class="accent-row">
+            <button
+              v-for="p in ACCENT_PRESETS"
+              :key="p.key"
+              type="button"
+              class="accent-dot"
+              :class="{ on: accentKey === p.key }"
+              :style="{ background: p.light['--primary'] }"
+              :title="t(p.labelKey)"
+              @click="pickAccent(p.key)"
+            ></button>
+            <button type="button" class="btn-ghost sm" @click="pickAccent('')">{{ t("settings.accentDefault") }}</button>
+          </div>
+        </div>
+
         <div v-show="section === 'general'" class="sect gen">
           <div class="sect-head">
             <span class="sect-title"><Icon name="grid" :size="15" /> {{ t("settings.densityTitle") }}</span>
@@ -811,7 +682,7 @@ async function restoreNow() {
           <p v-if="fieldErr.navModules" class="field-err nav-mod-err">{{ fieldErr.navModules }}</p>
         </div>
 
-        <div v-show="section === 'general'" class="sect gen">
+        <div v-if="capabilities.autostart" v-show="section === 'general'" class="sect gen">
           <div class="sect-head">
             <span class="sect-title"><Icon name="rocket" :size="15" /> {{ t("settings.autostartTitle") }}</span>
             <label class="switch">
@@ -835,7 +706,7 @@ async function restoreNow() {
           <p class="sect-desc">{{ t("settings.langDesc") }}</p>
         </div>
 
-        <div v-show="section === 'general'" class="sect gen">
+        <div v-if="capabilities.telemetryUpload" v-show="section === 'general'" class="sect gen">
           <div class="sect-head">
             <span class="sect-title"><Icon name="shield" :size="15" /> {{ t("telemetry.title") }}</span>
             <label class="switch">
@@ -848,7 +719,7 @@ async function restoreNow() {
           <p class="sect-desc sub">{{ t("telemetry.privacyNote") }}</p>
         </div>
 
-        <div v-show="section === 'general'" class="sect gen">
+        <div v-if="capabilities.backup" v-show="section === 'general'" class="sect gen">
           <div class="sect-head">
             <span class="sect-title"><Icon name="box" :size="15" /> {{ t("settings.backupTitle") }}</span>
           </div>
@@ -863,7 +734,7 @@ async function restoreNow() {
           </div>
         </div>
 
-        <div v-show="section === 'general'" class="sect gen gen-last">
+        <div v-if="capabilities.updater" v-show="section === 'general'" class="sect gen gen-last">
           <div class="sect-head">
             <span class="sect-title"><Icon name="download" :size="15" /> {{ t("settings.updateTitle") }}</span>
             <span class="ver-tag">{{ t("settings.updateVer", { version: appVersion }) }}</span>
@@ -874,6 +745,14 @@ async function restoreNow() {
               <Icon name="repeat" :size="14" /> {{ checkingUpdate ? t("settings.updateCheckingBtn") : t("settings.updateBtn") }}
             </button>
           </div>
+        </div>
+
+        <!-- 浏览器版说明：说明存储位置与桌面版差异 -->
+        <div v-if="!capabilities.multiWindow" v-show="section === 'general'" class="sect gen gen-last">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="globe" :size="15" /> {{ t("settings.browserTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.browserDesc") }}</p>
         </div>
       </div>
     </main>
@@ -1008,30 +887,23 @@ async function restoreNow() {
   .lic-input { background: var(--card-raised); }
 }
 
-/* ============ Pro / 商业化分区样式 ============ */
-.pro-tag { color: var(--success); font-weight: 700; }
-.pro-card {
+/* ============ 赞助与开源分区样式 ============ */
+.free-tag { font-size: var(--fs-xs); font-weight: 700; color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 45%, transparent); border-radius: 999px; padding: 1px 7px; }
+.sponsor-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
   margin: 6px 0 18px;
   padding: 14px 16px;
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
-  background: var(--card-soft);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 55%, var(--card)), var(--card));
 }
-.pro-card.on { border-color: var(--border-blue); background: linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 55%, var(--card)), var(--card)); }
-.pro-state { display: flex; flex-direction: column; gap: 6px; }
-.pro-state b { font-size: var(--fs-base); }
-.pro-name { font-size: var(--fs-sm); color: var(--muted); }
-.pro-features { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.pro-feat-chip {
-  font-size: var(--fs-xs);
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--grad-brand);
-  color: var(--text-invert);
-  font-weight: 600;
-}
-.pro-actions { margin-top: 10px; display: flex; gap: 8px; }
-.pro-activate { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sponsor-ico { flex-shrink: 0; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--grad-brand); color: var(--text-invert); }
+.sponsor-txt b { font-size: var(--fs-base); }
+.sponsor-txt p { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
+.oss-box { margin-top: 18px; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--card-soft); }
+.oss-box .sect-desc { margin: 0; }
 .lic-input {
   flex: 1;
   min-width: 240px;
@@ -1043,51 +915,18 @@ async function restoreNow() {
   background: var(--input-bg, var(--card));
   color: var(--text);
 }
-.pro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 10px 0 18px; }
-.pricing-card {
-  padding: 14px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  background: var(--card);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pricing-card.hot { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); box-shadow: var(--glow-sm); }
-.price-name { font-size: var(--fs-md); font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.price-num { font-size: var(--fs-xl); font-weight: 700; font-family: var(--font-num); }
-.price-note { font-size: var(--fs-xs); color: var(--muted); font-weight: 500; }
-.soon-tag { font-size: var(--fs-xs); font-weight: 700; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 999px; padding: 1px 7px; }
-.price-list { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); color: var(--text-weak); flex: 1; }
-.price-list li { margin-bottom: 6px; padding-left: 16px; position: relative; }
-.price-list li::before { content: "✓"; position: absolute; left: 0; color: var(--success); font-size: var(--fs-xs); }
-.btn.full { width: 100%; justify-content: center; }
-.pro-compare { margin: 6px 0 18px; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); }
-.cmp-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.cmp-table th, .cmp-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--card-border); }
-.cmp-table th:not(:first-child), .cmp-table td:not(:first-child) { width: 16%; text-align: center; }
-.cmp-table tr:last-child td { border-bottom: none; }
-.cmp-table thead th { background: var(--ghost); color: var(--text-weak); font-weight: 600; }
-.accent-head { margin-top: 4px; }
-.accent-row { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; }
+.accent-row { display: flex; gap: 10px; align-items: center; margin: 10px 0 4px; }
 .accent-dot {
   width: 30px; height: 30px; border-radius: 50%;
   border: 2px solid var(--card-border);
   cursor: pointer; padding: 0;
   transition: transform 0.12s, border-color 0.12s;
 }
-.accent-dot:hover:not(:disabled) { transform: scale(1.12); border-color: var(--primary); }
+.accent-dot:hover { transform: scale(1.12); border-color: var(--primary); }
 .accent-dot.on { border-color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
-.accent-dot:disabled { cursor: not-allowed; opacity: 0.45; }
-.accent-dot.reset { background: var(--well); color: var(--muted); font-size: var(--fs-xs); display: grid; place-items: center; }
 .sect-desc.inline { display: inline; margin: 0; }
 
-@media (max-width: 900px) {
-  .pro-grid { grid-template-columns: 1fr; }
-}
-
 /* ============ 云同步组样式 ============ */
-.sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
 .sync-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
 .sync-or { color: var(--faint); font-size: var(--fs-sm); }
 .sm-input { min-width: 150px; flex: 0 1 200px; }

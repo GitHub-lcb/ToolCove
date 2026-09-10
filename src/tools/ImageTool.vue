@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "../platform/invoke.js";
+import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import Icon from "../Icon.vue";
 import ImagePreview from "./ImagePreview.vue";
 import { formatFileSize } from "../fileTool.js";

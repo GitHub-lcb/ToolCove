@@ -188,7 +188,7 @@ function addXlsxTable(ws, title, cols, rows, maxSpan) {
   ws.addRow([]);
 }
 
-// 生成数据库结果集 Excel（Pro 功能 db-export-xlsx）：列名 + 行数据 → base64 xlsx
+// 生成数据库结果集 Excel：列名 + 行数据 → base64 xlsx
 // 与 buildReleaseXlsx 同一惯例：exceljs 惰性导入，返回 base64 供 invoke("export_file_b64")
 export async function buildDbResultXlsx(cols, rows) {
   const { default: ExcelJS } = await import("exceljs");

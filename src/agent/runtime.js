@@ -107,8 +107,9 @@ export async function runAgent(input, options = {}) {
       const safeRisk = ['read', 'transform'].includes(tool.risk);
       // 确认策略与风险解耦：mode 决定「要不要问用户」，safeRisk 继续决定「能不能重试」。
       // 不传 requireConfirmation 时落到 'risky'，与引入该选项前的行为完全一致。
+      // tool.confirm === 'always' 的工具（如 data.remove）不受策略影响：用户选了「从不确认」也要问。
       const mode = ['always', 'never'].includes(options.requireConfirmation) ? options.requireConfirmation : 'risky';
-      const needsConfirm = mode === 'always' ? true : mode === 'never' ? false : !safeRisk;
+      const needsConfirm = tool.confirm === 'always' ? true : mode === 'always' ? true : mode === 'never' ? false : !safeRisk;
       if (needsConfirm) {
         await options.onCheckpoint?.({ type: 'waiting', action, history });
         const approved = await wait(() => options.confirm?.(`即将执行 ${tool.name}`, { action, tool }) ?? false, 600000, '等待确认');
@@ -131,8 +132,8 @@ export async function runAgent(input, options = {}) {
             continue;
           }
           history.push({ action: { ...action, id }, error: error.message || String(error) });
-          await emit({ type: 'tool_error', id, tool: tool.name, args, error: error.message || String(error) });
-          return { status: 'failed', error: error.message || String(error), history };
+          await emit({ type: 'tool_error', id, tool: tool.name, args, error: error.message || String(error), code: error.code || '' });
+          return { status: 'failed', error: error.message || String(error), errorCode: error.code || '', history };
         }
         check();
         if (JSON.stringify(value ?? null).length > maxOutput) throw Error('工具结果过大，请缩小输入后重试');
@@ -143,6 +144,6 @@ export async function runAgent(input, options = {}) {
     }
     return { status: 'max_steps', history };
   } catch (error) {
-    return { status: error.code === 'ABORTED' ? 'cancelled' : 'failed', error: error.message || String(error), history };
+    return { status: error.code === 'ABORTED' ? 'cancelled' : 'failed', error: error.message || String(error), errorCode: error.code || '', history };
   }
 }

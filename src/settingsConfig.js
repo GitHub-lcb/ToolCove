@@ -58,7 +58,7 @@ export function mergeSettingsSnapshot(rawSnapshot, formSnapshot) {
   return { ...base, ...form };
 }
 
-// 冻结：该数组被嵌进 PRO_LIMITS 常量，外层 Object.freeze 不会保护数组本身
+// 冻结：数组常量被直接引用，防止上层误改
 export const AGENT_CONFIRM_POLICIES = Object.freeze(["risky", "always", "never"]);
 // 与 runtime.js 的 bounded(options.maxSteps, 12, 50) 上限保持一致
 export const AGENT_MAX_STEPS_HARD_CAP = 50;

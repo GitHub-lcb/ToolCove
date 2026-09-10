@@ -18,3 +18,20 @@ it('publishes typed schemas and rejects oversized generation requests', async ()
   const result = await runAgent('x', { registry, planner: async () => ({ type: 'tool_call', tool: 'id.generate', args: { type: 'uuid-v4', count: 10000000 } }) });
   expect(result.status).toBe('failed');
 });
+
+it('covers every toolbox capability with an agent tool', () => {
+  const toolKeys = [...new Set(createBuiltinRegistry().list().map(t => t.toolKey))].sort();
+  // chat 是面向人的对话界面，不作为 Agent 工具；其余工具箱能力都有对应工具
+  expect(toolKeys).toEqual(['convert', 'crypto', 'db', 'diff', 'file', 'generator', 'image', 'json', 'network', 'request', 'time']);
+});
+
+it('hashes text and marks remote-capable tools with the right risk', async () => {
+  const registry = createBuiltinRegistry();
+  expect(await registry.get('crypto.hash').execute({ text: 'abc' })).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  const { password } = await registry.get('crypto.password').execute({ length: 24 });
+  expect(password).toHaveLength(24);
+  expect(await registry.get('image.plan').execute({ width: 1920, height: 1080, maxWidth: 800 })).toMatchObject({ contain: { width: 800, height: 450 } });
+  // 出站请求有副作用，必须走确认；网络诊断只读
+  expect(registry.get('http.request').risk).toBe('write');
+  expect(registry.get('network.ping').risk).toBe('read');
+});

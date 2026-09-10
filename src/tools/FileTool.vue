@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "../platform/invoke.js";
+import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import Icon from "../Icon.vue";
 import { askConfirm } from "../confirm.js";
 import {

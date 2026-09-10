@@ -1,5 +1,3 @@
-import { emptyUsage, addUsage as accumulateUsage } from './quota.js';
-
 const isSensitive = key => /^(password|passwd|pwd|token|accesstoken|refreshtoken|secret|apikey|authorization|proxyauthorization|cookie|setcookie|clientsecret)$/i.test(String(key).replace(/[-_ ]/g, ''));
 const MARK = '[REDACTED]';
 const PAIR = /\b(password|passwd|pwd|(?:access|refresh)[_-]?token|token|secret|api[-_ ]?key|client[-_ ]?secret)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s&,;}]+)/gi;
@@ -47,6 +45,24 @@ export function sanitizeRun(value) {
     ]));
   };
   return clean(value);
+}
+
+// 用量计数：熔断上限防止损坏数据无限增长；缺失或非法字段按 0 处理
+const MAX_TOKENS = 1_000_000_000;
+const MAX_CALLS = 1_000_000;
+const count = (v, max) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.min(Math.trunc(Number(v)), max) : 0);
+
+export const emptyUsage = () => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 });
+
+export function accumulateUsage(usage, delta = {}) {
+  const u = usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : emptyUsage();
+  const d = delta && typeof delta === 'object' && !Array.isArray(delta) ? delta : {};
+  return {
+    promptTokens: Math.min(count(u.promptTokens, MAX_TOKENS) + count(d.promptTokens, MAX_TOKENS), MAX_TOKENS),
+    completionTokens: Math.min(count(u.completionTokens, MAX_TOKENS) + count(d.completionTokens, MAX_TOKENS), MAX_TOKENS),
+    totalTokens: Math.min(count(u.totalTokens, MAX_TOKENS) + count(d.totalTokens, MAX_TOKENS), MAX_TOKENS),
+    calls: Math.min(count(u.calls, MAX_CALLS) + 1, MAX_CALLS),
+  };
 }
 
 export function createRun(input) {

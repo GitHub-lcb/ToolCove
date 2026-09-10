@@ -1,18 +1,44 @@
-// 云同步单例装配：把 engine 接到真实依赖（http_request 传输 / DPAPI 密钥 / 视图源 / 墓碑持久化）。
-// 视图（SnippetView/ProblemView）挂载时注册数据源；变更持久化后调用 enqueue。
+// 云同步单例装配：把 engine 接到真实依赖（http_request 传输 / DPAPI 密钥 / 数据源 / 墓碑持久化）。
+// 数据源 = 数据访问层（data/repository.js）：同步前从磁盘读最新（refreshSources），拉取结果写回磁盘
+// 并广播 data-changed。因此推送/拉取不依赖任何视图是否打开；视图只订阅 data-changed 刷新自己。
 // SettingsView 通过本模块做 创建/加入/重生成/吊销 等元操作，并订阅状态事件。
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke.js";
 import { createSyncEngine } from "./engine.js";
 import { normalizeSync } from "../settingsConfig.js";
 import { encryptValue, decryptValue } from "../secure.js";
 import { cachedDerive, newSalt } from "./crypto.js";
+import { KINDS, load as loadKind, applyRemote } from "../data/repository.js";
 
 const TOMBSTONE_KEY = "sync-tombstones";
-const sources = []; // [{key, get, apply}]
+const SYNC_KINDS = Object.keys(KINDS).filter((kind) => KINDS[kind].sync);
+const mirrors = new Map(); // kind -> 记录数组（引擎取数用，同步前刷新）
 
 let engine = null;
+let enginePromise = null;
 let configCache = null;
 const tombCache = { map: null };
+
+/** 从磁盘刷新推送镜像（同步前 / 变更入队前调用） */
+async function refreshSources(kinds = SYNC_KINDS) {
+  await Promise.all(
+    kinds.map(async (kind) => {
+      try {
+        const value = await loadKind(kind);
+        mirrors.set(kind, Array.isArray(value) ? value : []);
+      } catch {
+        // 读失败保留上次镜像：宁可推送旧数据，也不因为一次读失败丢失本次同步
+      }
+    })
+  );
+}
+
+function sourceList() {
+  return SYNC_KINDS.map((key) => ({
+    key,
+    get: () => mirrors.get(key) || [],
+    apply: (ops) => applyRemote(key, ops),
+  }));
+}
 
 function isDesktop() {
   return typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
@@ -41,6 +67,9 @@ async function writeSyncConfig(patch) {
   configCache = merged;
   s.sync = merged;
   await invoke("save_data", { key: "settings", data: s });
+  // 配对/加入集合与设置页开关都会改写 enabled：引擎状态机需要立即跟随，
+  // 否则「刚配对好」的进程要等重启才会真正开始同步。
+  engine?.refreshEnabled?.();
 }
 
 async function loadTombstones() {
@@ -88,6 +117,18 @@ async function transport(req) {
 export async function getEngine() {
   if (!isDesktop()) return null;
   if (engine) return engine;
+  // 并发守卫：repository 入队（fire-and-forget）与调用方可能同时触发创建，
+  // 无守卫会各建一个引擎：一个在干活、另一个被拿去做状态查询，表现为「同步没反应」。
+  if (!enginePromise) {
+    enginePromise = buildEngine().catch((e) => {
+      enginePromise = null;
+      throw e;
+    });
+  }
+  return enginePromise;
+}
+
+async function buildEngine() {
   let cfg = await readSyncConfig();
   // deviceId 先持久化（engine 创建时固定）
   if (!cfg.deviceId) {
@@ -97,7 +138,10 @@ export async function getEngine() {
   }
   engine = createSyncEngine({
     transport,
-    getConfig: async () => readSyncConfig(),
+    // 引擎按契约同步读配置（构造时即取 .enabled/.cursor 等字段）：这里回进程内快照。
+    // 快照由 readSyncConfig/writeSyncConfig 维护，getEngine 创建引擎前已 await 加载完毕。
+    // 若传 async 函数会返回 Promise —— 引擎读到的字段全是 undefined，同步将整体停摆。
+    getConfig: () => configCache,
     saveConfig: writeSyncConfig,
     masterKeyProvider: async () => {
       const c = await readSyncConfig();
@@ -112,7 +156,8 @@ export async function getEngine() {
       return decryptValue(c.tokenCipher);
     },
     deviceId: (await readSyncConfig()).deviceId || null,
-    recordSources: [],
+    sourceProvider: sourceList,
+    refreshSources: () => refreshSources(),
     getTombstones: () => tombCache.map || {},
     setTombstones: (m) => saveTombstones(m),
     callbacks: {
@@ -124,30 +169,33 @@ export async function getEngine() {
   return engine;
 }
 
-/** 视图注册数据源（挂载时调用一次） */
-export function registerSyncSource(key, src) {
-  const existing = sources.find((s) => s.key === key);
-  if (existing) existing.src = src;
-  else sources.push({ key, src });
-  if (engine) {
-    // engine 已在用旧的 recordSources 闭包：重建成本高，采用动态读取——engine 每次 pull 前拉最新 sources
-    engineRefs.sources = sources;
-  }
-}
-
-// engine 需要的 recordSources 动态化：engine 内部以数组闭包引用；这里在创建后注入刷新器
-const engineRefs = { sources };
-
-/** 视图数据变更后调用（persist 成功之后） */
+/** 数据变更后调用（repository 写成功后自动调用）。kinds 省略 = 全部同步类别。 */
 export async function enqueueSync(kinds) {
   const e = await getEngine().catch(() => null);
   if (!e) return;
-  const records = [];
-  for (const { key, src } of sources) {
-    if (kinds && !kinds.includes(key)) continue;
-    records.push(...(src.get() || []));
-  }
+  const wanted = Array.isArray(kinds) && kinds.length ? kinds.filter((k) => SYNC_KINDS.includes(k)) : SYNC_KINDS;
+  if (!wanted.length) return;
+  await refreshSources(wanted);
+  const records = wanted.flatMap((k) => mirrors.get(k) || []);
   e.enqueue(records);
+  // 删除记录后本地已无记录可入队（dirty 为空），但墓碑需要推送，故显式请求一次同步
+  e.requestSync();
+}
+
+/** 记录删除：写墓碑（时间戳），跨端据此传播删除 */
+export async function markTombstone(id, ts) {
+  if (!id) return;
+  const map = await loadTombstones();
+  map[id] = Number(ts) || Date.now();
+  saveTombstones(map);
+}
+
+/** 撤销删除/恢复记录：清掉墓碑，避免跨端仍按删除处理 */
+export async function clearTombstone(id) {
+  const map = await loadTombstones();
+  if (!Object.hasOwn(map, id)) return;
+  delete map[id];
+  saveTombstones(map);
 }
 
 /** 创建同步集合 */

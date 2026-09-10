@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke.js";
 import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { analyzeCidr, parseUrl, parseUserAgent, rebuildUrl } from "../networkTool.js";

@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, inject } from "vue";
+import { invoke } from "./platform/invoke.js";
+import { mergeRecords, mutate, load as loadRecords, onDataChanged } from "./data/repository.js";
 import Icon from "./Icon.vue";
 import AiExtract from "./AiExtract.vue";
 import ReleasePackage from "./ReleasePackage.vue";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "./platform/shell.js";
 import { weekday, nextReleaseDate, fmtDate, subLogsByDate, subRemaining, subPushedHours, DOMAIN_COLORS, extractCode, parseIssueUrl, bugStatusInfo, errText } from "./shared.js";
 import { askConfirm } from "./confirm.js";
 import { useDragSort } from "./dragsort.js";
@@ -25,6 +26,8 @@ const STATUS = {
   live: { label: "已上线", icon: "check" },
 };
 const STATUS_ORDER = ["plan", "dev", "test", "pending", "live"];
+// 老数据 / 外部写入可能带未知阶段：直接索引会抛异常并让整页停止渲染
+const statusMeta = (s) => STATUS[s] || { label: typeof s === "string" && s ? s : "未设置", icon: "target" };
 
 const FILTERS = [
   { key: "active", label: "进行中" },
@@ -152,7 +155,7 @@ function newForm() {
 // ------- 加载 / 保存 -------
 async function load() {
   try {
-    domains.value = (await invoke("load_data", { key: "domains" })) || [];
+    domains.value = await loadRecords("domains");
     const s = (await invoke("load_data", { key: "settings" })) || {};
     if (s.hoursReminder?.target) hoursTarget.value = Number(s.hoursReminder.target) || 8;
     const data = (await invoke("load_data", { key: "iterations" })) || [];
@@ -186,7 +189,9 @@ function persist() {
   }
   const snapshot = cloneJsonData(iterations.value);
   const job = iterationsSaveQueue.then(async () => {
-    await invoke("save_data", { key: "iterations", data: snapshot });
+    // 与 Agent / 需求大盘 / 任务页共用 repository 的乐观锁：磁盘最新为底，本地改动按 updatedAt 叠上去，
+    // 不再整表覆盖（同一数组的多个写者各自保存时不互相抹掉）。
+    iterations.value = await mutate("iterations", (fresh) => mergeRecords(fresh, snapshot), { source: "view" });
   });
   iterationsSaveQueue = job.catch(() => {});
   return job.catch((e) => {
@@ -201,6 +206,16 @@ onMounted(async () => {
   // 入场错峰动画只在首次渲染播放，后续切筛选/切视图不再重复
   setTimeout(() => (introDone.value = true), 900);
 });
+// Agent / 另一窗口改了迭代：无未保存表单时重新加载；有表单时只提示，不打断输入
+let offDataChanged = null;
+onMounted(() => {
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (kind !== "iterations" || source === "view") return;
+    if (showForm.value || showDocForm.value) return props.showToast("迭代数据已被 Agent 或另一窗口更新");
+    await load();
+  });
+});
+onBeforeUnmount(() => offDataChanged?.());
 // 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（表单较长，防误触丢输入）
 function onEsc(e) {
   if (e.key !== "Escape") return;
@@ -950,7 +965,7 @@ async function removeIteration(r) {
             <Icon name="clock" :size="14" /> {{ current.releaseDate }} {{ weekday(current.releaseDate) }}<template v-if="countdown(current)"> · {{ countdown(current).text }}</template>
           </span>
           <span v-for="dn in domainNames(current.domainIds)" :key="dn" class="proj-chip"><Icon name="layers" :size="13" /> {{ dn }}</span>
-          <span class="st-chip" :class="'st-' + current.status">{{ STATUS[current.status].label }}</span>
+          <span class="st-chip" :class="'st-' + current.status">{{ statusMeta(current.status).label }}</span>
         </div>
         <p v-if="current.goal" class="hero-goal">{{ current.goal }}</p>
         <div class="bar"><i :style="{ width: progress(current).pct + '%' }"></i></div>
@@ -971,7 +986,7 @@ async function removeIteration(r) {
         :class="{ on: current.status === s, past: STATUS_ORDER.indexOf(current.status) > i }"
         @click="setStatus(s)"
       >
-        <Icon :name="STATUS[s].icon" :size="14" /> {{ STATUS[s].label }}
+        <Icon :name="statusMeta(s).icon" :size="14" /> {{ statusMeta(s).label }}
       </button>
     </div>
 
@@ -1271,7 +1286,7 @@ async function removeIteration(r) {
                 <template v-else>-</template>
               </span>
               <span class="st-chip sm" :class="'st-' + r.status">
-                <Icon :name="STATUS[r.status].icon" :size="11" /> {{ STATUS[r.status].label }}
+                <Icon :name="statusMeta(r.status).icon" :size="11" /> {{ statusMeta(r.status).label }}
               </span>
               <span class="tl-title" :title="(r.version ? r.version + ' ' : '') + r.title">
                 <em v-if="r.version" class="ver-chip">{{ r.version }}</em>
@@ -1293,7 +1308,7 @@ async function removeIteration(r) {
         <div v-for="(r, i) in filteredList" :key="r.id" class="it-card" :style="{ animationDelay: i * 0.04 + 's' }" @click="enter(r)">
           <div class="it-head">
             <span class="st-chip" :class="'st-' + r.status">
-              <Icon :name="STATUS[r.status].icon" :size="12" /> {{ STATUS[r.status].label }}
+              <Icon :name="statusMeta(r.status).icon" :size="12" /> {{ statusMeta(r.status).label }}
             </span>
             <button class="icon-btn" title="删除" @click.stop="removeIteration(r)"><Icon name="trash" :size="15" /></button>
           </div>

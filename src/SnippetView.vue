@@ -1,12 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
 import AiExtract from "./AiExtract.vue";
 import { fieldsToContent, hasFields, fieldValue } from "./snippets.js";
-import { enqueueSync } from "./sync/index.js";
+import { create, load as loadRecords, onDataChanged, remove as removeRecord, restore as restoreRecord, update as updateRecord } from "./data/repository.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -27,9 +27,10 @@ function newForm() {
 }
 
 // ------- 加载 / 保存 -------
+// 读写统一走 repository：记录级写（create/update/remove）避免整表覆盖，写后自动入队云同步。
 async function load() {
   try {
-    snippets.value = (await invoke("load_data", { key: "snippets" })) || [];
+    snippets.value = await loadRecords("snippets");
     snippets.value.forEach((s) => {
       if (!Array.isArray(s.images)) s.images = [];
       if (!Array.isArray(s.fields)) s.fields = [];
@@ -39,18 +40,20 @@ async function load() {
     props.showToast(t("snippet.loadFailed", { err: e }));
   }
 }
-async function persist() {
-  try {
-    await invoke("save_data", { key: "snippets", data: snippets.value });
-    enqueueSync(["snippets"]); // 云同步：变更入队（防抖）
-  } catch (e) {
-    props.showToast(t("snippet.saveFailed", { err: e }));
-  }
-}
 onMounted(async () => {
   await load();
   tryJump();
 });
+// Agent / 云同步 / 另一窗口改了数据：重新加载；正在编辑表单时额外提示（表单持有自己的副本，不打断输入）
+let offDataChanged = null;
+onMounted(() => {
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (kind !== "snippets" || source === "view") return;
+    await load();
+    if (showForm.value) props.showToast(t("snippet.updatedExternally"));
+  });
+});
+onBeforeUnmount(() => offDataChanged?.());
 // 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（表单较长，防误触丢输入）
 function onEsc(e) {
   if (e.key === "Escape" && showForm.value) showForm.value = false;
@@ -147,9 +150,14 @@ function maskOf() {
 
 // ------- 置顶 -------
 async function togglePin(s) {
-  s.pinned = !s.pinned;
-  s.updatedAt = Date.now();
-  await persist();
+  const next = !s.pinned;
+  s.pinned = next;
+  try {
+    await updateRecord("snippets", s.id, { pinned: next }, { source: "view" });
+  } catch (e) {
+    s.pinned = !next;
+    props.showToast(t("snippet.saveFailed", { err: e }));
+  }
 }
 
 // ------- 图片附件（复用 save_image 机制：文件落盘 images 目录，JSON 只存元数据） -------
@@ -247,27 +255,26 @@ const AI_FIELDS = computed(() => [
 ]);
 async function createSnippetsFromAI(list) {
   const rows = Array.isArray(list) ? list : [list];
-  const now = Date.now();
   let added = 0;
-  // 倒序 unshift 以保持图中原顺序
+  // 倒序落盘以保持图中原顺序（create 返回补全后的记录）
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i];
-    const content = (r.content || "").trim();
-    if (!content) continue;
-    snippets.value.unshift({
-      id: crypto.randomUUID(),
-      title: (r.title || "").trim(),
-      category: (r.category || "").trim(),
-      content: r.content,
-      fields: [],
-      images: [],
-      pinned: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-    added++;
+    if (!(r.content || "").trim()) continue;
+    try {
+      const record = await create("snippets", {
+        title: (r.title || "").trim(),
+        category: (r.category || "").trim(),
+        content: r.content,
+        fields: [],
+        images: [],
+        pinned: false,
+      }, { source: "view" });
+      snippets.value.unshift(record);
+      added++;
+    } catch (e) {
+      props.showToast(t("snippet.saveFailed", { err: e }));
+    }
   }
-  await persist();
   props.showToast(added ? t("snippet.aiAdded", { count: added }) : t("snippet.aiNothing"));
 }
 function openEdit(s) {
@@ -313,30 +320,25 @@ async function saveForm() {
   } catch (e) {
     return props.showToast(t("snippet.saveImageFailed", { err: e }));
   }
-  const existing = f.id ? snippets.value.find((s) => s.id === f.id) : null;
-  if (existing) {
-    Object.assign(existing, {
-      title: f.title.trim(),
-      category: f.category.trim(),
-      content: f.content,
-      fields: f.fields,
-      images: metas,
-      updatedAt: now,
-    });
-  } else {
-    snippets.value.unshift({
-      id: crypto.randomUUID(),
-      title: f.title.trim(),
-      category: f.category.trim(),
-      content: f.content,
-      fields: f.fields,
-      images: metas,
-      pinned: false,
-      createdAt: now,
-      updatedAt: now,
-    });
+  const payload = {
+    title: f.title.trim(),
+    category: f.category.trim(),
+    content: f.content,
+    fields: f.fields,
+    images: metas,
+  };
+  try {
+    if (f.id) {
+      const saved = await updateRecord("snippets", f.id, payload, { source: "view" });
+      const idx = snippets.value.findIndex((s) => s.id === f.id);
+      if (idx >= 0) snippets.value[idx] = saved;
+    } else {
+      const saved = await create("snippets", { ...payload, pinned: false }, { source: "view" });
+      snippets.value.unshift(saved);
+    }
+  } catch (e) {
+    return props.showToast(t("snippet.saveFailed", { err: e }));
   }
-  await persist();
   // 保存成功后才删被移除的旧图文件
   for (const name of removedImages.value) {
     try {
@@ -354,13 +356,22 @@ async function removeSnippet(s) {
   });
   if (!ok) return;
   const idx = snippets.value.findIndex((x) => x.id === s.id);
+  try {
+    await removeRecord("snippets", s.id, { source: "view" });
+  } catch (e) {
+    return props.showToast(t("snippet.saveFailed", { err: e }));
+  }
   snippets.value = snippets.value.filter((x) => x.id !== s.id);
-  await persist();
   props.showToast(t("snippet.deleted"), {
     actionLabel: t("snippet.undo"),
     onAction: async () => {
-      snippets.value.splice(Math.min(Math.max(idx, 0), snippets.value.length), 0, s);
-      await persist();
+      try {
+        const restored = await restoreRecord("snippets", s, { source: "view" });
+        snippets.value.splice(Math.min(Math.max(idx, 0), snippets.value.length), 0, restored);
+      } catch (e) {
+        props.showToast(t("snippet.saveFailed", { err: e }));
+        return;
+      }
       props.showToast(t("snippet.restored"));
     },
     // 撤销窗口结束后才删图片文件

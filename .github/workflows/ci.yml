@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # 双端产物都要能构建：桌面包（base=/）与静态站点（base=./）
+      - run: npm run build:web
 
   rust-check:
     name: Rust 编译检查

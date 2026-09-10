@@ -16,12 +16,13 @@ export function normalizeRemoteItem(raw) {
   };
 }
 
-/** 解密后的信封对象归一 */
+/** 解密后的信封对象归一（kind 缺失 = 旧格式，由 engine 反查归属） */
 export function normalizeEnvelope(env) {
   return {
     deviceId: env && typeof env.deviceId === "string" ? env.deviceId : "",
     ts: Number(env && env.ts) || 0,
     record: env && typeof env.record === "object" ? env.record : null,
+    kind: env && typeof env.kind === "string" ? env.kind : "",
   };
 }
 

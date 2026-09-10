@@ -1,5 +1,5 @@
 import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { relaunch } from "./platform/shell.js";
 import { askConfirm } from "./confirm.js";
 import { i18n } from "./i18n/index.js";
 

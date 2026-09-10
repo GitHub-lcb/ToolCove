@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "./platform/invoke.js";
+import { save } from "./platform/dialog.js";
 import Icon from "./Icon.vue";
 import AiExtract from "./AiExtract.vue";
 import { PKG_POOL_COLS, PKG_ART_COLS, PKG_DB_COLS, emptyPkg, newPkgRow, buildReleaseXlsx } from "./shared.js";

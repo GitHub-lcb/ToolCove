@@ -119,9 +119,15 @@ export async function obfuscateId(masterKeyB64, recordId) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** 组装信封 JSON（含 LWW 裁决字段 deviceId + ts） */
-export function makeEnvelope(deviceId, ts, record) {
-  return JSON.stringify({ deviceId, ts, record });
+/**
+ * 组装信封 JSON（含 LWW 裁决字段 deviceId + ts，及记录类别 kind）。
+ * kind 随信封加密（服务端不可见）：拉取时据此把记录投放到正确的数据类别，
+ * 缺失时视为旧格式，由 engine 用本地已有记录反查归属。
+ */
+export function makeEnvelope(deviceId, ts, record, kind) {
+  const out = { deviceId, ts, record };
+  if (kind) out.kind = String(kind);
+  return JSON.stringify(out);
 }
 
 /** 解析信封 JSON（解密后调用）；解析失败抛 sync-bad-envelope */

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, inject } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "../platform/invoke.js";
+import { save as saveDialog } from "../platform/dialog.js";
 import {
   METHODS, splitUrl, buildUrl, headersToPairs, findHeader,
   detectBodyLang, prettyBody, sizeText, statusClass, parseCurl,

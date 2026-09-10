@@ -1,13 +1,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "./platform/invoke.js";
+import { save as saveDialog } from "./platform/dialog.js";
 import Icon from "./Icon.vue";
 import { collectDayLogs, WORK_SOURCES, startOfWeek, fmtDate, weekday, renderMarkdown, relativeTime, buildWorkHoursXlsx, errText } from "./shared.js";
 import { aiChat, aiComplete, isAIConfigured } from "./ai.js";
 import { askConfirm } from "./confirm.js";
 import { buildReportSystem, buildDistillPrompt, splitReportSamples, truncate, buildHeartPrompt, extractReportSection, replaceReportSection, REPORT_SECTIONS, HEART_IMAGE_MAX, TEMPLATE_MAX, STYLE_MAX, REPORT_STATUS, advanceReportStatus, recoverReportStatus, upsertReport, updateReportStatus } from "./weeklyReport.js";
-import { cloneJsonData } from "./jsonData.js";
+import { load as loadRecords, mutate, onDataChanged } from "./data/repository.js";
 import { newIteration, newRequirement, newSubTask, addIteration, addRequirement, addSubTask, updateSubTask, removeSubTask, findIteration } from "./tasks.js";
 
 const props = defineProps({
@@ -23,11 +23,12 @@ let iterationsStale = false;
 // ------- 加载 -------
 async function load() {
   try {
-    // 迭代结构由 migrate.js 启动时一次性升级，这里直接读本地 JSON
-    iterations.value = (await invoke("load_data", { key: "iterations" })) || [];
-    problems.value = (await invoke("load_data", { key: "problems" })) || [];
+    // 迭代结构由 migrate.js 启动时一次性升级；数据统一走 repository（与 Agent / 云同步共用乐观锁）
+    const [its, probs] = await Promise.all([loadRecords("iterations"), loadRecords("problems")]);
+    iterations.value = its;
+    problems.value = probs;
   } catch (e) {
-    props.showToast("加载工时失败：" + e);
+    props.showToast("加载工时失败：" + errText(e));
   }
 }
 onMounted(async () => {
@@ -36,12 +37,22 @@ onMounted(async () => {
   // 换了设置保存后按新配置刷新（显示名等）
   window.addEventListener("settings-saved", onSettingsSaved);
 });
+// Agent / 另一窗口改了工时或问题：无未保存编辑时重新加载；编辑中只提示，不打断输入
+let offDataChanged = null;
+onMounted(() => {
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (source === "view" || (kind !== "iterations" && kind !== "problems")) return;
+    if (subEdit.value.id || showAddTask.value) return props.showToast("工时数据已被 Agent 或另一窗口更新");
+    await load();
+  });
+});
 // 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（周报带未保存编辑态，防误触丢失）
 function onEsc(e) {
   if (e.key === "Escape" && showReport.value) showReport.value = false;
 }
 onMounted(() => window.addEventListener("keydown", onEsc));
 onUnmounted(() => {
+  offDataChanged?.();
   window.removeEventListener("settings-saved", onSettingsSaved);
   window.removeEventListener("keydown", onEsc);
   if (editSaveTimer) clearTimeout(editSaveTimer);
@@ -75,15 +86,14 @@ function chartHours(value) {
 function isEditable(e) {
   return e.source === "iteration";
 }
-function persistIterations(next) {
+// 写迭代数据：串行队列 + repository 乐观锁（读最新 → 变换 → 冲突重放），
+// 与 Agent / 迭代页 / 需求大盘共用一个写入口，不再整表覆盖
+function persistIterations(apply) {
   if (iterationsStale) {
     return Promise.reject(new Error("迭代数据已更新，请重新进入工时页后再修改"));
   }
-  const snapshot = cloneJsonData(next || iterations.value);
-  // 串行队列防快速连续编辑丢写（本地写盘很快，队列主要是保证顺序）
   const job = iterationsSaveQueue.then(async () => {
-    await invoke("save_data", { key: "iterations", data: snapshot });
-    if (next) iterations.value = next;
+    iterations.value = await mutate("iterations", (fresh) => apply(fresh), { source: "view" });
   });
   iterationsSaveQueue = job.catch(() => {});
   return job.catch((e) => {
@@ -107,7 +117,7 @@ async function saveEditSub(x) {
   const hours = Math.max(0, Number(subEdit.value.hours) || 0);
   const date = subEdit.value.date || fmtDate(new Date());
   cancelEditSub();
-  await persistIterations(updateSubTask(iterations.value, x.it.id, r.id, s.id, { name, hours, date }));
+  await persistIterations((fresh) => updateSubTask(fresh, x.it.id, r.id, s.id, { name, hours, date }));
   props.showToast("已更新工时条目");
 }
 // 删除子任务（撤销可恢复）
@@ -115,11 +125,11 @@ async function removeSub(x) {
   const { it, r, s } = x;
   const idx = (r.subtasks || []).findIndex((t) => t.id === s.id);
   if (idx < 0) return;
-  await persistIterations(removeSubTask(iterations.value, it.id, r.id, s.id));
+  await persistIterations((fresh) => removeSubTask(fresh, it.id, r.id, s.id));
   props.showToast(`已删除子任务「${s.name}」`, {
     actionLabel: "撤销",
     onAction: async () => {
-      await persistIterations(addSubTask(iterations.value, it.id, r.id, s));
+      await persistIterations((fresh) => addSubTask(fresh, it.id, r.id, s));
       props.showToast("已恢复");
     },
   });
@@ -284,25 +294,18 @@ async function saveAddTask() {
   if (addRequirementId.value === "__new" && !addNewRequirement.value.trim()) return props.showToast("请输入新需求名称");
   addSaving.value = true;
   try {
-    let list = cloneJsonData(iterations.value);
-    // 迭代：新建或复用
-    let iterationId = addIterationId.value;
-    if (iterationId === "__new") {
-      const it = newIteration({ title: addNewIteration.value.trim() });
-      list = addIteration(list, it);
-      iterationId = it.id;
-    }
-    // 需求：新建或复用
-    let requirementId = addRequirementId.value;
-    if (requirementId === "__new") {
-      const r = newRequirement({ name: addNewRequirement.value.trim() });
-      list = addRequirement(list, iterationId, r);
-      requirementId = r.id;
-    }
-    // 子任务（子任务即工时）
+    // 新对象在变换外生成一次：mutate 冲突重放时插的是同一份，id 稳定
+    const newIt = addIterationId.value === "__new" ? newIteration({ title: addNewIteration.value.trim() }) : null;
+    const newReq = addRequirementId.value === "__new" ? newRequirement({ name: addNewRequirement.value.trim() }) : null;
     const s = newSubTask({ name: subName, hours, date: addSubDate.value || fmtDate(new Date()) });
-    list = addSubTask(list, iterationId, requirementId, s);
-    await persistIterations(list);
+    await persistIterations((fresh) => {
+      let list = fresh;
+      const iterationId = newIt ? newIt.id : addIterationId.value;
+      if (newIt) list = addIteration(list, newIt);
+      const requirementId = newReq ? newReq.id : addRequirementId.value;
+      if (newReq) list = addRequirement(list, iterationId, newReq);
+      return addSubTask(list, iterationId, requirementId, s);
+    });
     props.showToast(`已记录 ${hours}h：${subName}`);
     showAddTask.value = false;
   } catch (e) {

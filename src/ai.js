@@ -1,7 +1,9 @@
 // AI 模型前端服务层
-// 通过 Rust 命令 ai_chat 透传到 OpenAI 兼容的 /chat/completions（规避浏览器 CORS）。
+// 桌面端经 Rust 命令 ai_chat/ai_chat_stream 透传到 OpenAI 兼容的 /chat/completions（规避浏览器 CORS）；
+// 浏览器端直连同一端点（要求该端点允许 CORS）。
 // 配置存放在 settings.ai：{ baseUrl, apiKey, model, temperature, enabled }
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { invoke, createChannel } from "./platform/invoke.js";
+import { isDesktop } from "./platform/env.js";
 import { decryptValue } from "./secure.js";
 import { parsePartialJson } from "./streamJson.js";
 import { throttleFlush } from "./throttle.js";
@@ -46,11 +48,8 @@ export async function isAIConfigured() {
   return !!(c.baseUrl && c.apiKey && c.model);
 }
 
-// 核心：发起一次对话补全。messages 为 [{role, content}] 数组。
-// 返回助手回复的纯文本；出错时 throw Error(message)。
-// opts：{ model, temperature, config, onUsage }（config 可传入临时配置，用于「测试连接」时先于保存生效；
-//       onUsage(usage) 收到本次调用的 token 用量，仅在服务端返回 usage 时触发）
-export async function aiChat(messages, opts = {}) {
+// 组装请求参数：校验配置 + 推理档位/温度二选一（两端实现共用，保证行为一致）
+async function buildRequestArgs(messages, opts) {
   const cfg = opts.config || (await loadAIConfig());
   if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
   if (!cfg.apiKey) throw new Error(t("toolbox.ai.errNoApiKey"));
@@ -69,7 +68,103 @@ export async function aiChat(messages, opts = {}) {
   } else {
     args.temperature = typeof opts.temperature === "number" ? opts.temperature : cfg.temperature;
   }
-  const raw = await invoke("ai_chat", args);
+  return args;
+}
+
+// ---------- 浏览器直连实现（桌面端由 Rust 代理，见 ai.rs）----------
+// 请求体与错误文案与 Rust 侧逐字对齐，保证两端行为一致。
+function buildBrowserBody(args, stream) {
+  const body = { model: args.model, messages: args.messages };
+  if (stream) body.stream = true;
+  if (typeof args.temperature === "number") body.temperature = args.temperature;
+  const effort = String(args.reasoningEffort || "").trim();
+  if (effort) body.reasoning_effort = effort;
+  return body;
+}
+
+async function browserFetchCompletion(args, body, signal) {
+  const response = await fetch(`${String(args.baseUrl).trim().replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${String(args.apiKey).trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      message = (parsed && parsed.error && parsed.error.message) || text;
+    } catch {
+      /* 非 JSON 错误体：保留原文 */
+    }
+    throw new Error(`HTTP ${response.status}：${message}`);
+  }
+  return response;
+}
+
+async function browserChat(args) {
+  const response = await browserFetchCompletion(args, buildBrowserBody(args, false));
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // 与 Rust 一致：非 JSON 响应交给 extractContent 报 errNonJson
+    return { raw: text };
+  }
+}
+
+/** 解析一行 SSE（`data: ` 前缀），返回增量文本；空行/[DONE]/非 JSON/无 content 返回 null。 */
+export function parseSseLine(line) {
+  const raw = String(line ?? "").trimEnd();
+  if (!raw.startsWith("data:")) return null;
+  const data = raw.slice(5).trim();
+  if (!data || data === "[DONE]") return null;
+  try {
+    const content = JSON.parse(data)?.choices?.[0]?.delta?.content;
+    return typeof content === "string" && content ? content : null;
+  } catch {
+    return null;
+  }
+}
+
+// 浏览器流式：fetch + ReadableStream 逐行解析 SSE；stop() abort 请求
+// （与桌面端关闭 Channel 的语义一致：主动停止后不再回调 onDelta/onDone/onError）。
+function browserChatStream(args, handlers) {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const response = await browserFetchCompletion(args, buildBrowserBody(args, true), controller.signal);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          const delta = parseSseLine(line);
+          if (delta !== null) handlers.onDelta?.(delta);
+        }
+      }
+      handlers.onDone?.();
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  })();
+  return { stop: () => controller.abort() };
+}
+
+// 核心：发起一次对话补全。messages 为 [{role, content}] 数组。
+// 返回助手回复的纯文本；出错时 throw Error(message)。
+// opts：{ model, temperature, config, onUsage }（config 可传入临时配置，用于「测试连接」时先于保存生效；
+//       onUsage(usage) 收到本次调用的 token 用量，仅在服务端返回 usage 时触发）
+export async function aiChat(messages, opts = {}) {
+  const args = await buildRequestArgs(messages, opts);
+  const raw = isDesktop ? await invoke("ai_chat", args) : await browserChat(args);
   if (typeof opts.onUsage === "function") {
     const usage = extractUsage(raw);
     if (usage) {
@@ -91,55 +186,46 @@ export async function aiComplete(prompt, opts = {}) {
   return aiChat(messages, opts);
 }
 
-// 流式对话：SSE 增量经 Channel 实时推给 onDelta；结束触发 onDone；出错触发 onError(err)。
-// 立即返回 { stop }，stop() 关闭 Channel，后端感知发送失败即中止生成。
+// 流式对话：SSE 增量实时推给 onDelta；结束触发 onDone；出错触发 onError(err)。
+// 桌面端经 Channel 推送（stop() 关闭 Channel，后端感知发送失败即中止生成）；
+// 浏览器端走 fetch 流（stop() abort 请求）。两端 stop 语义一致：停止后不再有任何回调。
 // 未配置时配置错误也走 onError（不 throw），保证调用方统一走回调分支。
 export function aiChatStream(messages, opts = {}, handlers = {}) {
-  const channel = new Channel();
-  const stop = () => {
-    try {
-      channel.close();
-    } catch {
-      /* 忽略 */
-    }
-  };
-  channel.onmessage = (payload) => {
-    try {
-      if (payload && typeof payload.delta === "string") {
-        handlers.onDelta?.(payload.delta);
-      } else if (payload && payload.done) {
-        handlers.onDone?.();
-      } else if (payload && payload.error) {
-        handlers.onError?.(new Error(String(payload.error)));
-      }
-    } catch (e) {
-      /* 回调异常不中断流 */
-    }
-  };
+  let stop = () => {};
   (async () => {
     try {
-      const cfg = opts.config || (await loadAIConfig());
-      if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
-      if (!cfg.apiKey) throw new Error(t("toolbox.ai.errNoApiKey"));
-      if (!cfg.model) throw new Error(t("toolbox.ai.errNoModel"));
-      const reasoningEffort = (opts.reasoningEffort ?? cfg.reasoningEffort ?? "").trim();
-      const args = {
-        baseUrl: cfg.baseUrl,
-        apiKey: cfg.apiKey,
-        model: opts.model || cfg.model,
-        messages,
-      };
-      if (reasoningEffort) {
-        args.reasoningEffort = reasoningEffort;
-      } else {
-        args.temperature = typeof opts.temperature === "number" ? opts.temperature : cfg.temperature;
+      const args = await buildRequestArgs(messages, opts);
+      if (!isDesktop) {
+        stop = browserChatStream(args, handlers).stop;
+        return;
       }
+      const channel = createChannel();
+      stop = () => {
+        try {
+          channel.close();
+        } catch {
+          /* 忽略 */
+        }
+      };
+      channel.onmessage = (payload) => {
+        try {
+          if (payload && typeof payload.delta === "string") {
+            handlers.onDelta?.(payload.delta);
+          } else if (payload && payload.done) {
+            handlers.onDone?.();
+          } else if (payload && payload.error) {
+            handlers.onError?.(new Error(String(payload.error)));
+          }
+        } catch (e) {
+          /* 回调异常不中断流 */
+        }
+      };
       await invoke("ai_chat_stream", { ...args, channel });
     } catch (e) {
       handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
     }
   })();
-  return { stop };
+  return { stop: () => stop() };
 }
 
 // 从 OpenAI 兼容响应里取出 token 用量；缺失或非法返回 null。

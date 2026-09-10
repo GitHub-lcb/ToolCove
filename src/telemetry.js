@@ -4,7 +4,7 @@
 // - 计数聚合到内存 Map，持久化到 localStorage（跨会话保留未发送计数）；
 //   flush 经 Rust 命令 telemetry_submit 发送——端点默认留空 = 只聚合本地、不实际发送。
 // - 失败静默：单日重试上限 + 不打扰用户。
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import { normalizeTelemetry } from "./settingsConfig.js";
 
 const PENDING_KEY = "tc.telemetry.pending";

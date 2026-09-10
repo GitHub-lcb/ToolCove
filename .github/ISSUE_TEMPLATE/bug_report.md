@@ -23,9 +23,11 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
-- Windows version: [e.g. Windows 11 23H2]
+- Platform: [Windows desktop app / browser (static web build)]
+- OS & version: [e.g. Windows 11 23H2, macOS 15, Ubuntu 24.04]
+- Browser & version (web build only): [e.g. Chrome 140, Firefox 141]
 - App version: [e.g. v0.1.0, visible in the About dialog or the installer filename]
-- Install method: [GitHub Release installer]
+- Install method: [GitHub Release installer / self-hosted web build]
 
 **Additional context**
 Add any other context about the problem here, such as the tool involved

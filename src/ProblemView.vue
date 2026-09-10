@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, inject } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import Icon from "./Icon.vue";
-import { enqueueSync } from "./sync/index.js";
+import { load as loadRecords, mergeRecords, mutate, onDataChanged, remove as removeRecord, restore as restoreRecord } from "./data/repository.js";
 import AiExtract from "./AiExtract.vue";
 import { fmtDate, renderMarkdown, errText } from "./shared.js";
 import { askConfirm } from "./confirm.js";
@@ -29,6 +29,8 @@ const TYPES = computed(() => ({
   temp: { label: t("problem.typeTemp"), ...TYPE_META.temp },
   other: { label: t("problem.typeOther"), ...TYPE_META.other },
 }));
+// 老数据 / 外部写入可能带未知 type：直接索引会抛异常并让整页停止渲染
+const typeMeta = (p) => TYPES.value[p.type] || TYPES.value.other;
 const FILTERS = computed(() => [
   { key: "open", label: t("problem.filterOpen") },
   { key: "done", label: t("problem.filterDone") },
@@ -53,7 +55,7 @@ function round(n) {
 // ------- 加载 / 保存 -------
 async function load() {
   try {
-    const data = (await invoke("load_data", { key: "problems" })) || [];
+    const data = await loadRecords("problems");
     data.forEach((p) => {
       if (!Array.isArray(p.logs)) p.logs = [];
       if (!Array.isArray(p.images)) p.images = [];
@@ -65,10 +67,11 @@ async function load() {
     props.showToast(t("problem.loadFailed", { err: errText(e) }));
   }
 }
+// 整表写入走 repository.mutate + mergeRecords：磁盘最新为底、本地改动按 updatedAt 叠上去，
+// 与 Agent / 云同步 / 另一窗口的写入不再互相覆盖。删除不要用这里（本地缺记录不代表要删）。
 async function persist() {
   try {
-    await invoke("save_data", { key: "problems", data: problems.value });
-    enqueueSync(["problems"]); // 云同步：变更入队（防抖）
+    problems.value = await mutate("problems", (fresh) => mergeRecords(fresh, problems.value), { source: "view" });
   } catch (e) {
     props.showToast(t("problem.saveFailed", { err: errText(e) }));
   }
@@ -77,6 +80,16 @@ onMounted(async () => {
   await load();
   tryJump();
 });
+// Agent / 云同步 / 另一窗口改了数据：重新加载；正在编辑表单时额外提示（表单持有自己的副本，不打断输入）
+let offDataChanged = null;
+onMounted(() => {
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (kind !== "problems" || source === "view") return;
+    await load();
+    if (showForm.value) props.showToast(t("problem.updatedExternally"));
+  });
+});
+onBeforeUnmount(() => offDataChanged?.());
 
 // ------- 全局搜索深链 -------
 function tryJump() {
@@ -239,13 +252,22 @@ async function removeProblem(p) {
   });
   if (!ok) return;
   const idx = problems.value.findIndex((x) => x.id === p.id);
+  try {
+    await removeRecord("problems", p.id, { source: "view" });
+  } catch (e) {
+    return props.showToast(t("problem.saveFailed", { err: errText(e) }));
+  }
   problems.value = problems.value.filter((x) => x.id !== p.id);
-  await persist();
   props.showToast(t("problem.deleted"), {
     actionLabel: t("problem.undo"),
     onAction: async () => {
-      problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, p);
-      await persist();
+      try {
+        const restored = await restoreRecord("problems", p, { source: "view" });
+        problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, restored);
+      } catch (e) {
+        props.showToast(t("problem.saveFailed", { err: errText(e) }));
+        return;
+      }
       props.showToast(t("problem.restored"));
     },
     // 撤销窗口结束后才真正清理图片文件
@@ -303,14 +325,24 @@ async function removeChecked() {
   const ids = new Set(list.map((p) => p.id));
   const removed = problems.value.filter((p) => ids.has(p.id));
   const idx = problems.value.findIndex((p) => ids.has(p.id));
+  try {
+    for (const p of removed) await removeRecord("problems", p.id, { source: "view" });
+  } catch (e) {
+    props.showToast(t("problem.saveFailed", { err: errText(e) }));
+  }
   problems.value = problems.value.filter((p) => !ids.has(p.id));
-  await persist();
   exitBatch();
   props.showToast(t("problem.batchDeleted", { count: removed.length }), {
     actionLabel: t("problem.undo"),
     onAction: async () => {
-      problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, ...removed);
-      await persist();
+      try {
+        const restored = [];
+        for (const p of removed) restored.push(await restoreRecord("problems", p, { source: "view" }));
+        problems.value.splice(Math.min(Math.max(idx, 0), problems.value.length), 0, ...restored);
+      } catch (e) {
+        props.showToast(t("problem.saveFailed", { err: errText(e) }));
+        return;
+      }
       props.showToast(t("problem.restored"));
     },
     onExpire: async () => {
@@ -658,8 +690,8 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
           <button class="check" :class="{ on: p.status === 'done' }" @click="toggleStatus(p)">
             <Icon v-if="p.status === 'done'" name="check" :size="14" />
           </button>
-          <span class="tc-chip" :class="TYPES[p.type].cls">
-            <Icon :name="TYPES[p.type].icon" :size="12" /> {{ TYPES[p.type].label }}
+          <span class="tc-chip" :class="typeMeta(p).cls">
+            <Icon :name="typeMeta(p).icon" :size="12" /> {{ typeMeta(p).label }}
           </span>
           <div class="prob-main" @click="batchMode ? toggleCheck(p) : toggleExpand(p)">
             <span class="prob-title">{{ p.title }}</span>

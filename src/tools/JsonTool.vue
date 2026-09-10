@@ -5,7 +5,7 @@ import { formatJson, minifyJson, escapeJson, unescapeJson, parseJson, jsonStats,
 import { formatYaml, jsonToYaml, lintYaml, parseYaml, yamlToJson } from "./yaml.js";
 import { buildTree, searchTree, flattenTree, defaultExpanded, allContainerIds, primitivePreview, typeLabel } from "./jsonTree.js";
 import { highlightLines } from "./jsonHighlight.js";
-import { listen } from "@tauri-apps/api/event";
+import { listen } from "../platform/events.js";
 import { createJsonHandoffReceiver, JSON_HANDOFF_EVENT } from "./jsonHandoff.js";
 import {
   addJsonTab,

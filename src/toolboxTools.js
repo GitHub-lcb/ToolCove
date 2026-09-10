@@ -1,5 +1,7 @@
 // 工具箱注册表：工具画廊、全局搜索等入口共用，避免名称和能力描述漂移。
+// desktopOnly 标记桌面独占工具（浏览器端无对应原生能力），可见列表按平台过滤。
 import { i18n } from "./i18n/index.js";
+import { isDesktop } from "./platform/env.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 
@@ -32,9 +34,9 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwJson",
     ready: true,
   },
-  { key: "network", labelKey: "toolbox.registry.toolNetwork", icon: "network", category: "network", descKey: "toolbox.registry.toolNetworkDesc", keywordsKey: "toolbox.registry.kwNetwork", ready: true },
+  { key: "network", labelKey: "toolbox.registry.toolNetwork", icon: "network", category: "network", descKey: "toolbox.registry.toolNetworkDesc", keywordsKey: "toolbox.registry.kwNetwork", ready: true, desktopOnly: true },
   { key: "crypto", labelKey: "toolbox.registry.toolCrypto", icon: "shield", category: "development", descKey: "toolbox.registry.toolCryptoDesc", ready: true },
-  { key: "file", labelKey: "toolbox.registry.toolFile", icon: "folder", category: "file", descKey: "toolbox.registry.toolFileDesc", keywordsKey: "toolbox.registry.kwFile", ready: true },
+  { key: "file", labelKey: "toolbox.registry.toolFile", icon: "folder", category: "file", descKey: "toolbox.registry.toolFileDesc", keywordsKey: "toolbox.registry.kwFile", ready: true, desktopOnly: true },
   {
     key: "image",
     labelKey: "toolbox.registry.toolImage",
@@ -54,7 +56,7 @@ export const TOOLBOX_TOOLS = [
     ready: true,
   },
   { key: "request", labelKey: "toolbox.registry.toolRequest", icon: "send", category: "network", descKey: "toolbox.registry.toolRequestDesc", keywordsKey: "toolbox.registry.kwRequest", ready: true },
-  { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", ready: true },
+  { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", ready: true, desktopOnly: true },
   {
     key: "chat",
     labelKey: "toolbox.registry.toolChat",
@@ -65,6 +67,15 @@ export const TOOLBOX_TOOLS = [
     ready: true,
   },
 ];
+
+export function findToolboxTool(key, tools = TOOLBOX_TOOLS) {
+  return tools.find((tool) => tool.key === key) || null;
+}
+
+/** 当前平台可用的工具箱工具：浏览器端过滤掉依赖原生能力的工具。 */
+export function visibleToolboxTools(tools = TOOLBOX_TOOLS) {
+  return isDesktop ? tools : tools.filter((tool) => !tool.desktopOnly);
+}
 
 export function groupToolboxTools(tools = TOOLBOX_TOOLS, groups = TOOLBOX_GROUPS) {
   return groups

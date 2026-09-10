@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { computed, onMounted, onBeforeUnmount, onUnmounted, ref } from "vue";
+import { invoke } from "./platform/invoke.js";
+import { mutate, onDataChanged } from "./data/repository.js";
 import Icon from "./Icon.vue";
-import { cloneJsonData } from "./jsonData.js";
 import { errText } from "./shared.js";
 import { DEFAULT_DAY_HOURS, createRequirementItem, parseEstimateInput, requirementMetrics } from "./requirementMetrics.js";
 
@@ -49,6 +49,15 @@ async function load() {
 }
 
 onMounted(load);
+// Agent / 迭代页 / 任务页改了迭代：无录入弹窗时重新加载；弹窗打开时保持不动（表单独立 ref）
+let offDataChanged = null;
+onMounted(() => {
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (kind !== "iterations" || source === "view" || showCreate.value) return;
+    await load();
+  });
+});
+onBeforeUnmount(() => offDataChanged?.());
 
 const allRequirements = computed(() => {
   const rows = [];
@@ -162,16 +171,18 @@ async function saveCreate() {
   if (!parsed.valid) return props.showToast("预估天数须为大于 0 的数字");
   saving.value = true;
   try {
-    const snapshot = cloneJsonData(iterations.value);
-    const host = snapshot.find((x) => x.id === target.id);
-    if (!host) throw new Error("目标迭代不存在");
     const item = createRequirementItem({ name, url: createUrl.value.trim(), estimateDays: parsed.value });
     if (!item) throw new Error("需求数据无效");
-    host.items = host.items || [];
-    host.items.push(item);
-    host.updatedAt = Date.now();
-    const newRevision = await invoke("save_data", { key: "iterations", data: snapshot });
-    iterations.value = snapshot; // 回写内存：computed 即时落列，无需刷新
+    const targetId = target.id;
+    // 读最新 → 追加需求 → 带修订号写回：与迭代页/任务页/Agent 的写入不再整表互相覆盖
+    iterations.value = await mutate("iterations", (fresh) => {
+      const host = fresh.find((x) => x.id === targetId);
+      if (!host) throw new Error("目标迭代不存在");
+      host.items = Array.isArray(host.items) ? host.items : [];
+      host.items.push(item);
+      host.updatedAt = Date.now();
+      return fresh;
+    }, { source: "view" });
     props.showToast(`已新增需求「${name}」`);
     closeCreate();
   } catch (e) {

@@ -37,8 +37,19 @@
     },
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/44x44.png",
+      "icons/71x71.png",
+      "icons/89x89.png",
+      "icons/107x107.png",
+      "icons/142x142.png",
+      "icons/150x150.png",
+      "icons/284x284.png",
+      "icons/310x310.png",
+      "icons/icon-small.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ]

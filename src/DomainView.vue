@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "./platform/invoke.js";
+import { capabilities } from "./platform/env.js";
+import { open } from "./platform/dialog.js";
 import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
 import AiExtract from "./AiExtract.vue";
@@ -429,7 +430,7 @@ async function saveImport() {
         <input v-model="search" placeholder="搜索 Pool..." />
       </div>
       <div class="tb-right">
-        <button class="btn-ghost sm" :disabled="pullingAll" @click="pullAll"><Icon name="download" :size="15" :class="{ spin: pullingAll }" /> {{ pullingAll ? '拉取中…' : '拉取全部最新' }}</button>
+        <button v-if="capabilities.git" class="btn-ghost sm" :disabled="pullingAll" @click="pullAll"><Icon name="download" :size="15" :class="{ spin: pullingAll }" /> {{ pullingAll ? '拉取中…' : '拉取全部最新' }}</button>
         <button class="btn-ghost sm" @click="openImport"><Icon name="copy" :size="15" /> 从旧项目导入</button>
         <button class="btn-ghost sm" @click="openBatch"><Icon name="copy" :size="15" /> 批量录入</button>
         <button class="btn-primary sm" @click="openPoolCreate"><Icon name="plus" :size="15" /> 添加 Pool</button>
@@ -456,8 +457,8 @@ async function saveImport() {
               <span v-if="badgeOf(p)" class="pub-dot" :class="badgeOf(p)"></span>
             </button>
             <button class="icon-btn" :class="{ done: copiedPoolId === p.id }" :title="copiedPoolId === p.id ? '已复制' : '复制名称'" @click="copyPool(p)"><Icon :name="copiedPoolId === p.id ? 'check' : 'copy'" :size="15" /></button>
-            <button class="icon-btn" :class="{ spinning: pulling[p.id] }" :disabled="!p.path || pulling[p.id]" :title="p.path ? '拉取最新代码' : '请先设置本地项目路径'" @click="pullPool(p)"><Icon :name="pulling[p.id] ? 'repeat' : 'download'" :size="15" :class="{ spin: pulling[p.id] }" /></button>
-            <button class="icon-btn" :class="{ done: p.path }" :title="p.path ? '修改本地项目路径' : '设置本地项目路径'" @click="pickPath(p)"><Icon name="folder" :size="15" /></button>
+            <button v-if="capabilities.git" class="icon-btn" :class="{ spinning: pulling[p.id] }" :disabled="!p.path || pulling[p.id]" :title="p.path ? '拉取最新代码' : '请先设置本地项目路径'" @click="pullPool(p)"><Icon :name="pulling[p.id] ? 'repeat' : 'download'" :size="15" :class="{ spin: pulling[p.id] }" /></button>
+            <button v-if="capabilities.localFile" class="icon-btn" :class="{ done: p.path }" :title="p.path ? '修改本地项目路径' : '设置本地项目路径'" @click="pickPath(p)"><Icon name="folder" :size="15" /></button>
             <button class="icon-btn" title="编辑" @click="openPoolEdit(p)"><Icon name="edit" :size="15" /></button>
             <button class="icon-btn" title="删除" @click="removePool(p)"><Icon name="trash" :size="15" /></button>
           </div>
@@ -551,7 +552,7 @@ async function saveImport() {
         <span>备注（可选）</span>
         <textarea v-model="poolForm.note" rows="2" placeholder="职责说明 / 责任人等"></textarea>
       </label>
-      <label class="field">
+      <label v-if="capabilities.localFile" class="field">
         <span>本地项目路径（可选，用于一键 git pull）</span>
         <div class="path-row">
           <input v-model="poolForm.path" placeholder="已与 Git 关联的本地仓库目录" />

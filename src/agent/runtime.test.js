@@ -137,3 +137,43 @@ describe("agent runtime", () => {
     expect(confirm).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("错误码透传", () => {
+  // UI 按 code 映射 i18n 键（FORBIDDEN/TIMEOUT/DESKTOP_ONLY/ABORTED），不能靠匹配中文文案
+  it("工具失败把 code 带到 tool_error 事件与返回结果", async () => {
+    const events = [];
+    const registry = createToolRegistry([{
+      name: "gated",
+      risk: "write",
+      execute: () => { throw Object.assign(Error("需要 Pro 授权"), { code: "FORBIDDEN" }); },
+    }]);
+    const result = await runAgent("x", {
+      registry,
+      planner: async () => ({ type: "tool_call", tool: "gated", args: {} }),
+      confirm: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("FORBIDDEN");
+    expect(events.find((e) => e.type === "tool_error").code).toBe("FORBIDDEN");
+  });
+
+  it("无 code 的普通错误得到空串而不是 undefined", async () => {
+    const registry = createToolRegistry([{ name: "plain", execute: () => { throw Error("炸了"); } }]);
+    const result = await runAgent("x", { registry, planner: async () => ({ type: "tool_call", tool: "plain", args: {} }) });
+    expect(result.errorCode).toBe("");
+  });
+
+  it("运行级失败与中止也带 errorCode", async () => {
+    const registry = createToolRegistry([{ name: "t", execute: () => "ok" }]);
+    const timedOut = await runAgent("x", { registry, planner: () => new Promise(() => {}), plannerTimeoutMs: 1 });
+    expect(timedOut.status).toBe("failed");
+    expect(timedOut.errorCode).toBe("TIMEOUT");
+
+    const controller = new AbortController();
+    controller.abort();
+    const aborted = await runAgent("x", { registry, signal: controller.signal, planner: async () => ({ type: "final", answer: "x" }) });
+    expect(aborted.status).toBe("cancelled");
+    expect(aborted.errorCode).toBe("ABORTED");
+  });
+});

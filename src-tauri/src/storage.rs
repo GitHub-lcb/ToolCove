@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 
-use crate::license;
 /// 数据文件路径：<应用数据目录>/<key>.json（key 仅保留安全字符）
 pub fn data_path(app: &tauri::AppHandle, key: &str) -> Result<PathBuf, String> {
     let safe: String = key
@@ -276,9 +275,6 @@ pub fn run_backup(dir: &std::path::Path, dest: &str) -> Result<String, String> {
             )
         {
             let name = entry.file_name().to_string_lossy().to_string();
-            if license::is_license_json(&name) {
-                continue; // 授权不随数据备份（红线：不回传、不复活）
-            }
             zip.start_file(&name, opts).map_err(|e| e.to_string())?;
             zip.write_all(&fs::read(&path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
@@ -374,9 +370,6 @@ pub fn read_restore_archive(source: &std::path::Path) -> Result<(Vec<(String, Ve
         if kind == RestoreEntry::Directory {
             continue;
         }
-        if license::is_license_json(entry.name()) {
-            continue; // 旧备份中的授权条目直接跳过：恢复任一备份都不复活旧授权
-        }
         if entry.size() > RESTORE_MAX_FILE_BYTES {
             return Err(format!("备份条目过大：{}", entry.name()));
         }
@@ -425,9 +418,6 @@ pub fn managed_json_files(dir: &std::path::Path) -> Result<Vec<PathBuf>, String>
         let path = entry.path();
         let Some(file) = path.file_name().and_then(|n| n.to_str()) else { continue };
         if path.is_file() && matches!(classify_restore_entry(file, false), Ok(RestoreEntry::Json(_))) {
-            if license::is_license_json(file) {
-                continue; // 授权文件受隔离：不进入恢复交换清单，恢复后原样保留
-            }
             files.push(path);
         }
     }

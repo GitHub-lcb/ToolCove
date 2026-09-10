@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 import Icon from "./Icon.vue";
 import { fmtDate, weekday, isWorkday } from "./shared.js";
 
@@ -353,7 +353,7 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
               <span class="rel-title">{{ it.title }}<em v-if="it.version" class="rel-ver">{{ it.version }}</em></span>
               <span class="rel-prog">需求 {{ progress(it).done }}/{{ progress(it).total }}</span>
             </span>
-            <span class="st-chip" :class="'st-' + it.status">{{ STATUS_LABEL[it.status] }}</span>
+            <span class="st-chip" :class="'st-' + it.status">{{ STATUS_LABEL[it.status] || it.status || "未设置" }}</span>
             <Icon name="chevron" :size="14" class="rel-arrow" />
           </button>
         </div>

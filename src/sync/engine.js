@@ -39,7 +39,7 @@ export function createSyncEngine(deps) {
   } = deps;
 
   let status = getConfig().enabled ? "idle" : "disabled";
-  let busy = false;
+  let runPromise = null; // 并发合并：同一时刻最多一次进行中的同步
   let attempts = 0;
   let lastRetryDay = "";
   let retryCountToday = 0;
@@ -133,6 +133,24 @@ export function createSyncEngine(deps) {
     if (dirty.size) scheduleSync();
   }
 
+  /** 无记录可入队（如仅墓碑变更）时也要触发一次同步，否则删除不会传播 */
+  function requestSync() {
+    if (status === "disabled" || status === "revoked") return;
+    scheduleSync();
+  }
+
+  /**
+   * 外部改写 enabled（配对/加入集合、设置页开关）后校正状态机。
+   * 引擎创建时若 enabled 为假会停在 "disabled"，不校正则本次进程内同步永久停摆。
+   */
+  function refreshEnabled() {
+    if (getConfig().enabled) {
+      if (status === "disabled") setStatus("idle");
+    } else if (status !== "revoked") {
+      setStatus("disabled");
+    }
+  }
+
   function scheduleSync() {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
@@ -152,7 +170,7 @@ export function createSyncEngine(deps) {
     for (const src of recordSources) {
       const records = src.get() || [];
       for (const p of collectPushes(records, cfg.lastPushedAt || 0, [])) {
-        pushItems.push(p);
+        pushItems.push({ ...p, kind: src.key });
       }
     }
     for (const t of Object.entries(tomb)) {
@@ -164,7 +182,7 @@ export function createSyncEngine(deps) {
     for (const p of pushItems) {
       const env = p.tombstone
         ? null
-        : makeEnvelope(deviceId, p.updatedAt, sanitizeForSync(p.record));
+        : makeEnvelope(deviceId, p.updatedAt, sanitizeForSync(p.record), p.kind);
       const cipher = p.tombstone ? "" : await encryptEnvelope(masterKey, env);
       if (!p.tombstone && cipher.length > MAX_ITEM_CIPHER) {
         omitted.add(p.record.id);
@@ -183,7 +201,7 @@ export function createSyncEngine(deps) {
     let maxPushed = cfg.lastPushedAt || 0;
     for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
       const chunk = payloads.slice(i, i + BATCH_SIZE);
-      let bytes = Buffer.byteLength(JSON.stringify(chunk), "utf8");
+      const bytes = new TextEncoder().encode(JSON.stringify(chunk)).length;
       // 字节超限：逐条拆分重试（单条已限 2MB，最坏 4 条/批）
       if (bytes > BATCH_BYTES) {
         for (const one of chunk) {
@@ -258,16 +276,23 @@ export function createSyncEngine(deps) {
         } catch {
           continue; // 坏密文跳过（不应发生；可能是旧密钥数据）
         }
+        if (!envelope.kind) {
+          // 旧格式信封（无 kind）：用本地已有记录反查归属；查不到就跳过，避免误投到其他类别
+          const realId = idMap.get(item.id) || null;
+          envelope = { ...envelope, kind: (realId && idSource.get(realId)) || "" };
+        }
         decrypted.push({ updatedAt: item.updatedAt, tombstone: false, envelope });
       }
-      // 逐源合并应用
+      // 逐源合并应用（信封 kind 决定归属：同一信封只投一个类别，避免速记落进问题列表）
       for (const src of recordSources) {
         const local = src.get() || [];
         const kind = src.key;
         // 墓碑无信封：只要 realId 反查到本源记录就参与合并（删除由 merge 判定时间序）
-        const own = decrypted.filter((d) => (d.tombstone && d.realId && d.realKind === kind) || (d.envelope && d.envelope.record));
+        const own = decrypted.filter(
+          (d) => (d.tombstone && d.realId && d.realKind === kind) || (d.envelope && d.envelope.record && d.envelope.kind === kind)
+        );
         const { records, ops } = mergeRemote(local, own, deviceId);
-        if (ops.length) src.apply(ops);
+        if (ops.length) await src.apply(ops);
       }
       total += items.length;
       cursor = j.nextSeq || items[items.length - 1].seq;
@@ -278,20 +303,29 @@ export function createSyncEngine(deps) {
   }
 
   // ---------- 同步主流程 ----------
-  async function runSync() {
-    if (busy) return;
+  // 并发合并：同一时刻只跑一次；重复调用（防抖到点 + 手动点击）共享同一次运行，
+  // 而不是直接返回 —— 否则「立即同步」会变成空转，且调用方拿到的是上一次的结果。
+  function runSync() {
+    if (runPromise) return runPromise;
     const cfg = getConfig();
-    if (!cfg.enabled || status === "disabled" || status === "revoked") return;
-    if (retryCountToday >= DAILY_RETRY_CAP) return;
-    busy = true;
-    const recordSources = currentSources();
+    if (!cfg.enabled || status === "disabled" || status === "revoked") return Promise.resolve();
+    if (retryCountToday >= DAILY_RETRY_CAP) return Promise.resolve();
+    runPromise = performSync().finally(() => {
+      runPromise = null;
+    });
+    return runPromise;
+  }
+
+  async function performSync() {
+    // 数据源为磁盘视图（注入方拉最新），同步前刷新一次，避免推送旧镜像
+    await deps.refreshSources?.();
     setStatus("syncing");
     try {
       const pushed = await pushOnce();
       const pulled = await pullOnce();
       attempts = 0;
       await saveConfig({ lastSyncAt: Date.now() });
-      setStatus("idle", { pushed, pulled });
+      setStatus(getConfig().enabled ? "idle" : "disabled", { pushed, pulled });
     } catch (e) {
       attempts += 1;
       bumpRetry();
@@ -302,8 +336,6 @@ export function createSyncEngine(deps) {
       if (delay > 0) {
         setTimeout(() => { if (getConfig().enabled && status !== "revoked") runSync().catch(() => {}); }, delay);
       }
-    } finally {
-      busy = false;
     }
   }
 
@@ -321,6 +353,8 @@ export function createSyncEngine(deps) {
 
   return {
     enqueue,
+    requestSync,
+    refreshEnabled,
     runSync,
     syncNow,
     createCollection,

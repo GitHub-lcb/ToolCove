@@ -1,6 +1,6 @@
 // 敏感配置加密（Windows DPAPI，经 Rust 命令 encrypt_text/decrypt_text）
 // 约定：加密值以 "enc:" 前缀标记，明文兼容旧数据（保存时会自动转加密）。
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke.js";
 
 // 敏感数据必须加密成功才允许保存，避免 DPAPI 异常时降级为明文落盘。
 export async function encryptValue(v) {

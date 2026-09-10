@@ -4,8 +4,12 @@ import vue from "@vitejs/plugin-vue";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
   plugins: [vue()],
+
+  // 静态站点（npm run build:web --mode web）：相对 base 让 dist/ 可部署到任意子路径
+  // （GitHub Pages 项目页 / 自建目录）；桌面构建保持根路径不变。
+  base: mode === "web" ? "./" : "/",
 
   // 单元测试（Vitest）：仅测纯函数逻辑，node 环境即可，无需 jsdom
   test: {
