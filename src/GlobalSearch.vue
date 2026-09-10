@@ -102,33 +102,33 @@ const results = computed(() => {
   const hit = (s) => s && s.toLowerCase().includes(kw);
 
   for (const d of data.value.domains) {
-    if (hit(d.name) || hit(d.note)) out.push({ group: "domain", title: d.name, sub: d.note || "", module: "domain", id: d.id });
+    if (hit(d.name) || hit(d.note)) out.push({ group: "domain", title: d.name, sub: d.note || "", module: "work", tab: "domain", id: d.id });
   }
   for (const p of data.value.pools) {
-    if (hit(p.name) || hit(p.note)) out.push({ group: "pool", title: p.name, sub: domainName(p.domainId), module: "domain", id: p.domainId, content: p.name, copyKey: "pool-" + p.id });
+    if (hit(p.name) || hit(p.note)) out.push({ group: "pool", title: p.name, sub: domainName(p.domainId), module: "work", tab: "domain", id: p.domainId, content: p.name, copyKey: "pool-" + p.id });
   }
   for (const it of data.value.iterations) {
     if (hit(it.title) || hit(it.version) || hit(it.goal))
-      out.push({ group: "iteration", title: it.title, sub: it.version || "", module: "iteration", id: it.id });
+      out.push({ group: "iteration", title: it.title, sub: it.version || "", module: "work", tab: "iteration", id: it.id });
     for (const r of it.items || []) {
-      if (hit(r.name)) out.push({ group: "req", title: r.name, sub: it.title, module: "iteration", id: it.id });
+      if (hit(r.name)) out.push({ group: "req", title: r.name, sub: it.title, module: "work", tab: "iteration", id: it.id });
     }
     for (const doc of it.docs || []) {
-      if (hit(doc.title)) out.push({ group: "iteration", title: doc.title, sub: it.title + " · " + t("common.gsDocTag"), module: "iteration", id: it.id });
+      if (hit(doc.title)) out.push({ group: "iteration", title: doc.title, sub: it.title + " · " + t("common.gsDocTag"), module: "work", tab: "iteration", id: it.id });
     }
   }
   for (const p of data.value.problems) {
     if (hit(p.title) || hit(p.note) || (p.tags || []).join(" ").toLowerCase().includes(kw))
-      out.push({ group: "problem", title: p.title, sub: p.note || "", module: "problem", id: p.id });
+      out.push({ group: "problem", title: p.title, sub: p.note || "", module: "records", tab: "problem", id: p.id });
     else if (hit(p.resolution))
-      out.push({ group: "problem", title: p.title, sub: t("common.gsResolution", { text: (p.resolution || "").slice(0, 60) }), module: "problem", id: p.id });
+      out.push({ group: "problem", title: p.title, sub: t("common.gsResolution", { text: (p.resolution || "").slice(0, 60) }), module: "records", tab: "problem", id: p.id });
   }
   for (const s of data.value.snippets) {
     if (hit(s.title) || hit(s.content) || hit(s.category))
-      out.push({ group: "snippet", title: s.title || t("common.gsUntitled"), sub: s.category || (s.content || "").slice(0, 40), module: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
+      out.push({ group: "snippet", title: s.title || t("common.gsUntitled"), sub: s.category || (s.content || "").slice(0, 40), module: "records", tab: "snippet", id: s.id, content: s.content || "", copyKey: "snip-" + s.id });
   }
   for (const t of data.value.tasks) {
-    if (hit(t.title) || hit(t.code)) out.push({ group: "task", title: t.title, sub: t.code || "", module: "task", id: t.id });
+    if (hit(t.title) || hit(t.code)) out.push({ group: "task", title: t.title, sub: t.code || "", module: "work", tab: "task", id: t.id });
   }
   const toolResults = searchToolboxTools(kw, visibleToolboxTools()).map((tool) => {
     const group = GROUP_BY_KEY.get(tool.category) || {};
@@ -186,7 +186,7 @@ function scrollActive() {
 
 function pick(r) {
   recordHistory(q.value.trim());
-  emit("navigate", { module: r.module, id: r.id, keyword: r.keyword || q.value.trim() });
+  emit("navigate", { module: r.module, tab: r.tab, id: r.id, keyword: r.keyword || q.value.trim() });
   close();
 }
 

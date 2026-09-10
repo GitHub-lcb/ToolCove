@@ -10,9 +10,10 @@
 // - 纯转换逻辑抽成导出函数（migrate*V1），便于单测；invoke 编排只做 IO。
 // - 任何一步失败都不得阻断应用启动（main.js 里 catch 后照常挂载）。
 import { invoke } from "./platform/invoke.js";
+import { migrateHiddenModulesV1 } from "./navConfig.js";
 
 // 当前数据结构版本。每次改动持久化结构时 +1，并在 MIGRATIONS 末尾补一步。
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 const META_KEY = "meta";
 
 // ===================== 纯转换函数（可单测，就地改并返回） =====================
@@ -178,6 +179,18 @@ const MIGRATIONS = [
   // v6 → v7：需求支持预估人天；规模、实际人天与超额状态运行时统一计算。
   async () => {
     await migrateKey("iterations", migrateIterationsV4);
+  },
+  // v7 → v8：导航分层（十视图 → 四模块 + Tab），设置里隐藏的旧视图 key 归并到新模块 key。
+  // 无变化不落盘（幂等 + 避免每次启动多一次写）。
+  async () => {
+    const settings = await loadKey("settings", {});
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return;
+    const hidden = settings.ui?.hiddenModules;
+    if (!Array.isArray(hidden)) return;
+    const next = migrateHiddenModulesV1(hidden);
+    if (next.length === hidden.length && next.every((k, i) => k === hidden[i])) return;
+    settings.ui = { ...settings.ui, hiddenModules: next };
+    await invoke("save_data", { key: "settings", data: settings });
   },
 ];
 

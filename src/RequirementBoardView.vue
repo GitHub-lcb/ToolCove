@@ -130,7 +130,7 @@ function progressWidth(row) {
 }
 
 function openRequirement(row) {
-  emit("navigate", { module: "iteration", id: row.iterationId });
+  emit("navigate", { module: "work", tab: "iteration", id: row.iterationId });
 }
 
 // ------- 新建需求弹窗 -------

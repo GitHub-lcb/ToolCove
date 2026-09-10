@@ -20,6 +20,7 @@ import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
 import { cloneJsonData } from "./jsonData.js";
 import { normalizeHiddenModules, mergeSettingsSnapshot } from "./settingsConfig.js";
+import { NAV_MODULES } from "./navConfig.js";
 import { applyLocale } from "./i18n/index.js";
 import pkg from "../package.json";
 
@@ -48,19 +49,8 @@ watch(
 // 兜底显式指向 general（插入 pro 后 SECTIONS[1] 不再等于 general，评审注意项）
 const currentMeta = computed(() => sections.value.find((s) => s.key === section.value) || SECTIONS.find((s) => s.key === "general") || SECTIONS[0]);
 
-// 侧边栏模块展示/隐藏选项（与 App.vue 的 MODULES 列表保持一致，十视图）
-const NAV_MODULE_OPTIONS = [
-  { key: "agent", labelKey: "nav.agent" },
-  { key: "home", labelKey: "nav.home" },
-  { key: "domain", labelKey: "nav.domain" },
-  { key: "iteration", labelKey: "nav.iteration" },
-  { key: "requirement", labelKey: "nav.requirement" },
-  { key: "problem", labelKey: "nav.problem" },
-  { key: "release", labelKey: "nav.release" },
-  { key: "snippet", labelKey: "nav.snippet" },
-  { key: "task", labelKey: "nav.task" },
-  { key: "toolbox", labelKey: "nav.toolbox" },
-];
+// 侧边栏模块展示/隐藏选项（与 App.vue 同一份 navConfig，四项 + 设置不入列表）
+const NAV_MODULE_OPTIONS = NAV_MODULES;
 function isNavModuleVisible(key) {
   return !form.value.ui.hiddenModules.includes(key);
 }

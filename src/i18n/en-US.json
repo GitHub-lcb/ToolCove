@@ -5,6 +5,9 @@
   },
   "nav": {
     "agent": "Agent",
+    "work": "Work",
+    "records": "Records",
+    "overview": "Overview",
     "toolbox": "Toolbox",
     "task": "Tasks",
     "snippet": "Snippets",

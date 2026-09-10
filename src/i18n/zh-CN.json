@@ -5,6 +5,9 @@
   },
   "nav": {
     "agent": "Agent",
+    "work": "工作台",
+    "records": "记录",
+    "overview": "概览",
     "toolbox": "工具箱",
     "task": "任务",
     "snippet": "速记",

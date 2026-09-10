@@ -17,23 +17,15 @@ import { askConfirm } from "./confirm.js";
 import ToolWindow from "./ToolWindow.vue";
 import ToolboxView from "./ToolboxView.vue";
 import GlobalSearch from "./GlobalSearch.vue";
+import ModuleTabs from "./ModuleTabs.vue";
+import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget } from "./navConfig.js";
 import pkg from "../package.json";
 
 const { t } = useI18n();
 
-// ------- 模块导航配置（十视图：agent 为默认启动视图，Ctrl+1~9/0 直切） -------
-const MODULES = [
-  { key: "agent", labelKey: "nav.agent", descKey: "module.agentDesc", icon: "sparkles" },
-  { key: "home", labelKey: "nav.home", descKey: "module.homeDesc", icon: "home" },
-  { key: "domain", labelKey: "nav.domain", descKey: "module.domainDesc", icon: "layers" },
-  { key: "iteration", labelKey: "nav.iteration", descKey: "module.iterationDesc", icon: "git-branch" },
-  { key: "requirement", labelKey: "nav.requirement", descKey: "module.requirementDesc", icon: "bar-chart" },
-  { key: "problem", labelKey: "nav.problem", descKey: "module.problemDesc", icon: "alert" },
-  { key: "release", labelKey: "nav.release", descKey: "module.releaseDesc", icon: "upload" },
-  { key: "snippet", labelKey: "nav.snippet", descKey: "module.snippetDesc", icon: "copy" },
-  { key: "task", labelKey: "nav.task", descKey: "module.taskDesc", icon: "repeat" },
-  { key: "toolbox", labelKey: "nav.toolbox", descKey: "module.toolboxDesc", icon: "wrench" },
-];
+// ------- 导航分层：4 个一级模块（侧边栏）+ 设置；work / records 内部再分 Tab -------
+// 配置与旧 key 映射见 navConfig.js（纯函数，单测覆盖）
+const MODULES = NAV_MODULES;
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
@@ -55,22 +47,26 @@ async function revealToolWindow() {
 
 // ------- 状态 -------
 const activeModule = ref("agent");
+// 各模块记住自己停留的 Tab（不入 settings：纯会话内状态，重启回默认 Tab）
+const moduleTabs = ref({ ...MODULE_HOME_TAB });
+const activeTab = computed(() => (MODULE_TABS[activeModule.value] ? moduleTabs.value[activeModule.value] : null));
 const collapsed = ref(true);
 const toast = ref(null);
 // 视图埋点（节流 10s；可选遥测未开启时只本地计数）
 let viewTrackTs = {};
-watch(activeModule, (key) => {
+watch([activeModule, activeTab], ([key, tab]) => {
+  const view = tab ? `${key}.${tab}` : key;
   const now = Date.now();
-  if (now - (viewTrackTs[key] || 0) < 10000) return;
-  viewTrackTs[key] = now;
-  telemetryTrack("view." + key);
+  if (now - (viewTrackTs[view] || 0) < 10000) return;
+  viewTrackTs[view] = now;
+  telemetryTrack("view." + view);
 });
 const jump = ref(null);
 const gsRef = ref(null);
 
 const WelcomeView = defineAsyncComponent(() => import("./WelcomeView.vue"));
 const AgentView = defineAsyncComponent(() => import("./AgentView.vue"));
-const HomeView = defineAsyncComponent(() => import("./HomeView.vue"));
+const WorkOverviewView = defineAsyncComponent(() => import("./WorkOverviewView.vue"));
 const DomainView = defineAsyncComponent(() => import("./DomainView.vue"));
 const TaskView = defineAsyncComponent(() => import("./TaskView.vue"));
 const SnippetView = defineAsyncComponent(() => import("./SnippetView.vue"));
@@ -79,14 +75,24 @@ const SettingsView = defineAsyncComponent(() => import("./SettingsView.vue"));
 const IterationView = defineAsyncComponent(() => import("./IterationView.vue"));
 const RequirementBoardView = defineAsyncComponent(() => import("./RequirementBoardView.vue"));
 const ReleaseView = defineAsyncComponent(() => import("./ReleaseView.vue"));
-const VIEW_COMPONENTS = { agent: AgentView, home: HomeView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, problem: ProblemView, release: ReleaseView, snippet: SnippetView, task: TaskView, toolbox: ToolboxView, settings: SettingsView };
-const activeViewComp = computed(() => VIEW_COMPONENTS[activeModule.value] || WelcomeView);
+// Tab key → 组件；无 Tab 的模块（agent/toolbox/settings）直接渲染
+const TAB_COMPONENTS = { overview: WorkOverviewView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, release: ReleaseView, task: TaskView, snippet: SnippetView, problem: ProblemView };
+const PLAIN_COMPONENTS = { agent: AgentView, toolbox: ToolboxView, settings: SettingsView };
+const activeTabs = computed(() => (MODULE_TABS[activeModule.value] || []).map((x) => ({ ...x, comp: TAB_COMPONENTS[x.key] })));
+const plainViewComp = computed(() => PLAIN_COMPONENTS[activeModule.value] || WelcomeView);
+// 深链只在「模块 + Tab + 条目」全命中时下发给视图；用户手动切走后自动失效
+const activeJump = computed(() => {
+  const j = jump.value;
+  if (!j) return null;
+  return j.module === activeModule.value && (j.tab || null) === (activeTab.value || null) ? j : null;
+});
 
 const settingsSection = ref("general");
 function openSettings(section) {
   activeModule.value = "settings";
   settingsSection.value = section;
 }
+provide("openSettings", openSettings);
 
 // 界面设置（密度 + 侧边栏模块展示/隐藏，设置里可切换；紧凑为默认）
 const density = ref("compact");
@@ -217,33 +223,49 @@ onUnmounted(() => {
 });
 provide("openCtxMenu", openCtxMenu);
 
-// ------- 全局快捷键（Ctrl+数字切模块，Ctrl+1~9 对应前九个、Ctrl+0 对应第十个；Ctrl+K 开全局搜索） -------
+// ------- 全局快捷键（Ctrl+1~5 切模块：1 Agent / 2 工作台 / 3 记录 / 4 工具箱 / 5 设置；
+// Ctrl+0 保留为工具箱（旧习惯）；Ctrl+K 开全局搜索） -------
+const HOTKEY_MODULES = MODULES.map((m) => m.key).concat("settings"); // Ctrl+1..5
 function onKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
     e.preventDefault();
     gsRef.value?.openPalette();
     return;
   }
-  const slot = e.key === "0" ? 10 : /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
-  if ((e.ctrlKey || e.metaKey) && slot && slot <= MODULES.length) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === "0") {
     e.preventDefault();
-    activeModule.value = MODULES[slot - 1].key;
+    activeModule.value = "toolbox";
+    return;
   }
+  if (!/^[1-9]$/.test(e.key)) return;
+  const key = HOTKEY_MODULES[Number(e.key) - 1];
+  if (!key) return;
+  e.preventDefault();
+  if (key === "settings") openSettings(settingsSection.value);
+  else activeModule.value = key;
 }
 onMounted(() => window.addEventListener("keydown", onKeydown));
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
-// 全局搜索导航：切模块并深链到具体记录（带 id 时）
-function onGlobalNavigate({ module, id }) {
-  if (!MODULES.some((m) => m.key === module)) return;
-  activeModule.value = module;
-  if (id) jump.value = { module, id, ts: Date.now() };
+// 全局搜索/视图跳转导航：切模块 + Tab，并深链到具体记录（带 id 时）
+// 兼容旧视图 key（{module:'iteration'}）与新坐标（{module:'work', tab:'iteration'}）
+function onGlobalNavigate(input) {
+  const target = resolveNavTarget(input);
+  if (!target) return;
+  activeModule.value = target.module;
+  if (target.tab) moduleTabs.value[target.module] = target.tab;
+  const id = input && input.id;
+  jump.value = id ? { ...target, id, ts: Date.now() } : null;
+}
+function onTabSwitch(tabKey) {
+  moduleTabs.value[activeModule.value] = tabKey;
 }
 
-// 托盘/全局快捷键动作：quick-note 切到问题视图并唤起新建弹窗；check-update 手动检查更新
+// 托盘/全局快捷键动作：quick-note 切到问题 Tab 并唤起新建弹窗；check-update 手动检查更新
 async function handleTrayAction(action) {
   if (action === "quick-note") {
-    activeModule.value = "problem";
+    onGlobalNavigate({ module: "records", tab: "problem" });
     await nextTick();
     setTimeout(() => window.dispatchEvent(new CustomEvent("quick-note")), 60);
   } else if (action === "check-update") {
@@ -461,12 +483,23 @@ onUnmounted(() => {
       </header>
 
       <div class="body">
+        <ModuleTabs
+          v-if="activeTabs.length"
+          :key="activeModule"
+          :tabs="activeTabs"
+          :active="activeTab"
+          :show-toast="showToast"
+          :jump-id="activeJump"
+          @update:active="onTabSwitch"
+          @navigate="onGlobalNavigate"
+        />
         <component
-          :is="activeViewComp"
+          v-else
+          :is="plainViewComp"
           :key="activeModule"
           :show-toast="showToast"
           :section="settingsSection"
-          :jump-id="jump && jump.module === activeModule ? jump : null"
+          :jump-id="activeJump"
           @navigate="onGlobalNavigate"
         />
       </div>

@@ -1,4 +1,6 @@
 <script setup>
+// 概览（work 模块首 Tab）：问候 / 今日行动 / KPI / 本周上线 / 最近动态 / 待产品确认。
+// 原 HomeView 的「最新速记」移出（速记 Tab 已按更新时间倒序并支持搜索，重复）；「快捷入口」删除（与侧边栏重复）。
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { invoke } from "./platform/invoke.js";
 import Icon from "./Icon.vue";
@@ -7,25 +9,22 @@ import { fmtDate, weekday, isWorkday } from "./shared.js";
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
 });
-const emit = defineEmits(["navigate", "open-settings"]);
+const emit = defineEmits(["navigate"]);
 
 const iterations = ref([]);
 const problems = ref([]);
-const snippets = ref([]);
 const settings = ref({});
 const loaded = ref(false); // 首屏数据就绪（就绪前显示骨架屏，避免空态闪现）
 
 async function load() {
   try {
-    const [its, probs, snips, sets] = await Promise.all([
+    const [its, probs, sets] = await Promise.all([
       invoke("load_data", { key: "iterations" }),
       invoke("load_data", { key: "problems" }),
-      invoke("load_data", { key: "snippets" }),
       invoke("load_data", { key: "settings" }),
     ]);
     iterations.value = its || [];
     problems.value = probs || [];
-    snippets.value = snips || [];
     settings.value = sets || {};
     userName.value = settings.value.displayName || ""; // 本地显示名（设置 → 通用），无 Coding 依赖
   } catch (e) {
@@ -189,21 +188,21 @@ const recentLogs = computed(() => {
     (it.items || []).forEach((r) => {
       (r.subtasks || []).forEach((s) => {
         const h = Number(s.hours) || 0;
-        if (h > 0 && s.date) out.push({ date: s.date, hours: h, note: s.name || "", src: r.name, from: it.title, module: "iteration", id: it.id });
+        if (h > 0 && s.date) out.push({ date: s.date, hours: h, note: s.name || "", src: r.name, from: it.title, module: "work", tab: "iteration", id: it.id });
       });
-      (r.logs || []).forEach((l) => out.push({ date: l.date || "", hours: Number(l.hours) || 0, note: l.note || "", src: r.name, from: it.title, module: "iteration", id: it.id }));
+      (r.logs || []).forEach((l) => out.push({ date: l.date || "", hours: Number(l.hours) || 0, note: l.note || "", src: r.name, from: it.title, module: "work", tab: "iteration", id: it.id }));
     })
   );
   problems.value.forEach((p) =>
-    (p.logs || []).forEach((l) => out.push({ date: l.date || "", hours: Number(l.hours) || 0, note: l.note || "", src: p.title, from: "问题", module: "problem", id: p.id }))
+    (p.logs || []).forEach((l) => out.push({ date: l.date || "", hours: Number(l.hours) || 0, note: l.note || "", src: p.title, from: "问题", module: "records", tab: "problem", id: p.id }))
   );
   return out.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
 });
 const visibleLogs = computed(() => (actExpanded.value ? recentLogs.value : recentLogs.value.slice(0, ACT_LIMIT)));
 const actRestCount = computed(() => recentLogs.value.length - ACT_LIMIT);
 
-function go(module, id) {
-  emit("navigate", { module, id: id || null });
+function go(module, tab, id) {
+  emit("navigate", { module, tab, id: id || null });
 }
 
 // ------- 今日行动（聚合今日必办：上线/逾期/待确认/工时，一键跳转） -------
@@ -211,14 +210,14 @@ const todayActs = computed(() => {
   const acts = [];
   for (const it of weekList.value) {
     if (it.releaseDate === today.value && it.status !== "live") {
-      acts.push({ key: "due-" + it.id, icon: "rocket", text: `今日上线：${it.title}`, module: "iteration", id: it.id });
+      acts.push({ key: "due-" + it.id, icon: "rocket", text: `今日上线：${it.title}`, module: "work", tab: "iteration", id: it.id });
     }
     if (it.overdue) {
-      acts.push({ key: "late-" + it.id, icon: "alert", text: `已逾期：${it.title}`, module: "iteration", id: it.id, late: true });
+      acts.push({ key: "late-" + it.id, icon: "alert", text: `已逾期：${it.title}`, module: "work", tab: "iteration", id: it.id, late: true });
     }
   }
-  if (openQuestions.value > 0) acts.push({ key: "q", icon: "chat", text: `${openQuestions.value} 项待产品确认`, module: "iteration" });
-  if (workday.value && todayHours.value < targetHours.value) acts.push({ key: "hours", icon: "clock", text: `今日工时 ${todayHours.value}h / ${targetHours.value}h`, module: "task" });
+  if (openQuestions.value > 0) acts.push({ key: "q", icon: "chat", text: `${openQuestions.value} 项待产品确认`, module: "work", tab: "iteration" });
+  if (workday.value && todayHours.value < targetHours.value) acts.push({ key: "hours", icon: "clock", text: `今日工时 ${todayHours.value}h / ${targetHours.value}h`, module: "work", tab: "task" });
   return acts;
 });
 // 今日行动展开/收起（默认 6 条，超出提示「还有 N 项」）
@@ -238,16 +237,6 @@ function dismissGuide() {
   showGuide.value = false;
   localStorage.setItem("guideDone", "1");
 }
-
-// ------- 最新速记（脱敏分类不展示，按更新时间取最近 3 条） -------
-const SECRET_CAT = /密码|口令|密钥|秘钥|token|secret|password/i; // 与 SnippetView 脱敏口径一致
-const latestSnippets = computed(() =>
-  [...snippets.value]
-    .filter((s) => !SECRET_CAT.test(s.category || ""))
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .slice(0, 3)
-);
-const firstLine = (t) => String(t || "").split("\n")[0].trim();
 </script>
 
 <template>
@@ -264,7 +253,6 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
           <div class="skel-block skel-card"></div>
         </div>
         <div class="col-side">
-          <div class="skel-block skel-card"></div>
           <div class="skel-block skel-card"></div>
         </div>
       </div>
@@ -291,14 +279,14 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
         <b>欢迎使用 ToolCove</b>
         <span>三步开始：建迭代 → 记工时 → 收问题，到点自动提醒上线。</span>
       </div>
-      <button class="btn-outline sm" @click="dismissGuide(); go('iteration')"><Icon name="plus" :size="14" /> 建第一个迭代</button>
+      <button class="btn-outline sm" @click="dismissGuide(); go('work', 'iteration')"><Icon name="plus" :size="14" /> 建第一个迭代</button>
       <button class="guide-close" title="不再显示" @click="dismissGuide"><Icon name="x" :size="13" /></button>
     </section>
 
     <!-- 今日行动：聚合今日必办（上线/逾期/待确认/工时），有行动才显示 -->
     <section v-if="todayActs.length" class="card today-card">
       <span class="today-label"><Icon name="target" :size="13" /> 今日行动</span>
-      <button v-for="a in visibleActs" :key="a.key" class="today-item" :class="{ late: a.late }" @click="go(a.module, a.id)">
+      <button v-for="a in visibleActs" :key="a.key" class="today-item" :class="{ late: a.late }" @click="go(a.module, a.tab, a.id)">
         <Icon :name="a.icon" :size="12" /> {{ a.text }}
       </button>
       <button v-if="todayActs.length > ACT_MAX" class="today-more" @click="actsExpanded = !actsExpanded">
@@ -309,23 +297,23 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
 
     <!-- 行动数字条 -->
     <section class="kpis">
-      <button class="kpi" @click="go('iteration')">
+      <button class="kpi" @click="go('work', 'iteration')">
         <span class="k-ico"><Icon name="repeat" :size="20" /></span>
         <span class="k-main"><span class="k-num">{{ kpiShown.active }}</span><span class="k-lbl">进行中迭代</span></span>
       </button>
-      <button class="kpi amber" @click="go('iteration')">
+      <button class="kpi amber" @click="go('work', 'iteration')">
         <span class="k-ico"><Icon name="clock" :size="20" /></span>
         <span class="k-main"><span class="k-num">{{ kpiShown.pending }}</span><span class="k-lbl">待上线</span></span>
       </button>
-      <button class="kpi warn" @click="go('iteration')">
+      <button class="kpi warn" @click="go('work', 'iteration')">
         <span class="k-ico"><Icon name="check" :size="20" /></span>
         <span class="k-main"><span class="k-num">{{ kpiShown.questions }}</span><span class="k-lbl">待产品确认</span></span>
       </button>
-      <button class="kpi red" @click="go('problem')">
+      <button class="kpi red" @click="go('records', 'problem')">
         <span class="k-ico"><Icon name="alert" :size="20" /></span>
         <span class="k-main"><span class="k-num">{{ kpiShown.problems }}</span><span class="k-lbl">未解决问题</span></span>
       </button>
-      <button class="kpi hours" :class="{ ok: workday && todayHours >= targetHours }" @click="go('task')">
+      <button class="kpi hours" :class="{ ok: workday && todayHours >= targetHours }" @click="go('work', 'task')">
         <span class="k-ico"><Icon name="bar-chart" :size="20" /></span>
         <span class="k-main">
           <span class="k-num">{{ todayHours }}<i v-if="workday">/{{ targetHours }}h</i><i v-else>h</i></span>
@@ -341,10 +329,10 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
         <section class="card">
           <h3 class="sec-title">
             <Icon name="rocket" :size="15" class="sec-ico" /> 本周上线
-            <button class="sec-more" @click="go('iteration')">查看全部 <Icon name="chevron" :size="12" class="more-arrow" /></button>
+            <button class="sec-more" @click="go('work', 'iteration')">查看全部 <Icon name="chevron" :size="12" class="more-arrow" /></button>
           </h3>
         <div v-if="weekList.length" class="rel-list">
-          <button v-for="it in weekList" :key="it.id" class="rel-row" @click="go('iteration', it.id)">
+          <button v-for="it in weekList" :key="it.id" class="rel-row" @click="go('work', 'iteration', it.id)">
             <span class="rel-date" :class="{ overdue: it.overdue, done: it.status === 'live' }">
               <b>{{ (it.releaseDate || "").slice(5) }}</b>
               <i>{{ it.overdue ? "已逾期" : weekday(it.releaseDate) }}</i>
@@ -367,19 +355,19 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
         <section class="card">
           <h3 class="sec-title">
             <Icon name="activity" :size="15" class="sec-ico" /> 最近动态
-            <button class="sec-more" @click="go('task')">查看更多 <Icon name="chevron" :size="12" class="more-arrow" /></button>
+            <button class="sec-more" @click="go('work', 'task')">查看更多 <Icon name="chevron" :size="12" class="more-arrow" /></button>
           </h3>
           <table v-if="recentLogs.length" class="act-table">
             <thead>
               <tr><th>时间</th><th>类型</th><th>内容</th><th class="th-r">耗时</th></tr>
             </thead>
             <tbody>
-              <tr v-for="(l, i) in visibleLogs" :key="i" @click="go(l.module, l.id)">
+              <tr v-for="(l, i) in visibleLogs" :key="i" @click="go(l.module, l.tab, l.id)">
                 <td class="at-date" :class="{ today: l.date === today }">{{ l.date === today ? "今天" : l.date.slice(5) }}</td>
-                <td><span class="at-type" :class="l.module">{{ l.module === "problem" ? "问题" : "迭代" }}</span></td>
+                <td><span class="at-type" :class="l.tab">{{ l.tab === "problem" ? "问题" : "迭代" }}</span></td>
                 <td class="at-note">
                   <span class="at-txt" :title="l.note || ''">{{ l.note || "（未写内容）" }}</span>
-                  <span class="at-src" :title="l.module === 'problem' ? l.src : l.from">{{ l.module === "problem" ? l.src : l.from }}</span>
+                  <span class="at-src" :title="l.tab === 'problem' ? l.src : l.from">{{ l.tab === "problem" ? l.src : l.from }}</span>
                 </td>
                 <td class="at-hrs">{{ l.hours ? l.hours + "h" : "-" }}</td>
               </tr>
@@ -402,7 +390,7 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
         <section class="card">
           <h3 class="sec-title"><Icon name="check" :size="15" class="sec-ico" /> 待产品确认</h3>
           <div v-if="questionIters.length" class="q-list">
-            <button v-for="q in questionIters" :key="q.id" class="q-row" @click="go('iteration', q.id)">
+            <button v-for="q in questionIters" :key="q.id" class="q-row" @click="go('work', 'iteration', q.id)">
               <span class="q-title">{{ q.title }}</span>
               <span class="q-count">{{ q.count }}</span>
             </button>
@@ -412,31 +400,6 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
             <p>没有卡在产品那边的问题，很好。</p>
           </div>
         </section>
-
-        <!-- 最新速记（最近 3 条，脱敏分类不展示） -->
-        <section v-if="latestSnippets.length" class="card">
-          <h3 class="sec-title"><Icon name="copy" :size="15" class="sec-ico" /> 最新速记
-            <button class="sec-more" @click="go('snippet')">查看全部 <Icon name="chevron" :size="12" class="more-arrow" /></button>
-          </h3>
-          <div class="snip-list">
-            <button v-for="s in latestSnippets" :key="s.id" class="snip-row" @click="go('snippet')">
-              <span class="snip-row-title">{{ s.title || "无标题" }}</span>
-              <span class="snip-row-preview">{{ firstLine(s.content) || "（无正文）" }}</span>
-            </button>
-          </div>
-        </section>
-
-        <!-- 快捷操作 -->
-        <section class="card">
-          <h3 class="sec-title"><Icon name="sparkles" :size="15" class="sec-ico" /> 快捷入口</h3>
-          <div class="quick">
-            <button class="quick-btn" @click="go('iteration')"><Icon name="repeat" :size="16" /> 迭代</button>
-            <button class="quick-btn" @click="go('task')"><Icon name="clock" :size="16" /> 记工时</button>
-            <button class="quick-btn" @click="go('problem')"><Icon name="alert" :size="16" /> 记问题</button>
-            <button class="quick-btn" @click="go('snippet')"><Icon name="copy" :size="16" /> 速记</button>
-          </div>
-        </section>
-
       </div>
     </div>
     </template>
@@ -451,7 +414,7 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
 .skel-greet { height: 82px; border-radius: var(--r-lg); }
 .skel-kpi { height: 72px; border-radius: var(--r-lg); min-width: 150px; }
 .skel-card { height: 190px; border-radius: var(--r-lg); }
-.col-main .skel-card:nth-child(2), .col-side .skel-card:nth-child(2) { height: 160px; }
+.col-main .skel-card:nth-child(2) { height: 160px; }
 
 /* 问候区（品牌 hero：极淡蓝紫渐变 + 光球点缀 + 右侧日期徽章） */
 .greet { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: relative; overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, var(--card)), color-mix(in srgb, var(--accent) 7%, var(--card))); }
@@ -574,18 +537,6 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
 .q-title { font-size: var(--fs-md); color: var(--text); min-width: 0; word-break: break-word; }
 .q-count { flex-shrink: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--warn); background: var(--warn-soft); padding: 2px 9px; border-radius: var(--r-pill); }
 
-/* 最新速记 */
-.snip-list { display: flex; flex-direction: column; gap: 4px; }
-.snip-row { display: flex; flex-direction: column; gap: 2px; background: none; border: none; padding: 8px 6px; border-radius: var(--r-sm); cursor: pointer; font-family: inherit; text-align: left; transition: background 0.15s; }
-.snip-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.snip-row-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.snip-row-preview { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* 快捷入口 */
-.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.quick-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 11px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card-soft); color: var(--text-soft); font-size: var(--fs-md); font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-.quick-btn:hover { border-color: var(--accent); color: var(--accent-hover); background: var(--accent-tint); }
-
 @media (prefers-color-scheme: dark) {
   .card { background: var(--card); border-color: var(--border); }
   /* 深色下 .card 规则会覆盖 .greet/.today-card 的浅色渐变背景，这里重新声明深色渐变 */
@@ -599,13 +550,9 @@ const firstLine = (t) => String(t || "").split("\n")[0].trim();
   .at-hrs { color: var(--primary-light); }
   .at-type { background: var(--accent-soft-deep); color: var(--accent-soft-text); }
   .at-type.problem { background: var(--danger-soft); color: var(--danger-light); }
-  .quick-btn { background: var(--card-raised); color: var(--text-weak); }
-  .quick-btn:hover { background: var(--accent-soft-deep-hover); }
   /* 今日行动：深色下胶囊换深底亮字 */
   .today-item { background: var(--accent-soft-deep); color: var(--accent-soft-text); }
   .today-item:hover { background: var(--accent-soft-deep-hover); }
   .today-item.late { background: var(--danger-soft); color: var(--danger-light); }
-  /* 最新速记：深色下换亮色文字 */
-  .snip-row-preview { color: var(--text-weak); }
 }
 </style>
