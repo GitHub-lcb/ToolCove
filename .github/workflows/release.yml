@@ -1,0 +1,73 @@
+# 自动打包发布：推送 v* 标签（或在 Actions 页手动触发）时，签名构建 Windows 安装包并创建 GitHub Release。
+#
+# 一次性前置配置（仓库 Settings → Secrets and variables → Actions → New repository secret）：
+#   TAURI_SIGNING_PRIVATE_KEY          本机 src-tauri/updater.key 的完整内容（348 字符的 base64 单行）
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD 私钥密码；本仓库私钥无密码，此项留空或不创建即可
+# 安全提示：私钥可用于伪造自动更新包，只放 Secrets、绝不入库（见 .gitignore 的「红线」注释）。
+# 与 scripts/release.js 的关系：两者都会往同一个 tag 写 Release，同一个版本号只走其中一条，不要并行执行。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # 手动兜底：Secrets 配好后想重跑、或 tag 建错时用这里重新触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 签名构建并发布
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本号三处必须一致，否则会产出 tag/产物/latest.json 版本互相矛盾的发版
+      - name: 校验 tag 与版本号一致
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          pkg=$(node -p "require('./package.json').version")
+          echo "tag=$tag tauri.conf.json=$tauri package.json=$pkg"
+          if [ "$tag" != "$tauri" ]; then echo "::error::tag v$tag 与 tauri.conf.json 的 $tauri 不一致，请先改版本号再打 tag"; exit 1; fi
+          if [ "$pkg" != "$tauri" ]; then echo "::error::package.json 的 $pkg 与 tauri.conf.json 的 $tauri 不一致"; exit 1; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 发版前必须全绿：标签指向的提交要是坏的，用户会自动更新到坏版本
+      - name: 发布前单测
+        run: npm test
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # 无密码私钥：Secret 不存在时此处求值为空字符串，正好是 CLI 需要的「空密码」语义
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # 手动触发时由 action 建 tag；tag 推送时 v__VERSION__ 与已推送的标签一致
+          tagName: v__VERSION__
+          releaseName: "ToolCove v__VERSION__"
+          # 先建草稿：latest.json 只在正式发布后才对 releases/latest 生效，
+          # 这样可以在发布前开箱验一遍产物，确认无误再点 Publish release
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          # bundle.targets 为 all（同时产出 NSIS 与 MSI），明确让更新清单指向 NSIS setup.exe，
+          # 与历史版本（v0.1.0 ~ v0.2.1）用户已经在用的更新链路保持一致
+          updaterJsonPreferNsis: true
