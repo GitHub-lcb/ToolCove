@@ -73,9 +73,10 @@ jobs:
           # 手动触发时由 action 建 tag；tag 推送时 v__VERSION__ 与已推送的标签一致
           tagName: v__VERSION__
           releaseName: "ToolCove v__VERSION__"
-          # 先建草稿：latest.json 只在正式发布后才对 releases/latest 生效，
-          # 这样可以在发布前开箱验一遍产物，确认无误再点 Publish release
-          releaseDraft: true
+          # 直接公开发布：不落草稿，构建成功即对用户可见（应用内更新读的也是已发布版本）。
+          # 发版前的安全性由前面两道门禁保证：tag / 版本号一致性校验 + 全量单测。
+          # 若某次想先验产物再公开，把这里临时改成 true 重跑即可。
+          releaseDraft: false
           prerelease: false
           generateReleaseNotes: true
           # bundle.targets 为 all（同时产出 NSIS 与 MSI），明确让更新清单指向 NSIS setup.exe，
