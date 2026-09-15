@@ -1,0 +1,22 @@
+# 统一行尾为 LF（仓库索引本来就是全 LF，这里把「检出时的转换」也钉死）。
+#
+# 背景：GitHub 的 windows-latest 镜像 git 默认 core.autocrlf=true，检出时会把工作区转成 CRLF。
+# 实测 CRLF 版本的 server/sync-server.js 会让 vite-node 生成非法模块代码，vitest 直接报
+# `SyntaxError: Invalid or unexpected token`（Node 与 esbuild 单独解析该文件都正常，属于转换环节的坑），
+# 结果：同一提交在 ubuntu runner 绿、在 windows runner 红 —— 发布流水线因此卡在「发布前单测」。
+# eol=lf 在检出时强制 LF，不受各端 autocrlf 配置影响，从根上消除这类差异。
+* text=auto eol=lf
+
+# 二进制资源不做行尾转换（text=auto 已能自动识别，这里显式兜底，避免误伤）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.zip binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
