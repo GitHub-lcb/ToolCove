@@ -110,6 +110,26 @@ One-time setup — repository secrets (Settings → Secrets and variables → Ac
 > The signing key can forge update packages, so it lives only in that secret and never in the repo
 > (see the red-line note in `.gitignore`).
 
+Recommended hardening — create an environment named `release` (Settings → Environments) with
+**Required reviewers**, and add yourself to the list. The release job declares that environment, so
+every release then waits for your approval before the key is ever decrypted. Without protection
+rules the declaration is inert. All third-party actions are pinned to full commit SHAs for the same
+reason: a floating tag can be re-pointed at malicious code that would run next to the signing key.
+
+#### Rotating the update signing key
+
+```bash
+npx tauri signer generate -w src-tauri/updater.key.new   # prints the new public key file
+# 1) copy updater.key.new.pub verbatim into plugins.updater.pubkey in src-tauri/tauri.conf.json
+# 2) replace src-tauri/updater.key with updater.key.new and paste the new secret into GitHub
+```
+
+Both halves must be swapped **together**: signing with a key the app does not trust makes every
+update fail verification (Tauri fails closed, so users see a failed update rather than a bad
+install). Note the one unavoidable cost — installs carrying the *old* public key cannot auto-update
+across a rotation, so that release has to be downloaded and installed manually once; from then on
+automatic updates resume. Rotate early rather than late for exactly this reason.
+
 Fully local fallback, if you would rather keep the key off GitHub entirely:
 
 ```bash

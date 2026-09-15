@@ -56,7 +56,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVBQTczREY1NzdGQzlBMkEKUldRcW12eDM5VDJuV3J2SVdxSkloRWN0dlU0Qy9lQVVVdHMrOHBQaTBsVEU2cjZ2Mi9SOEY4V1UK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2NTZFMEY0RDk0QzNDMjQKUldRa1BFelo5T0JXbGtRTDkyZ1JPZ1paNG9PREp5QUgxcXlJQ1dkTU1pMDQ2ekkyQUZhWld4OGQK",
       "endpoints": [
         "https://github.com/GitHub-lcb/ToolCove/releases/latest/download/latest.json"
       ]

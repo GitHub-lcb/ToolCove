@@ -1,9 +1,17 @@
 # 自动打包发布：推送 v* 标签（或在 Actions 页手动触发）时，签名构建 Windows 安装包并创建 GitHub Release。
 #
-# 一次性前置配置（仓库 Settings → Secrets and variables → Actions → New repository secret）：
-#   TAURI_SIGNING_PRIVATE_KEY          本机 src-tauri/updater.key 的完整内容（348 字符的 base64 单行）
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD 私钥密码；本仓库私钥无密码，此项留空或不创建即可
-# 安全提示：私钥可用于伪造自动更新包，只放 Secrets、绝不入库（见 .gitignore 的「红线」注释）。
+# 一次性前置配置：
+#   1) 仓库 Secrets（Settings → Secrets and variables → Actions）
+#      TAURI_SIGNING_PRIVATE_KEY          本机 src-tauri/updater.key 的完整内容（348 字符的 base64 单行）
+#      TAURI_SIGNING_PRIVATE_KEY_PASSWORD 私钥密码；当前私钥无密码，此项不创建即可
+#   2) Environment 保护（Settings → Environments → 新建 release）
+#      勾选 Required reviewers 并把自己加进去 —— 之后每次发版都要人工批准才会跑构建，
+#      这条是防「有人推一个 workflow 偷签名密钥」的主要手段。未配置时本 job 照常直接跑（无门禁）。
+#
+# 供应链加固：所有第三方 Action 都 pin 到完整 commit SHA（浮动 tag 可被上游重新指向）。
+# 升级方式：查 `GET /repos/<owner>/<repo>/commits/<tag>` 拿新 SHA，替换并把注释里的版本号一起改。
+#
+# 安全提示：私钥可用于伪造自动更新包，只放 Secrets、绝不入库（见 .gitignore 的红线注释）。
 # 与 scripts/release.js 的关系：两者都会往同一个 tag 写 Release，同一个版本号只走其中一条，不要并行执行。
 name: Release
 
@@ -20,9 +28,11 @@ jobs:
   release:
     name: 签名构建并发布
     runs-on: windows-latest
+    # 配合 Settings → Environments 的必需审批：未配置保护规则时此声明不产生门禁
+    environment: release
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # 版本号三处必须一致，否则会产出 tag/产物/latest.json 版本互相矛盾的发版
       - name: 校验 tag 与版本号一致
@@ -36,7 +46,7 @@ jobs:
           if [ "$tag" != "$tauri" ]; then echo "::error::tag v$tag 与 tauri.conf.json 的 $tauri 不一致，请先改版本号再打 tag"; exit 1; fi
           if [ "$pkg" != "$tauri" ]; then echo "::error::package.json 的 $pkg 与 tauri.conf.json 的 $tauri 不一致"; exit 1; fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -47,13 +57,13 @@ jobs:
       - name: 发布前单测
         run: npm test
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
