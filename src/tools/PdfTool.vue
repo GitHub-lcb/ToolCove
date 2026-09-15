@@ -21,6 +21,8 @@ import {
   rotatePages,
   splitPdf,
 } from "../pdfTool.js";
+// 去加密：qpdf-wasm 的胶水很小，但 wasm（约 1.3MB）只在首次真的遇到加密文件时才 fetch
+import { decryptPdf } from "../pdfDecrypt.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -44,6 +46,10 @@ const ERROR_KEYS = {
   emptyResult: "toolbox.pdf.errEmptyResult",
   rangeInvalid: "toolbox.pdf.errRangeInvalid",
   rangeOutOfRange: "toolbox.pdf.errRangeOutOfRange",
+  decryptionPasswordRequired: "toolbox.pdf.errDecryptPassword",
+  decryptionWrongPassword: "toolbox.pdf.errDecryptWrongPassword",
+  decryptionFailed: "toolbox.pdf.errDecryptFailed",
+  decryptUnavailable: "toolbox.pdf.errDecryptUnavailable",
 };
 
 const mode = ref("merge");
@@ -64,7 +70,8 @@ const splitRange = ref(""); // 拆分模式：留空 = 每页一个文件
 
 const { dragId, overId, onDragStart, onDragOver, onDrop, onDragEnd } = useDragSort(() => mergeItems.value);
 
-const validMergeItems = computed(() => mergeItems.value.filter((item) => !item.invalid));
+// 只统计真正可合并的条目：解析失败的、以及还没解锁（bytes 为空）的都排除
+const validMergeItems = computed(() => mergeItems.value.filter((item) => !item.invalid && item.bytes));
 const mergePageTotal = computed(() => validMergeItems.value.reduce((sum, item) => sum + item.pageCount, 0));
 const canMerge = computed(() => validMergeItems.value.length >= 2 && !busy.value);
 
@@ -111,11 +118,27 @@ function warn(text) {
   notice.value = text;
 }
 
-/** 读取 PDF 字节并做概要解析：加密/非 PDF 在入库阶段就被拦下。 */
+/**
+ * 读取 PDF 字节并做概要解析，顺带处理加密文件：
+ * 1) 先按「空口令」自动去加密（电子发票 / 银行回单这类权限加密无需密码，用户不必感知）
+ * 2) 需要口令的抛 needPassword，交给界面弹出密码输入
+ */
 async function readFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const summary = await readPdfSummary(bytes);
-  return { bytes, ...summary };
+  try {
+    return { bytes, ...(await readPdfSummary(bytes)) };
+  } catch (error) {
+    if (error?.code !== "encrypted") throw error;
+    try {
+      const plain = await decryptPdf(bytes);
+      return { bytes: plain, ...(await readPdfSummary(plain)), decrypted: true };
+    } catch (decryptError) {
+      if (decryptError?.code === "decryptionPasswordRequired") {
+        throw Object.assign(new Error("needPassword"), { code: "needPassword", bytes, name: file.name });
+      }
+      throw decryptError;
+    }
+  }
 }
 function bytesToBase64(bytes) {
   return new Promise((resolve, reject) => {
@@ -142,10 +165,64 @@ function resetSingle() {
   rangeInput.value = "";
   splitRange.value = "";
   notice.value = "";
+  unlock.value = null;
+  unlockPassword.value = "";
+  unlockError.value = "";
 }
 function selectMode(key) {
   mode.value = key;
   notice.value = "";
+}
+
+// —— 加密文件解锁（单文件流程用面板提示；合并列表用行内提示） ——
+const unlock = ref(null); // { name, bytes }
+const unlockPassword = ref("");
+const unlockError = ref("");
+const unlockBusy = ref(false);
+
+function cancelUnlock() {
+  unlock.value = null;
+  unlockPassword.value = "";
+  unlockError.value = "";
+}
+
+/** 单文件流程：用户输入密码后解密并接管为当前文件。 */
+async function submitUnlock() {
+  const task = unlock.value;
+  if (!task || unlockBusy.value) return;
+  unlockBusy.value = true;
+  unlockError.value = "";
+  try {
+    const plain = await decryptPdf(task.bytes, unlockPassword.value);
+    const summary = await readPdfSummary(plain);
+    source.value = { id: `${task.name}-${plain.length}`, name: task.name, size: plain.length, bytes: plain, decrypted: true, ...summary };
+    cancelUnlock();
+  } catch (error) {
+    unlockError.value = errorText(error);
+  } finally {
+    unlockBusy.value = false;
+  }
+}
+
+/** 合并列表：就地解锁某一行。 */
+async function unlockMergeItem(item) {
+  if (item.busy) return;
+  item.busy = true;
+  item.error = "";
+  try {
+    const plain = await decryptPdf(item.lockedBytes, item.password || "");
+    const summary = await readPdfSummary(plain);
+    item.bytes = plain;
+    item.size = plain.length;
+    item.pageCount = summary.pageCount;
+    item.needPassword = false;
+    item.decrypted = true;
+    item.password = "";
+  } catch (error) {
+    item.error = errorText(error);
+  } finally {
+    item.busy = false;
+  }
 }
 
 // —— 合并 ——
@@ -156,13 +233,20 @@ async function onMergeFiles(event) {
   busy.value = true;
   notice.value = "";
   for (const file of files) {
-    const item = { id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, size: file.size, bytes: null, pageCount: 0, invalid: "" };
+    const item = { id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, size: file.size, bytes: null, pageCount: 0, invalid: "", decrypted: false, needPassword: false, lockedBytes: null, password: "", error: "", busy: false };
     try {
       const loaded = await readFile(file);
       item.bytes = loaded.bytes;
       item.pageCount = loaded.pageCount;
+      item.decrypted = !!loaded.decrypted;
     } catch (error) {
-      item.invalid = errorText(error);
+      // 需要口令：保留待解锁状态，在本行提供密码输入，不阻塞其它文件入列
+      if (error?.code === "needPassword") {
+        item.needPassword = true;
+        item.lockedBytes = error.bytes;
+      } else {
+        item.invalid = errorText(error);
+      }
     }
     mergeItems.value.push(item);
   }
@@ -208,7 +292,9 @@ async function onSingleFile(event) {
     source.value = { id: `${file.name}-${file.size}`, name: file.name, size: file.size, ...(await readFile(file)) };
   } catch (error) {
     source.value = null;
-    fail(error);
+    // 需要口令：不报错，改为在面板里就地输入密码解锁
+    if (error?.code === "needPassword") unlock.value = { name: error.name, bytes: error.bytes };
+    else fail(error);
   } finally {
     busy.value = false;
   }
@@ -373,29 +459,41 @@ async function doSplit() {
         <p v-if="notice" class="notice" :class="noticeKind" role="alert">{{ notice }}</p>
 
         <div v-if="mergeItems.length" class="file-list">
-          <div
-            v-for="(item, index) in mergeItems"
-            :key="item.id"
-            class="file-row"
-            :class="{ invalid: item.invalid, dragging: dragId === item.id, over: overId === item.id }"
-            draggable="true"
-            @dragstart="onDragStart($event, item.id)"
-            @dragover="onDragOver($event, item.id)"
-            @drop="onDrop($event, item.id)"
-            @dragend="onDragEnd"
-          >
-            <span class="row-order">{{ index + 1 }}</span>
-            <span class="row-ico"><Icon name="file" :size="18" /></span>
-            <span class="row-info">
-              <b class="row-name" :title="item.name">{{ item.name }}</b>
-              <small v-if="item.invalid" class="row-err">{{ item.invalid }}</small>
-              <small v-else>{{ t("toolbox.pdf.rowMeta", { pages: item.pageCount, size: formatFileSize(item.size) }) }}</small>
-            </span>
-            <span class="row-move">
-              <button class="icon-btn xs" type="button" :title="t('toolbox.pdf.moveUp')" :aria-label="t('toolbox.pdf.moveUp')" :disabled="index === 0" @click="moveMergeItem(index, -1)"><Icon name="chevron" :size="14" /></button>
-              <button class="icon-btn xs" type="button" :title="t('toolbox.pdf.moveDown')" :aria-label="t('toolbox.pdf.moveDown')" :disabled="index === mergeItems.length - 1" @click="moveMergeItem(index, 1)"><Icon name="chevron" :size="14" class="flip" /></button>
-            </span>
-            <button class="icon-btn xs danger" type="button" :title="t('toolbox.pdf.removeRow')" :aria-label="t('toolbox.pdf.removeRow')" @click="removeMergeItem(item)"><Icon name="trash" :size="14" /></button>
+          <div v-for="(item, index) in mergeItems" :key="item.id" class="file-item-wrap">
+            <div
+              class="file-row"
+              :class="{ invalid: item.invalid, locked: item.needPassword, dragging: dragId === item.id, over: overId === item.id }"
+              draggable="true"
+              @dragstart="onDragStart($event, item.id)"
+              @dragover="onDragOver($event, item.id)"
+              @drop="onDrop($event, item.id)"
+              @dragend="onDragEnd"
+            >
+              <span class="row-order">{{ index + 1 }}</span>
+              <span class="row-ico"><Icon name="file" :size="18" /></span>
+              <span class="row-info">
+                <b class="row-name" :title="item.name">{{ item.name }}</b>
+                <small v-if="item.invalid" class="row-err">{{ item.invalid }}</small>
+                <small v-else-if="item.needPassword" class="row-warn">{{ t("toolbox.pdf.needPasswordRow") }}</small>
+                <small v-else>
+                  {{ t("toolbox.pdf.rowMeta", { pages: item.pageCount, size: formatFileSize(item.size) }) }}
+                  <span v-if="item.decrypted" class="decrypted-tag">{{ t("toolbox.pdf.decryptedTag") }}</span>
+                </small>
+              </span>
+              <span class="row-move">
+                <button class="icon-btn xs" type="button" :title="t('toolbox.pdf.moveUp')" :aria-label="t('toolbox.pdf.moveUp')" :disabled="index === 0" @click="moveMergeItem(index, -1)"><Icon name="chevron" :size="14" /></button>
+                <button class="icon-btn xs" type="button" :title="t('toolbox.pdf.moveDown')" :aria-label="t('toolbox.pdf.moveDown')" :disabled="index === mergeItems.length - 1" @click="moveMergeItem(index, 1)"><Icon name="chevron" :size="14" class="flip" /></button>
+              </span>
+              <button class="icon-btn xs danger" type="button" :title="t('toolbox.pdf.removeRow')" :aria-label="t('toolbox.pdf.removeRow')" @click="removeMergeItem(item)"><Icon name="trash" :size="14" /></button>
+            </div>
+
+            <div v-if="item.needPassword" class="unlock-row">
+              <Icon name="lock" :size="14" class="unlock-ico" />
+              <span class="unlock-hint">{{ t("toolbox.pdf.unlockHint") }}</span>
+              <input v-model="item.password" class="unlock-input" type="password" :placeholder="t('toolbox.pdf.unlockPassword')" :aria-label="t('toolbox.pdf.unlockPassword')" @keyup.enter="unlockMergeItem(item)" />
+              <button class="btn-outline" type="button" :disabled="item.busy" @click="unlockMergeItem(item)">{{ item.busy ? t("toolbox.pdf.unlocking") : t("toolbox.pdf.unlockAction") }}</button>
+              <small v-if="item.error" class="row-err">{{ item.error }}</small>
+            </div>
           </div>
         </div>
 
@@ -502,10 +600,23 @@ async function doSplit() {
       </section>
 
       <div v-else class="empty-state standalone">
-        <span class="empty-ico"><Icon name="file" :size="28" /></span>
-        <b>{{ t("toolbox.pdf.pickEmptyTitle") }}</b>
-        <p>{{ t("toolbox.pdf.pickEmptyHint") }}</p>
-        <button class="btn-outline" type="button" @click="singleInput?.click()"><Icon name="file" :size="15" />{{ t("toolbox.pdf.pickFile") }}</button>
+        <template v-if="unlock">
+          <span class="empty-ico locked"><Icon name="lock" :size="26" /></span>
+          <b>{{ t("toolbox.pdf.unlockTitle", { name: unlock.name }) }}</b>
+          <p>{{ t("toolbox.pdf.unlockHint") }}</p>
+          <div class="unlock-inline">
+            <input v-model="unlockPassword" class="unlock-input" type="password" :placeholder="t('toolbox.pdf.unlockPassword')" :aria-label="t('toolbox.pdf.unlockPassword')" @keyup.enter="submitUnlock" />
+            <button class="btn-primary sm" type="button" :disabled="unlockBusy" @click="submitUnlock">{{ unlockBusy ? t("toolbox.pdf.unlocking") : t("toolbox.pdf.unlockAction") }}</button>
+            <button class="btn-ghost sm" type="button" @click="cancelUnlock">{{ t("toolbox.pdf.unlockCancel") }}</button>
+          </div>
+          <small v-if="unlockError" class="row-err">{{ unlockError }}</small>
+        </template>
+        <template v-else>
+          <span class="empty-ico"><Icon name="file" :size="28" /></span>
+          <b>{{ t("toolbox.pdf.pickEmptyTitle") }}</b>
+          <p>{{ t("toolbox.pdf.pickEmptyHint") }}</p>
+          <button class="btn-outline" type="button" @click="singleInput?.click()"><Icon name="file" :size="15" />{{ t("toolbox.pdf.pickFile") }}</button>
+        </template>
       </div>
     </template>
   </div>
@@ -552,6 +663,19 @@ async function doSplit() {
 .file-row.dragging { opacity: 0.5; }
 .file-row.over { border-color: var(--primary); background: var(--primary-soft); }
 .file-row.invalid { border-color: var(--border-danger); background: var(--danger-soft); }
+/* 待解锁：琥珀色提示，和「损坏」区分开 */
+.file-row.locked { border-color: var(--amber-border); background: var(--amber-soft); }
+.file-item-wrap { min-width: 0; }
+.row-warn { color: var(--warn-deep); }
+.decrypted-tag { margin-left: var(--sp-2); padding: 0 6px; border-radius: var(--r-pill); background: var(--success-soft); color: var(--success-deep); font-size: var(--fs-xs); font-weight: 600; }
+/* 解锁行：紧贴文件行下方，输入密码后原地解锁 */
+.unlock-row { display: flex; align-items: center; gap: var(--sp-2); margin: 2px 0 var(--sp-2) var(--sp-7); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--amber-border); border-radius: var(--r-sm); background: var(--amber-soft); flex-wrap: wrap; }
+.unlock-ico { flex-shrink: 0; color: var(--warn-deep); }
+.unlock-hint { color: var(--warn-deep); font-size: var(--fs-sm); }
+.unlock-input { width: 180px; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); color: var(--text); font-size: var(--fs-sm); outline: none; }
+.unlock-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.unlock-inline { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
+.empty-ico.locked { background: var(--amber-soft); color: var(--warn-deep); }
 .row-order { flex-shrink: 0; min-width: 26px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-xs); text-align: center; }
 .row-ico { flex-shrink: 0; display: grid; place-items: center; color: var(--primary-hover); }
 .row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

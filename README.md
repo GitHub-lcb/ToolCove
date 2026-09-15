@@ -21,13 +21,14 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   |-------|-------|
   | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (diff / regex / replace / line ops / naming / stats), Time & schedule (timestamp / timezone / Cron), Structured data (JSON / YAML validate-format-tree-convert), Data generation (UUID / ULID / NanoID / mock / templates) |
   | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments) |
-  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate) |
+  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt) |
   | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
   | AI | AI chat (multi-session, image input, prompt presets) |
 
   Network diagnostics, file processing and the database manager need native capabilities and are
-  available in the desktop build only; everything else — including the PDF toolkit, which runs
-  entirely on pdf-lib in the frontend — works in both builds.
+  available in the desktop build only; everything else — including the PDF toolkit, which runs in
+  the frontend on pdf-lib (plus qpdf-wasm, lazily fetched only when a file turns out to be
+  encrypted) — works in both builds.
 
   The gallery home has its own search (tool name, capability, or keyword), a quick-access row built
   from your pinned and recently used tools, and collapsible groups whose tools render as two-column
@@ -170,7 +171,8 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
 - **工具箱**：13 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
   API 调试、文件处理、图片处理、PDF 工具、加密与校验、数据库管理、AI 对话，每个工具独立窗口，即开即用。
   其中网络诊断、文件处理、数据库管理依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
-  PDF 工具（合并 / 拆分 / 提取删除页 / 旋转）纯前端 pdf-lib 实现，两端都可用。
+  PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
+  遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
   首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏与最近使用排列，分类可同时展开、
   宽窗口下工具卡两列排布；收藏与展开状态本地记忆。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。
