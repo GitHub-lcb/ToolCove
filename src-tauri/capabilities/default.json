@@ -13,6 +13,7 @@
     "tool-file",
     "tool-image",
     "tool-generator",
+    "tool-pdf",
     "tool-request",
     "tool-db",
     "tool-chat"

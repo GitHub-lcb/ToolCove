@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { groupToolboxTools, searchToolboxTools, TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "./toolboxTools.js";
 import { i18n } from "./i18n/index.js";
 
@@ -46,7 +48,7 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "diff", "time", "json", "generator"],
       ["network", "request"],
-      ["file", "image"],
+      ["file", "image", "pdf"],
       ["crypto", "db"],
       ["chat"],
     ]);
@@ -60,5 +62,21 @@ describe("searchToolboxTools", () => {
     for (const keyword of ["AI", "对话", "Chat", "提示词", "GPT"]) {
       expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("chat");
     }
+  });
+});
+
+describe("桌面端窗口权限", () => {
+  // 每个工具都在自己的窗口（tool-<key>）里打开；capability 未登记的窗口会被 Tauri 拒绝调用
+  // dialog / window 等权限（表现为 “dialog.save not allowed on window …”），新增工具时必须同步登记。
+  it("所有工具窗口都登记在 Tauri capability 中", () => {
+    const capability = JSON.parse(readFileSync(resolve(process.cwd(), "src-tauri/capabilities/default.json"), "utf8"));
+    const labels = TOOLBOX_TOOLS.map((tool) => `tool-${tool.key}`);
+    expect(capability.windows).toEqual(expect.arrayContaining(["main", ...labels]));
+  });
+
+  it("capability 里的工具窗口都对应真实工具，避免僵尸条目", () => {
+    const capability = JSON.parse(readFileSync(resolve(process.cwd(), "src-tauri/capabilities/default.json"), "utf8"));
+    const known = new Set(["main", ...TOOLBOX_TOOLS.map((tool) => `tool-${tool.key}`)]);
+    for (const label of capability.windows) expect(known.has(label), label).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ export const TOOL_COMPONENTS = {
   crypto: defineAsyncComponent(() => import("./tools/CryptoTool.vue")),
   file: defineAsyncComponent(() => import("./tools/FileTool.vue")),
   image: defineAsyncComponent(() => import("./tools/ImageTool.vue")),
+  pdf: defineAsyncComponent(() => import("./tools/PdfTool.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorTool.vue")),
   request: defineAsyncComponent(() => import("./tools/RequestTool.vue")),
   db: defineAsyncComponent(() => import("./tools/DbTool.vue")),

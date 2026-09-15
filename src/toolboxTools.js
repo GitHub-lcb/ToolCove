@@ -55,6 +55,15 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwGenerator",
     ready: true,
   },
+  {
+    key: "pdf",
+    labelKey: "toolbox.registry.toolPdf",
+    icon: "file",
+    category: "file",
+    descKey: "toolbox.registry.toolPdfDesc",
+    keywordsKey: "toolbox.registry.kwPdf",
+    ready: true,
+  },
   { key: "request", labelKey: "toolbox.registry.toolRequest", icon: "send", category: "network", descKey: "toolbox.registry.toolRequestDesc", keywordsKey: "toolbox.registry.kwRequest", ready: true },
   { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", ready: true, desktopOnly: true },
   {

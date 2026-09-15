@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import zh from "./zh-CN.json";
 import en from "./en-US.json";
 import { flatKeys, resolveInitialLocale, applyLocale, i18n } from "./index.js";
+import { TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "../toolboxTools.js";
 
 describe("i18n 字典", () => {
   it("中英文字典键集合完全一致", () => {
@@ -15,6 +16,18 @@ describe("i18n 字典", () => {
     for (const k of flatKeys(zh)) {
       expect(String(get(zh, k)).trim().length, `zh ${k}`).toBeGreaterThan(0);
       expect(String(get(en, k)).trim().length, `en ${k}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("工具箱注册表引用的词条键都真实存在", () => {
+    const keys = [
+      ...TOOLBOX_GROUPS.flatMap((group) => [group.labelKey, group.descKey]),
+      ...TOOLBOX_TOOLS.flatMap((tool) => [tool.labelKey, tool.descKey, tool.keywordsKey].filter(Boolean)),
+    ];
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(get(zh, key), `zh ${key}`).toBeDefined();
+      expect(get(en, key), `en ${key}`).toBeDefined();
     }
   });
 });
