@@ -1,0 +1,48 @@
+# 临时校验 workflow（用完即删）：证明 GitHub Secret 里的私钥与仓库 tauri.conf.json 的公钥是同一对。
+#
+# 为什么需要它：草稿 Release 的产物对未鉴权请求不可见（job 日志同样需要鉴权），
+# 而「Secret 与公钥不配对」这种故障在 CI 里看不出来 —— 构建照样成功，只有真机更新时才暴露。
+# 做法：用 Secret 签一个固定内容的探针文件，把签名（公开安全）通过注解暴露，由外部用仓库公钥验签。
+name: Verify Key Pair
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/verify-keypair.yml"]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: 签名密钥与公钥配对校验
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: 签名探针并公开签名
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error title=密钥缺失::TAURI_SIGNING_PRIVATE_KEY 为空，Secret 未配置或名字写错"
+            exit 1
+          fi
+          printf 'toolcove-keypair-probe' > probe.txt
+          npx tauri signer sign probe.txt
+          sig=$(base64 -w0 probe.txt.sig)
+          # 公钥 key id 直接印出来，便于与仓库配置肉眼比对（key id 本身是公开信息）
+          node -e "
+            const fs=require('fs');
+            const v=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).plugins.updater.pubkey;
+            const t=Buffer.from(v,'base64').toString('utf8').split('\n')[0];
+            console.log('仓库公钥:', t);
+          "
+          echo "::notice title=探针内容::toolcove-keypair-probe"
+          echo "::notice title=探针签名::$sig"
