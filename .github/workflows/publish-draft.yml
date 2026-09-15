@@ -1,0 +1,54 @@
+# 临时 workflow（用后即删）：把 v0.4.0 的草稿 Release 转为公开。
+# 为什么需要它：v0.4.0 的 tag 指向的提交仍是 releaseDraft: true 的旧配置，构建产物落在草稿里；
+# 而"把草稿转公开"需要仓库写权限，本地没有 token —— 用仓库自身的 GITHUB_TOKEN 完成，
+# 不需要任何人在网页上点，也不需要取出本机保存的凭据。
+# 触发方式：提交本文件即触发（paths 只匹配本文件，不会误触发其它流程）。
+name: Publish Draft (temp)
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/publish-draft.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: 将草稿 Release 转为公开
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: v0.4.0
+    steps:
+      - name: 等待草稿出现（构建可能仍在进行）
+        run: |
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
+              echo "草稿已就绪"; exit 0
+            fi
+            echo "第 $i 次检查：草稿尚未出现，30 秒后重试"
+            sleep 30
+          done
+          echo "::error::等待草稿超时，请检查 Release 构建结果"; exit 1
+
+      - name: 转为公开（并在说明顶部补密钥轮换提醒）
+        run: |
+          # v0.3.0 从未发布，老用户都停在 v0.2.1 或更早；签名密钥已轮换，
+          # 他们无法通过应用内更新升级（旧公钥验不过新签名），必须在说明里讲清楚。
+          warning=$(cat <<'EOF'
+          > ⚠️ **本版已轮换更新签名密钥**：已安装 v0.2.1 及更早版本的用户**无法通过应用内更新升级**，请手动下载本页安装包覆盖安装一次即可，从本版起自动更新恢复正常。
+
+          EOF
+          )
+          body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --notes "${warning}${body}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName,url,assets \
+            -q '"isDraft=\(.isDraft) tag=\(.tagName) url=\(.url) assets=\(.assets|length)"'
+          echo "--- 说明开头 ---"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body | head -3
+          # 公开后 latest.json 才对 releases/latest 生效，回读确认可匿名访问
+          curl -sS -o /dev/null -w "latest.json HTTP %{http_code}\n" \
+            "${{ github.server_url }}/${{ github.repository }}/releases/latest/download/latest.json"
