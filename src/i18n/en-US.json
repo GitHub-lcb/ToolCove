@@ -251,6 +251,7 @@
     "aiPresetMoonshot": "Moonshot / Kimi",
     "aiPresetDashscope": "Alibaba Qwen",
     "aiPresetSiliconflow": "SiliconFlow",
+    "aiPresetOpencode": "OpenCode (Zen / Go)",
     "aiPresetOllama": "Ollama (local)"
   },
   "extract": {

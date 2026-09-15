@@ -251,6 +251,7 @@
     "aiPresetMoonshot": "Moonshot / Kimi",
     "aiPresetDashscope": "阿里通义千问",
     "aiPresetSiliconflow": "硅基流动",
+    "aiPresetOpencode": "OpenCode（Zen/Go）",
     "aiPresetOllama": "Ollama（本地）"
   },
   "extract": {

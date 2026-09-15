@@ -223,7 +223,8 @@ async function send() {
   await scrollBottom();
 
   const context = buildContextMessages(session.messages, t(activePreset.value.contentKey), MAX_ROUNDS);
-  streamStop = aiChatStream(context, {}, {
+  // sessionId：OpenCode 网关按会话做路由与提示词缓存，传对话 id 比用默认运行期 ID 更贴合语义
+  streamStop = aiChatStream(context, { sessionId: session.id }, {
     onDelta: (d) => {
       streamText.value += d;
       scheduleRender();

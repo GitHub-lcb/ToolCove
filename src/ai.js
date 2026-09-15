@@ -1,6 +1,7 @@
 // AI 模型前端服务层
 // 桌面端经 Rust 命令 ai_chat/ai_chat_stream 透传到 OpenAI 兼容的 /chat/completions（规避浏览器 CORS）；
 // 浏览器端直连同一端点（要求该端点允许 CORS）。
+// 两端都会为 OpenCode 网关（opencode.ai）补 x-opencode-session 会话头，缺失会被该网关 400 拒绝。
 // 配置存放在 settings.ai：{ baseUrl, apiKey, model, temperature, enabled }
 import { invoke, createChannel } from "./platform/invoke.js";
 import { isDesktop } from "./platform/env.js";
@@ -11,6 +12,44 @@ import { i18n } from "./i18n/index.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 
+// ---------- OpenCode 网关（Zen / Go 订阅）适配 ----------
+// 该网关要求客户端为每个会话提供稳定会话 ID，缺失会被直接拒绝：
+// 「HTTP 400 Request is missing x-opencode-session and cannot be routed efficiently」。
+// 会话头只对指向 opencode.ai 的地址追加，其他 OpenAI 兼容服务不受影响。
+// 说明：浏览器禁止脚本设置 User-Agent，浏览器端只能补会话头，UA 由浏览器自带。
+
+/** 生成会话 ID（随机源不可用时退化为随机串）。 */
+export function newSessionId() {
+  try {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
+    }
+  } catch {
+    /* 非安全上下文等场景：走下方兜底 */
+  }
+  return `toolcove-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// 本次应用运行期的默认会话 ID（与 Rust 侧兜底逻辑对齐，保证桌面/浏览器两端行为一致）
+const APP_SESSION_ID = newSessionId();
+
+/** 取 URL 主机名（去 scheme / 用户信息 / 端口 / 路径），与 Rust 侧 host_of 行为一致。 */
+export function hostOf(url) {
+  const s = String(url || "").trim();
+  const afterScheme = s.includes("://") ? s.slice(s.indexOf("://") + 3) : s;
+  const end = afterScheme.search(/[/?#]/);
+  const authority = end === -1 ? afterScheme : afterScheme.slice(0, end);
+  const hostPort = authority.slice(authority.lastIndexOf("@") + 1);
+  const colon = hostPort.lastIndexOf(":");
+  return (colon === -1 ? hostPort : hostPort.slice(0, colon)).toLowerCase();
+}
+
+/** 是否指向 OpenCode 网关（opencode.ai 及其子域）。 */
+export function isOpencodeBase(baseUrl) {
+  const host = hostOf(baseUrl);
+  return host === "opencode.ai" || host.endsWith(".opencode.ai");
+}
+
 // 常见服务商预设（baseUrl 已含 /v1 等版本段，直接拼 /chat/completions）
 export const AI_PRESETS = [
   { key: "openai", labelKey: "settings.aiPresetOpenai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
@@ -18,6 +57,9 @@ export const AI_PRESETS = [
   { key: "moonshot", labelKey: "settings.aiPresetMoonshot", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
   { key: "dashscope", labelKey: "settings.aiPresetDashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
   { key: "siliconflow", labelKey: "settings.aiPresetSiliconflow", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+  // OpenCode Zen / Go 订阅网关：Go 端点强制校验 x-opencode-session（缺失即 400），
+  // 会话头已由本服务层与 Rust 代理自动补上，选预设后只需填 API Key 与模型名。
+  { key: "opencode", labelKey: "settings.aiPresetOpencode", baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash" },
   // 本地 Ollama：Agent 首屏的零成本兜底，不需要第三方 key。
   // Ollama 的 OpenAI 兼容端点接受任意非空密钥，而 isAIConfigured() 要求 apiKey 非空，故自带占位值。
   { key: "ollama", labelKey: "settings.aiPresetOllama", baseUrl: "http://localhost:11434/v1", model: "qwen2.5:7b", apiKey: "ollama" },
@@ -62,6 +104,8 @@ async function buildRequestArgs(messages, opts) {
     apiKey: cfg.apiKey,
     model: opts.model || cfg.model,
     messages,
+    // 会话粒度 ID：调用方可传更细的会话（如对话 id），默认用本次运行期 ID
+    sessionId: String(opts.sessionId || "").trim() || APP_SESSION_ID,
   };
   if (reasoningEffort) {
     args.reasoningEffort = reasoningEffort;
@@ -83,9 +127,15 @@ function buildBrowserBody(args, stream) {
 }
 
 async function browserFetchCompletion(args, body, signal) {
+  const headers = {
+    Authorization: `Bearer ${String(args.apiKey).trim()}`,
+    "Content-Type": "application/json",
+  };
+  // 浏览器禁止脚本设置 User-Agent：这里只能补 OpenCode 网关要求的会话头
+  if (isOpencodeBase(args.baseUrl)) headers["x-opencode-session"] = args.sessionId;
   const response = await fetch(`${String(args.baseUrl).trim().replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${String(args.apiKey).trim()}`, "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     signal,
   });
