@@ -2,10 +2,13 @@
 // 用 pdf-lib 现场构造夹具，断言页数、页面尺寸、旋转角与元数据，避免只测「函数被调用」。
 import { describe, it, expect } from "vitest";
 import { PDFDocument, degrees } from "pdf-lib";
+import { readFileSync } from "node:fs";
 import {
+  attributeLoadFailure,
   buildSplitGroups,
   extractPages,
   formatPageRanges,
+  looksEncryptedPdf,
   mergePdfs,
   normalizeAngle,
   normalizeIndices,
@@ -27,6 +30,18 @@ async function makePdf(pageCount, { width = 595, height = 842, title, rotate = 0
   }
   if (title) doc.setTitle(title);
   return doc.save();
+}
+
+/**
+ * 构造一个「有 PDF 头、但结构坏到 pdf-lib 直接抛错」的样本，用于验证解析失败时的归因。
+ * 两个样本完全一致，只差尾部带不带 /Encrypt，以此确认归因差异只来自加密字典本身。
+ * 注意：pdf-lib 对退化结构相当宽容（只有头+trailer 也能加载），所以这里用真正的乱码结构。
+ */
+function unparseablePdf({ encrypt = false } = {}) {
+  const junk = "\u0001\u0002 junk ".repeat(40);
+  const marker = encrypt ? " /Encrypt << /Filter /Standard /V 1 /R 2 /O <00> /U <00> >>" : "";
+  const text = `%PDF-1.7\n${junk}trailer\n<< /Size 2 /Root 1 0 R${marker} >>\nstartxref\n0\n%%EOF\n`;
+  return new Uint8Array(Buffer.from(text, "latin1"));
 }
 
 // pdf-lib 只能写 xref 流，写不出带经典 trailer 的加密样本；这里手写一个最小 PDF，
@@ -246,5 +261,58 @@ describe("PDF 字节操作", () => {
     await expectCode(removePages(locked, [0]), "encrypted");
     await expectCode(rotatePages(locked, { 0: 90 }), "encrypted");
     await expectCode(splitPdf(locked, buildSplitGroups("", 1)), "encrypted");
+  });
+
+  // 用户实际遇到的场景：文件确实加密了，但 pdf-lib 连文档都构不出来（对象流被加密），
+  // 旧实现会走到 catch 分支直接报 invalid，界面显示「文件已损坏」——必须归因到加密。
+  // 归因逻辑抽成纯函数后在这里直接验证（pdf-lib 对退化结构的容忍度在 CJS/ESM 构建间不一致，
+  // 用「必然解析失败」的样本去测这条分支并不可靠；加密文档可解析的情形由上一条用例覆盖）。
+  it("解析失败时按加密字典归因：带 /Encrypt 报 encrypted、不带才报 invalid", () => {
+    const locked = unparseablePdf({ encrypt: true });
+    const broken = unparseablePdf();
+    expect(attributeLoadFailure(locked).code).toBe("encrypted");
+    expect(attributeLoadFailure(broken).code).toBe("invalid");
+    // 两个样本只差加密字典，确保差异确实来自它
+    expect(looksEncryptedPdf(locked)).toBe(true);
+    expect(looksEncryptedPdf(broken)).toBe(false);
+    expect(locked.length).toBeGreaterThan(broken.length);
+  });
+});
+
+describe("looksEncryptedPdf（字节级加密归因）", () => {
+  it("识别经典 trailer 里的 /Encrypt 引用", () => {
+    expect(looksEncryptedPdf(minimalPdf({ encrypt: true }))).toBe(true);
+  });
+
+  it("识别 xref 流字典里的内联 /Encrypt 字典，且容忍换行与多空格", () => {
+    const tail = "\n25 0 obj\n<< /Type /XRef /Encrypt\n   << /Filter /Standard /V 5 >> >>\nstartxref\n0\n%%EOF\n";
+    const bytes = new Uint8Array(Buffer.from("%PDF-1.7\n" + "x".repeat(64) + tail, "latin1"));
+    expect(looksEncryptedPdf(bytes)).toBe(true);
+  });
+
+  it("正常 PDF 不误判", async () => {
+    expect(looksEncryptedPdf(await makePdf(2))).toBe(false);
+    expect(looksEncryptedPdf(minimalPdf())).toBe(false);
+  });
+
+  it("只在尾部窗口内匹配：正文里的 /Encrypt 字样不会误判", () => {
+    const body = "%PDF-1.4\n1 0 obj\n<< /Note (/Encrypt 12 0 R 只是正文里的说明文字) >>\nendobj\n";
+    const padding = "y".repeat(9000); // 把正文里的字样挤出尾部 8KB 窗口
+    const trailer = "trailer\n<< /Size 2 /Root 1 0 R >>\nstartxref\n0\n%%EOF\n";
+    const bytes = new Uint8Array(Buffer.from(body + padding + trailer, "latin1"));
+    expect(looksEncryptedPdf(bytes)).toBe(false);
+  });
+
+  it("非 PDF 与空输入一律 false", () => {
+    expect(looksEncryptedPdf(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]))).toBe(false);
+    expect(looksEncryptedPdf(new Uint8Array(0))).toBe(false);
+    expect(looksEncryptedPdf(null)).toBe(false);
+    expect(looksEncryptedPdf(new Uint8Array(Buffer.from("not a pdf at all /Encrypt 1 0 R", "latin1")))).toBe(false);
+  });
+
+  it("不依赖 Buffer（浏览器端可用）", async () => {
+    const source = readFileSync(new URL("./pdfTool.js", import.meta.url), "utf8");
+    const body = source.slice(source.indexOf("export function looksEncryptedPdf"), source.indexOf("/**", source.indexOf("export function looksEncryptedPdf")));
+    expect(body).not.toContain("Buffer");
   });
 });

@@ -136,19 +136,51 @@ export function pdfOutputName(name, suffix) {
 }
 
 /**
- * 加载文档：加密文档必须显式拒绝。
+ * 字节级判断「这份 PDF 是否带加密字典」。
+ * 只在 PDFDocument.load 已经失败之后用作归因依据：宁可把损坏文件说成加密，也绝不能反过来
+ * 把正常文件误判成加密拒掉 —— 所以匹配很保守：文件头必须是 %PDF-，且只在尾部 8KB 里找
+ * /Encrypt 后跟引用（经典 trailer）或内联字典（xref 流字典）——两者都在文件末尾。
+ * 禁止在此使用 Buffer：本模块同时跑在浏览器端。
+ */
+export function looksEncryptedPdf(bytes) {
+  if (!bytes || bytes.length < 16) return false;
+  const decoder = new TextDecoder("latin1");
+  if (!decoder.decode(bytes.subarray(0, 8)).startsWith("%PDF-")) return false;
+  const tail = decoder.decode(bytes.subarray(Math.max(0, bytes.length - 8192)));
+  return /\/Encrypt\b\s*(\d+\s+\d+\s+R|<<)/.test(tail);
+}
+
+/**
+ * 解析失败时的归因：尾部带加密字典就按「已加密」报，否则才说文件损坏。
+ * 抽成纯函数便于单测 —— pdf-lib 对退化结构的容忍度在 CJS/ESM 构建间并不一致，
+ * 靠构造「必然解析失败」的样本去测这条分支并不可靠。
+ */
+export function attributeLoadFailure(bytes) {
+  return looksEncryptedPdf(bytes) ? pdfError("encrypted") : pdfError("invalid");
+}
+
+/**
+ * 加载文档：加密文档必须显式拒绝，且要和「文件损坏」区分开。
  * 这里刻意不用 catch EncryptedPDFError —— pdf-lib 编译目标是 ES5，Error 子类的 instanceof 会失效
  * （实测 throw 出来的对象 constructor.name 是 Error），改用官方公开属性 isEncrypted 判定，
- * 配合 ignoreEncryption 只跳过它自己的抛错检查，避免把「加密」误报成「文件损坏」。
+ * 配合 ignoreEncryption 只跳过它自己的抛错检查。
+ * 但 isEncrypted 依赖能解析出 trailer：电子发票 / 银行回单一类「权限加密」文件常因对象流被加密
+ * 而直接解析失败，此时必须靠 looksEncryptedPdf 归因，否则用户会被告知文件损坏。
  */
 async function loadPdf(bytes) {
   let doc;
   try {
     doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   } catch {
-    throw pdfError("invalid");
+    throw attributeLoadFailure(bytes);
   }
   if (doc.isEncrypted) throw pdfError("encrypted");
+  // 解析通过但页面树取不出来（加密对象流常见症状）：同样按加密归因
+  try {
+    doc.getPages();
+  } catch {
+    throw attributeLoadFailure(bytes);
+  }
   return doc;
 }
 
