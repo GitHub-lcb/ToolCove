@@ -91,7 +91,7 @@ Tool Adapters
 
 - 引擎：`runtime.js`（受控循环 + 超时/重试/停止）、`tools.js`（配置钳制与 registry 装配）、`session.js`（模块级运行态单例，视图销毁不丢运行）、`runStore.js`（历史脱敏落盘）、`timeline.js`（事件折叠）。
 - 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
-- 工具：`builtins.js` 覆盖除「AI 对话」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。
+- 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
   `AGENT_TOOL_NAMES` 在 `tools.js` 汇总（停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，
   `data.create`/`data.update`/`data.remove` 为写工具：写工具走 `repository` 同一写入口（乐观锁 + 冲突重放），

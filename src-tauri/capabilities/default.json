@@ -16,7 +16,8 @@
     "tool-pdf",
     "tool-request",
     "tool-db",
-    "tool-chat"
+    "tool-chat",
+    "tool-label"
   ],
   "permissions": [
     "core:default",

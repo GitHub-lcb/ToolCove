@@ -48,7 +48,7 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "diff", "time", "json", "generator"],
       ["network", "request"],
-      ["file", "image", "pdf"],
+      ["file", "image", "pdf", "label"],
       ["crypto", "db"],
       ["chat"],
     ]);
@@ -62,6 +62,16 @@ describe("searchToolboxTools", () => {
     for (const keyword of ["AI", "对话", "Chat", "提示词", "GPT"]) {
       expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("chat");
     }
+  });
+
+  it("可按标签打印的关键词搜索", () => {
+    for (const keyword of ["标签打印", "标签机", "热敏打印", "TSPL", "条码", "二维码", "吊牌", "价签", "GP-2120TF", "佳博"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("label");
+    }
+  });
+
+  it("标签打印是桌面独占工具（依赖本机打印队列）", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "label")?.desktopOnly).toBe(true);
   });
 });
 

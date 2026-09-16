@@ -2,7 +2,9 @@ mod ai;
 mod db;
 mod file_tool;
 mod git;
+mod label;
 mod network;
+mod printer;
 mod secure;
 mod storage;
 mod telemetry;
@@ -162,6 +164,11 @@ pub fn run() {
             file_tool::file_tool_modify_md5,
             file_tool::file_tool_list_directory,
             file_tool::file_tool_batch_rename,
+            // 标签打印（TSPL / 佳博 GP-2120TF 这类热敏标签机）
+            label::label_layout,
+            label::label_printers,
+            label::label_print,
+            label::label_export_prn,
             // 域名/Pool 工具：本地仓库拉取
             git::git_pull,
             // AI 对话

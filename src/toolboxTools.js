@@ -75,6 +75,16 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwChat",
     ready: true,
   },
+  {
+    key: "label",
+    labelKey: "toolbox.registry.toolLabel",
+    icon: "printer",
+    category: "file",
+    descKey: "toolbox.registry.toolLabelDesc",
+    keywordsKey: "toolbox.registry.kwLabel",
+    ready: true,
+    desktopOnly: true,
+  },
 ];
 
 export function findToolboxTool(key, tools = TOOLBOX_TOOLS) {

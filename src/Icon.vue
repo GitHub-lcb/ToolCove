@@ -49,6 +49,12 @@ defineProps({
       <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
       <line x1="7" y1="7" x2="7.01" y2="7" />
     </template>
+    <template v-else-if="name === 'printer'">
+      <path d="M17 17h2a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2" />
+      <path d="M17 9V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v4" />
+      <rect x="7" y="13" width="10" height="8" rx="2" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </template>
     <template v-else-if="name === 'shield'">
       <path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z" />
       <path d="m9 12 2 2 4-4" />

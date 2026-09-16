@@ -40,4 +40,9 @@ rusqlite = { version = "0.40.1", features = ["bundled"] }
 odbc-api = "29.0.0"
 local-ip-address = "0.6"
 encoding_rs = "0.8"
+# 标签打印（TSPL）：中文 GB18030 走 encoding_rs，条码/二维码模块序列用于预览，
+# 字符宽度决定换行与居中（打印机是定宽点阵字体）
+unicode-width = "0.2"
+qrcode = { version = "0.14", default-features = false }
+barcoders = "2"
 windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory"] }

@@ -15,18 +15,18 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   plans, calls tools (including file, database, and network tools on the desktop build), shows
   every step live, and asks for confirmation before risky writes. Bring your own OpenAI-compatible
   endpoint; a run log is kept so an interrupted task can be resumed.
-- **Toolbox** — 13 built-in tools, each opens in its own draggable/resizable window:
+- **Toolbox** — 14 built-in tools, each opens in its own draggable/resizable window:
 
   | Group | Tools |
   |-------|-------|
   | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (diff / regex / replace / line ops / naming / stats), Time & schedule (timestamp / timezone / Cron), Structured data (JSON / YAML validate-format-tree-convert), Data generation (UUID / ULID / NanoID / mock / templates) |
   | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments) |
-  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt) |
+  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export) |
   | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
   | AI | AI chat (multi-session, image input, prompt presets) |
 
-  Network diagnostics, file processing and the database manager need native capabilities and are
-  available in the desktop build only; everything else — including the PDF toolkit, which runs in
+  Network diagnostics, file processing, the database manager and label printing need native capabilities
+  and are available in the desktop build only; everything else — including the PDF toolkit, which runs in
   the frontend on pdf-lib (plus qpdf-wasm, lazily fetched only when a file turns out to be
   encrypted) — works in both builds.
 
@@ -168,11 +168,14 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
 
 - **Agent 工作台**：默认首屏。用自然语言描述目标，Agent 规划并调用工具（桌面端含文件、数据库、
   网络等能力），过程实时可见，写入类操作先确认后执行；支持中断续跑与运行记录。
-- **工具箱**：13 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
-  API 调试、文件处理、图片处理、PDF 工具、加密与校验、数据库管理、AI 对话，每个工具独立窗口，即开即用。
-  其中网络诊断、文件处理、数据库管理依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
+- **工具箱**：14 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
+  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话，每个工具独立窗口，即开即用。
+  其中网络诊断、文件处理、数据库管理、标签打印依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
+  标签打印面向佳博 GP-2120TF 这类 TSPL 热敏标签机：排版算成绝对坐标后直接生成 `TEXT` / `BARCODE` /
+  `QRCODE` 指令，按 GB18030 编码走 RAW 写入 Windows 打印队列（不经驱动渲染，203dpi 下最锐利），
+  预览与实打同源，可导出 `.prn` 给供应商排查。
   首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏与最近使用排列，分类可同时展开、
   宽窗口下工具卡两列排布；收藏与展开状态本地记忆。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。

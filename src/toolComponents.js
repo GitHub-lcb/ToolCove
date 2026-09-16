@@ -18,6 +18,7 @@ export const TOOL_COMPONENTS = {
   request: defineAsyncComponent(() => import("./tools/RequestTool.vue")),
   db: defineAsyncComponent(() => import("./tools/DbTool.vue")),
   chat: defineAsyncComponent(() => import("./tools/AiChatTool.vue")),
+  label: defineAsyncComponent(() => import("./tools/LabelTool.vue")),
 };
 
 export function getToolComponent(key) {
