@@ -1,9 +1,9 @@
-/* 铁路大亨 · 手机�?HUD 样式�? *
+/* 铁路大亨 · 手机�?HUD 样式�? *
  * 三种 mode 共用一套：
- *   full  —�?手机浏览�?/ Android 全屏页：结论吸顶、录入钉底、中间可�? *   panel —�?悬浮窗（压在游戏上）�?*整块不滚�?*，一屏放下结�?+ 录入
- *   bar   —�?悬浮窗收成一条：只有结论那一�? *
- * 三条硬约束（改动前先读）�? *   �?.hero 必须在文档流最前且 sticky —�?结论是唯一「任何时候都要看得见」的东西�? *   �?.setup 钉在底部 —�?录入是拇指动作，滚动不能把它顶走�? *   �?panel 模式禁用一切滚�?—�?浮窗高度固定，出现滚动条就等于有内容永远看不见�? * 颜色沿用主程序的语义变量名（--bg/--card/--text/--primary…），但取值在这里自带一份：
- * 手机端要单独分发，不能依赖桌面端那份 :root 变量表。深色走 prefers-color-scheme�? */
+ *   full  —�?手机浏览�?/ Android 全屏页：结论吸顶、录入钉底、中间可�? *   panel —�?悬浮窗（压在游戏上）�?*整块不滚�?*，一屏放下结�?+ 录入
+ *   bar   —�?悬浮窗收成一条：只有结论那一�? *
+ * 三条硬约束（改动前先读）�? *   �?.hero 必须在文档流最前且 sticky —�?结论是唯一「任何时候都要看得见」的东西�? *   �?.setup 钉在底部 —�?录入是拇指动作，滚动不能把它顶走�? *   �?panel 模式禁用一切滚�?—�?浮窗高度固定，出现滚动条就等于有内容永远看不见�? * 颜色沿用主程序的语义变量名（--bg/--card/--text/--primary…），但取值在这里自带一份：
+ * 手机端要单独分发，不能依赖桌面端那份 :root 变量表。深色走 prefers-color-scheme�? */
 
 :root {
   color-scheme: light dark;
@@ -107,7 +107,7 @@ html, body {
 .topbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 0 2px; }
 .brand { font-weight: 700; font-size: var(--fs-md); letter-spacing: 0.02em; }
 .topbar-mode { color: var(--text-dim); font-size: var(--fs-xs); }
-/* 「收起成一条」只在悬浮窗里出现（由脚本按 mode 决定），是面板唯一能自�?   让出屏幕面积的动作——遮挡面积直接影响游戏能不能点�?*/
+/* 「收起成一条」只在悬浮窗里出现（由脚本按 mode 决定），是面板唯一能自�?   让出屏幕面积的动作——遮挡面积直接影响游戏能不能点�?*/
 .collapse { margin-left: auto; padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--card); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
 
 /* ── 结论 ───────────────────────────────────────────────────────── */
@@ -136,12 +136,7 @@ html, body {
 .hero-bar.locked .hb-name { font-size: var(--fs-xl); font-weight: 800; }
 .hero-bar.locked .hb-track { height: 13px; }
 .hero-bar.locked .hb-pct { font-size: var(--fs-md); font-weight: 800; }
-.hero-bar.t-winery .hb-fill { background: var(--warn); }
-.hero-bar.t-winery .hb-name, .hero-bar.t-winery .hb-pct { color: var(--warn-deep); }
-.hero-bar.t-eatery .hb-fill { background: var(--success); }
-.hero-bar.t-eatery .hb-name, .hero-bar.t-eatery .hb-pct { color: var(--success-deep); }
-.hero-bar.t-trade .hb-fill { background: var(--sky); }
-.hero-bar.t-trade .hb-name, .hero-bar.t-trade .hb-pct { color: var(--sky-deep); }
+/* 类型不再各染一色：主色只表示「推断锁定」，其余走中性（与桌面版同一套语言）。 */
 .hero-note { margin: 0; color: var(--text-soft); font-size: var(--fs-sm); }
 .hero-foot { display: flex; }
 .hero-track { flex: 1; height: 3px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
@@ -149,9 +144,6 @@ html, body {
 .hero.t-danger { border-left-color: var(--danger); }
 .hero.t-danger .hero-note { color: var(--danger-deep); }
 .hero.t-done { border-left-color: var(--success); }
-.hero.t-winery { border-left-color: var(--warn); }
-.hero.t-eatery { border-left-color: var(--success); }
-.hero.t-trade { border-left-color: var(--sky); }
 
 /* ── 16 格进度条 ────────────────────────────────────────────────── */
 .strip-wrap { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; }
@@ -171,14 +163,13 @@ html, body {
   font: 600 var(--fs-xs)/1 -apple-system, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
 }
-.cell.st-half { border-color: var(--border-strong); background: var(--well); color: var(--text-soft); }
-.cell.st-done { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
-.cell.current { box-shadow: inset 0 0 0 1px var(--primary); border-color: var(--primary); font-weight: 800; }
+.cell.st-half { border-color: var(--border); background: transparent; color: var(--text-soft); }
+/* 已记全 = 中性实底（记录状态不上色；彩色留给「推断锁定」） */
+.cell.st-done { border-color: var(--border-strong); background: var(--well); color: var(--text); }
+.cell.current { box-shadow: inset 0 0 0 1px var(--text-soft); border-color: var(--text-soft); font-weight: 800; }
 .cell.end { border-right-width: 2px; }
-.cell.t-winery { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-deep); }
-.cell.t-eatery { border-color: var(--success-border); background: var(--success-tint); color: var(--success-deep); }
-.cell.t-trade { border-color: var(--border-blue); background: var(--sky-soft); color: var(--sky-deep); }
-.cell.pred { background: transparent; border-style: dashed; }
+/* 全工具唯一的彩色语义 = 100% 锁定（推断唯一的确定结果）；类型不再各染一色。 */
+.cell.pred { border: 2px dashed var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
 .strip-note { min-height: 14px; color: var(--text-dim); font-size: var(--fs-xs); }
 .strip-note.warn { color: var(--warn-deep); font-weight: 700; }
 
@@ -247,13 +238,11 @@ html, body {
   cursor: pointer;
 }
 .btns.cols-4 .btn { font-size: var(--fs-sm); }
-.btn.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 0 0 0 1px var(--primary); }
-.btn.on.t-winery { border-color: var(--warn); background: var(--warn-soft); color: var(--warn-deep); box-shadow: inset 0 0 0 1px var(--warn); }
-.btn.on.t-eatery { border-color: var(--success); background: var(--success-tint); color: var(--success-deep); box-shadow: inset 0 0 0 1px var(--success); }
-.btn.on.t-trade { border-color: var(--sky); background: var(--sky-soft); color: var(--sky-deep); box-shadow: inset 0 0 0 1px var(--sky); }
+/* 选中态不只用颜色：主色描边 + 内侧竖条 + 同色文字（形状差异扛住色觉差异）。 */
+.btn.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 3px 0 0 var(--primary); }
 .chip-btn { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-pill); background: transparent; color: var(--text-dim); font-size: var(--fs-sm); cursor: pointer; }
 
-/* ── 底部动作�?─────────────────────────────────────────────────── */
+/* ── 底部动作�?─────────────────────────────────────────────────── */
 .actionbar { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
 .act {
   height: 36px;
@@ -274,8 +263,8 @@ html, body {
 .act.danger { border-color: var(--danger); color: var(--danger-deep); }
 
 /* ── 弹层 ─────────────────────────────────────────────────────────
-   底部内边距必须叠�?--safe-bottom：这两个弹层的按钮是**贴屏幕底�?*�?   （align-items: flex-end），而安卓的手势导航条就压在那里——手势条优先吃触摸，
-   按钮点了会「没有任何反应」（真机上踩到过：取�?/ 清空两个按钮全点不动）�?   之前只有 .toast 加了 safe-bottom，弹层漏了�?*/
+   底部内边距必须叠�?--safe-bottom：这两个弹层的按钮是**贴屏幕底�?*�?   （align-items: flex-end），而安卓的手势导航条就压在那里——手势条优先吃触摸，
+   按钮点了会「没有任何反应」（真机上踩到过：取�?/ 清空两个按钮全点不动）�?   之前只有 .toast 加了 safe-bottom，弹层漏了�?*/
 .dialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; padding: 12px 12px calc(12px + var(--safe-bottom)); background: rgba(17, 24, 39, 0.5); }
 .dialog[hidden] { display: none; }
 .sheet { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 560px; max-height: 86vh; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); }
@@ -301,8 +290,8 @@ html, body {
 
 .toast { position: fixed; left: 50%; bottom: calc(18px + var(--safe-bottom)); z-index: 80; padding: 8px 14px; transform: translateX(-50%); border-radius: var(--r-pill); background: rgba(17, 24, 39, 0.92); color: #fff; font-size: var(--fs-sm); }
 
-/* ── 悬浮窗模式（panel）：整块不滚动，一屏放下结�?+ 录入 ─────────
-   这块面板压在游戏画面上，用户没有「滚一下看看下面」的余地—�?   出现滚动条就等于有内容永远看不见。所以这里把可滚的那段（建议）收起来�?   只留结论、进度、录入三件。宽高由原生侧固定，这里只管不被撑破�?*/
+/* ── 悬浮窗模式（panel）：整块不滚动，一屏放下结�?+ 录入 ─────────
+   这块面板压在游戏画面上，用户没有「滚一下看看下面」的余地—�?   出现滚动条就等于有内容永远看不见。所以这里把可滚的那段（建议）收起来�?   只留结论、进度、录入三件。宽高由原生侧固定，这里只管不被撑破�?*/
 #root[data-mode="panel"] { gap: 5px; padding: calc(4px + var(--safe-top)) 7px calc(4px + var(--safe-bottom)); overflow: hidden; }
 #root[data-mode="panel"] .topbar { display: none; }
 #root[data-mode="panel"] .hero { padding: 5px 9px; }
@@ -317,7 +306,7 @@ html, body {
 #root[data-mode="panel"] .row-label, #root[data-mode="panel"] .setup-title, #root[data-mode="panel"] .setup-tag { display: none; }
 #root[data-mode="panel"] .setup-done { display: none; }
 
-/* 收起成一条：只剩结论那一行，用来在游戏画面上「瞄一眼就走�?*/
+/* 收起成一条：只剩结论那一行，用来在游戏画面上「瞄一眼就走�?*/
 #root[data-mode="bar"] { gap: 0; align-items: stretch; justify-content: center; padding: 3px 6px; }
 #root[data-mode="bar"] .topbar,
 #root[data-mode="bar"] .collapse,
@@ -332,11 +321,11 @@ html, body {
 #root[data-mode="bar"] .hero-bar.locked .hb-name { font-size: var(--fs-md); }
 #root[data-mode="bar"] .hero-note { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-/* bar 模式的展开出口：顶栏被藏了，只能挂在结论卡上的这一�?*/
+/* bar 模式的展开出口：顶栏被藏了，只能挂在结论卡上的这一�?*/
 .expand { position: absolute; top: 2px; right: 2px; padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--card); color: var(--text-dim); font-size: 10px; font-weight: 700; cursor: pointer; }
 #root[data-mode="bar"] .hero { position: relative; padding-right: 58px; }
 
-/* 横屏 / 平板：把建议放回来（有地方了），录入仍钉�?*/
+/* 横屏 / 平板：把建议放回来（有地方了），录入仍钉�?*/
 @media (min-width: 720px) {
   #root { max-width: 760px; margin: 0 auto; }
 }

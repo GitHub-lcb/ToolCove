@@ -48,11 +48,11 @@ describe("状态归一", () => {
     expect(state.observed[4]).toBe(2);
   });
 
-  it("末尾 3 站的提示即使存档里有值也丢掉（那里本来没有提示）", () => {
+  it("终点站的提示即使存档里有值也丢掉（它后面没有站）；尾段的提示照收", () => {
     const hints = new Array(STATION_COUNT).fill(HINT_SAME);
     const state = normalizeState({ hints });
-    for (let i = 0; i <= STATION_COUNT - 4; i += 1) expect(state.hints[i]).toBe(HINT_SAME);
-    for (let i = STATION_COUNT - 3; i < STATION_COUNT; i += 1) expect(state.hints[i]).toBeNull();
+    for (let i = 0; i <= STATION_COUNT - 2; i += 1) expect(state.hints[i]).toBe(HINT_SAME);
+    expect(state.hints[STATION_COUNT - 1]).toBeNull();
   });
 
   it("越界或非整数的光标回落到 0", () => {

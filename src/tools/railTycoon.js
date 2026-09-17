@@ -6,14 +6,19 @@
 //   - 全程 16 个节点 = 始发站 + 第 1~15 站；第 1~15 站的类型为 酒庄 / 食铺 / 商行 之一；
 //   - **始发站没有类型**：它不是三类店铺中的任何一类，游戏也不给它记类型。界面在它那里
 //     只显示「始发站」。所以本模块的类型枚举只覆盖第 1~15 站（见 ORIGIN_PLACEHOLDER）；
-//   - 始发站是线路的第一个节点，按游戏口径**不算「第 1 站」**：它不参与「第 N 站」编号，
-//     于是「第 N 站」正好落在下标 N 上（见 stationNumber）；
-//   - 每个节点都有一条「未来 3 站」提示，覆盖它**之后**的 3 个节点：下标 i 的提示覆盖
-//     下标 i+1 / i+2 / i+3。所以始发站的提示覆盖第 1~3 站；提示只向后看 3 站，
-//     末尾 3 站（第 13~15 站）凑不满 3 站、没有提示可录（见 canHintAt）。
-//     反过来，始发站自己永远不会被任何提示覆盖——没有哪条提示能回头指向下标 0；
-//   - 提示「X 最多」= 那 3 站里 X 至少出现 2 次（只出现 1 次时可能与其它类型并列，故不算「最多」）；
-//   - 提示「各站点数量相同」= 那 3 站三类各 1 个。
+//   - 始发站是线路的第一个节点，**参与编号**：它是第 1 站，终点站是最后一站。于是
+//     「第 N 站」落在下标 N-1 上——编号只在 stationNumber() 里算一次；
+//   - 每个节点都有一条「未来 3 站」提示，覆盖它**之后**的节点：下标 i 的提示覆盖
+//     下标 i+1 / i+2 / i+3，不足 3 站时按剩余站数收窄（见 hintRange）——第 13 站的
+//     提示覆盖第 14~15 站，第 14 站的提示只剩第 15 站。只有终点站后面没有站、没有
+//     提示可录（见 canHintAt）。反过来，始发站自己永远不会被任何提示覆盖——没有哪条
+//     提示能回头指向下标 0；
+//   - 提示「X 最多」= 窗口里 X 严格多于其它每一类：3 站窗口等价于「X 至少出现 2 次」
+//     （只出现 1 次时可能与其它类型并列，故不算「最多」）；窗口收窄到 2 站时要求两站
+//     都是 X，剩 1 站时那一站就是 X；
+//   - 提示「各站点数量相同」= 窗口里**出现的类型**计数彼此相等，且至少两类：
+//     3 站窗口 = 三类各 1 个；2 站窗口 = 两站类型不同（游戏实测：未来 2 站「数量相同」
+//     对应 1+1+0，不是三类相等）；1 站窗口永远不成立。
 //
 // 窗口口径的验证（这里最容易搞错，写下来备查）：游戏内「站点提示记录」面板的实测日志里
 // 有一条「第 3 站=商行，该站提示=各站点数量相同；第 4 站=食铺；第 6 站=酒庄」，攻略据此
@@ -53,20 +58,20 @@ export const HINT_SAME = "same";
 /** 提示「X 最多」前缀，完整值形如 max0 / max1 / max2。 */
 export const HINT_MAX_PREFIX = "max";
 
-/** 最后一个还能录入提示的节点下标（0 基）。提示覆盖其后 3 站，故末尾 3 站无提示。 */
+/** 最后一个还能录入提示的节点下标（0 基）：倒数第二站，它的提示覆盖终点站。 */
 export function hintMaxIndex(stationCount = STATION_COUNT) {
-  return stationCount - 4;
+  return stationCount - 2;
 }
 
 /**
- * 节点在游戏里的编号：始发站返回 null，其余返回「第 N 站」的 N（1 起）。
+ * 节点在游戏里的编号：数组下标 + 1。
  *
- * 编号 = 数组下标，**不是下标 + 1**。这不是笔误：数组的第一个位置被始发站占了，
- * 而始发站按游戏口径不编号，于是「第 N 站」正好落在下标 N 上。
- * 编号只在这里算一次——改版前 `index + 1` 散落在 6 处，正是全线站号整体多算一站的根源。
+ * 始发站也编号——它是第 1 站，终点站是第 n 站。编号只在这里算一次，
+ * 视图层不许自己做 `index + 1`（散落多处正是站号口径漂移的根源）。
+ * 非法下标返回 null。
  */
 export function stationNumber(index) {
-  return Number.isInteger(index) && index > ORIGIN_INDEX ? index : null;
+  return Number.isInteger(index) && index >= ORIGIN_INDEX ? index + 1 : null;
 }
 
 /** 生成「X 最多」提示值。 */
@@ -75,12 +80,20 @@ export function hintMax(typeIndex) {
 }
 
 /**
- * 该节点是否可录入提示（提示需覆盖其后 3 站）。
- *
- * 始发站（下标 0）**可以**录提示；只有末尾 3 站凑不满 3 站、没有提示可录。
+ * 该节点是否可录入提示：提示要覆盖它后面的站，故终点站（最后一个节点）没有提示。
+ * 始发站（下标 0）**可以**录提示；两端之间的节点窗口可能是 3 / 2 / 1 站（见 hintRange）。
  */
 export function canHintAt(index, stationCount = STATION_COUNT) {
   return index >= ORIGIN_INDEX && index <= hintMaxIndex(stationCount);
+}
+
+/**
+ * 提示的覆盖范围（下标区间，含两端）：下标 i 的提示覆盖 i+1 ~ min(i+3, 最后一个节点)。
+ * 窗口不足 3 站时按剩余站数收窄（第 13 站 → 14~15、第 14 站 → 15）；终点站返回 null。
+ */
+export function hintRange(index, stationCount = STATION_COUNT) {
+  if (!canHintAt(index, stationCount)) return null;
+  return { from: index + 1, to: Math.min(index + 3, stationCount - 1) };
 }
 
 /** 站点类型下标归一：非法值一律视为未知（null）。 */
@@ -102,18 +115,32 @@ export function normalizeHint(value) {
 }
 
 /**
- * 校验一条提示对「之后 3 站」是否成立。
- * window 中若出现 null（尚未确定的占位），一律视为满足——未确定的位置不构成约束。
+ * 校验一条提示对它的覆盖窗口是否成立。
+ *
+ * 窗口长度可能是 3 / 2 / 1（尾段收窄，见 hintRange）：
+ *   - 「X 最多」= X 严格多于其它每一类。3 站时等价于「X 至少出现 2 次」；剩 2 站时
+ *     两站必须都是 X（1:1 并列不算「最多」）；剩 1 站时那一站就是 X；
+ *   - 「各站点数量相同」= 出现的类型计数彼此相等且至少两类：3 站 = 各 1 个；
+ *     2 站 = 两站类型不同；1 站永远不成立。
+ * window 中若出现 null（尚未确定的占位）或非法类型值，一律视为满足——未确定的位置
+ * 不构成约束。
  */
 export function checkHint(hint, window) {
   if (!hint) return true;
   if (window.some((t) => t === null || t === undefined)) return true;
+  const counts = [0, 0, 0];
+  for (const t of window) {
+    if (!Number.isInteger(t) || t < 0 || t >= TYPE_KEYS.length) return true;
+    counts[t] += 1;
+  }
   if (hint === HINT_SAME) {
-    return window[0] !== window[1] && window[1] !== window[2] && window[0] !== window[2];
+    // 只看窗口里真正出现的类型：2 站窗口 1+1+0 也算「数量相同」（游戏实测口径）
+    const used = counts.filter((count) => count > 0);
+    return used.length >= 2 && used.every((count) => count === used[0]);
   }
   const target = normalizeType(hint.slice(HINT_MAX_PREFIX.length));
   if (target === null) return true;
-  return window.filter((t) => t === target).length >= 2;
+  return counts.every((count, i) => i === target || counts[target] > count);
 }
 
 /**
@@ -163,6 +190,20 @@ export function solveRailRoute({ observed = [], hints = [], stationCount = STATI
   const prefixMemo = new Map();
   const stateKey = (a, b, c) => `${a},${b},${c}`;
 
+  // 落定第 q 站后，所有「窗口到 q 为止」的提示才能判定。q 是终点站时，最后三条提示
+  // （窗口分别 3 / 2 / 1 站）一起到齐；b / c / d 是 q-2 / q-1 / q 三站的类型。
+  // 尾段窗口收窄后，提示不再总在「q-3 站」处结束，所以判定统一收在这里。
+  function hintsOkAt(q, b, c, d) {
+    if (q === n - 1) {
+      return (
+        (n - 4 < ORIGIN_INDEX || checkHint(hnt[n - 4], [b, c, d])) &&
+        (n - 3 < ORIGIN_INDEX || checkHint(hnt[n - 3], [c, d])) &&
+        (n - 2 < ORIGIN_INDEX || checkHint(hnt[n - 2], [d]))
+      );
+    }
+    return q - 3 < ORIGIN_INDEX || checkHint(hnt[q - 3], [b, c, d]);
+  }
+
   // 后向计数：从第 p 站向前走完全程的合法方案数。
   function ways(p, a, b, c) {
     const memoKey = `${p}|${stateKey(a, b, c)}`;
@@ -173,8 +214,7 @@ export function solveRailRoute({ observed = [], hints = [], stationCount = STATI
       total = 1;
     } else {
       for (const d of allowedAt(p + 1)) {
-        // 落定第 p+1 站后，位于 p-2 的提示（覆盖 p-1 / p / p+1）才能判定。
-        if (p - 2 >= 0 && !checkHint(hnt[p - 2], [b, c, d])) continue;
+        if (!hintsOkAt(p + 1, b, c, d)) continue;
         total += ways(p + 1, b, c, d);
       }
     }
@@ -188,6 +228,16 @@ export function solveRailRoute({ observed = [], hints = [], stationCount = STATI
     const hit = prefixMemo.get(memoKey);
     if (hit !== undefined) return hit;
     if (!allowedAt(p).includes(c)) {
+      prefixMemo.set(memoKey, 0);
+      return 0;
+    }
+    // 终点站落定时，最后两条（窗口 2 / 1 站）提示也到齐——它们不含更早的站，
+    // 前向递推里没有别的地方会检查它们。
+    if (
+      p === n - 1 &&
+      ((n - 3 >= ORIGIN_INDEX && !checkHint(hnt[n - 3], [b, c])) ||
+        (n - 2 >= ORIGIN_INDEX && !checkHint(hnt[n - 2], [c])))
+    ) {
       prefixMemo.set(memoKey, 0);
       return 0;
     }
@@ -365,7 +415,8 @@ export function buildAdvice(result, { stationCount = STATION_COUNT } = {}) {
 /**
  * 该站是否已「记录完整」。
  *
- * 完整 = 类型已确认，且该站该记的提示也记了（末尾第 13~15 站凑不满 3 站，没有提示可记）。
+ * 完整 = 类型已确认，且该站该记的提示也记了（只有终点站后面没有站、没有提示可记；
+ * 第 13、14 站的窗口收窄到 2 / 1 站，但照样要记）。
  * 提示是推断的唯一信息源，所以「只填类型」不算记完——界面据此决定要不要跳到下一站。
  * **始发站没有类型**（见文件头规则），它只要记了那条提示就算记完。
  *

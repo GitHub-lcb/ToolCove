@@ -1,5 +1,5 @@
 // 本文件由 mobile/rail-hud/gen-i18n.mjs 自动生成，请勿手改。
-// 源：src/i18n/{zh-CN,en-US}.json 的 toolbox.rail.* 子树（共 155 条）。
+// 源：src/i18n/{zh-CN,en-US}.json 的 toolbox.rail.* 子树（共 164 条）。
 // 改文案请改源字典后重新执行 npm run build:mobile。
 // 生成时间：2026-09-17
 
@@ -29,7 +29,7 @@ export const MESSAGES = {
     "optHintNone": "未记录",
     "optHintSame": "各站点数量相同",
     "optHintMax": "{type}最多",
-    "hintDisabled": "不足 3 站，无法参与推算",
+    "hintDisabled": "终点站后面没有站，没有提示可记",
     "colStation": "站点",
     "colType": "实际类型",
     "colHint": "该站「未来 3 站」提示",
@@ -73,11 +73,17 @@ export const MESSAGES = {
     "hudGoFix": "点这里切到完整版面补录",
     "hudDoneAll": "全程已确认",
     "hudDoneAllDesc": "站点类型已全部录入，不用再看面板。",
-    "hudGoFull": "要改历史站点，切到「完整版面」",
     "hudAdviceTitle": "这一站怎么做",
     "hudMore": "+{n}",
-    "hudMoreTip": "另有 {n} 条通用节奏建议，切到完整版面查看",
-    "hudFloat": "悬浮模式：藏起标题栏与工具顶栏，只留结论和录入，并自动置顶",
+    "hudAlertSameTitle": "别拿「下一站售价提升」",
+    "hudAlertSameDetail": "第 {prev} 站与第 {next} 站同为{type}，到了也没货可卖",
+    "hudActCertain": "下一站{type}：拿全局 / 永久「售价提升」金卡",
+    "hudActUncertain": "拿通用卡保底：商会福利 I / II",
+    "hudActOrigin": "始发站：优先把资金换成货",
+    "hudActTail": "尾段：留住博弈类金卡",
+    "hudGoNext": "去第 {n} 站",
+    "hudWaitNext": "记全本站后，从这里去下一站",
+    "hudFloat": "悬浮模式：藏起标题栏与工具顶栏，只留路线与录入，并自动置顶",
     "allRecords": "全部记录",
     "allRecordsTip": "点开 16 站一览，就地改任意一格（悬浮模式里也能用）",
     "allRecordsSub": "16 站一览，改完立即重算",
@@ -86,19 +92,20 @@ export const MESSAGES = {
     "allRecordsColType": "类型",
     "allRecordsColHint": "提示",
     "allRecordsColRes": "推断",
-    "stripTip": "记录进度：16 格对应始发站到终点站。格里的字就是这一站已确认的结果——实底彩字=已录入，虚框=推断已锁定但还没录入；没有字时看底色：空心=还没记、浅底=只记了一半（缺类型或缺提示）、蓝底=已记全，加圈的是当前站。要改某一站，点「全部记录」。",
     "stripOrigin": "始",
     "stripPred": "推断已确认（未录入）：{type}",
     "stripDone": "已记全",
     "stripHalf": "只记了一半",
     "stripEmpty": "还没记",
+    "stripDebt": "欠一条提示",
+    "stripAuto": "推断已确定，自动填入",
     "resetTip": "清空全部 16 站的类型与提示，光标回到始发站（会先确认一次）",
     "resetConfirmTitle": "清空全部 16 站记录？",
     "resetConfirmBody": "16 站的类型与提示都会清掉，光标回到始发站。这一步不能撤销。",
     "resetCancel": "取消",
     "resetConfirmOk": "清空并回始发站",
     "optHintSameShort": "数量相同",
-    "optHintSameTip": "各站点数量相同（酒庄 · 食铺 · 商行 各 1 个）",
+    "optHintSameTip": "各站点数量相同：窗口内出现的类型数量一致（3 站 = 三类各 1 个；2 站 = 两站类型不同）",
     "optHintMaxShort": "{type}最多",
     "adv": {
       "conflict": {
@@ -112,7 +119,7 @@ export const MESSAGES = {
       "origin": {
         "title": "始发站：只记提示，不用选类型",
         "act": "始发站物价通常全线最低，优先把资金换成货",
-        "detail": "始发站不是三类店铺中的任何一类，没有类型可记；它的「未来 3 站」提示覆盖第 1~3 站，记下来第 1 站就能收窄。"
+        "detail": "始发站不是三类店铺中的任何一类，没有类型可记；它的「未来 3 站」提示覆盖第 2~4 站，记下来第 2 站就能收窄。"
       },
       "certain": {
         "title": "下一站已确定是{type}",
@@ -149,7 +156,9 @@ export const MESSAGES = {
     "inferNa": "不参与推断",
     "hintCoversShort": "→ 第 {from}~{to} 站",
     "hintCoversLong": "这条提示覆盖第 {from}~{to} 站（不含本站）",
-    "colHintTip": "记录游戏里显示的那一条「未来 3 站」提示。每条提示覆盖它后面 3 站，不含本站。",
+    "hintCoversOneShort": "→ 第 {to} 站",
+    "hintCoversOneLong": "这条提示覆盖第 {to} 站（不含本站）",
+    "colHintTip": "记录游戏里显示的那一条「未来 3 站」提示。每条提示覆盖它后面最多 3 站——走到尾段会按剩余站数收窄，不含本站。",
     "culpritHint": "{name}的提示",
     "culpritType": "{name}的类型",
     "culpritSep": "、",
@@ -206,9 +215,9 @@ export const MESSAGES = {
     "cellTrade": "T",
     "optUnknown": "Unknown",
     "optHintNone": "Not recorded",
-    "optHintSame": "The next 3 stops all differ",
+    "optHintSame": "All appearing types equal",
     "optHintMax": "{type} is the most",
-    "hintDisabled": "Fewer than 3 stops left — no hint applies here",
+    "hintDisabled": "The terminus has no stops after it — no hint to record",
     "colStation": "Stop",
     "colType": "Actual type",
     "colHint": "\"Next 3 stops\" hint",
@@ -252,11 +261,17 @@ export const MESSAGES = {
     "hudGoFix": "Click to switch to Full layout and fill them in",
     "hudDoneAll": "All stops confirmed",
     "hudDoneAllDesc": "Every stop type is recorded — no need to watch the panel.",
-    "hudGoFull": "To fix an earlier stop, switch to Full layout",
     "hudAdviceTitle": "What to do here",
     "hudMore": "+{n}",
-    "hudMoreTip": "{n} more general pacing tips in Full layout",
-    "hudFloat": "Float mode: hide the title bar and toolbar, keep only the verdict and entry panel, and pin on top",
+    "hudAlertSameTitle": "Skip \"next stop sells for more\"",
+    "hudAlertSameDetail": "Stop {next} is {type}, same as stop {prev} — you'll have nothing left to sell",
+    "hudActCertain": "Next stop {type}: take a global / permanent \"sells for more\" gold card",
+    "hudActUncertain": "Fall back on a generic card: trading-house favour I / II",
+    "hudActOrigin": "Origin: turn cash into cargo first",
+    "hudActTail": "Final stretch: hold your gamble gold cards",
+    "hudGoNext": "Go to stop {n}",
+    "hudWaitNext": "Finish this stop, then head to the next",
+    "hudFloat": "Float mode: hide the title bar and toolbar, keep only the route and entry panel, and pin on top",
     "allRecords": "All records",
     "allRecordsTip": "Open all 16 stops and fix any cell in place (works in float mode too)",
     "allRecordsSub": "All 16 stops — recalculated as you edit",
@@ -265,19 +280,20 @@ export const MESSAGES = {
     "allRecordsColType": "Type",
     "allRecordsColHint": "Hint",
     "allRecordsColRes": "Inference",
-    "stripTip": "Record progress: 16 squares span origin to terminus. The letter in a square is that stop's confirmed result — solid tint = recorded, dashed = locked by inference but not recorded yet; squares without a letter show progress: outline = not recorded, pale = half recorded, blue = complete; the ringed one is the current stop. Use All records to edit one.",
     "stripOrigin": "S",
     "stripPred": "Confirmed by inference (not recorded): {type}",
     "stripDone": "Complete",
     "stripHalf": "Half recorded",
     "stripEmpty": "Not recorded",
+    "stripDebt": "a hint is missing",
+    "stripAuto": "Auto-filled: inference is certain",
     "resetTip": "Clear all 16 stops and return to the origin (asks once first)",
     "resetConfirmTitle": "Clear all 16 stops?",
     "resetConfirmBody": "Every type and hint will be cleared and the cursor goes back to the origin. This cannot be undone.",
     "resetCancel": "Cancel",
     "resetConfirmOk": "Clear and back to origin",
     "optHintSameShort": "All equal",
-    "optHintSameTip": "Equal stop counts (one winery, one eatery, one trading house)",
+    "optHintSameTip": "All types that appear have equal counts (3 stops: one of each; 2 stops: two different types)",
     "optHintMaxShort": "{type} most",
     "adv": {
       "conflict": {
@@ -291,7 +307,7 @@ export const MESSAGES = {
       "origin": {
         "title": "Origin: record the hint only — no type to pick",
         "act": "The origin usually has the cheapest prices — turn cash into cargo first",
-        "detail": "The origin is not one of the three shop types, so there is no type to record. Its \"next 3 stops\" hint covers stops 1–3 — writing it down already narrows stop 1."
+        "detail": "The origin is not one of the three shop types, so there is no type to record. Its \"next 3 stops\" hint covers stops 2–4 — writing it down already narrows stop 2."
       },
       "certain": {
         "title": "The next stop is confirmed to be {type}",
@@ -328,7 +344,9 @@ export const MESSAGES = {
     "inferNa": "not inferred",
     "hintCoversShort": "→ stops {from}–{to}",
     "hintCoversLong": "This hint covers stops {from}–{to} (not this one)",
-    "colHintTip": "Record the \"next 3 stops\" hint the game shows here. Each hint covers the 3 stops after this one.",
+    "hintCoversOneShort": "→ stop {to}",
+    "hintCoversOneLong": "This hint covers stop {to} (not this one)",
+    "colHintTip": "Record the \"next 3 stops\" hint the game shows here. Each hint covers up to the 3 stops after this one (narrower near the end of the route), not this one.",
     "culpritHint": "the hint at {name}",
     "culpritType": "the type at {name}",
     "culpritSep": ", ",
@@ -364,4 +382,4 @@ export const MESSAGES = {
   }
 };
 
-export const MESSAGE_COUNT = 155;
+export const MESSAGE_COUNT = 164;

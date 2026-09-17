@@ -6,8 +6,8 @@
 // 为什么单独分出这个文件：main.js 直接操作 DOM（查不了单测），而这些换算逻辑是最容易出错、
 // 也最值得锁住的部分（站号口径、提示覆盖范围、格子该显示什么字）。所以 DOM 层保持极薄。
 //
-// 站号口径（与 railTycoon.js 一致，这里只做转述）：数组下标 0 是**始发站**，它不参与
-// 「第 N 站」编号，所以「第 N 站」落在下标 N 上——不是下标 + 1。全线站号只在 stationNumber() 算。
+// 站号口径（与 railTycoon.js 一致，这里只做转述）：数组下标 0 是**始发站**，它就是第 1 站，
+// 所以「第 N 站」落在下标 N-1 上。全线站号只在 stationNumber() 算，视图层不许自己做 +1。
 
 import {
   buildAdvice,
@@ -17,6 +17,7 @@ import {
   firstIncomplete,
   HINT_SAME,
   hintMax,
+  hintRange,
   isStationComplete,
   nextIncompleteAfter,
   normalizeHint,
@@ -53,21 +54,26 @@ export function stationName(index) {
   return n === null ? t("origin") : t("nthStation", { n });
 }
 
-/** 该站的提示覆盖哪 3 站；末尾凑不满 3 站的站返回 null。 */
+/**
+ * 该站的提示覆盖哪几站（站号区间）。窗口随剩余站数收窄，口径只有 railTycoon.js 一处
+ * （hintRange），这里只把它转成站号；终点站后面没有站，返回 null。
+ */
 export function hintWindow(index, stationCount = STATION_COUNT) {
-  if (index < ORIGIN_INDEX || index > stationCount - 4) return null;
-  return { from: stationNumber(index + 1), to: stationNumber(index + 3) };
+  const range = hintRange(index, stationCount);
+  return range ? { from: stationNumber(range.from), to: stationNumber(range.to) } : null;
 }
 
 export function hintCoversShort(index, stationCount = STATION_COUNT) {
   const w = hintWindow(index, stationCount);
-  return w ? t("hintCoversShort", { from: w.from, to: w.to }) : "";
+  if (!w) return "";
+  return w.from === w.to
+    ? t("hintCoversOneShort", { to: w.to })
+    : t("hintCoversShort", { from: w.from, to: w.to });
 }
 
-export const isOrigin = (index) => stationNumber(index) === null;
+export const isOrigin = (index) => index === ORIGIN_INDEX;
 
-export const hintable = (index, stationCount = STATION_COUNT) =>
-  hintWindow(index, stationCount) !== null;
+export const hintable = (index, stationCount = STATION_COUNT) => hintRange(index, stationCount) !== null;
 
 /** 已录提示的短文案（`数量相同` / `酒庄最多`）。按值反查，不去解析编码。 */
 export function hintText(value) {
@@ -155,14 +161,14 @@ export function stripCellView(result, observed, hints, index, cursor) {
     predicted = result.possibleTypes[index][0];
   }
   const content = stripCellContent(obs, predicted);
+  // 类型不再各染一色：记录状态走 st-*，唯一的彩色语义是 pred = 100% 锁定。
   const classes = [`st-${stationRecordState(observed, hints, index, result.stationCount)}`];
-  if (content.typeIndex !== null) classes.push(`t-${TYPE_KEYS[content.typeIndex]}`);
   if (content.kind === CELL_PREDICT) classes.push("pred");
   if (index === cursor) classes.push("current");
   if (index === result.stationCount - 1) classes.push("end");
   return {
     text: content.kind === CELL_LABEL
-      ? (stationNumber(index) === null ? t("stripOrigin") : String(stationNumber(index)))
+      ? (isOrigin(index) ? t("stripOrigin") : String(stationNumber(index)))
       : typeCell(content.typeIndex),
     kind: content.kind,
     typeIndex: content.typeIndex,

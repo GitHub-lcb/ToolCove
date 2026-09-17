@@ -13,6 +13,7 @@ import {
   firstIncomplete,
   hintMax,
   hintMaxIndex,
+  hintRange,
   HINT_SAME,
   isStationComplete,
   nextIncompleteAfter,
@@ -64,15 +65,46 @@ describe("提示语义", () => {
     expect(checkHint(hintMax(WINERY), [EATERY, EATERY, null])).toBe(true);
   });
 
-  it("始发站也有提示；只有末尾 3 站凑不满 3 站、没有提示", () => {
+  it("窗口不足 3 站时「X 最多」按「严格最多」收窄：剩几站就是几站里 X 全占", () => {
+    // 剩 2 站：并列（各 1 个）不算「最多」，所以必须是两个都 X
+    expect(checkHint(hintMax(WINERY), [WINERY, WINERY])).toBe(true);
+    expect(checkHint(hintMax(WINERY), [WINERY, EATERY])).toBe(false);
+    expect(checkHint(hintMax(WINERY), [EATERY, EATERY])).toBe(false);
+    // 剩 1 站：那一站就是 X
+    expect(checkHint(hintMax(TRADE), [TRADE])).toBe(true);
+    expect(checkHint(hintMax(TRADE), [WINERY])).toBe(false);
+    // 2 站窗口的「各站点数量相同」= 两站类型不同（游戏实测：未来 2 站 1+1+0）
+    expect(checkHint(HINT_SAME, [WINERY, EATERY])).toBe(true);
+    expect(checkHint(HINT_SAME, [EATERY, TRADE])).toBe(true);
+    // 两站同类型 = 「X 最多」，不是「数量相同」
+    expect(checkHint(HINT_SAME, [WINERY, WINERY])).toBe(false);
+    // 1 站窗口永远不成立
+    expect(checkHint(HINT_SAME, [WINERY])).toBe(false);
+  });
+
+  it("始发站也有提示；每个节点都能记，只有终点站凑不出窗口", () => {
     // 始发站的提示覆盖第 1~3 站，所以它是可录的
     expect(canHintAt(ORIGIN_INDEX)).toBe(true);
     expect(canHintAt(1)).toBe(true);
-    expect(hintMaxIndex()).toBe(12);
+    // 提示要覆盖后面的站，故最远只能到倒数第二站（第 14 站，覆盖第 15 站）
+    expect(hintMaxIndex()).toBe(14);
     expect(canHintAt(12)).toBe(true);
-    // 第 13~15 站之后剩不下 3 站
-    expect(canHintAt(13)).toBe(false);
+    expect(canHintAt(13)).toBe(true);
+    expect(canHintAt(14)).toBe(true);
+    // 终点站后面没有站，提示窗口为空
     expect(canHintAt(STATION_COUNT - 1)).toBe(false);
+  });
+
+  it("提示覆盖范围随剩余站数收窄：13 → 14~15，14 → 15", () => {
+    expect(hintRange(ORIGIN_INDEX)).toEqual({ from: 1, to: 3 });
+    expect(hintRange(12)).toEqual({ from: 13, to: 15 });
+    expect(hintRange(13)).toEqual({ from: 14, to: 15 });
+    expect(hintRange(14)).toEqual({ from: 15, to: 15 });
+    expect(hintRange(STATION_COUNT - 1)).toBeNull();
+    expect(hintRange(-1)).toBeNull();
+    // 自定义长度同样按剩余站数收窄
+    expect(hintRange(2, 4)).toEqual({ from: 3, to: 3 });
+    expect(hintRange(0, 4)).toEqual({ from: 1, to: 3 });
   });
 
   it("始发站的提示覆盖第 1~3 站，参与推算", () => {
@@ -108,12 +140,13 @@ describe("提示语义", () => {
     expect(r.possibleTypes[4]).toEqual([WINERY, EATERY, TRADE]);
   });
 
-  it("站号 = 数组下标（始发站不编号），不是下标 + 1", () => {
-    expect(stationNumber(ORIGIN_INDEX)).toBeNull();
-    expect(stationNumber(1)).toBe(1);
-    expect(stationNumber(15)).toBe(15);
+  it("站号 = 数组下标 + 1：始发站是第 1 站，终点站是第 16 站", () => {
+    expect(stationNumber(ORIGIN_INDEX)).toBe(1);
+    expect(stationNumber(1)).toBe(2);
+    expect(stationNumber(15)).toBe(16);
     expect(stationNumber(null)).toBeNull();
     expect(stationNumber(undefined)).toBeNull();
+    expect(stationNumber(-1)).toBeNull();
   });
 
   it("归一化会丢弃无法识别的值，不静默产生错误约束", () => {
@@ -192,6 +225,116 @@ describe("求解：单条提示锁定站点", () => {
   });
 });
 
+// 尾段（后面不足 3 站）的提示窗口更短。规则：每个节点都有提示，窗口按剩余站数收窄，
+// 终点站没有窗口。「X 最多」按「严格最多」理解：剩 k 站就是这 k 站全是 X。
+describe("求解：尾段短窗口提示", () => {
+  it("第 14 站的提示只剩第 15 站：直接把它锁死", () => {
+    const r = solveRailRoute({ hints: patch({ 14: hintMax(WINERY) }) });
+    expect(r.consistent).toBe(true);
+    expect(r.possibleTypes[15]).toEqual([WINERY]);
+    expect(r.locked[15]).toBe(true);
+    // 自由站为第 1~14 站，其中第 15 站被提示定死
+    expect(r.total).toBe(3 ** 14);
+    // 提示不含本站：第 14 站本身不受它约束
+    expect(r.possibleTypes[14]).toEqual([WINERY, EATERY, TRADE]);
+  });
+
+  it("第 13 站的提示覆盖第 14、15 站：「X 最多」= 两站都是 X", () => {
+    const r = solveRailRoute({ hints: patch({ 13: hintMax(TRADE) }) });
+    expect(r.consistent).toBe(true);
+    expect(r.possibleTypes[14]).toEqual([TRADE]);
+    expect(r.possibleTypes[15]).toEqual([TRADE]);
+    expect(r.total).toBe(3 ** 13);
+  });
+
+  it("已确认的尾站与短窗口提示冲突时报不一致", () => {
+    const r = solveRailRoute({
+      observed: patch({ 14: EATERY }),
+      hints: patch({ 13: hintMax(WINERY) }),
+    });
+    expect(r.consistent).toBe(false);
+    expect(r.total).toBe(0);
+    expect(r.possibleTypes.every((list) => list.length === 0)).toBe(true);
+  });
+
+  it("2 站的「各站点数量相同」= 两站类型不同；同类型或 1 站窗口则无解", () => {
+    // 实测样本：第 14 站的提示「各站点数量相同」覆盖第 15~16 站，两站分别是食铺与商行 ⇒ 自洽
+    const ok = solveRailRoute({
+      observed: patch({ 14: EATERY, 15: TRADE }),
+      hints: patch({ 13: HINT_SAME }),
+    });
+    expect(ok.consistent).toBe(true);
+    expect(ok.locked[14]).toBe(true); // 两站互不相同，各自都被对手排除到唯一
+
+    // 两站同类型与「数量相同」冲突（那该记成「X 最多」）
+    const same = solveRailRoute({
+      observed: patch({ 14: WINERY, 15: WINERY }),
+      hints: patch({ 13: HINT_SAME }),
+    });
+    expect(same.consistent).toBe(false);
+
+    // 1 站窗口（第 15 站的提示只看第 16 站）永远无解
+    expect(solveRailRoute({ hints: patch({ 14: HINT_SAME }) }).consistent).toBe(false);
+  });
+
+  it("尾段提示参与冲突诊断：去掉提示或改掉类型都能恢复自洽", () => {
+    const r = solveRailRoute({
+      observed: patch({ 14: EATERY }),
+      hints: patch({ 13: hintMax(WINERY) }),
+    });
+    expect(diagnoseConflict(r).culprits).toEqual([
+      { kind: "hint", index: 13 },
+      { kind: "type", index: 14 },
+    ]);
+  });
+});
+
+// 短窗口是 DP 里最容易漏判的分支（提示在「窗口最后一站落定」时才能判定）。
+// 用穷举对拍把小关卡的每种提示组合钉死，DP 与暴力计数必须逐格一致。
+describe("求解：与穷举对拍（含尾段短窗口）", () => {
+  const HINTS = [null, HINT_SAME, hintMax(0), hintMax(1), hintMax(2)];
+
+  function bruteSolve(observed, hints, n) {
+    const free = [];
+    for (let i = 1; i < n; i += 1) if (observed[i] === null) free.push(i);
+    const counts = Array.from({ length: n }, () => [0, 0, 0]);
+    const types = observed.slice();
+    let total = 0;
+    for (let code = 0; code < 3 ** free.length; code += 1) {
+      let c = code;
+      for (const i of free) {
+        types[i] = c % 3;
+        c = Math.floor(c / 3);
+      }
+      let ok = true;
+      for (let i = 0; i < n && ok; i += 1) {
+        const hint = canHintAt(i, n) ? (hints[i] ?? null) : null;
+        if (hint) ok = checkHint(hint, types.slice(i + 1, Math.min(i + 4, n)));
+      }
+      if (!ok) continue;
+      total += 1;
+      for (let i = 1; i < n; i += 1) counts[i][types[i]] += 1;
+    }
+    return { total, counts };
+  }
+
+  it("4 站关卡穷举全部提示组合（窗口 3 / 2 / 1 都覆盖）", () => {
+    const n = 4;
+    const observed = patch({ 2: WINERY }, n);
+    for (const h0 of HINTS) {
+      for (const h1 of HINTS) {
+        for (const h2 of HINTS) {
+          const hints = patch({ 0: h0, 1: h1, 2: h2 }, n);
+          const r = solveRailRoute({ observed, hints, stationCount: n });
+          const want = bruteSolve(observed, hints, n);
+          expect(r.total, `hints=${JSON.stringify(hints)}`).toBe(want.total);
+          expect(r.counts, `hints=${JSON.stringify(hints)}`).toEqual(want.counts);
+        }
+      }
+    }
+  });
+});
+
 describe("求解：合法性与计数一致性", () => {
   it("提示与已确认站点冲突时报不一致，而不是硬给答案", () => {
     // 「各站数量相同」要求三类各 1 个，但窗口内已出现两个酒庄
@@ -208,8 +351,8 @@ describe("求解：合法性与计数一致性", () => {
   it("超出可录入范围的提示被忽略", () => {
     const n = STATION_COUNT;
     const observed = patch({ 14: WINERY, 15: WINERY }, n);
-    // 下标 13（第 13 站）的提示要覆盖其后 3 站，但全程只剩第 14、15 站，凑不满 3 站，应被忽略
-    const ignored = solveRailRoute({ observed, hints: patch({ 13: HINT_SAME }, n) });
+    // 终点站没有提示位置：下标 15 的值应被忽略，不参与任何约束
+    const ignored = solveRailRoute({ observed, hints: patch({ 15: HINT_SAME }, n) });
     expect(ignored.consistent).toBe(true);
     // 已确认第 14、15 站 + 始发站没有类型 ⇒ 自由站为第 1~13 站
     expect(ignored.total).toBe(3 ** (n - 3));
@@ -218,7 +361,8 @@ describe("求解：合法性与计数一致性", () => {
   it("每站各类型计数之和恒等于合法排列总数（始发站无类型，计 0）", () => {
     const r = solveRailRoute({
       observed: patch({ 1: EATERY, 5: TRADE }),
-      hints: patch({ 2: hintMax(WINERY), 3: HINT_SAME, 4: hintMax(TRADE) }),
+      // 中段与尾段提示混在一起，锁住「每个合法排列都被恰好计一次」
+      hints: patch({ 2: hintMax(WINERY), 3: HINT_SAME, 4: hintMax(TRADE), 13: hintMax(EATERY), 14: hintMax(EATERY) }),
     });
     expect(r.consistent).toBe(true);
     expect(r.counts).toHaveLength(STATION_COUNT);
@@ -346,10 +490,19 @@ describe("站点数可配置", () => {
     expect(r.possibleTypes[1]).toEqual([WINERY, EATERY, TRADE]);
   });
 
-  it("不足 3 站的关卡退化为无约束", () => {
-    const r = solveRailRoute({ stationCount: 2 });
-    expect(r.total).toBe(3 ** (2 - 1));
-    expect(r.counts).toHaveLength(2);
+  it("只有 2 站的关卡：始发站提示直接锁定唯一的类型站", () => {
+    expect(solveRailRoute({ stationCount: 2 }).total).toBe(3);
+    const r = solveRailRoute({ hints: patch({ 0: hintMax(EATERY) }, 2), stationCount: 2 });
+    expect(r.consistent).toBe(true);
+    expect(r.total).toBe(1);
+    expect(r.possibleTypes[1]).toEqual([EATERY]);
+  });
+
+  it("只有 1 站的关卡：始发站后面没有站，没有任何提示位置", () => {
+    expect(hintMaxIndex(1)).toBe(-1);
+    expect(canHintAt(ORIGIN_INDEX, 1)).toBe(false);
+    expect(hintRange(ORIGIN_INDEX, 1)).toBeNull();
+    expect(solveRailRoute({ stationCount: 1 }).total).toBe(1);
   });
 });
 
@@ -374,12 +527,15 @@ describe("录入完整性", () => {
     expect(isStationComplete(obs, patch({ 1: HINT_SAME }), 1)).toBe(true);
   });
 
-  it("末尾 3 站没有提示可记，填了类型就算记完", () => {
-    expect(canHintAt(13)).toBe(false);
-    expect(canHintAt(15)).toBe(false);
-    const obs = patch({ 13: TRADE });
-    expect(isStationComplete(obs, blank(), 13)).toBe(true);
-    expect(isStationComplete(obs, blank(), 12)).toBe(false); // 第 12 站仍有提示
+  it("只有终点站没有提示；第 13、14 站仍要记提示", () => {
+    const last = STATION_COUNT - 1;
+    expect(canHintAt(last)).toBe(false);
+    expect(isStationComplete(patch({ [last]: TRADE }), blank(), last)).toBe(true);
+    // 尾段窗口更短，但提示照记：只填类型不算记完
+    expect(isStationComplete(patch({ 13: TRADE }), blank(), 13)).toBe(false);
+    expect(isStationComplete(patch({ 13: TRADE }), patch({ 13: hintMax(TRADE) }), 13)).toBe(true);
+    expect(isStationComplete(patch({ 14: TRADE }), patch({ 14: hintMax(TRADE) }), 14)).toBe(true);
+    expect(isStationComplete(patch({ 12: TRADE }), blank(), 12)).toBe(false); // 第 12 站仍有提示
   });
 
   it("提示填了但类型没填 → 不算记完", () => {
@@ -450,11 +606,13 @@ describe("记录进度条的三档状态", () => {
     );
   });
 
-  it("末尾第 13~15 站没有提示可记，只填类型就算 done", () => {
+  it("只有终点站没有提示可记（填了类型就算 done）；第 13、14 站缺提示是 half", () => {
     const last = STATION_COUNT - 1;
     expect(canHintAt(last)).toBe(false);
     expect(stationRecordState(patch({ [last]: TRADE }), blank(), last)).toBe(RECORD_DONE);
     expect(stationRecordState(blank(), blank(), last)).toBe(RECORD_EMPTY);
+    expect(stationRecordState(patch({ 13: TRADE }), blank(), 13)).toBe(RECORD_HALF);
+    expect(stationRecordState(patch({ 13: TRADE }), patch({ 13: hintMax(TRADE) }), 13)).toBe(RECORD_DONE);
   });
 
   it("始发站没有类型：只记了提示就算 done，而不是 half", () => {

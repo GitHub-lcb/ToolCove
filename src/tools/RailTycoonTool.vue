@@ -4,21 +4,21 @@
 // 把能被唯一确定的站点标出来，并据此给策略卡建议。
 // 纯本地计算，不联网、不读取任何游戏进程——性质等同于摆在桌面上的记事本。
 //
-// 两种版面（驾驶舱可再叠加「悬浮模式」：收掉标题栏与顶栏，只留结论和录入并自动置顶）：
-//   - 驾驶舱（HUD）：为「边玩边扫一眼」设计。左栏承担「记什么」（当前站的类型 + 提示），
-//     右栏回答「下一站是什么」，底部整条横陈「这一站怎么做」。
+// 两种版面（驾驶舱可再叠加「悬浮模式」：收掉标题栏与工具栏，只留路线与录入并自动置顶）：
+//   - 驾驶舱（HUD）：为「边玩边扫一眼」设计，四段式——
+//     工具栏（题目 + 欠提示入口 + 图标动作）、路线行（核心）、记这一站、提醒与动作。
+//     路线行一格一站，**推断长在它预测的那一站上**：第一个未确认的站会鼓成一个气泡，
+//     锁定时显示 100%，待定时给头名候选与占比条。全窗口只有「100% 锁定」用彩色，
+//     类型不再各染一色；已录入是实底灰、未知是虚线 + 灰「?」。
+//     提醒只在有坑时出现（记录矛盾 / 连站别拿售价卡），一句「别做什么」+ 一句「为什么」。
 //     配合标题栏的置顶图钉可浮在游戏画面上（游戏需设为无边框窗口）。
-//     悬浮模式连工具顶栏一起藏了，所以「全部记录」做成覆盖层挂在录入卡上——
+//     悬浮模式连工具栏一起藏了，所以「全部记录」仍留着覆盖层入口——
 //     不切版面就能查看并回改任意一站，这是浮窗里唯一的全表入口。
 //   - 完整版面：全部节点全表（始发站 + 第 1~15 站）+ 路线条 + 侧栏，用于校对录入、复盘与回头补录。
 //
-// 站号口径：数组下标 0 是**始发站**——游戏里它不参与「第 N 站」编号，所以「第 N 站」落在下标 N 上
-// （不是下标 + 1）。站号只在 railTycoon.js 的 stationNumber() 里算一次。
-// 始发站**同样要记「未来 3 站」提示**（它的提示覆盖第 1~3 站），只是没有哪条提示会回头覆盖它。
-//
-// 驾驶舱为什么不放路线条：逐条对照「是否支持导航 / 理解 / 决策 / 行动」——跳站是低频操作
-// （且有上/下一站按钮），已记的站刚记过、未记的站全是「?」，16 个描边矩形反而构成视野里
-// 最强的栅格噪声，占据右上角却不产生任何信息增量。删掉它，回顾与纠错交给完整版面。
+// 站号口径：数组下标 0 是**始发站**，它就是「第 1 站」；于是「第 N 站」落在下标 N-1 上。
+// 站号只在 railTycoon.js 的 stationNumber() 里算一次，视图层不许自己做 +1。
+// 始发站**同样要记「未来 3 站」提示**（它的提示覆盖第 2~4 站），只是没有哪条提示会回头覆盖它。
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
@@ -31,6 +31,7 @@ import {
   CELL_RECORD,
   firstIncomplete,
   hintMax,
+  hintRange,
   HINT_SAME,
   isStationComplete,
   nextIncompleteAfter,
@@ -38,7 +39,6 @@ import {
   normalizeType,
   ORIGIN_INDEX,
   RECORD_DONE,
-  RECORD_EMPTY,
   RECORD_HALF,
   solveRailRoute,
   stationNumber,
@@ -62,18 +62,30 @@ const TYPE_LABEL_KEYS = TYPE_KEYS.map((k) => `toolbox.rail.type${capitalize(k)}`
 const TYPE_SHORT_KEYS = TYPE_KEYS.map((k) => `toolbox.rail.short${capitalize(k)}`);
 const TYPE_CELL_KEYS = TYPE_KEYS.map((k) => `toolbox.rail.cell${capitalize(k)}`);
 
-/** HUD 里不展示的通用节奏建议——它们是常驻提醒，不该占跑商时的显示面积。 */
-const HUD_ADVICE_SKIP = new Set(["backToBack", "rhythm"]);
+/**
+ * 读上次停留的版面偏好。放在 setup 里同步读（而不是 onMounted 后再切），
+ * 免得开着完整版面的人每次打开先闪一下驾驶舱；没有 localStorage（SSR）时退回驾驶舱。
+ */
+function readSavedView() {
+  try {
+    return localStorage.getItem(VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
 
 const observed = ref(new Array(STATION_COUNT).fill(null));
 const hints = ref(new Array(STATION_COUNT).fill(null));
-const isHud = ref(true);
-/** 当前正在录入的站点（0 基）。与「推断前沿」解耦：类型和提示都记了才自动前进。 */
+const isHud = ref(readSavedView() !== "full");
+/** 当前正在录入的站点（0 基）。只由「去第 N 站」按钮推进（见 goNext），不自动前进。 */
 const cursor = ref(0);
 /** 「全部记录」覆盖层是否打开（浮窗里唯一的全表入口）。 */
 const showAll = ref(false);
 /** 「清空重来」的确认层是否打开。 */
 const showResetConfirm = ref(false);
+/** 「推断自动填入」类型的站下标（界面用虚线下划线区分来源，手动改过后移除）。 */
+const autoFilled = ref([]);
+const isAutoFilled = (index) => autoFilled.value.includes(index);
 
 const result = computed(() => solveRailRoute({ observed: observed.value, hints: hints.value }));
 const advice = computed(() => buildAdvice(result.value, { stationCount: result.value.stationCount }));
@@ -135,78 +147,70 @@ const hasInput = computed(
     hints.value.some((v) => v !== null),
 );
 
-/** 已确认类型的站点数，HUD 进度用。始发站没有类型，既不该计入也不该被老存档里的残留值影响。 */
-const typedCount = computed(
-  () => observed.value.filter((v, i) => i > ORIGIN_INDEX && v !== null).length,
-);
-
-/** 进度条宽度：已确认类型的站 / 需要类型的站（15 站，始发站没有类型）。 */
-const progressPct = computed(
-  () => `${Math.round((typedCount.value / Math.max(1, stationCount.value - 1)) * 100)}%`,
-);
-
 const typeLabel = (index) => t(TYPE_LABEL_KEYS[index]);
 const typeShort = (index) => t(TYPE_SHORT_KEYS[index]);
 /** 记录条格子里的单字结果：格子只有十几像素宽，两个字放不下，取每类一个代表字（酒/食/商）。 */
 const typeCell = (index) => t(TYPE_CELL_KEYS[index]);
 const percent = (value) => `${Math.round(value * 100)}%`;
 
-/**
- * 节点的显示名：始发站用「始发站」，其余用「第 N 站」。
- *
- * 编号取自 railTycoon.js 的 stationNumber()（= 数组下标，始发站不编号），所以
- * 「第 N 站」比「下标 + 1」小 1。改版前这里是 `index + 1`，工具里的站号一路比游戏大 1。
- */
+/** 节点的显示名：统一「第 N 站」（始发站 = 第 1 站），编号取自 stationNumber()。 */
 function stationName(index) {
   const n = stationNumber(index);
   return n === null ? t("toolbox.rail.origin") : t("toolbox.rail.nthStation", { n });
 }
 
-/** 完整版面表格首列：编号本体。始发站没有编号，显示名字。 */
+/** 完整版面表格首列：编号本体（始发站也有编号）。 */
 function stationCellMain(index) {
   const n = stationNumber(index);
-  return n === null ? t("toolbox.rail.origin") : String(n);
+  return n === null ? "—" : String(n);
 }
 
-/** 完整版面表格首列：位置说明。只有末站额外标「终点」。 */
+/** 完整版面表格首列：位置说明。首站标「始发站」、末站标「终点」。 */
 function stationCellSub(index) {
+  if (index === ORIGIN_INDEX) return t("toolbox.rail.origin");
   return index === stationCount.value - 1 ? t("toolbox.rail.terminus") : "";
 }
 
 /** 该节点是不是始发站。它没有类型——只记提示，不选类型。 */
-const isOrigin = (index) => stationNumber(index) === null;
+const isOrigin = (index) => index === ORIGIN_INDEX;
 
 /**
- * 该节点的提示覆盖哪 3 站：下标 i 的提示覆盖 i+1 / i+2 / i+3（见 railTycoon.js 的头注）。
+ * 该节点的提示覆盖哪几站：下标 i 的提示覆盖 i+1 ~ min(i+3, 终点站)（见 railTycoon.js 的 hintRange）。
  *
  * 这是整个工具最容易记错的一条口径——记错一站，后续推断和冲突判定全歪，而且从界面上看不出来。
  * 所以把它显示出来：记的时候能当场和游戏里那句话对上，对不上就是记错站了。
- * 返回 null 表示这一站没有提示可录（末尾凑不满 3 站）。
+ * 窗口在尾段会收窄（第 13 站 → 14~15、第 14 站 → 15）；返回 null 表示没有提示可录（终点站）。
  */
 function hintWindow(index) {
-  if (!canHintAt(index, stationCount.value)) return null;
-  return { from: stationNumber(index + 1), to: stationNumber(index + 3) };
+  const range = hintRange(index, stationCount.value);
+  return range ? { from: stationNumber(range.from), to: stationNumber(range.to) } : null;
 }
 
-/** 提示覆盖范围的短标签（驾驶舱用，省地方）。 */
+/** 提示覆盖范围的短标签（驾驶舱用，省地方）；只剩 1 站时用单站说法。 */
 function hintCoversShort(index) {
   const w = hintWindow(index);
-  return w ? t("toolbox.rail.hintCoversShort", { from: w.from, to: w.to }) : "";
+  if (!w) return "";
+  return w.from === w.to
+    ? t("toolbox.rail.hintCoversOneShort", { to: w.to })
+    : t("toolbox.rail.hintCoversShort", { from: w.from, to: w.to });
 }
 
 /** 提示覆盖范围的完整说法（title / aria 用）。 */
 function hintCoversLong(index) {
   const w = hintWindow(index);
-  return w ? t("toolbox.rail.hintCoversLong", { from: w.from, to: w.to }) : t("toolbox.rail.hintDisabled");
+  if (!w) return t("toolbox.rail.hintDisabled");
+  return w.from === w.to
+    ? t("toolbox.rail.hintCoversOneLong", { to: w.to })
+    : t("toolbox.rail.hintCoversLong", { from: w.from, to: w.to });
 }
 
 /**
- * 该节点为什么不能记提示。现在只剩「末尾凑不满 3 站」这一种情况了——始发站同样有提示。
- * 做成 computed：它对任何站都是同一句话，不必再带下标。
+ * 该节点为什么不能记提示。现在只剩「终点站后面没有站」这一种情况了——始发站与尾段都照样有
+ * 提示（尾段窗口收窄）。做成 computed：它对任何站都是同一句话，不必再带下标。
  */
 const hintBlockedTip = computed(() => t("toolbox.rail.hintDisabled"));
 
-/** 该站能不能记提示。提示只覆盖其后 3 站，故末尾第 13~15 站没有提示可记。 */
+/** 该站能不能记提示。提示要覆盖它后面的站，故只有终点站没有提示可记。 */
 const hintable = computed(() => canHintAt(cursor.value, stationCount.value));
 
 /** 该站是否已记录完整（类型 + 提示）。判定逻辑在 railTycoon.js，有单测覆盖。 */
@@ -222,41 +226,114 @@ const stationDone = (index) =>
 const recordState = (index) =>
   stationRecordState(observed.value, hints.value, index, stationCount.value);
 
-/** 某一格还没有结果时的占位：始发站不编号，用一个字占位；其余就是站号。 */
+/** 某一格还没有结果时的占位：站号；始发站没有类型，用「始」占位。 */
 const stripLabel = (index) =>
-  stationNumber(index) === null ? t("toolbox.rail.stripOrigin") : String(stationNumber(index));
+  isOrigin(index) ? t("toolbox.rail.stripOrigin") : String(stationNumber(index));
 
 /**
- * 记录条一格的最终呈现：格子里写什么字、带哪些类。
+ * 路线行（驾驶舱核心展示区）每格的呈现：站号 + 中心字 + 状态类 + 气泡内容。
  *
  * 内容优先级（判据在 railTycoon.js 的 stripCellContent，有单测）：
- *   已录入的类型 > 推断唯一确定（locked）的类型 > 站号占位。
- * 字的颜色跟着类型走（酒=金 / 食=绿 / 商=蓝，与推断占比条同色系）；
- * 推断确认但未录入的再加 `pred` 类画虚框——**结果可以提前知道，但「录没录过」不能含糊**。
+ *   已录入的类型 > 推断唯一确定（locked）的类型 > 未知。
+ * 颜色只有一种语义：**主色 = 100% 锁定**（pred）；已录入 = 实底灰（rec）；未知 = 虚线 + 灰「?」。
+ * 首个未确认站（推断前沿）会「鼓」成一个气泡：锁定时同主色，待定时同中性色但加粗描边，
+ * 并给出头名候选与占比条。
  */
-function stripCellView(index) {
+function routeCellView(index) {
+  const r = result.value;
   const obs = observed.value[index];
   let predicted = null;
-  if (
-    obs === null &&
-    !isOrigin(index) &&
-    result.value.consistent &&
-    result.value.locked[index]
-  ) {
-    predicted = result.value.possibleTypes[index][0];
+  if (obs === null && !isOrigin(index) && r.consistent && r.locked[index]) {
+    predicted = r.possibleTypes[index][0];
   }
   const c = stripCellContent(obs, predicted);
-  const classes = [`st-${recordState(index)}`];
-  if (c.typeIndex !== null) classes.push(`t-${TYPE_KEYS[c.typeIndex]}`);
-  if (c.kind === CELL_PREDICT) classes.push("pred");
-  if (index === cursor.value) classes.push({ current: true });
-  if (index === stationCount.value - 1) classes.push({ end: true });
+  const isCurrent = index === cursor.value;
+  const classes = [c.kind === CELL_RECORD ? "rec" : c.kind === CELL_PREDICT ? "pred" : "unknown"];
+  if (isCurrent) classes.push("bubble", "current");
+  if (index === stationCount.value - 1) classes.push("end");
+  if (routeCellDebt(index)) classes.push("debt");
+  if (isAutoFilled(index)) classes.push("auto");
+
+  let char = c.kind === CELL_LABEL ? stripLabel(index) : typeCell(c.typeIndex);
+  let sub = "";
+  let bubble = null;
+  // 气泡长在「正在记录的当前站」上——它与下方录入卡说的是同一站，避免「上面放大第 5 站、
+  // 下面在记第 4 站」的割裂。「下一站是什么」由路线上的虚线锁定格与右侧动作 chip 承担。
+  if (isCurrent) {
+    bubble = { locked: false, top: null, segments: [] };
+    if (isOrigin(index)) {
+      char = t("toolbox.rail.stripOrigin");
+      sub = stationDone(index) ? t("toolbox.rail.stripDone") : t("toolbox.rail.hudStateNeedHint");
+    } else if (c.kind === CELL_RECORD) {
+      // 已录入（含推断自动填入）：大字给类型名，小字提醒这一站还差什么
+      char = typeLabel(c.typeIndex);
+      sub = stationDone(index) ? t("toolbox.rail.stripDone") : t("toolbox.rail.hudStateNeedHint");
+    } else if (r.consistent && r.possibleTypes[index].length) {
+      const types = r.possibleTypes[index]
+        .map((ti) => ({ ti, ratio: r.ratio[index][ti] }))
+        .sort((a, b) => b.ratio - a.ratio);
+      const locked = r.locked[index];
+      // 尚未录入：锁定给类型名 + 100%，待定给头名与占比、并在下面铺三根占比条
+      char = locked ? typeLabel(types[0].ti) : `${typeLabel(types[0].ti)} ${percent(types[0].ratio)}`;
+      sub = locked
+        ? `${percent(1)} · ${t("toolbox.rail.hudCertain")}`
+        : types.slice(1).map((s) => `${typeShort(s.ti)} ${percent(s.ratio)}`).join(" · ");
+      bubble = { locked, top: types[0], segments: locked ? [] : types };
+    } else {
+      char = "?";
+    }
+  }
   return {
-    text: c.kind === CELL_LABEL ? stripLabel(index) : typeCell(c.typeIndex),
+    index,
+    number: stationNumber(index),
+    char,
+    sub,
     kind: c.kind,
     typeIndex: c.typeIndex,
+    bubble,
     classes,
+    tip: routeCellTip(index, c),
   };
+}
+
+/** 路线行整体：一格一站，气泡落在首个未确认站上。 */
+const routeCells = computed(() =>
+  Array.from({ length: stationCount.value }, (_, i) => routeCellView(i)),
+);
+
+/** 这一格是否欠提示：提示位为空、且光标已经走过它（后面的站本来就还没轮到）。 */
+function routeCellDebt(index) {
+  return (
+    canHintAt(index, stationCount.value) &&
+    hints.value[index] === null &&
+    index < cursor.value
+  );
+}
+
+/**
+ * 某一格鼠标悬停 / 读屏时的说明：站名 · 记到哪了（· 结果 · 提示 · 欠提示）。
+ * 格子里只放得下一个字，其余全靠这一行——所以它必须把状态和结果都说全。
+ */
+function routeCellTip(index, content = routeCellView(index)) {
+  const state = recordState(index);
+  const bits = [
+    stationName(index),
+    state === RECORD_DONE
+      ? t("toolbox.rail.stripDone")
+      : state === RECORD_HALF
+        ? t("toolbox.rail.stripHalf")
+        : t("toolbox.rail.stripEmpty"),
+  ];
+  if (content.kind === CELL_RECORD) {
+    bits.push(typeLabel(content.typeIndex));
+    if (isAutoFilled(index)) bits.push(t("toolbox.rail.stripAuto"));
+  } else if (content.kind === CELL_PREDICT) {
+    bits.push(t("toolbox.rail.stripPred", { type: typeLabel(content.typeIndex) }));
+  }
+  const h = hintText(hints.value[index]);
+  if (h) bits.push(h);
+  if (routeCellDebt(index)) bits.push(t("toolbox.rail.stripDebt"));
+  return bits.join(" · ");
 }
 
 /** 已录提示的短文案（`数量相同` / `酒庄最多`）；没录则空串。按值反查，不去解析编码。 */
@@ -267,31 +344,7 @@ function hintText(value) {
   return ti === -1 ? "" : t("toolbox.rail.optHintMaxShort", { type: typeShort(ti) });
 }
 
-/**
- * 某一格鼠标悬停时的说明：站名 · 记到哪了（· 结果是什么 · 提示是什么）。
- * 格子里只放得下一个字，其余全靠这一行——所以它必须把状态和结果都说全。
- */
-function stripTip(index) {
-  const view = stripCellView(index);
-  const state = recordState(index);
-  const bits = [
-    stationName(index),
-    state === RECORD_DONE
-      ? t("toolbox.rail.stripDone")
-      : state === RECORD_HALF
-        ? t("toolbox.rail.stripHalf")
-        : t("toolbox.rail.stripEmpty"),
-  ];
-  if (view.kind === CELL_RECORD) bits.push(typeLabel(view.typeIndex));
-  else if (view.kind === CELL_PREDICT) {
-    bits.push(t("toolbox.rail.stripPred", { type: typeLabel(view.typeIndex) }));
-  }
-  const h = hintText(hints.value[index]);
-  if (h) bits.push(h);
-  return bits.join(" · ");
-}
-
-/** 16 站全部记完（含始发站与第 1~12 站的提示，共 13 条）——此时录入区收起，只剩结论与建议。 */
+/** 16 站全部记完（类型 + 提示，提示位共 15 个：始发站到第 15 站）——录入区收起，只剩提醒。 */
 const allRecorded = computed(
   () => firstIncomplete(observed.value, hints.value, stationCount.value) === -1,
 );
@@ -313,62 +366,70 @@ const missingHints = computed(() => {
   return n;
 });
 
-/** HUD 结论块。只回答一个问题：下一站是什么。 */
-const hero = computed(() => {
+/**
+ * 驾驶舱右列：把建议压成「一句提醒 + 一句动作」，并在卡片底部放下一步操作。
+ *
+ * 有坑才亮提醒（记录矛盾 / 连站别拿售价卡），其余建议折叠成一条动作 chip，
+ * 长解释留在完整版面——跑商时读不完的文字等于没有。
+ * 本站记全后，底部出现「去第 N 站 →」主按钮（手动推进，见 goNext）；没记全时
+ * 用一句浅色说明填住这块空白，告诉用户还差什么才能走。
+ */
+const hudSide = computed(() => {
   const r = result.value;
-  if (!r.consistent) {
-    return {
-      kind: "conflict",
-      cls: "t-danger",
-      label: t("toolbox.rail.conflictTitle"),
-      badge: null,
-      index: null,
-      // 有诊断结果就指名道姓（「改哪一条」才是用户要的信息），诊断不出才退回泛化说明。
-      note: conflictWhat.value || t("toolbox.rail.conflictDesc"),
-    };
-  }
-  if (r.nextIndex === -1) {
-    return {
-      kind: "done",
-      cls: "t-done",
-      label: t("toolbox.rail.hudDoneAll"),
-      badge: null,
-      index: null,
-      note: t("toolbox.rail.hudDoneAllDesc"),
-    };
-  }
-  const index = r.nextIndex;
-  const types = r.possibleTypes[index];
-  if (r.locked[index]) {
-    // 「确定」和「待定」共用同一套占比条隐喻，只是收敛成一根 100% 满条。
-    // 旧版锁死时换成一个超大类型名，用户得重新学一遍「锁死长什么样」，
-    // 而且看不到 100%——分不清「确定」和「只是最可能」。
-    return {
-      kind: "certain",
-      cls: `t-${TYPE_KEYS[types[0]]}`,
-      label: t("toolbox.rail.hudInferLabel"),
-      badge: t("toolbox.rail.hudCertain"),
-      index,
-      bars: [{ ti: types[0], ratio: 1, locked: true }],
-    };
-  }
-  // 按占比降序：最可能的排在最前面，扫一眼先看第一根条。
-  const bars = types
-    .map((ti) => ({ ti, ratio: r.ratio[index][ti], locked: false }))
-    .sort((a, b) => b.ratio - a.ratio);
-  return {
-    kind: "open",
-    cls: "t-open",
-    label: t("toolbox.rail.hudInferLabel"),
-    badge: t("toolbox.rail.hudOpen"),
-    index,
-    bars,
-  };
-});
+  const items = advice.value;
+  const has = (key) => items.some((i) => i.key === key);
+  const out = { alert: null, action: "", extra: "", note: "", goNext: null, wait: "" };
 
-/** HUD 建议：只留决定性条目，通用节奏建议挪到完整版面。 */
-const hudAdvice = computed(() => adviceView.value.filter((item) => !HUD_ADVICE_SKIP.has(item.key)));
-const hudAdviceMore = computed(() => adviceView.value.length - hudAdvice.value.length);
+  if (!r.consistent) {
+    // 有诊断结果就指名道姓（「改哪一条」才是用户要的信息），诊断不出才退回泛化说明。
+    out.alert = {
+      tone: "danger",
+      title: t("toolbox.rail.conflictTitle"),
+      detail: conflictWhat.value || t("toolbox.rail.conflictDesc"),
+    };
+    return out;
+  }
+
+  if (has("dontBoostSame")) {
+    const next = r.nextIndex;
+    out.alert = {
+      tone: "warn",
+      title: t("toolbox.rail.hudAlertSameTitle"),
+      detail: t("toolbox.rail.hudAlertSameDetail", {
+        prev: stationName(next - 1),
+        next: stationName(next),
+        type: typeLabel(advice.value.find((i) => i.key === "dontBoostSame").typeIndex ?? 0),
+      }),
+    };
+  }
+
+  // 下一步操作：本站记全 → 可去下一站；没记全 → 说明为什么还不能走。
+  const nextIncomplete = nextIncompleteAfter(
+    observed.value,
+    hints.value,
+    cursor.value,
+    stationCount.value,
+  );
+  if (stationDone(cursor.value)) {
+    if (nextIncomplete !== -1) {
+      out.goNext = t("toolbox.rail.hudGoNext", { n: stationNumber(nextIncomplete) });
+    }
+  } else {
+    out.wait = t("toolbox.rail.hudWaitNext");
+  }
+
+  if (r.nextIndex === -1) {
+    out.note = t("toolbox.rail.hudDoneAll");
+    return out;
+  }
+
+  const certain = items.find((i) => i.key === "certain");
+  if (certain) out.action = t("toolbox.rail.hudActCertain", { type: typeLabel(certain.typeIndex ?? 0) });
+  else if (has("origin")) out.action = t("toolbox.rail.hudActOrigin");
+  else if (has("uncertain")) out.action = t("toolbox.rail.hudActUncertain");
+  if (has("tail")) out.extra = t("toolbox.rail.hudActTail");
+  return out;
+});
 
 /** 下一站结论区要展示的站点：从首个未确认站起，最多往后看 3 站（完整版面用）。 */
 const upcoming = computed(() => {
@@ -423,6 +484,10 @@ function setObserved(index, raw) {
   const next = observed.value.slice();
   next[index] = normalizeType(raw);
   observed.value = next;
+  // 手动改动（含清除）后不再是「推断自动填入」
+  if (autoFilled.value.includes(index)) {
+    autoFilled.value = autoFilled.value.filter((i) => i !== index);
+  }
 }
 
 function setHint(index, raw) {
@@ -434,34 +499,46 @@ function setHint(index, raw) {
 /** 记录本站类型：点已选中的类型即清除，省掉一个单独的清除按钮。 */
 function recordType(index, typeIndex) {
   setObserved(index, observed.value[index] === typeIndex ? "" : String(typeIndex));
-  maybeAdvance(index);
 }
 
 /** 记录本站提示。提示每站都要记——它是推断的唯一信息源，界面不替你跳过这一步。 */
 function recordHint(index, value) {
   setHint(index, hints.value[index] === value ? "" : value);
-  maybeAdvance(index);
 }
 
 /**
- * 记完一站才自动前进。
- * 只填类型就跳，会让人永远记不上这一站的提示——那正是整个推断的关键约束。
+ * 推断已唯一确定的站：光标一到位就把类型自动记上——玩家在游戏里看到的就是它，
+ * 只需再选提示。这不改变解空间（所有合法排列本就都取这一类），只是把已知结论落到记录上。
+ * 自动填入的格子在界面上用虚线下划线标出（与「亲眼录入」区分），手动改过后标记消失。
  */
-function maybeAdvance(index) {
-  if (index !== cursor.value) return;
-  if (!stationDone(index)) return;
-  const next = nextIncompleteAfter(observed.value, hints.value, index, stationCount.value);
-  if (next !== -1) cursor.value = next;
+function prefillLockedType(index) {
+  if (observed.value[index] !== null) return false;
+  if (!result.value.consistent || !result.value.locked[index]) return false;
+  const predicted = result.value.possibleTypes[index]?.[0];
+  if (predicted === undefined) return false;
+  setObserved(index, predicted);
+  autoFilled.value = [...autoFilled.value, index];
+  return true;
 }
 
 /**
- * 「上一站 / 下一站」按钮在这里被删掉了。
+ * 去下一站（右侧主按钮触发的显式动作）。
  *
- * 那两个按钮原本只有这一处入口，作用是手动挪光标；实测被当成「确认录入」点过——
- * 点了只是把光标挪走，界面看着像没反应。现在前进只走一条路：本站「类型 + 提示」
- * 记完自动跳到下一站（maybeAdvance）；回改历史站走「全部记录」覆盖层。
- * 光标不再是用户需要维护的东西，留一个没有入口的函数只会误导下一个读代码的人。
+ * 为什么不自动前进：记完提示 ≠ 离开这一站——玩家还在本站购物、选卡，此时工具若自己
+ * 跳到下一站，录入卡会写着「第 5 站」而人还在第 4 站。所以光标只在本站记全后，由玩家
+ * 按「去第 N 站 →」手动推进；推进时下一站若已被推断唯一确定，类型自动补上（只需记提示）。
+ * 已记全的站会被跳过（回改历史站留下的空档不会挡路）。
  */
+function goNext() {
+  if (!stationDone(cursor.value)) return;
+  for (let guard = 0; guard < stationCount.value; guard += 1) {
+    const next = nextIncompleteAfter(observed.value, hints.value, cursor.value, stationCount.value);
+    if (next === -1) return;
+    cursor.value = next;
+    // 下一站推断已确定 → 补类型；提示还缺（正常情况）就停下等用户记
+    if (!prefillLockedType(next) || !stationDone(next)) return;
+  }
+}
 
 /** 整站清空（类型 + 提示），用于把某一站重录。 */
 function clearStation(index) {
@@ -472,6 +549,7 @@ function clearStation(index) {
 function resetAll() {
   observed.value = new Array(STATION_COUNT).fill(null);
   hints.value = new Array(STATION_COUNT).fill(null);
+  autoFilled.value = [];
   cursor.value = 0;
 }
 
@@ -545,12 +623,15 @@ watch([showAll, showResetConfirm], (open) => {
 });
 
 onMounted(async () => {
-  // 上次停在哪个版面就还用哪个：跑商的人不希望每次都手动切一次。
-  isHud.value = localStorage.getItem(VIEW_KEY) !== "full";
+  // 版面偏好在 setup 里已同步读过（见 readSavedView）：跑商的人不希望每次都手动切一次。
   const saved = await loadToolbox(STORE_KEY, null, { onError: (e) => console.error(e) });
   if (!saved) return;
   observed.value = Array.from({ length: STATION_COUNT }, (_, i) => normalizeType(saved.observed?.[i]));
-  hints.value = Array.from({ length: STATION_COUNT }, (_, i) => normalizeHint(saved.hints?.[i]));
+  // 存档里的提示同样按可录位置过滤：终点站那格若残留了值，界面会把它显示在一个禁用的
+  // 下拉里，但它其实不参与任何推算——两端的口径要与手机版 data.js 的归一保持一份。
+  hints.value = Array.from({ length: STATION_COUNT }, (_, i) =>
+    canHintAt(i, STATION_COUNT) ? normalizeHint(saved.hints?.[i]) : null,
+  );
   // 这里**故意不做**任何「把下标 0 的数据搬到下标 1」的迁移。
   // 上一版曾按「始发站没有提示、下标 0 是旧版第 1 站」的口径搬过一次——现在始发站自己就有提示，
   // 再搬就会把用户刚记下的始发站提示偷走，而这种丢失事后完全看不出来。
@@ -568,6 +649,9 @@ onMounted(async () => {
       ? savedCursor
       : // 全记完时 firstIncomplete 返回 -1：那时录入区本来就收起了，落在末尾比落在 0 更不突兀
         Math.max(firstIncomplete(observed.value, hints.value, STATION_COUNT), 0);
+  // 恢复的光标若停在「推断已唯一确定」的站上，同样补上类型（与 goNext 的行为一致）。
+  // 这里**不**自动前进：玩家可能还停在这一站购物，光标该停在他离开时的地方。
+  prefillLockedType(cursor.value);
 });
 
 onBeforeUnmount(() => {
@@ -580,64 +664,131 @@ onBeforeUnmount(() => {
   <div class="rail-tool" :class="isHud ? 'is-hud' : 'is-full'">
     <!-- 悬浮模式：整条顶栏让位给内容。跑商时只需要「下一站是什么 + 记什么」，
          复制 / 清空 / 切版面是开局与收尾动作——退出悬浮（窗口左上角）就能看到。 -->
-    <div v-if="!isFloat" class="action-bar">
-      <!-- 驾驶舱顶栏左边 = 16 格记录条（始发站 → 终点站，一格一站）。
-           它替掉了旧版的「挑战线路 · 16 站」徽标与「N 种合法排列」：
-           排列数是十万到千万量级，跑商时既读不出趋势、也拿它做不了任何决定；
-           而这 16 格回答的是另一个真正会被问到的问题——我记到哪了、哪站还欠一半。
-           确认的结果直接写进格子（已录入=实底彩字，推断锁定=虚框彩字），
-           光看底色得凑近猜，字才是结果本身。
-           格子只报状态、不可点：手动翻站上一轮已经删掉（要回改走「全部记录」覆盖层），
-           这里再开一个入口就等于把它恢复回来了。 -->
-      <ol v-if="isHud" class="mini-strip" :title="t('toolbox.rail.stripTip')">
-        <li
-          v-for="index in stationCount"
-          :key="index"
-          class="mini-cell"
-          :class="stripCellView(index - 1).classes"
-          :title="stripTip(index - 1)"
-        >{{ stripCellView(index - 1).text }}</li>
-      </ol>
-      <!-- 完整版面照旧用徽标：那边另有一整条路线卡（每格带类型），不再重复一排小方格。 -->
-      <template v-else>
+    <template v-if="!isFloat">
+      <!-- ── 驾驶舱 · 工具栏 ─────────────────────────────────────────
+           跑商时最常做的是「记 + 看」，复制 / 清空 / 切版面是开局与收尾动作，
+           所以它们退成图标；欠提示做成可点文字，因为它会改变推断强度。 -->
+      <div v-if="isHud" class="hud-toolbar">
+        <span class="hud-title"><Icon name="train" :size="14" />{{ t("toolbox.rail.badge", { n: stationCount }) }}</span>
+        <button
+          v-if="missingHints > 0"
+          class="debt-link"
+          type="button"
+          :title="t('toolbox.rail.hudGoFix')"
+          @click="toggleView"
+        >{{ t("toolbox.rail.hudMissingHints", { n: missingHints }) }}</button>
+        <span class="hud-spacer"></span>
+        <button
+          class="hud-iconbtn"
+          type="button"
+          :title="t('toolbox.rail.allRecordsTip')"
+          :aria-label="t('toolbox.rail.allRecords')"
+          @click="showAll = true"
+        >
+          <Icon name="grid" :size="15" />
+        </button>
+        <button
+          class="hud-iconbtn"
+          type="button"
+          :title="t('toolbox.rail.modeToFull')"
+          :aria-label="t('toolbox.rail.modeFull')"
+          @click="toggleView"
+        >
+          <Icon name="layout" :size="15" />
+        </button>
+        <!-- 复制仍然要「有东西可复制」才亮：空记录复制出来只是一句「还没记录」，没有意义。 -->
+        <button
+          class="hud-iconbtn"
+          type="button"
+          :disabled="!hasInput"
+          :title="t('toolbox.rail.copy')"
+          :aria-label="t('toolbox.rail.copy')"
+          @click="copySummary"
+        >
+          <Icon name="copy" :size="15" />
+        </button>
+        <!-- 清空重来**常亮**：它是卡在半路时唯一的退路，退路不能有条件。 -->
+        <button
+          class="hud-iconbtn"
+          type="button"
+          :title="t('toolbox.rail.resetTip')"
+          :aria-label="t('toolbox.rail.reset')"
+          @click="askReset"
+        >
+          <Icon name="refresh" :size="15" />
+        </button>
+        <button
+          v-if="canFloat"
+          class="hud-iconbtn"
+          type="button"
+          :title="t('toolbox.rail.hudFloat')"
+          :aria-label="t('toolbox.rail.hudFloat')"
+          @click="enterFloat"
+        >
+          <Icon name="layers" :size="15" />
+        </button>
+      </div>
+
+      <!-- 完整版面照旧用徽标与文字按钮：那边信息密度低，不需要收成图标。 -->
+      <div v-else class="action-bar">
         <span class="badge-route"><Icon name="train" :size="14" />{{ t("toolbox.rail.badge", { n: stationCount }) }}</span>
         <span v-if="!result.consistent" class="badge-conflict"><Icon name="alert" :size="14" />{{ t("toolbox.rail.conflictTitle") }}</span>
-      </template>
-      <!-- 记录条自己就吃剩余宽度，所以驾驶舱里不再需要 spacer：
-           两者都是 flex:1，留着会把富余对半分，格子白窄一半。 -->
-      <span v-if="!isHud" class="action-spacer"></span>
-      <!-- 悬浮开关做成纯图标按钮：这一行在 640px 下要放下 4 个控件，
-           再加一个带文字的按钮，英文版就会折行——折行不会被横向溢出检查抓到，
-           却会把下面建议区的高度顶掉。会隐藏什么、会自动置顶，都写进 title。 -->
-      <button
-        v-if="canFloat"
-        class="btn-ghost sm icon"
-        type="button"
-        :title="t('toolbox.rail.hudFloat')"
-        :aria-label="t('toolbox.rail.hudFloat')"
-        @click="enterFloat"
+        <span class="action-spacer"></span>
+        <button
+          v-if="canFloat"
+          class="btn-ghost sm icon"
+          type="button"
+          :title="t('toolbox.rail.hudFloat')"
+          :aria-label="t('toolbox.rail.hudFloat')"
+          @click="enterFloat"
+        >
+          <Icon name="layers" :size="14" />
+        </button>
+        <button
+          class="btn-ghost sm"
+          type="button"
+          :title="t('toolbox.rail.modeToHud')"
+          @click="toggleView"
+        >
+          <Icon name="gauge" :size="14" />{{ t("toolbox.rail.modeHud") }}
+        </button>
+        <button class="btn-ghost sm" type="button" :disabled="!hasInput" @click="copySummary">
+          <Icon name="copy" :size="14" />{{ t("toolbox.rail.copy") }}
+        </button>
+        <button class="btn-ghost sm" type="button" :title="t('toolbox.rail.resetTip')" @click="askReset">
+          <Icon name="refresh" :size="14" />{{ t("toolbox.rail.reset") }}
+        </button>
+      </div>
+    </template>
+
+    <!-- ── 驾驶舱 · 路线行（核心展示区）─────────────────────────────────
+         一格一站：站号 + 结果字。全窗口只有「100% 锁定」用彩色；已录入是实底灰、
+         未知是虚线 + 灰「?」。第一个还没确认的站会鼓成一个气泡——它的推断直接
+         长在它头上，录完它就轮到下一格。格子不可点（回改走「全部记录」）。 -->
+    <ol v-if="isHud" class="route-board" :aria-label="t('toolbox.rail.stripTitle')">
+      <li
+        v-for="cell in routeCells"
+        :key="cell.index"
+        class="rnode"
+        :class="cell.classes"
+        :title="cell.tip"
+        :aria-label="cell.tip"
       >
-        <Icon name="layers" :size="14" />
-      </button>
-      <button
-        class="btn-ghost sm"
-        type="button"
-        :title="isHud ? t('toolbox.rail.modeToFull') : t('toolbox.rail.modeToHud')"
-        @click="toggleView"
-      >
-        <Icon :name="isHud ? 'layout' : 'gauge'" :size="14" />{{ isHud ? t("toolbox.rail.modeFull") : t("toolbox.rail.modeHud") }}
-      </button>
-      <!-- 复制仍然要「有东西可复制」才亮：空记录复制出来只是一句「还没记录」，没有意义。 -->
-      <button class="btn-ghost sm" type="button" :disabled="!hasInput" @click="copySummary">
-        <Icon name="copy" :size="14" />{{ t("toolbox.rail.copy") }}
-      </button>
-      <!-- 清空重来**常亮**。它此前是 :disabled="!hasInput"，于是「记录全空、光标却停在第 11 站」
-           这种存档状态下：没有记录 → 按钮变灰，而没有记录也就没有别的路能把光标挪回去——
-           整个工具卡死在半路。清空是唯一的退路，退路不能有条件。 -->
-      <button class="btn-ghost sm" type="button" :title="t('toolbox.rail.resetTip')" @click="askReset">
-        <Icon name="refresh" :size="14" />{{ t("toolbox.rail.reset") }}
-      </button>
-    </div>
+        <i class="rn">{{ cell.number }}</i>
+        <b class="rc">{{ cell.char }}</b>
+        <template v-if="cell.bubble">
+          <span v-if="cell.bubble.segments.length" class="rbars" aria-hidden="true">
+            <i
+              v-for="s in cell.bubble.segments"
+              :key="s.ti"
+              :style="{ flexGrow: s.ratio }"
+              :class="{ on: s.ti === cell.bubble.top.ti }"
+            ></i>
+          </span>
+          <span class="rw">{{ cell.sub }}</span>
+        </template>
+      </li>
+    </ol>
 
     <!-- ── 驾驶舱 · 录入：类型与提示是两层按钮组 ──────────────────────
          提示不能藏在下拉框里，更不能因为填完类型就跳过去——每站都有提示，
@@ -646,32 +797,16 @@ onBeforeUnmount(() => {
          这块排在左栏：跑商时手上的动作是「记脚下这一站」，先记下来才有得推断。
          头部只留一个**不可点**的「当前站」标签。它取代的是旧版那个「‹ 下一站 ›」按钮——
          那个按钮同时当站号又当翻站，被当成「确认 / 下一步」点过，点了却只是把光标挪走。
-         现在前进只有一条路：本站「类型 + 提示」记完自动跳到下一站（见 maybeAdvance）；
-         要跳回去改哪一站，点「全部记录」在覆盖层里改，浮窗里也点得开。 -->
+         现在前进只有一条路：本站「类型 + 提示」记全后，按右侧底部的「去第 N 站」手动推进
+         （见 goNext）——记完提示不代表已经购物完/离开本站。
+         要跳回去改哪一站，点工具栏的「全部记录」在覆盖层里改，浮窗里也点得开。 -->
     <section v-if="isHud && !allRecorded" class="quick">
       <div class="quick-head">
         <span class="quick-title" :title="t('toolbox.rail.hudRecordTip')">
           <Icon name="edit" :size="14" /><span class="quick-kind">{{ t("toolbox.rail.hudRecordShort") }}</span><span class="hdr-tag">{{ t("toolbox.rail.hudCurTag") }}</span><b>{{ stationName(cursor) }}</b>
         </span>
         <span class="quick-spacer"></span>
-        <!-- 漏提示是「推断变弱」而不是「少填一格」，所以做成可点的入口而不是死文字：
-             点它直接切到完整版面补录，省掉「我记得有个地方能改」这一步回忆。
-             不放 ⚠ 图标：琥珀底 + 边框已经把「这是警告」说完了，而头部在「漏 >9 条 + 清除」
-             同时出现时只剩 20px 余量，图标那 14px 该让给文字。 -->
-        <button
-          v-if="missingHints > 0"
-          class="quick-debt"
-          type="button"
-          :title="t('toolbox.rail.hudGoFix')"
-          @click="toggleView"
-        >
-          {{ t("toolbox.rail.hudMissingHints", { n: missingHints }) }}
-        </button>
-        <!-- 本站两样都空时「清除」没有可清除的东西，直接不渲染。
-             它此前是禁用态常驻，占 54px 却只服务于「光标停在一个空站」这个最常见的开局情形，
-             正是头部最挤的时候。有内容才出现，出现即有效。
-             现在只留图标：头部要放下「漏提示 + 清除 + 全部记录」三件，
-             而它是最低频的一件，文字让给「全部记录」。 -->
+        <!-- 本站两样都空时「清除」没有可清除的东西，直接不渲染（有内容才出现，出现即有效）。 -->
         <button
           v-if="observed[cursor] !== null || hints[cursor] !== null"
           class="qnav icon"
@@ -681,18 +816,6 @@ onBeforeUnmount(() => {
           @click="clearStation(cursor)"
         >
           <Icon name="x" :size="12" />
-        </button>
-        <!-- 全部记录：浮窗里唯一能「看到别的站」的入口。
-             驾驶舱原本只回答「当前站记什么 + 下一站是什么」，想回改历史站得先切到完整版面，
-             而悬浮模式把顶栏（含切版面按钮）藏起来了——于是浮在游戏上时根本进不去。
-             点它就地盖一层全表，不切版面、不丢位置，改完关掉还在原来那一站。 -->
-        <button
-          class="qnav"
-          type="button"
-          :title="t('toolbox.rail.allRecordsTip')"
-          @click="showAll = true"
-        >
-          <Icon name="layout" :size="12" />{{ t("toolbox.rail.allRecords") }}
         </button>
       </div>
 
@@ -712,7 +835,7 @@ onBeforeUnmount(() => {
             :key="key"
             type="button"
             class="qbtn"
-            :class="[`t-${key}`, { on: observed[cursor] === ti }]"
+            :class="{ on: observed[cursor] === ti }"
             :aria-pressed="observed[cursor] === ti"
             @click="recordType(cursor, ti)"
           >{{ typeLabel(ti) }}</button>
@@ -725,16 +848,13 @@ onBeforeUnmount(() => {
           :class="{ pending: needHint }"
           :title="`${t('toolbox.rail.hudHintLabelFull')}${hintable ? ` · ${hintCoversLong(cursor)}${needHint ? ` · ${t('toolbox.rail.hudStateNeedHint')}` : ` · ${t('toolbox.rail.hudStateOk')}`}` : ` · ${t('toolbox.rail.hintDisabled')}`}`"
         >{{ t("toolbox.rail.hudHintLabel") }}</span>
-        <!-- 把「这条提示覆盖哪 3 站」写在旁边：口径记错一站整盘就歪，而且事后看不出来。
-             放在按钮前面而不是后面，是为了让 4 个按钮的位置在任何站都一致，形成肌肉记忆。 -->
-        <span v-if="hintable" class="quick-covers" :title="hintCoversLong(cursor)">{{ hintCoversShort(cursor) }}</span>
         <div v-if="hintable" class="quick-btns">
           <button
             v-for="(key, ti) in TYPE_KEYS"
             :key="key"
             type="button"
             class="qbtn"
-            :class="[`t-${key}`, { on: hints[cursor] === hintMax(ti) }]"
+            :class="{ on: hints[cursor] === hintMax(ti) }"
             :aria-pressed="hints[cursor] === hintMax(ti)"
             :aria-label="t('toolbox.rail.optHintMax', { type: typeLabel(ti) })"
             :title="t('toolbox.rail.optHintMax', { type: typeLabel(ti) })"
@@ -743,7 +863,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="qbtn"
-            :class="{ on: hints[cursor] === HINT_SAME, 't-same': hints[cursor] === HINT_SAME }"
+            :class="{ on: hints[cursor] === HINT_SAME }"
             :aria-pressed="hints[cursor] === HINT_SAME"
             :aria-label="t('toolbox.rail.optHintSame')"
             :title="t('toolbox.rail.optHintSameTip')"
@@ -752,50 +872,43 @@ onBeforeUnmount(() => {
         </div>
         <span v-else class="quick-na">{{ hintBlockedTip }}</span>
       </div>
-    </section>
-    <!-- ── 驾驶舱 · 主视区：下一站结论 ────────────────────────────────
-         跑商时唯一必须一眼看清的东西。不确定时用占比条排序，
-         条长即概率，比并排的百分比胶囊更快分辨「谁最可能」。 -->
-    <section v-if="isHud" class="hero" :class="hero.cls">
-      <div class="hero-head">
-        <span class="hero-label"><Icon name="target" :size="13" />{{ hero.label }}</span>
-        <!-- 「下一站」标签紧挨站号：这块答的是**前方那一站**是什么，不是脚下这一站。
-             左侧录入卡写「当前站」、这里写「下一站」，两张卡各自在说哪一站才分得清。 -->
-        <span v-if="hero.index !== null" class="hdr-tag" :title="t('toolbox.rail.hudNextTagTip')">{{ t("toolbox.rail.hudNextTag") }}</span>
-        <span v-if="hero.index !== null" class="hero-nth">{{ stationName(hero.index) }}</span>
-        <span v-if="hero.badge" class="hero-badge">{{ hero.badge }}</span>
-      </div>
-
-      <div class="hero-body">
-        <!-- 确定与待定走同一个循环：确定时数组里只有一根 100% 的满条 -->
-        <ul v-if="hero.bars" class="hero-bars">
-          <li
-            v-for="b in hero.bars"
-            :key="b.ti"
-            class="hero-bar"
-            :class="[`t-${TYPE_KEYS[b.ti]}`, { locked: b.locked }]"
-          >
-            <span class="hb-name">{{ typeLabel(b.ti) }}</span>
-            <span class="hb-track"><i class="hb-fill" :style="{ width: percent(b.ratio) }"></i></span>
-            <span class="hb-pct">{{ percent(b.ratio) }}</span>
-          </li>
-        </ul>
-        <p v-else class="hero-note">{{ hero.note }}</p>
-      </div>
-
-      <!-- 进度只留一根细条：旧版这里是「进度条 + 现在 N/16」一整行（29px），
-           但站号已经由标题里的「第 N 站」给出，跑商时没人会去读「已记几站」——
-           进度条负责「还剩多少」的整体感觉就够了。省下的 21px 全部让给下面的策略建议，
-           英文文案较长时才不会把建议区顶到滚动。 -->
-      <div class="hero-foot">
-        <span class="hero-track"><i :style="{ width: progressPct }"></i></span>
-      </div>
+      <!-- 「这条提示覆盖哪几站」独立一行：口径记错一站整盘就歪、事后还看不出来，
+           而且要能在任何站号位数 / 任何语言下都不换行、不撑高卡片。 -->
+      <p v-if="hintable" class="covers">{{ hintCoversLong(cursor) }}</p>
+      <p v-else class="covers">{{ hintBlockedTip }}</p>
     </section>
 
+    <!-- ── 驾驶舱 · 提醒与动作 ────────────────────────────────────────
+         有坑才亮提醒条（记录矛盾 / 连站别拿售价卡），一句「别做什么」+ 一句「为什么」；
+         没有坑就只留一条动作 chip。长解释留在完整版面——跑商时读不完的文字等于没有。 -->
+    <aside v-if="isHud" class="hud-side">
+      <div
+        v-if="hudSide.alert"
+        class="alert2"
+        :class="`tone-${hudSide.alert.tone}`"
+        role="status"
+      >
+        <Icon name="alert" :size="14" />
+        <span class="txt">
+          <b>{{ hudSide.alert.title }}</b>
+          <small>{{ hudSide.alert.detail }}</small>
+        </span>
+      </div>
+      <span v-if="hudSide.action" class="act-chip">
+        <Icon name="sparkles" :size="13" />{{ hudSide.action }}
+      </span>
+      <span v-if="hudSide.extra" class="act-chip soft">{{ hudSide.extra }}</span>
+      <span v-if="hudSide.note" class="hud-note">{{ hudSide.note }}</span>
+      <!-- 卡片底部：本站记全后出现「去下一站」主按钮；没记全时用浅色说明填住空白。
+           手动推进的原因见 goNext——记完提示不代表玩家已经购物完/离开本站。 -->
+      <span v-if="hudSide.wait" class="hud-wait">{{ hudSide.wait }}</span>
+      <button v-if="hudSide.goNext" class="go-next" type="button" @click="goNext">
+        {{ hudSide.goNext }}<Icon name="chevron-right" :size="14" />
+      </button>
+    </aside>
     <!-- ── 路线条：只在完整版面出现 ────────────────────────────────────
-         驾驶舱里它不成立。逐条对照「是否支持导航 / 理解 / 决策 / 行动」：
-         跳站是低频操作（且有上/下一站按钮），已记的站你刚记过、未记的站全是「?」，
-         16 个描边矩形反而构成视野里最强的栅格噪声。删掉它，回顾交给完整版面。 -->
+         驾驶舱有自己的路线行（带推断气泡），这条横排路线条只服务完整版面：
+         每格给「站号 + 短类型名 + 图例」，用于校对录入与整体复盘。 -->
     <section v-if="!isHud" class="route-card">
       <div class="strip">
         <div
@@ -803,14 +916,13 @@ onBeforeUnmount(() => {
           :key="index"
           class="chip"
           :class="[
-            observed[index - 1] !== null ? `t-${TYPE_KEYS[observed[index - 1]]}` : '',
             observed[index - 1] === null && result.locked[index - 1] && result.consistent ? 'locked' : '',
             observed[index - 1] === null ? 'future' : '',
             index - 1 === result.nextIndex && result.consistent ? 'current' : '',
           ]"
           :title="stationName(index - 1)"
         >
-          <div class="chip-n">{{ stationNumber(index - 1) ?? t("toolbox.rail.origin") }}</div>
+          <div class="chip-n">{{ stationNumber(index - 1) }}</div>
           <div class="chip-t">
             <!-- 始发站没有类型：显示一条横杠，别显示「?」——那看着像「还没推断出来」 -->
             {{ isOrigin(index - 1) ? '—' : (observed[index - 1] !== null ? typeShort(observed[index - 1]) : (result.consistent && result.locked[index - 1] ? typeShort(result.possibleTypes[index - 1][0]) : '?')) }}
@@ -822,28 +934,6 @@ onBeforeUnmount(() => {
         <span><i class="dot ring"></i>{{ t("toolbox.rail.legendLocked") }}</span>
         <span><i class="dot future"></i>{{ t("toolbox.rail.legendFuture") }}</span>
       </div>
-    </section>
-
-    <!-- ── 驾驶舱 · 建议：只留决定性条目 ────────────────────────────── -->
-    <section v-if="isHud" class="hud-advice">
-      <div class="hud-advice-head">
-        <span class="hud-advice-title">{{ t("toolbox.rail.hudAdviceTitle") }}</span>
-        <button
-          v-if="hudAdviceMore > 0"
-          class="hud-advice-more"
-          type="button"
-          :title="t('toolbox.rail.hudMoreTip', { n: hudAdviceMore })"
-          @click="toggleView"
-        >{{ t("toolbox.rail.hudMore", { n: hudAdviceMore }) }}</button>
-        <span v-else-if="result.nextIndex === -1" class="hud-advice-more">{{ t("toolbox.rail.hudGoFull") }}</span>
-      </div>
-      <ul class="hud-advice-list">
-        <li v-for="item in hudAdvice" :key="item.key" :class="`tone-${item.tone}`">
-          <p class="adv-title">{{ item.title }}</p>
-          <p v-if="item.act" class="adv-act">{{ item.act }}</p>
-          <p v-if="item.detail" class="adv-detail">{{ item.detail }}</p>
-        </li>
-      </ul>
     </section>
 
     <!-- ── 完整版面主体：16 站全表 + 侧栏 ───────────────────────────── -->
@@ -909,16 +999,12 @@ onBeforeUnmount(() => {
                 <template v-if="isOrigin(index - 1)">
                   <span class="tag muted">{{ t("toolbox.rail.inferNa") }}</span>
                 </template>
-                <span v-else-if="observed[index - 1] !== null" class="tag" :class="`t-${TYPE_KEYS[observed[index - 1]]}`">
-                  {{ typeLabel(observed[index - 1]) }}
-                </span>
+                <span v-else-if="observed[index - 1] !== null" class="tag">{{ typeLabel(observed[index - 1]) }}</span>
                 <template v-else-if="!result.consistent">
                   <span class="tag muted">{{ t("toolbox.rail.inferConflict") }}</span>
                 </template>
                 <template v-else-if="result.possibleTypes[index - 1].length === 1">
-                  <span class="tag" :class="`t-${TYPE_KEYS[result.possibleTypes[index - 1][0]]}`">
-                    {{ typeLabel(result.possibleTypes[index - 1][0]) }}
-                  </span>
+                  <span class="tag locked">{{ typeLabel(result.possibleTypes[index - 1][0]) }}</span>
                   <span class="lock-mark" :title="t('toolbox.rail.inferLocked')">100%</span>
                 </template>
                 <template v-else>
@@ -926,7 +1012,6 @@ onBeforeUnmount(() => {
                     v-for="ti in result.possibleTypes[index - 1]"
                     :key="ti"
                     class="tag soft"
-                    :class="`t-${TYPE_KEYS[ti]}`"
                   >{{ typeShort(ti) }} {{ percent(result.ratio[index - 1][ti]) }}</span>
                 </template>
               </td>
@@ -948,10 +1033,13 @@ onBeforeUnmount(() => {
             <p>{{ t("toolbox.rail.allKnownDesc", { n: stationCount }) }}</p>
           </div>
           <div v-else class="body-text">
+            <!-- 站号取 upcoming 那一站的**下标**（= 游戏里的「第 N 站」），不是下标 + 1：
+                 改版前这里读的 upcoming[0].nth 根本不存在，插值直接落空；回退分支又写成
+                 nextIndex + 1，尾段还会显示出第 16 站这种不存在的站号。 -->
             <p class="strong">
               {{ upcoming[0] && upcoming[0].locked
-                ? t("toolbox.rail.nextCertain", { n: upcoming[0].nth, type: typeLabel(upcoming[0].types[0]) })
-                : t("toolbox.rail.nextUncertain", { n: upcoming[0]?.nth ?? result.nextIndex + 1 }) }}
+                ? t("toolbox.rail.nextCertain", { n: stationNumber(upcoming[0].index), type: typeLabel(upcoming[0].types[0]) })
+                : t("toolbox.rail.nextUncertain", { n: stationNumber(upcoming[0]?.index ?? result.nextIndex) }) }}
             </p>
             <div v-for="item in upcoming" :key="item.index" class="upcoming-row">
               <span class="up-nth">{{ stationName(item.index) }}</span>
@@ -960,7 +1048,6 @@ onBeforeUnmount(() => {
                   v-for="ti in item.types"
                   :key="ti"
                   class="tag soft"
-                  :class="`t-${TYPE_KEYS[ti]}`"
                 >{{ typeLabel(ti) }} {{ percent(item.ratio[ti]) }}</span>
               </span>
             </div>
@@ -1059,14 +1146,14 @@ onBeforeUnmount(() => {
               </template>
               <!-- 已录的站：只给一个上色的类型胶囊。它旁边的下拉已经把值说清了，
                    这里要补的是「颜色」这一类记忆线索，所以用短名不再重复全名。 -->
-              <span v-else-if="observed[index - 1] !== null" class="tag" :class="`t-${TYPE_KEYS[observed[index - 1]]}`">
+              <span v-else-if="observed[index - 1] !== null" class="tag">
                 {{ typeShort(observed[index - 1]) }}
               </span>
               <template v-else-if="!result.consistent">
                 <span class="tag muted">{{ t("toolbox.rail.inferConflict") }}</span>
               </template>
               <template v-else-if="result.possibleTypes[index - 1].length === 1">
-                <span class="tag" :class="`t-${TYPE_KEYS[result.possibleTypes[index - 1][0]]}`">
+                <span class="tag locked">
                   {{ typeShort(result.possibleTypes[index - 1][0]) }}
                 </span>
                 <span class="lock-mark">100%</span>
@@ -1076,7 +1163,6 @@ onBeforeUnmount(() => {
                   v-for="ti in result.possibleTypes[index - 1]"
                   :key="ti"
                   class="tag soft"
-                  :class="`t-${TYPE_KEYS[ti]}`"
                 >{{ typeShort(ti) }}</span>
               </template>
             </span>
@@ -1115,47 +1201,41 @@ onBeforeUnmount(() => {
 <style scoped>
 /* ── 版面骨架 ────────────────────────────────────────────────────────
    驾驶舱三段式：顶栏 → 左「记什么」×右「下一站是什么」→ 建议整条横在底部。
-   先把高度算清楚再排版。默认窗口 640×410，减去 40px 标题栏与 24px 内边距，
-   内容区正好 346px，实测分配（紧凑密度、中英文一致）：
+   三行都按内容取高（grid-template-rows: max-content），整体高度贴合内容：
+   默认窗口 760×340，删掉标题栏与内边距后，容量刚好放下
 
-     row1 顶栏            32px
-     row2 quick / hero   124px   （谁高谁定这一行，两者都是 124）
-     row3 建议           174px   minmax(0, 1fr)，唯一可伸缩的一段
-     两处行间距           16px
-                       ─────
-                        346px
+     row1 工具栏            28px
+     row2 路线行（核心）     76px   16 格 + 首个未确认站的气泡
+     row3 录入 + 提醒        ≈ 150px
+     两处行间距              16px
 
-   两条硬约束：
-   1) 第 3 行是唯一伸缩段，它的 174px 必须容纳最长的建议内容。中文本就宽松（约 155px），
-      英文更啰嗦但已收敛到 174px 内——加长任何 adv.* 文案前请先重新量一遍。
-   2) 高度跌破 410 时率先不够的是建议区，而 .hud-advice 自带 overflow-y:auto，
-      所以表现为「滚一下」而不是被 .tw-body 的 overflow:hidden 无声裁掉。
-      窄于 620px 时整块改竖排、由 .rail-tool 自己滚，见文件末尾的自适应段。
+   窗口再矮、或英文文案更长时，由 .rail-tool 自己 scroll（overflow-y:auto），
+   不会把内容静默裁掉。窄于 620px 时路线行折成两行 8 格、录入与提醒改竖排。
    完整版面仍是纵向流（.is-full），它自带滚动容器。 */
 /* position: relative 只为「全部记录」覆盖层兜底：它要盖住整块驾驶舱而不是整页 */
 .rail-tool { position: relative; height: 100%; min-height: 0; }
 
 .rail-tool.is-full { display: flex; flex-direction: column; gap: var(--sp-3); }
 
-/* 两栏是「先记后看」的顺序：左栏是手上的动作（记当前站），右栏是它的产出（下一站是什么）。
-   列宽不是对半分，而是按两边**实测的自然宽**反推（cdp 的 need/debug 探针，见 _cdp.mjs）：
-   左栏提示行中文要 348px、英文要 392px；右栏头部中文 175px、英文 203px。
-   英文两样加起来 595px > 可用 608 − 边距，**在 640 宽里不可能都排成一行**——
-   英文的提示行本来就会折（改版前也一样），所以比例按「保中文一行 + 保英文头部不溢出」定。
-   结论：1.62 : 1（实测 381 / 235），两边各留 15px / 9px 余量。 */
+/* 驾驶舱：工具栏 / 路线行 /（录入 + 提醒）。两栏比例沿用实测的 1.62 : 1——
+   左栏是提示按钮组与类型按钮组，右栏只有一条提醒 + 一条动作 chip。 */
 .rail-tool.is-hud {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* 行高贴合内容：整窗高度降低后，空白留在窗口底部而不是撑进卡片里。
+     窗口再矮（或英文文案更长）时由 .rail-tool 自己滚，不裁内容。 */
+  grid-template-rows: max-content max-content max-content;
+  align-content: start;
   gap: var(--sp-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.rail-tool.is-hud > .action-bar { grid-area: 1 / 1 / 2 / -1; }
-.rail-tool.is-hud > .quick { grid-area: 2 / 1 / 3 / 2; }
-.rail-tool.is-hud > .hero { grid-area: 2 / 2 / 3 / 3; }
-.rail-tool.is-hud > .hud-advice { grid-area: 3 / 1 / 4 / -1; }
-/* 16 站全记完后录入区收起，结论独占整行——否则它会缩在半边、旁边空一大块，
-   而那段说明文字还会在同一处宽度里折成三行。 */
-.rail-tool.is-hud:not(:has(.quick)) > .hero { grid-column: 1 / -1; }
+.rail-tool.is-hud > .hud-toolbar { grid-area: 1 / 1 / 2 / -1; }
+.rail-tool.is-hud > .route-board { grid-area: 2 / 1 / 3 / -1; }
+.rail-tool.is-hud > .quick { grid-area: 3 / 1 / 4 / 2; }
+.rail-tool.is-hud > .hud-side { grid-area: 3 / 2 / 4 / 3; }
+/* 16 站全记完后录入区收起，提醒独占整行 */
+.rail-tool.is-hud:not(:has(.quick)) > .hud-side { grid-area: 3 / 1 / 4 / -1; }
 
 /* ── 顶栏 ─────────────────────────────────────────────────────────── */
 .action-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-height: 28px; }
@@ -1168,34 +1248,57 @@ onBeforeUnmount(() => {
 .badge-route { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .badge-conflict { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--danger-soft); color: var(--danger-deep); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 
-/* ── 顶栏 16 格记录条（只在驾驶舱出现） ──────────────────────────────
-   一格一站，从始发站排到终点站，回答「我记到哪了、哪站还欠一半」。
-   三档全部落在背景与边框上，字只放站号（始发站不编号，用「始」占一格）：
-     empty 空心描边 · half 浅底 · done 主色浅底 + 主色边 · 当前站再套一圈主色内描边
-   两条硬约束：
-   ① **顶栏不许因为这条而换行**——顶栏长高会直接吃掉下面建议区的高度，
-      而建议区（174px）是全窗口唯一的弹性段。所以格子用 minmax(0, 1fr) 跟着一起缩，
-      整条 min-width: 0，永不换行；640px 下实测每格约 15px（两位站号 12px，够放）。
-   ② 圆角给 3px 而不是 var(--r-xs)：6px 落在 14×16 的小格上会变成胶囊形。 */
-.mini-strip { display: grid; flex: 1 1 auto; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; min-width: 0; margin: 0; padding: 0; list-style: none; }
-.mini-cell { display: flex; align-items: center; justify-content: center; height: 16px; min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); line-height: 1; }
-.mini-cell.st-half { border-color: var(--border-strong); background: var(--well); color: var(--text-soft); }
-.mini-cell.st-done { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
-.mini-cell.current { box-shadow: inset 0 0 0 1px var(--primary); border-color: var(--primary); color: var(--primary-hover); font-weight: 700; }
+/* ── 驾驶舱 · 工具栏 ────────────────────────────────────────────────
+   跑商时最常做的是「记 + 看」，所以这里只放题目、欠提示入口与一排图标次级动作。 */
+.hud-toolbar { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; min-height: 28px; }
+.hud-title { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.hud-spacer { flex: 1; min-width: 0; }
+/* 欠提示是「推断变弱」而不是「少填一格」，所以做成可点入口而不是死文字。 */
+.debt-link { height: 24px; padding: 0 var(--sp-2); border: 1px solid var(--warn-border); border-radius: var(--r-pill); background: var(--warn-soft); color: var(--warn-deep); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; cursor: pointer; }
+.debt-link:hover { border-color: var(--warn); box-shadow: var(--glow-sm); }
+/* 图标按钮：26×26 命中区（桌面鼠标足够），一律带 title / aria-label。 */
+.hud-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--card); color: var(--text-weak); cursor: pointer; }
+.hud-iconbtn:hover:not(:disabled) { background: var(--well-hover); color: var(--text); }
+.hud-iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* 格子里的结果字：颜色跟类型走（与推断占比条/类型标签同一套色，看色即知是哪类）。
-   放在进度三档之后声明——同特异性下后者胜，结果色盖过进度底色：
-   有结果的格子颜色本身就同时在报「是什么」和「记了没」。 */
-.mini-cell.t-winery { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-deep); }
-.mini-cell.t-eatery { border-color: var(--success-border); background: var(--success-tint); color: var(--success-deep); }
-.mini-cell.t-trade { border-color: var(--border-blue); background: var(--sky-soft); color: var(--sky-deep); }
-/* 推断确认但未录入：虚框 + 透明底。结果可以提前写进格子，「录没录过」必须一眼分得开。 */
-.mini-cell.pred { background: transparent; border-style: dashed; }
-.mini-cell.pred.t-winery { border-color: var(--warn-border); color: var(--warn-deep); }
-.mini-cell.pred.t-eatery { border-color: var(--success-border); color: var(--success-deep); }
-.mini-cell.pred.t-trade { border-color: var(--border-blue); color: var(--sky-deep); }
+/* ── 驾驶舱 · 路线行（核心展示区）───────────────────────────────────
+   一格一站：左上角站号（tabular 数字）+ 居中结果字。全窗口只有「100% 锁定」用彩色：
+     已录入 = 实底灰 · 100% 锁定 = 主色虚框浅底 · 未知 = 虚线 + 灰「?」。
+   首个未确认站（推断前沿）鼓成一个气泡，推断就长在它头上；游标用上沿小三角表示。
+   格子不可点：手动翻站已经删掉（回改走「全部记录」），这里再开入口等于把它恢复回来。 */
+.route-board { display: flex; gap: 3px; align-items: flex-end; height: 76px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.rnode { position: relative; flex: 1 1 0; min-width: 0; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: visible; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--card); transition: transform 0.16s ease-out, opacity 0.16s ease-out; }
+.rnode .rn { position: absolute; top: 2px; left: 5px; color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rnode .rc { color: var(--text); font-size: var(--fs-md); font-weight: 800; line-height: 1; }
+/* 已录入：实底灰。录的是亲眼所见，压过一切推断。 */
+.rnode.rec { background: var(--well); border-color: var(--border-strong); }
+/* 100% 锁定：全窗口唯一的彩色语义；虚框表示「还没录过」。 */
+.rnode.pred { border: 2px dashed var(--primary); background: var(--primary-soft); }
+.rnode.pred .rc { color: var(--primary-hover); }
+/* 未知：虚线 + 灰「?」，形状本身也在表意（不只靠颜色）。 */
+.rnode.unknown { border-style: dashed; }
+.rnode.unknown .rc { color: var(--text-dim); }
+/* 推断自动填入的类型：虚线下划线说明「来源是推断，不是亲眼录入」，手动改过后消失。 */
+.rnode.auto .rc { text-decoration: underline dotted; text-underline-offset: 3px; }
+/* 推断前沿：气泡。锁定时同主色；待定时中性但加粗描边，并给占比条。 */
+.rnode.bubble { flex: 3 1 0; height: 68px; border: 2px solid var(--primary); background: var(--primary-soft); border-radius: var(--r-md); box-shadow: var(--glow-sm); }
+.rnode.bubble.rec, .rnode.bubble.unknown { border-color: var(--border-strong); background: var(--card-soft); box-shadow: none; }
+.rnode.bubble .rc { font-size: var(--fs-lg); }
+.rnode.bubble .rw { max-width: 96%; margin-top: 2px; overflow: hidden; color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* 待定时三根占比条：宽度即概率，头名亮、其余淡（具体数字在 title 里）。 */
+.rnode.bubble .rbars { display: flex; gap: 2px; width: 84%; margin-top: 3px; }
+.rnode.bubble .rbars i { height: 5px; border-radius: var(--r-pill); background: var(--border-blue); }
+.rnode.bubble .rbars i.on { background: var(--primary); }
+/* 游标：贴在上沿的小三角（中性色——主色留给「锁定」）。气泡本身就是当前站，不用再叠一个。 */
+.rnode.current::before { content: ""; position: absolute; top: -8px; left: 50%; transform: translateX(-50%); border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--text-soft); }
+.rnode.bubble.current::before { display: none; }
+/* 欠提示：格角空心小圈——「哪一站还欠一条」的位置标记，不参与配色。 */
+.rnode.debt::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px; border: 1.5px solid var(--text-dim); border-radius: 50%; }
 /* 末格是终点站：右侧加粗一档，让「这条线到哪儿为止」看得出来 */
-.mini-cell.end { border-right-width: 2px; }
+.rnode.end { border-right-width: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rnode { transition: none; }
+}
 
 /* ── 路线条 ───────────────────────────────────────────────────────── */
 .route-card { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; padding: var(--sp-3); border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
@@ -1204,105 +1307,36 @@ onBeforeUnmount(() => {
 .chip { min-width: 0; padding: var(--sp-1) 2px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--well); text-align: center; }
 .chip-n { color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); line-height: var(--lh-tight); }
 .chip-t { overflow: hidden; color: var(--text-soft); font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-tight); text-overflow: ellipsis; white-space: nowrap; }
-.chip.future .chip-n { color: var(--primary); }
+.chip.future .chip-n { color: var(--text-dim); }
 .chip.locked { border-width: 2px; border-color: var(--primary); }
 .chip.future.locked .chip-n { color: var(--primary-hover); }
-/* 当前站用外轮廓而非 border，避免和「已锁死」的粗边互相覆盖 */
-.chip.current { outline: 2px solid var(--primary); outline-offset: 1px; box-shadow: var(--glow-sm); }
-.chip.t-winery { background: var(--warn-soft); border-color: var(--warn-border); }
-.chip.t-winery .chip-t { color: var(--warn-deep); }
-.chip.t-eatery { background: var(--success-tint); border-color: var(--success-border); }
-.chip.t-eatery .chip-t { color: var(--success-deep); }
-.chip.t-trade { background: var(--sky-soft); border-color: var(--border-blue); }
-.chip.t-trade .chip-t { color: var(--sky-deep); }
+/* 当前站用外轮廓而非 border，避免和「已锁死」的粗边互相覆盖（中性色，主色留给锁定） */
+.chip.current { outline: 2px solid var(--text-soft); outline-offset: 1px; }
 
 .legend { display: flex; flex-wrap: wrap; gap: var(--sp-4); color: var(--text-dim); font-size: var(--fs-xs); }
 .legend span { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .dot { width: 10px; height: 10px; border-radius: var(--r-xs); }
 .dot.solid { background: var(--well); border: 1px solid var(--border-strong); }
 .dot.ring { background: var(--card); border: 2px solid var(--primary); }
-.dot.future { background: var(--primary-soft); border: 1px solid var(--border-blue); }
+.dot.future { background: var(--card); border: 1px dashed var(--border-strong); }
 
-/* ── 驾驶舱 · 结论（主视区）─────────────────────────────────────────
-   整个 HUD 的视觉重心：只有它用彩色左描边 + 彩色底，也只有它用大字。
-   「不确定」不再并排几个百分比胶囊，而是按概率降序的占比条——
-   长度即概率，横向比较比读四个百分比更快。 */
-.hero {
-  display: flex;
-  flex-direction: column;
-  /* 竖向收到 --sp-2：640×410 下每 1px 都要用在内容上。
-     横向也从 --sp-4 收到 --sp-3：左侧已经有 4px 彩色描边撑着，视觉缩进不变，
-     省下的 4px 全给了头部——英文「Predicted · Next · Stop 1 · Open」正好卡在这一栏的边缘上。
-     line-height 取 --lh-tight：三根占比条各占一行，沿用正文字距会白吃掉约 10px 高度。 */
-  gap: var(--sp-1);
-  min-width: 0;
-  min-height: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--card-border);
-  border-left: 4px solid var(--primary);
-  border-radius: var(--r-md);
-  background: var(--card);
-  line-height: var(--lh-tight);
-}
-/* 头部四件（推断 · 下一站 · 第 N 站 · 待定）间距取 4px，与 .quick-head 同一约定：
-   英文的 "Predicted / Next / Stop 1 / Open" 在这一栏里只差 6px 就会顶出卡片右边界
-   （实测自然宽 209px、可用 203px；收到 4px 后留 12px 余量）。 */
-.hero-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.hero-label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
-.hero-nth { color: var(--text-weak); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
-.hero-badge { margin-left: auto; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--r-pill); background: var(--card); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
-.hero-body { min-height: 0; overflow-y: auto; }
-.hero-bars { display: flex; flex-direction: column; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
-/* 名字列用 auto 而不是写死 3.4em：英文类型名（"Trading house"）比中文长一倍，
-   固定宽度会把它折成两行——那正是 640 宽下白吃掉 20px 高度、把建议区挤掉的元凶。 */
-.hero-bar { display: grid; grid-template-columns: minmax(0, auto) minmax(28px, 1fr) 3.2em; align-items: center; gap: var(--sp-2); }
-.hb-name { overflow: hidden; color: var(--text); font-size: var(--fs-md); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.hb-track { height: 8px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
-.hb-fill { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 0.2s; }
-.hb-pct { overflow: hidden; color: var(--text-weak); font-family: var(--font-num); font-size: var(--fs-sm); font-weight: 700; text-align: right; white-space: nowrap; }
-/* 锁死：同一根条顶满 100%，只是名字、条高、百分比各上一个字号档。
-   不再换成「一个超大类型名」那种另一套隐喻——用户不必重新学「锁死长什么样」，
-   而且 100% 直接写在条尾，能一眼分清「确定」和「只是最可能」。 */
-.hero-bar.locked { gap: var(--sp-3); }
-.hero-bar.locked .hb-name { font-size: var(--fs-lg); font-weight: 800; letter-spacing: 0.02em; }.hero-bar.locked .hb-track { height: 12px; }
-.hero-bar.locked .hb-pct { font-size: var(--fs-base); font-weight: 800; }
-.hero-bar.locked.t-winery .hb-pct { color: var(--warn-deep); }
-.hero-bar.locked.t-eatery .hb-pct { color: var(--success-deep); }
-.hero-bar.locked.t-trade .hb-pct { color: var(--sky-deep); }
-.hero-bar.t-winery .hb-fill { background: var(--warn); }
-.hero-bar.t-winery .hb-name { color: var(--warn-deep); }
-.hero-bar.t-eatery .hb-fill { background: var(--success); }
-.hero-bar.t-eatery .hb-name { color: var(--success-deep); }
-.hero-bar.t-trade .hb-fill { background: var(--sky); }
-.hero-bar.t-trade .hb-name { color: var(--sky-deep); }
-.hero-note { margin: 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-body); }
-/* 进度贴在卡片底部：它是全局状态，不该抢结论的位置，但必须随时可见 */
-.hero-foot { margin-top: auto; padding-top: var(--sp-1); }
-.hero-track { display: block; width: 100%; height: 4px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
-.hero-track i { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 0.2s; }
-
-.hero.t-winery { background: var(--warn-soft); border-color: var(--warn-border); border-left-color: var(--warn); }
-.hero.t-winery .hero-label, .hero.t-winery .hero-nth { color: var(--warn-deep); }
-.hero.t-winery .hero-track i { background: var(--warn); }
-.hero.t-winery .hero-badge { border-color: var(--warn); color: var(--warn-deep); }
-.hero.t-eatery { background: var(--success-tint); border-color: var(--success-border); border-left-color: var(--success); }
-.hero.t-eatery .hero-label, .hero.t-eatery .hero-nth { color: var(--success-deep); }
-.hero.t-eatery .hero-track i { background: var(--success); }
-.hero.t-eatery .hero-badge { border-color: var(--success); color: var(--success-deep); }
-.hero.t-trade { background: var(--sky-soft); border-color: var(--border-blue); border-left-color: var(--sky); }
-.hero.t-trade .hero-label, .hero.t-trade .hero-nth { color: var(--sky-deep); }
-.hero.t-trade .hero-track i { background: var(--sky); }
-.hero.t-trade .hero-badge { border-color: var(--sky); color: var(--sky-deep); }
-.hero.t-open { border-color: var(--border-blue); border-left-color: var(--primary); }
-.hero.t-open .hero-badge { border-color: var(--primary); color: var(--primary-hover); }
-.hero.t-done { border-color: var(--success-border); border-left-color: var(--success); }
-.hero.t-done .hero-note { color: var(--success-deep); }
-.hero.t-done .hero-track i { background: var(--success); }
-.hero.t-done .hero-badge { border-color: var(--success); color: var(--success-deep); }
-.hero.t-danger { background: var(--danger-soft); border-color: var(--border-danger); border-left-color: var(--danger); }
-.hero.t-danger .hero-label, .hero.t-danger .hero-note { color: var(--danger-deep); }
-.hero.t-danger .hero-track i { background: var(--danger); }
-.hero.t-danger .hero-badge { border-color: var(--danger); color: var(--danger-deep); }
+/* ── 驾驶舱 · 提醒与动作 ────────────────────────────────────────────
+   有坑才亮提醒条：主句「别做什么」+ 次句「为什么」，两行同一左基线（不用硬折行）。
+   动作 chip 是正向指令；尾段这类补充建议做成次级 chip。 */
+.hud-side { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); min-width: 0; min-height: 0; padding: var(--sp-3); border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
+.alert2 { display: flex; gap: var(--sp-2); align-items: flex-start; width: 100%; padding: 6px var(--sp-2); border: 1px solid var(--warn-border); border-left: 4px solid var(--warn); border-radius: var(--r-xs); background: var(--warn-soft); color: var(--warn-deep); }
+.alert2 .txt { display: flex; flex-direction: column; min-width: 0; }
+.alert2 .txt b { font-size: var(--fs-base); font-weight: 800; line-height: var(--lh-tight); }
+.alert2 .txt small { margin-top: 2px; font-size: var(--fs-xs); font-weight: 600; line-height: 1.45; }
+.alert2.tone-danger { border-color: var(--border-danger); border-left-color: var(--danger); background: var(--danger-soft); color: var(--danger-deep); }
+.act-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px var(--sp-3); border: 1px solid var(--border-blue); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-sm); font-weight: 700; }
+.act-chip.soft { border-color: var(--border-strong); background: var(--well); color: var(--text-weak); font-weight: 600; }
+.hud-note { color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-body); }
+/* 底部主操作：本站记全后出现，手动推进到下一站（记完提示 ≠ 已经购物完/离开本站）。 */
+.go-next { display: inline-flex; align-items: center; justify-content: center; gap: 4px; align-self: stretch; margin-top: auto; padding: 8px var(--sp-3); border: 1px solid var(--primary); border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-base); font-weight: 800; cursor: pointer; }
+.go-next:hover { border-color: var(--primary-hover); box-shadow: var(--glow-sm); }
+/* 还没记全：用一句浅色说明填住这块空白，告诉用户为什么还没有「去下一站」。 */
+.hud-wait { margin-top: auto; color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.45; }
 
 /* ── 驾驶舱 · 录入 ──────────────────────────────────────────────────
    两层按钮：类型一行、提示一行。提示刻意做成和类型同等显眼的按钮组，
@@ -1315,14 +1349,13 @@ onBeforeUnmount(() => {
   gap: var(--sp-2);
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
   padding: var(--sp-3);
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
   background: var(--card);
 }
-/* 间距收到 4px（与 .quick-row 同一约定）：头部要放下「站号 + 漏提示 + 清除 + 全部记录」
-   四件，英文下按 --sp-2(8px) 算会折成两行，把底下的建议区挤到溢出。 */
+/* 间距收到 4px（与 .quick-row 同一约定）：头部要放下「站号 + 清除」，英文下也不折行。
+   漏提示与「全部记录」已挪到工具栏——面板上只留「记这一站」这一件事。 */
 .quick-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .quick-title { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .quick-title b { color: var(--text); font-family: var(--font-num); font-size: var(--fs-base); }
@@ -1333,13 +1366,9 @@ onBeforeUnmount(() => {
    做成 pill 但**不是按钮**：它没有任何交互，点它什么都不该发生——
    旧版这里是可点的「‹ 下一站 ›」，被当成「确认录入」按过。 */
 .hdr-tag { padding: 0 6px; border-radius: var(--r-pill); background: var(--well); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
-/* 漏提示可以点：直接切到完整版面补录。做成按钮而不是死文字，
-   省掉「我记得有个地方能改」这一步回忆。 */
-.quick-debt { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 var(--sp-2); border: 1px solid var(--warn-border); border-radius: var(--r-pill); background: var(--warn-soft); color: var(--warn-deep); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; cursor: pointer; }
-.quick-debt:hover { border-color: var(--warn); box-shadow: var(--glow-sm); }
 .quick-spacer { flex: 1; min-width: 0; }
-/* 头部的小动作按钮（清除本站 / 全部记录 / 覆盖层关闭钮）。
-   这一族原本是「上一站 / 下一站」翻站按钮，现在只服务「改记录」——高 24px 与 .quick-debt 对齐。 */
+/* 头部的小动作按钮（清除本站 / 覆盖层关闭钮）。
+   这一族原本是「上一站 / 下一站」翻站按钮，现在只服务「改记录」——高 24px。 */
 .qnav { display: inline-flex; align-items: center; justify-content: center; gap: 2px; height: 24px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--r-xs); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
 .qnav.icon { width: 26px; padding: 0; }
 .qnav:hover:not(:disabled) { background: var(--well-hover); color: var(--text); }
@@ -1363,19 +1392,13 @@ onBeforeUnmount(() => {
    四个按钮各让 1px 就换回 8px 余量，正好把它从「刚好卡在折行线上」拉回来。 */
 .qbtn { min-width: 48px; height: 32px; padding: 0 4px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); color: var(--text); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
 .qbtn:hover { background: var(--well-hover); }
-/* 选中态走「浅底 + 同色粗边 + 同色文字」而不是饱和实底：
-   实底配白字只在浅色主题成立（深色主题的 --warn 是亮琥珀，白字对比度不足 3:1）。 */
-.qbtn.on { border-width: 2px; box-shadow: var(--glow-sm); }
-.qbtn.on.t-winery { background: var(--warn-soft); border-color: var(--warn); color: var(--warn-deep); }
-.qbtn.on.t-eatery { background: var(--success-tint); border-color: var(--success); color: var(--success-deep); }
-.qbtn.on.t-trade { background: var(--sky-soft); border-color: var(--sky); color: var(--sky-deep); }
-.qbtn.on.t-same { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-hover); }
+/* 选中态不只用颜色：主色描边 + 内侧左竖条 + 同色文字（形状差异扛住色觉差异）。 */
+.qbtn.on { border-width: 2px; border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 3px 0 0 var(--primary); }
 .quick-na { color: var(--faint); font-size: var(--fs-sm); line-height: var(--lh-body); }
-/* 提示覆盖范围（「→ 第 4~6 站」）：这是整块版面里最该先读的一句口径——
-   记错一站，后面所有推断和冲突判定都会歪，而事后从界面上看不出来。
-   排在按钮前面（不是后面）：四个按钮的位置要在任何站都一致，才能形成肌肉记忆。
-   也正因为排在前面，它必须够短（--fs-xs）：640px 下提示行四个按钮刚好占满。 */
-.quick-covers { flex-shrink: 0; color: var(--faint); font-family: var(--font-num); font-size: var(--fs-xs); }
+/* 提示覆盖范围：整块版面里最该先读的一句口径——记错一站，后面所有推断和冲突判定都会歪，
+   而事后从界面上看不出来。独立成行（虚线分隔、固定行高）：放在行内会被窗口宽度逼着换行，
+   把卡片高度顶得忽高忽低。 */
+.covers { margin: 0; padding-top: var(--sp-1); border-top: 1px dashed var(--border); color: var(--text-weak); font-size: var(--fs-xs); line-height: var(--lh-tight); }
 
 
 /* ── 建议条目的三级字阶（驾驶舱与完整版面共用）─────────────────────
@@ -1388,25 +1411,6 @@ onBeforeUnmount(() => {
 .tone-success .adv-title { color: var(--success-deep); }
 .tone-warn .adv-title { color: var(--warn-deep); }
 .tone-danger .adv-title { color: var(--danger-deep); }
-
-/* ── 驾驶舱 · 建议 ─────────────────────────────────────────────────
-   窗口被拉矮时这里先滚动：结论与录入都是「此刻必须能操作」的，
-   建议是「可以慢慢看」的，压缩顺序按重要性来。 */
-.hud-advice { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.hud-advice-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-/* 段标题用正文色 + 正文最大字号：「记录本站」与「这一站怎么做」是两个平行段，
-   规格必须一致。旧版这里做成 12.5px 灰字 + 字距，比它的内容还弱，属于层级倒挂。 */
-.hud-advice-title { color: var(--text); font-size: var(--fs-base); font-weight: 600; }
-.hud-advice-more { padding: 0 var(--sp-2); border: 1px solid var(--border-strong); border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
-.hud-advice-more:hover { background: var(--well-hover); color: var(--text); }
-/* auto 上下外边距把列表在自己那一段里居中：只剩一条建议时（锁死 / 冲突 / 全程记完）
-   底部会空出一大块，居中后读起来像是「这一段到此为止」，而不是内容没渲染出来。
-   用 auto margin 而不是 justify-content: center——后者在溢出时会把第一项顶到滚动不到的地方。 */
-.hud-advice-list { display: flex; flex-direction: column; gap: var(--sp-1); margin: auto 0; padding: 0; list-style: none; }
-.hud-advice-list li { padding: 5px var(--sp-3); border-left: 3px solid var(--border-strong); border-radius: var(--r-xs); background: var(--card-soft); }
-.hud-advice-list li.tone-success { border-left-color: var(--success); background: var(--success-tint); }
-.hud-advice-list li.tone-warn { border-left-color: var(--warn); background: var(--warn-soft); }
-.hud-advice-list li.tone-danger { border-left-color: var(--danger); background: var(--danger-soft); }
 
 /* ── 完整版面 ─────────────────────────────────────────────────────── */
 .main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--sp-3); flex: 1; min-height: 0; }
@@ -1460,13 +1464,9 @@ onBeforeUnmount(() => {
 .rec-cell select:disabled { background: var(--well); color: var(--faint); cursor: not-allowed; }
 
 .tag { display: inline-block; margin-right: var(--sp-1); padding: 1px var(--sp-2); border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; }
-.tag.t-winery { background: var(--warn-soft); color: var(--warn-deep); }
-.tag.t-eatery { background: var(--success-tint); color: var(--success-deep); }
-.tag.t-trade { background: var(--sky-soft); color: var(--sky-deep); }
+/* 全工具只有一种彩色：100% 锁定（推断唯一的确定结果）。类型不再各染一色。 */
+.tag.locked { border: 2px solid var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
 .tag.soft { background: transparent; border: 1px solid var(--border-strong); color: var(--text-weak); }
-.tag.soft.t-winery { border-color: var(--warn-border); color: var(--warn-deep); }
-.tag.soft.t-eatery { border-color: var(--success-border); color: var(--success-deep); }
-.tag.soft.t-trade { border-color: var(--border-blue); color: var(--sky-deep); }
 .tag.muted { background: var(--well); color: var(--muted); }
 .lock-mark { color: var(--primary-hover); font-size: var(--fs-xs); font-weight: 600; }
 
@@ -1541,16 +1541,7 @@ onBeforeUnmount(() => {
 .advice-list li.tone-danger { border-left-color: var(--danger); }
 .disclaimer { margin: 0; color: var(--faint); font-size: var(--fs-xs); line-height: var(--lh-body); }
 
-/* 深色下 --sky-deep（#0369a1）在 --sky-soft（#0c2a3a）上对比度不足，换亮蓝字 */
-@media (prefers-color-scheme: dark) {
-  .chip.t-trade .chip-t,
-  .tag.t-trade,
-  .tag.soft.t-trade,
-  .hero-bar.t-trade .hb-name,
-  .hero.t-trade .hero-label,
-  .hero.t-trade .hero-nth,
-  .hero.t-trade .hero-badge { color: var(--primary-bright); }
-}
+/* 深色下主色（--primary）在浅底上的对比度按主题令牌走，不再为单个类型调色 */
 
 /* ── 自适应 ─────────────────────────────────────────────────────────
    完整版面窄窗：表格与侧栏收成一列，只留 .main 一个滚动容器
@@ -1568,9 +1559,9 @@ onBeforeUnmount(() => {
   .side { overflow: visible; }
 }
 
-/* 驾驶舱窄窗（< 620px）：左右分栏会把提示按钮组压到排不下四个，
-   改回纵向并整体滚动——宁可让用户滚一下，也不能把内容静默裁掉。
-   断点必须低于默认窗口宽度 640，否则默认尺寸就会掉进竖排。 */
+/* 驾驶舱窄窗（< 620px）：路线行一行 16 格会挤到每格只剩 ~29px，
+   折成两行 8 格；录入与提醒改竖排并整体滚动——宁可让用户滚一下，
+   也不能把内容静默裁掉。断点必须低于默认窗口宽度 640，否则默认尺寸就掉进竖排。 */
 @media (max-width: 619px) {
   .rail-tool.is-hud {
     grid-template-columns: minmax(0, 1fr);
@@ -1582,14 +1573,16 @@ onBeforeUnmount(() => {
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  .rail-tool.is-hud > .action-bar { grid-area: 1 / 1 / 2 / 2; }
-  /* 竖排时仍按「先记后看」：录入卡在上，结论卡在下——与宽窗的左→右顺序一致 */
-  .rail-tool.is-hud > .quick { grid-area: 2 / 1 / 3 / 2; }
-  .rail-tool.is-hud > .hero { grid-area: 3 / 1 / 4 / 2; }
-  .rail-tool.is-hud > .hud-advice { grid-area: 4 / 1 / 5 / 2; }
+  .rail-tool.is-hud > .hud-toolbar { grid-area: 1 / 1 / 2 / 2; }
+  .rail-tool.is-hud > .route-board { grid-area: 2 / 1 / 3 / 2; }
+  /* 竖排时仍按「先记后看」：路线行在上、录入卡居中、提醒在下。 */
+  .rail-tool.is-hud > .quick { grid-area: 3 / 1 / 4 / 2; }
+  .rail-tool.is-hud > .hud-side { grid-area: 4 / 1 / 5 / 2; }
+  /* 折两行 8 格：每格约 58px，站号/类型/状态都不挤。 */
+  .route-board { flex-wrap: wrap; height: auto; }
+  .rnode { flex: 1 1 calc(12.5% - 3px); }
+  .rnode.bubble { flex: 1 1 calc(25% - 3px); }
   .rail-tool.is-hud > .quick,
-  .rail-tool.is-hud > .hero,
-  .rail-tool.is-hud > .hud-advice,
-  .rail-tool.is-hud .hero-body { overflow: visible; }
+  .rail-tool.is-hud > .hud-side { overflow: visible; }
 }
 </style>

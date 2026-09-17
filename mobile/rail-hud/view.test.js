@@ -68,26 +68,29 @@ describe("手机版 i18n", () => {
 });
 
 describe("站号口径（手机端不许自己算 +1）", () => {
-  it("下标 0 是始发站，不参与编号", () => {
+  it("始发站是第 1 站，之后依次 2…16", () => {
     expect(isOrigin(0)).toBe(true);
-    expect(stationName(0)).toBe("始发站");
+    expect(stationName(0)).toBe("第 1 站");
     for (let i = 1; i < STATION_COUNT; i += 1) {
       expect(isOrigin(i)).toBe(false);
-      expect(stationName(i)).toBe(`第 ${i} 站`);
+      expect(stationName(i)).toBe(`第 ${i + 1} 站`);
     }
   });
 });
 
 describe("提示覆盖范围", () => {
-  it("下标 i 的提示覆盖 i+1 ~ i+3", () => {
-    expect(hintCoversShort(0)).toBe("→ 第 1~3 站");
-    expect(hintCoversShort(3)).toBe("→ 第 4~6 站");
+  it("下标 i 的提示覆盖 i+1 ~ i+3（站号 = 下标 + 1）", () => {
+    expect(hintCoversShort(0)).toBe("→ 第 2~4 站");
+    expect(hintCoversShort(3)).toBe("→ 第 5~7 站");
   });
 
-  it("末尾 3 站没有提示可录（第 12 站的提示覆盖 13~15，仍可录）", () => {
-    for (const i of [13, 14, 15]) expect(hintCoversShort(i)).toBe("");
-    expect(hintCoversShort(12)).toBe("→ 第 13~15 站");
-    expect(hintCoversShort(11)).toBe("→ 第 12~14 站");
+  it("提示窗口随剩余站数收窄：第 14 站 → 15~16、第 15 站 → 16，终点站没有提示", () => {
+    expect(hintCoversShort(11)).toBe("→ 第 13~15 站");
+    expect(hintCoversShort(12)).toBe("→ 第 14~16 站");
+    expect(hintCoversShort(13)).toBe("→ 第 15~16 站");
+    // 只剩 1 站时用单站说法，不是「第 16~16 站」
+    expect(hintCoversShort(14)).toBe("→ 第 16 站");
+    expect(hintCoversShort(15)).toBe("");
   });
 });
 
@@ -100,20 +103,22 @@ describe("16 格记录条", () => {
     expect(first.classes).toContain("st-empty");
     expect(first.classes).toContain("current");
     const second = stripCellView(result, state.observed, state.hints, 1, 0);
-    expect(second.text).toBe("1");
+    expect(second.text).toBe("2");
     const last = stripCellView(result, state.observed, state.hints, 15, 0);
-    expect(last.text).toBe("15");
+    expect(last.text).toBe("16");
     expect(last.classes).toContain("end");
   });
 
-  it("已录入的站：格子写结果字（不是站号），并带上类型色", () => {
+  it("已录入的站：格子写结果字（不是站号），状态走记录档位而非类型色", () => {
     const state = blank();
     state.observed[1] = 1; // 食铺
     const result = solve(state);
     const cell = stripCellView(result, state.observed, state.hints, 1, 0);
     expect(cell.text).toBe("食");
     expect(cell.kind).toBe("record");
-    expect(cell.classes).toContain("t-eatery");
+    // 只记了类型（提示未记）= half；类型不再各染一色
+    expect(cell.classes).toContain("st-half");
+    expect(cell.classes.some((c) => c.startsWith("t-"))).toBe(false);
   });
 
   it("只记了一半的站标 half，记全的标 done", () => {
@@ -199,8 +204,9 @@ describe("结论块", () => {
 
   it("16 站全确认后给「全程已确认」", () => {
     const state = blank();
-    for (let i = 1; i < STATION_COUNT; i += 1) state.observed[i] = i % 3;
-    for (let i = 0; i <= STATION_COUNT - 4; i += 1) state.hints[i] = HINT_SAME;
+    // 全线酒庄 + 每站都记「酒庄最多」：提示与录入自洽，且覆盖到最后一个提示位
+    for (let i = 1; i < STATION_COUNT; i += 1) state.observed[i] = 0;
+    for (let i = 0; i <= STATION_COUNT - 2; i += 1) state.hints[i] = hintMax(0);
     const hero = heroView(solve(state));
     expect(hero.kind).toBe("done");
   });
@@ -227,16 +233,17 @@ describe("进度与漏提示", () => {
     expect(missingHints(state.observed, state.hints, 2)).toBe(1);
   });
 
-  it("末尾 3 站不参与漏提示统计（它们本来就没有提示）", () => {
+  it("只有终点站不参与漏提示统计（它后面没有站）", () => {
     const state = blank();
-    expect(missingHints(state.observed, state.hints, STATION_COUNT)).toBe(STATION_COUNT - 3);
+    // 提示位是始发站 + 第 1~14 站，共 15 个；终点站没有提示
+    expect(missingHints(state.observed, state.hints, STATION_COUNT)).toBe(STATION_COUNT - 1);
   });
 
   it("allRecorded 要求类型与提示都记全", () => {
     const state = blank();
     for (let i = 1; i < STATION_COUNT; i += 1) state.observed[i] = 0;
     expect(allRecorded(state.observed, state.hints)).toBe(false); // 提示一条没记
-    for (let i = 0; i <= STATION_COUNT - 4; i += 1) state.hints[i] = HINT_SAME;
+    for (let i = 0; i <= STATION_COUNT - 2; i += 1) state.hints[i] = HINT_SAME;
     expect(allRecorded(state.observed, state.hints)).toBe(true);
   });
 });
@@ -267,7 +274,8 @@ describe("建议与一句话结论", () => {
     const state = blank();
     const text = summaryText(solve(state), state.observed, state.hints);
     expect(text).toContain("铁路大亨");
-    expect(text).toContain("第 1 站");
+    // 首个未确认站是下标 1 = 第 2 站
+    expect(text).toContain("第 2 站");
   });
 });
 

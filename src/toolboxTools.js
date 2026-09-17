@@ -94,12 +94,12 @@ export const TOOLBOX_TOOLS = [
     descKey: "toolbox.registry.toolRailDesc",
     keywordsKey: "toolbox.registry.kwRail",
     ready: true,
-    // 这个工具是「显示辅助」：要能压在游戏画面上，默认窗口就比其它工具小一圈，
-    // 并且允许缩到一条矮面板（可在标题栏用图钉置顶）。不写则用 toolWindow.js 的通用尺寸。
-    // 640×410 是驾驶舱版面实测的免滚动下限（中英文一致）：再矮，底部建议区会开始滚动。
-    // 再窄（<620）会掉进竖排、由 .rail-tool 整体滚动——仍可用，但不是默认体验。
-    // 版面预算与实测数据见 RailTycoonTool.vue 的版面骨架注释。
-    window: { width: 640, height: 410, minWidth: 560, minHeight: 320 },
+    // 这个工具是「显示辅助」：要能压在游戏画面上，默认窗口矮而宽——路线行水平铺开，
+    // 卡片贴合内容，窗口里不留大块空白。可在标题栏用图钉置顶。不写则用 toolWindow.js 的通用尺寸。
+    // 760×340 是驾驶舱（四段式：工具栏 / 路线行 / 录入 / 提醒）实测的贴合尺寸；
+    // 再窄（<620）路线行折两行、录入与提醒改竖排，由 .rail-tool 整体滚动——仍可用，但不是默认体验。
+    // 版面预算见 RailTycoonTool.vue 的版面骨架注释。
+    window: { width: 760, height: 340, minWidth: 560, minHeight: 250 },
   },
 ];
 

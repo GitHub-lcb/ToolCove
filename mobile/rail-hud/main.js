@@ -268,7 +268,7 @@ function renderSetup() {
     TYPE_KEYS.forEach((key, ti) => {
       const on = state.observed[index] === ti;
       group.append(h("button", {
-        class: `btn t-${key}${on ? " on" : ""}`,
+        class: `btn${on ? " on" : ""}`,
         type: "button",
         "aria-pressed": String(on),
         text: typeLabel(ti),
@@ -279,7 +279,7 @@ function renderSetup() {
   }
   box.append(typeRow);
 
-  // 提示行：每站都要记（末尾 3 站除外），不能藏在折叠里
+  // 提示行：每站都要记（终点站除外——它后面没有站），不能藏在折叠里
   const hintRow = h("div", { class: "row" }, [h("span", { class: "row-label", text: t("hudHintLabel") })]);
   if (hintable(index, result.stationCount)) {
     hintRow.append(h("span", { class: "row-covers", text: hintCoversShort(index, result.stationCount) }));
@@ -288,7 +288,7 @@ function renderSetup() {
       const on = state.hints[index] === hintMax(ti);
       const label = t("optHintMaxShort", { type: typeShort(ti) });
       group.append(h("button", {
-        class: `btn t-${key}${on ? " on" : ""}`,
+        class: `btn${on ? " on" : ""}`,
         type: "button",
         "aria-pressed": String(on),
         title: t("optHintMax", { type: typeLabel(ti) }),
@@ -298,7 +298,7 @@ function renderSetup() {
     });
     const sameOn = state.hints[index] === HINT_SAME;
     group.append(h("button", {
-      class: `btn t-same${sameOn ? " on" : ""}`,
+      class: `btn${sameOn ? " on" : ""}`,
       type: "button",
       "aria-pressed": String(sameOn),
       title: t("optHintSameTip"),
