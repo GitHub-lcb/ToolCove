@@ -115,6 +115,12 @@ and opens a **draft** release — review the artifacts and hit *Publish release*
 updater only sees published releases). Re-runs are available from the Actions tab
 (`workflow_dispatch`).
 
+The **phone version releases on its own track**: bump `mobileVersion` (also in `package.json` — it is
+deliberately separate from the desktop `version`), push `main`, then push a `railpanel-v<version>` tag.
+That runs [`railpanel-release.yml`](.github/workflows/railpanel-release.yml), which builds the APK on
+CI and attaches it to a published release. It needs no repository secrets (the APK is debug-signed),
+and the tag prefix matters: `v*` triggers the desktop release, `railpanel-v*` the phone one.
+
 One-time setup — repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret | Value |

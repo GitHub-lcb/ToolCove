@@ -43,6 +43,22 @@ https://github.com/GitHub-lcb/ToolCove/releases/download/railpanel-v<版本>/rai
 的环境里也能直接跑通。标签与 `mobileVersion` 不一致时流水线会明确报错退出，
 不会产出「tag 叫 1.1、包里写着 1.0」这种事后很难查的发版。
 
+**发布失败时怎么重来。** 两种情形要分开处理：
+
+- **Release 没建成**（构建步骤失败）：把标签挪到修好的提交上，或直接换个版本号重来。
+  换版本号更省事，也更好读：
+
+  ```bash
+  git tag -d railpanel-v1.0.1 && git push origin :refs/tags/railpanel-v1.0.1   # 删掉打坏的标签
+  # 改 mobileVersion 为 1.0.2，提交推送，再打新标签
+  git tag railpanel-v1.0.2 && git push origin railpanel-v1.0.2
+  ```
+
+  注意**不要**在 Release 已经建好（附件已上传）之后挪标签——那样用户手里的下载链接会
+  指向另一份产物，而地址本身看起来没变。
+- **只是想重跑**：Actions 页面选这条 workflow 点 *Run workflow*（`workflow_dispatch`），
+  不必重新打标签。
+
 ## 二、装上之后怎么用（按顺序）
 
 1. **拷 APK 到手机**：微信/QQ 传文件、数据线、网盘都行。点开安装时系统会问

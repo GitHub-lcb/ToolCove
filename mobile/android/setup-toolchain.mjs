@@ -10,9 +10,10 @@
 // 幂等：已经装好的组件会跳过（判断目录是否已存在）。
 
 import { execFileSync } from "node:child_process";
-import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -139,25 +140,72 @@ async function installCmdlineTools() {
 /**
  * 调用一个 .bat/.cmd。
  *
- * 两个 Windows/Node 的坑叠在一起，缺一个都跑不起来：
+ * 三个 Windows/Node 的坑，缺一个都跑不起来（每个都实测过）：
+ *
  *  1) 不能让 Node 直接 spawn 批处理文件——CreateProcess 只执行 .exe/.com，
- *     `.bat` 由 cmd.exe 解释，Node 24 下 execFileSync('foo.bat') 抛 EINVAL（实测踩到）。
- *     所以统一包一层 `cmd.exe /d /c`，参数以数组交给 cmd，带分号的
- *     `platforms;android-35` 不会被拆坏。
- *  2) **必须用 stdio: "inherit"**。`stdio: "pipe"`（以及不写 stdio 时 Node 因为
- *     `input` 而自动改用管道）会去创建命名管道，在受限沙箱里直接 EPERM。
- *     实测：inherit + input 可以正常传标准输入，pipe 一定失败。
- *     代价是没有 stdout 可读——所以下面判断退出码，不解析输出。
+ *     `.bat` 由 cmd.exe 解释，`execFileSync('foo.bat')` 抛 EINVAL。
+ *     必须经 `cmd.exe /d /c`。
+ *
+ *  2) **参数要一个一个分开传，不要自己拼成整串**。这条反直觉，但四种写法实测下来
+ *     只有这一种在「路径带空格」时也成立：
+ *       分开传（Node 加引号）        → 普通路径 ✓  带空格路径 ✓
+ *       分开传 + windowsVerbatim     → 普通路径 ✓  带空格路径 ✗
+ *       整串不加引号                 → 普通路径 ✓  带空格路径 ✗
+ *       整串自己加引号（最初写法）    → 普通路径 ✗  带空格路径 ✗
+ *     原因是 Node 会对自己构造的命令行统一做引号处理；我们预先加的那层引号会被它
+ *     再转义一遍，cmd 收到 `\"C:\...\x.bat\"` 就报「文件名、目录名或卷标语法不正确」。
+ *     交给 Node 拼引号，它才会为空格的路径正确加引号。
+ *
+ *  3) **必须用 stdio: "inherit"**。`stdio: "pipe"` 会去创建命名管道，在受限沙箱里
+ *     直接 EPERM。代价是没有 stdout 可读——调用方只看退出码，不解析输出。
+ *
+ * 这里也**不提供传标准输入的能力**：`execFileSync` 的 `input` 只在 Node 自己建管道时
+ * 生效（与第 3 条冲突），而 `cmd /c "... < 临时文件"` 的重定向又会被第 2 条的引号问题
+ * 带崩。需要免交互的地方（SDK 许可）改成直接写文件，见 writeLicenses。
  */
-export function runBat(bat, args, { env, input, cwd } = {}) {
+export function runBat(bat, args, { env, cwd } = {}) {
   return execFileSync("cmd.exe", ["/d", "/c", bat, ...args], {
     env: env ?? process.env,
     stdio: "inherit",
-    input,
-    // cwd 必须显式传：Gradle 是按**当前工作目录**找 settings.gradle.kts 的，
+    // cwd 必须显式传：Gradle 是按**当前工作目录**找 settings.gradle 的，
     // 不传就会拿调用方（仓库根）当构建根，报「does not contain a Gradle build」
     cwd,
   });
+}
+
+/**
+ * 写入 SDK 许可记录，免掉 `sdkmanager --licenses` 的交互。
+ *
+ * 为什么不走 `--licenses` 喂输入，而是直接写文件：**这条路在这套环境里不可靠**，而且
+ * 失败方式是静默的——
+ *   - `execFileSync` 的 `input` 选项在 `stdio: "inherit"` 下被忽略（见 runBat 注释）；
+ *   - `cmd /c "... < 临时文件"` 的重定向被 cmd 判为语法错误。
+ *   - 更要命的是：`--licenses` 收不到输入时**退出码仍然是 0**，只是不写许可文件。
+ *     于是它静默失败，直到后面装包才报错，而报错信息指向别处。
+ *     这个坑只在干净机器（CI）上暴露，本机因为许可早已接受过而完全看不见——
+ *     第一版 CI 就是死在这里。
+ *
+ * 直接写文件没有这些问题：无交互、无管道、退出码可信，也是 CI 镜像里设置
+ * Android SDK 的通行做法。sdkmanager 只对许可文本做等值比对，`licenses/`
+ * 这个目录本来就是可以整份拷贝到别的机器的。
+ */
+function writeLicenses(sdk) {
+  const dir = join(sdk, "licenses");
+  mkdirSync(dir, { recursive: true });
+  const files = {
+    "android-sdk-license": "24333f8a63b6825ea9c5514f83c2829b004d1fee",
+    "android-sdk-preview-license": "84831b9409646a918e30573bab4c9c91346d8abd",
+  };
+  for (const [name, hash] of Object.entries(files)) {
+    const file = join(dir, name);
+    try {
+      if (readFileSync(file, "utf8").includes(hash)) continue; // 已有记录，别重复写
+    } catch {
+      // 文件不存在：往下写
+    }
+    writeFileSync(file, `${hash}\n`, "utf8");
+    log(`写入许可记录 licenses/${name}`);
+  }
 }
 
 /** sdkmanager 安装 SDK 包。它要求 JAVA_HOME 指向 JDK 17+（本机默认那个 1.7 会直接失败）。 */
@@ -166,14 +214,8 @@ function installSdkPackages(sdk) {
   const sdkm = join(sdk, "cmdline-tools", "latest", "bin", "sdkmanager.bat");
   const env = { ...process.env, JAVA_HOME: javaHome, ANDROID_HOME: sdk };
 
-  // 许可：把足够的 y 灌进标准输入。sdkmanager 是 Java 程序，读的就是 stdin。
-  // 已经接受过时它会以非 0 退出，所以这里不判退出码。
-  log("接受 SDK 许可 …");
-  try {
-    runBat(sdkm, ["--licenses", `--sdk_root=${sdk}`], { env, input: "y\n".repeat(120) });
-  } catch {
-    // 已接受过 / 或本次输入没被消费：都不影响后面装包，真正失败会在下面暴露
-  }
+  // 许可：直接写记录文件，不走 `--licenses` 的交互（理由见 writeLicenses）
+  writeLicenses(sdk);
 
   log(`安装 platform-tools / platforms;android-${COMPILE_SDK} / build-tools;${BUILD_TOOLS} …`);
   try {
@@ -189,7 +231,7 @@ function installSdkPackages(sdk) {
     throw new Error(
       `sdkmanager 安装失败（exit ${e.status ?? "?"}）。\n` +
         `  若日志里有「Failed to download any source lists」→ 是网络问题（下载 dl.google.com 的仓库清单失败），重跑本脚本即可；\n` +
-        `  若有「not accepted the license agreements」→ 手动执行一次：${sdkm} --licenses`,
+        `  若有「not accepted the license agreements」→ 许可记录没写进去，检查 ${join(sdk, "licenses")}`,
     );
   }
 }
