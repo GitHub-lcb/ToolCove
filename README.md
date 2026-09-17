@@ -42,7 +42,11 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   advice. It ships a "Cockpit" HUD layout (oversized next-stop verdict plus one-tap recording for the
   current stop) and a "Full layout" table, and the window can be pinned above everything else to sit
   over the game. Everything runs locally — no network, no injection, no game-process access — and it
-  works in both the desktop and browser builds.
+  works in both the desktop and browser builds. **A phone version** ([`mobile/`](mobile/android/README.md))
+  ships as a standalone Android app that floats the panel over the game itself
+  (`TYPE_APPLICATION_OVERLAY`, draggable, collapsible to a single line), with JSON export/import to
+  move progress between phone and PC. `npm run build:mobile` emits just the single-file HUD page
+  (openable straight from a phone browser); `npm run build:apk` emits an installable APK.
 
 - **Snippets** — quick notes with one-click copy, global search, password masking, and image attachments.
 - **Problems** — lightweight issue tracker with local tags, AI-assisted analysis, and team-experience reuse.
@@ -192,6 +196,10 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   提示当作约束，穷举全部合法排列后标出能被唯一确定的站点，并按推断结果给策略卡建议；
   提供「驾驶舱」HUD 版面（巨型下一站结论 + 当前站一键录入）与「完整版面」全表，窗口可置顶，
   配合游戏的无边框窗口模式就能浮在画面上；全程纯本地计算，不联网、不注入、不读取游戏进程。
+  **另有手机版**（[`mobile/`](mobile/android/README.md)）：独立安卓应用，把面板浮在游戏画面之上
+  （`TYPE_APPLICATION_OVERLAY` 悬浮窗，可拖动、可收成一条），支持导出 / 导入 JSON 在手机与电脑
+  之间搬运进度。`npm run build:mobile` 只出单文件 HUD 页面（手机浏览器直接打开即可用），
+  `npm run build:apk` 出可安装的 APK。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。
 - **问题记录**：轻量问题跟踪，本地标签分类，支持 AI 辅助分析与经验复用。
 - **云同步（可选）**：速记与问题记录的多设备端到端加密同步；服务端只见密文，配对码入伙、

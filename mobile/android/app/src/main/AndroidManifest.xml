@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  铁路大亨 · 悬浮面板。
+
+  这个清单里有三处是「写错了只在真机上才炸」的，改动前请先读：
+
+  1) SYSTEM_ALERT_WINDOW 是 app-op 特殊权限，不是 runtime 权限——
+     只能把用户送到设置页，requestPermissions() 申请不了。
+  2) targetSdk 34 起，前台服务**必须**声明 foregroundServiceType + 对应的
+     FOREGROUND_SERVICE_* 权限，否则 startForeground() 抛
+     MissingForegroundServiceTypeException。这里用 specialUse：它没有
+     dataSync/mediaProcessing 那种运行时长限额，也不需要任何 runtime 前置条件。
+  3) 服务与 Activity **同在默认进程**（不写 android:process）。多进程下每个用到
+     WebView 的进程都得先调 WebView.setDataDirectorySuffix()，否则第二个进程直接用不了
+     WebView；而这个应用的全部价值就是那两个 WebView，没必要自找这个麻烦。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 拒了不影响前台服务运行，只是通知不进通知栏（系统「正在运行的应用」里仍可见） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 引导用户把应用加入电池优化白名单；不申请则连引导入口都打不开 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 完整 HUD（全屏 WebView），与悬浮面板是同一份资产、两个实例 -->
+        <activity
+            android:name=".HudActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <!-- 导出/导入页：悬浮窗做不了的那些「要打字、要弹系统界面」的动作都在这儿 -->
+        <activity
+            android:name=".SupportActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <service
+            android:name=".RailPanelService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <!-- 这个 property 是 Play 审核用的材料（平台不做运行时校验）；
+                 侧载也能跑，但照写，将来要上架或过 OEM 安全扫描时省事 -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="always-on-top data-entry panel shown over a game while the user records route stops by hand" />
+        </service>
+    </application>
+
+</manifest>

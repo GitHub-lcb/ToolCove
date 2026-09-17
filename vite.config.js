@@ -14,7 +14,8 @@ export default defineConfig(async ({ mode }) => ({
   // 单元测试（Vitest）：仅测纯函数逻辑，node 环境即可，无需 jsdom
   test: {
     environment: "node",
-    include: ["src/**/*.{test,spec}.js"],
+    // mobile/ 下是铁路大亨手机版 HUD（悬浮窗 + 网页版共用），纯 JS 逻辑同样进单测
+    include: ["src/**/*.{test,spec}.js", "mobile/**/*.{test,spec}.js"],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

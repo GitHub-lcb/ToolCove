@@ -1,0 +1,350 @@
+/* 铁路大亨 · 手机版 HUD 样式。
+ *
+ * 三种 mode 共用一套：
+ *   full  —— 手机浏览器 / Android 全屏页：结论吸顶、录入钉底、中间可滚
+ *   panel —— 悬浮窗（压在游戏上）：**整块不滚动**，一屏放下结论 + 录入
+ *   bar   —— 悬浮窗收成一条：只有结论那一行
+ *
+ * 三条硬约束（改动前先读）：
+ *   ① .hero 必须在文档流最前且 sticky —— 结论是唯一「任何时候都要看得见」的东西；
+ *   ② .setup 钉在底部 —— 录入是拇指动作，滚动不能把它顶走；
+ *   ③ panel 模式禁用一切滚动 —— 浮窗高度固定，出现滚动条就等于有内容永远看不见。
+ * 颜色沿用主程序的语义变量名（--bg/--card/--text/--primary…），但取值在这里自带一份：
+ * 手机端要单独分发，不能依赖桌面端那份 :root 变量表。深色走 prefers-color-scheme。
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f8fa;
+  --card: #ffffff;
+  --well: #eef1f5;
+  --border: #dfe3e8;
+  --border-strong: #c6ccd4;
+  --text: #1f2328;
+  --text-soft: #3d444d;
+  --text-weak: #5c6672;
+  --text-dim: #7d8794;
+  --faint: #9aa4b0;
+  --primary: #2563eb;
+  --primary-soft: #e4edff;
+  --primary-hover: #1d4ed8;
+  --primary-bright: #7cb0ff;
+  --warn: #d97706;
+  --warn-soft: #fff5e3;
+  --warn-border: #f0c680;
+  --warn-deep: #9a5b06;
+  --success: #16a34a;
+  --success-tint: #e9f9ef;
+  --success-border: #9ddcb4;
+  --success-deep: #106b31;
+  --sky: #0284c7;
+  --sky-soft: #e6f4fd;
+  --sky-deep: #0369a1;
+  --border-blue: #a8d5f2;
+  --danger: #dc2626;
+  --danger-soft: #fdeaea;
+  --danger-deep: #a01b1b;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-pill: 999px;
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 17px;
+  --fs-xl: 21px;
+  --tap: 44px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --well: #1f2630;
+    --border: #2b3340;
+    --border-strong: #3d4757;
+    --text: #e6edf3;
+    --text-soft: #c9d1d9;
+    --text-weak: #9aa4b0;
+    --text-dim: #7d8794;
+    --faint: #6b7280;
+    --primary: #3b82f6;
+    --primary-soft: #16233c;
+    --primary-hover: #93b8fb;
+    --primary-bright: #93b8fb;
+    --warn: #f59e0b;
+    --warn-soft: #2c2110;
+    --warn-border: #7a5a1c;
+    --warn-deep: #f0b54d;
+    --success: #22c55e;
+    --success-tint: #10291a;
+    --success-border: #2f6b41;
+    --success-deep: #71d99a;
+    --sky: #38bdf8;
+    --sky-soft: #0c2a3a;
+    --sky-deep: #0369a1;
+    --border-blue: #2b5a78;
+    --danger: #ef4444;
+    --danger-soft: #2d1517;
+    --danger-deep: #f79a9a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--fs-md)/1.45 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: calc(6px + var(--safe-top)) 10px calc(6px + var(--safe-bottom));
+  overflow: hidden;
+}
+
+/* ── 顶栏 ───────────────────────────────────────────────────────── */
+.topbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 0 2px; }
+.brand { font-weight: 700; font-size: var(--fs-md); letter-spacing: 0.02em; }
+.topbar-mode { color: var(--text-dim); font-size: var(--fs-xs); }
+/* 「收起成一条」只在悬浮窗里出现（由脚本按 mode 决定），是面板唯一能自己
+   让出屏幕面积的动作——遮挡面积直接影响游戏能不能点。 */
+.collapse { margin-left: auto; padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--card); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
+
+/* ── 结论 ───────────────────────────────────────────────────────── */
+.hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.hero-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hero-label { color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.08em; }
+.hero-tag { padding: 1px 6px; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-xs); font-weight: 700; }
+.hero-nth { color: var(--text-weak); font-size: var(--fs-md); font-weight: 600; }
+.hero-badge { margin-left: auto; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--r-pill); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; }
+.hero-body { min-height: 0; }
+.hero-bar { display: grid; grid-template-columns: minmax(0, auto) minmax(40px, 1fr) 3.2em; align-items: center; gap: 8px; padding: 1px 0; }
+.hb-name { overflow: hidden; font-size: var(--fs-lg); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.hb-track { height: 9px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
+.hb-fill { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
+.hb-pct { color: var(--text-weak); font-size: var(--fs-sm); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.hero-bar.locked .hb-name { font-size: var(--fs-xl); font-weight: 800; }
+.hero-bar.locked .hb-track { height: 13px; }
+.hero-bar.locked .hb-pct { font-size: var(--fs-md); font-weight: 800; }
+.hero-bar.t-winery .hb-fill { background: var(--warn); }
+.hero-bar.t-winery .hb-name, .hero-bar.t-winery .hb-pct { color: var(--warn-deep); }
+.hero-bar.t-eatery .hb-fill { background: var(--success); }
+.hero-bar.t-eatery .hb-name, .hero-bar.t-eatery .hb-pct { color: var(--success-deep); }
+.hero-bar.t-trade .hb-fill { background: var(--sky); }
+.hero-bar.t-trade .hb-name, .hero-bar.t-trade .hb-pct { color: var(--sky-deep); }
+.hero-note { margin: 0; color: var(--text-soft); font-size: var(--fs-sm); }
+.hero-foot { display: flex; }
+.hero-track { flex: 1; height: 3px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
+.hero-track i { display: block; height: 100%; background: var(--primary); transition: width 0.2s; }
+.hero.t-danger { border-left-color: var(--danger); }
+.hero.t-danger .hero-note { color: var(--danger-deep); }
+.hero.t-done { border-left-color: var(--success); }
+.hero.t-winery { border-left-color: var(--warn); }
+.hero.t-eatery { border-left-color: var(--success); }
+.hero.t-trade { border-left-color: var(--sky); }
+
+/* ── 16 格进度条 ────────────────────────────────────────────────── */
+.strip-wrap { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; }
+.strip { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 2px; }
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font: 600 var(--fs-xs)/1 -apple-system, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+}
+.cell.st-half { border-color: var(--border-strong); background: var(--well); color: var(--text-soft); }
+.cell.st-done { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
+.cell.current { box-shadow: inset 0 0 0 1px var(--primary); border-color: var(--primary); font-weight: 800; }
+.cell.end { border-right-width: 2px; }
+.cell.t-winery { border-color: var(--warn-border); background: var(--warn-soft); color: var(--warn-deep); }
+.cell.t-eatery { border-color: var(--success-border); background: var(--success-tint); color: var(--success-deep); }
+.cell.t-trade { border-color: var(--border-blue); background: var(--sky-soft); color: var(--sky-deep); }
+.cell.pred { background: transparent; border-style: dashed; }
+.strip-note { min-height: 14px; color: var(--text-dim); font-size: var(--fs-xs); }
+.strip-note.warn { color: var(--warn-deep); font-weight: 700; }
+
+/* ── 建议 ───────────────────────────────────────────────────────── */
+.advice-block { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
+.advice-toggle {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--text-weak);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.advice { display: flex; flex-direction: column; gap: 6px; }
+.adv { padding: 6px 10px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); }
+.adv.tone-info { border-left-color: var(--primary); }
+.adv.tone-success { border-left-color: var(--success); }
+.adv.tone-warn { border-left-color: var(--warn); }
+.adv.tone-danger { border-left-color: var(--danger); }
+.adv-title { margin: 0; font-size: var(--fs-md); font-weight: 700; }
+.adv-act { margin: 2px 0 0; color: var(--text-soft); font-size: var(--fs-sm); }
+.adv-detail { margin: 2px 0 0; color: var(--text-dim); font-size: var(--fs-sm); }
+
+/* ── 录入（钉底）────────────────────────────────────────────────── */
+.setup {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: 0 -6px 16px rgba(16, 24, 40, 0.06);
+}
+.setup-head { display: flex; align-items: center; gap: 6px; }
+.setup-title { color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.08em; }
+.setup-tag { padding: 1px 6px; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-xs); font-weight: 700; }
+.setup-nth { font-size: var(--fs-md); }
+.spacer { flex: 1; }
+.setup-done { margin: 0; color: var(--text-weak); font-size: var(--fs-sm); }
+
+.row { display: flex; flex-direction: column; gap: 4px; }
+.row-label { color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; }
+.row-covers { color: var(--text-dim); font-size: var(--fs-xs); }
+.row-na { color: var(--text-dim); font-size: var(--fs-sm); }
+.btns { display: grid; gap: 5px; }
+.btns.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.btns.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.btn {
+  height: var(--tap);
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btns.cols-4 .btn { font-size: var(--fs-sm); }
+.btn.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 0 0 0 1px var(--primary); }
+.btn.on.t-winery { border-color: var(--warn); background: var(--warn-soft); color: var(--warn-deep); box-shadow: inset 0 0 0 1px var(--warn); }
+.btn.on.t-eatery { border-color: var(--success); background: var(--success-tint); color: var(--success-deep); box-shadow: inset 0 0 0 1px var(--success); }
+.btn.on.t-trade { border-color: var(--sky); background: var(--sky-soft); color: var(--sky-deep); box-shadow: inset 0 0 0 1px var(--sky); }
+.chip-btn { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-pill); background: transparent; color: var(--text-dim); font-size: var(--fs-sm); cursor: pointer; }
+
+/* ── 底部动作条 ─────────────────────────────────────────────────── */
+.actionbar { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.act {
+  height: 36px;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.act.primary { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
+.act.danger { border-color: var(--danger); color: var(--danger-deep); }
+
+/* ── 弹层 ───────────────────────────────────────────────────────── */
+.dialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; padding: 12px; background: rgba(17, 24, 39, 0.5); }
+.sheet { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 560px; max-height: 86vh; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); }
+.sheet.narrow { max-width: 420px; }
+.sheet-head { display: flex; align-items: center; gap: 8px; }
+.sheet-head b { font-size: var(--fs-md); }
+.sheet-sub { flex: 1; color: var(--text-dim); font-size: var(--fs-xs); }
+.sheet-head .act { margin-left: auto; }
+.sheet-body { margin: 0; color: var(--text-weak); font-size: var(--fs-sm); }
+.sheet-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.file-name { margin: 0; color: var(--text-dim); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.io-text { width: 100%; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: 400 var(--fs-sm)/1.4 ui-monospace, Consolas, monospace; resize: none; }
+
+.rec-cols, .rec-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: 5px; align-items: center; }
+.rec-cols { padding: 0 2px; color: var(--text-dim); font-size: var(--fs-xs); }
+.rec-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 3px; }
+.rec-row { padding: 2px; border-radius: var(--r-sm); }
+.rec-row.current { background: var(--primary-soft); }
+.rec-n { height: 34px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--well); color: var(--text-soft); font: 700 var(--fs-sm)/1 inherit; cursor: pointer; }
+.rec-select { height: 34px; min-width: 0; padding: 0 4px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); color: var(--text); font-size: var(--fs-sm); }
+.rec-res { color: var(--text-weak); font-size: var(--fs-xs); }
+.rec-na { color: var(--text-dim); font-size: var(--fs-sm); }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + var(--safe-bottom)); z-index: 80; padding: 8px 14px; transform: translateX(-50%); border-radius: var(--r-pill); background: rgba(17, 24, 39, 0.92); color: #fff; font-size: var(--fs-sm); }
+
+/* ── 悬浮窗模式（panel）：整块不滚动，一屏放下结论 + 录入 ─────────
+   这块面板压在游戏画面上，用户没有「滚一下看看下面」的余地——
+   出现滚动条就等于有内容永远看不见。所以这里把可滚的那段（建议）收起来，
+   只留结论、进度、录入三件。宽高由原生侧固定，这里只管不被撑破。 */
+#root[data-mode="panel"] { gap: 5px; padding: calc(4px + var(--safe-top)) 7px calc(4px + var(--safe-bottom)); overflow: hidden; }
+#root[data-mode="panel"] .topbar { display: none; }
+#root[data-mode="panel"] .hero { padding: 5px 9px; }
+#root[data-mode="panel"] .hero-bar.locked .hb-name { font-size: var(--fs-lg); }
+#root[data-mode="panel"] .advice-block { display: none; }
+#root[data-mode="panel"] .cell { height: 16px; font-size: 9px; }
+#root[data-mode="panel"] .strip-note { min-height: 0; }
+#root[data-mode="panel"] .setup { padding: 5px 7px; gap: 4px; box-shadow: none; }
+#root[data-mode="panel"] .btn { height: 34px; font-size: var(--fs-sm); }
+#root[data-mode="panel"] .btns.cols-4 .btn { font-size: var(--fs-xs); }
+#root[data-mode="panel"] .actionbar { display: none; }
+#root[data-mode="panel"] .row-label, #root[data-mode="panel"] .setup-title, #root[data-mode="panel"] .setup-tag { display: none; }
+#root[data-mode="panel"] .setup-done { display: none; }
+
+/* 收起成一条：只剩结论那一行，用来在游戏画面上「瞄一眼就走」 */
+#root[data-mode="bar"] { gap: 0; align-items: stretch; justify-content: center; padding: 3px 6px; }
+#root[data-mode="bar"] .topbar,
+#root[data-mode="bar"] .collapse,
+#root[data-mode="bar"] .strip-wrap,
+#root[data-mode="bar"] .advice-block,
+#root[data-mode="bar"] .setup,
+#root[data-mode="bar"] .actionbar,
+#root[data-mode="bar"] .hero-foot,
+#root[data-mode="bar"] .hero-label { display: none; }
+#root[data-mode="bar"] .hero { flex: 1; justify-content: center; padding: 3px 8px; border-left-width: 4px; }
+#root[data-mode="bar"] .hero-bar { grid-template-columns: minmax(0, auto) minmax(20px, 1fr) 3em; gap: 6px; }
+#root[data-mode="bar"] .hero-bar.locked .hb-name { font-size: var(--fs-md); }
+#root[data-mode="bar"] .hero-note { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* bar 模式的展开出口：顶栏被藏了，只能挂在结论卡上的这一颗 */
+.expand { position: absolute; top: 2px; right: 2px; padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--card); color: var(--text-dim); font-size: 10px; font-weight: 700; cursor: pointer; }
+#root[data-mode="bar"] .hero { position: relative; padding-right: 58px; }
+
+/* 横屏 / 平板：把建议放回来（有地方了），录入仍钉底 */
+@media (min-width: 720px) {
+  #root { max-width: 760px; margin: 0 auto; }
+}

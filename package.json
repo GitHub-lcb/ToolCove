@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "build:mobile": "node mobile/rail-hud/build.mjs",
+    "build:apk": "node mobile/android/build-apk.mjs",
     "tauri": "tauri",
     "release": "node scripts/release.js"
   },

@@ -1,0 +1,50 @@
+// app 模块。刻意保持「零第三方依赖」：
+//   - 没有 androidx（不用 AppCompat / Compose / WebViewAssetLoader）；
+//   - 唯一被自动带进来的是 kotlin-stdlib（KGP 注入，不可避免）。
+// 少一层依赖，就少一类「本地能编、换台机器编不过」的问题，也让离线构建真正可行。
+//
+// 用 Groovy DSL：理由见 settings.gradle 的头注（Kotlin DSL 的脚本缓存在本机稳定失败）。
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.githublcb.railpanel'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'com.githublcb.railpanel'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+        // 侧载应用，不做多语言分包：中英两套 strings 都留在包里
+        resourceConfigurations += ['zh', 'en']
+    }
+
+    buildTypes {
+        release {
+            // 没有反射、没有序列化、不需要混淆规则，开 minify 只会引入风险而没有收益
+            minifyEnabled false
+            shrinkResources false
+            // 用 debug 签名：侧载自用不需要发布密钥，也避免把 keystore 带进仓库
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        // 必须与 compileOptions 一致：Gradle 8 + KGP 2.x 对 JVM target 不一致会直接报错
+        jvmTarget = '17'
+    }
+
+    packaging {
+        resources.excludes += ['META-INF/*.kotlin_module']
+    }
+}

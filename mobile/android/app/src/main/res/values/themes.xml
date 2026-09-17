@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      theme：用平台自带的 Material 主题，不引 AppCompat/Material 组件库——
+      这个应用只有两个页面和一个悬浮窗，为了一致的外观拉进一整套 UI 库不划算。
+      windowBackground 写成 day/night 两套由系统自动取（见 values-night）。
+    -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+    </style>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与 mobile/rail-hud/styles.css 里的背景色保持一致：
+         原生页面（主界面）和 WebView 页面（HUD）切换时不该闪一下白底。
+         注意 XML 注释里不能出现连续两个减号（不能写 CSS 变量名）。 -->
+    <color name="bg">#f6f8fa</color>
+    <color name="ic_launcher_background">#1d4ed8</color>
+</resources>

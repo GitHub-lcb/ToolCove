@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏小图标：必须是**单色剪影**，系统只取它的 alpha 通道并按通知栏前景色重绘。
+  所以这里只画形状、fillColor 用一个前景色即可（带颜色也不会生效）。
+  形状是一节车厢：圆角矩形车身 + 两个车窗 + 两轮。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M7,3h10a3,3 0 0 1 3,3v8a3,3 0 0 1 -3,3h-1v1.5a1,1 0 0 1 -2,0V17h-4v1.5a1,1 0 0 1 -2,0V17H7a3,3 0 0 1 -3,-3V6a3,3 0 0 1 3,-3zM7,6v4h10V6z" />
+</vector>
