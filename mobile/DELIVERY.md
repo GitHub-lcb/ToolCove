@@ -15,6 +15,34 @@
 
 APK 是 **debug 签名**的，侧载（自己装）完全够用，不用任何账号。
 
+### 以后发新版：手机版有自己的发版线
+
+手机版和桌面端**版本号与发版流程完全独立**（桌面端现在是 0.6.1，手机版从 1.0.0 起）。
+混在一条线上会导致「手机版改个按钮」也顺带触发一次桌面端签名发版，所以拆成了两条：
+
+- 桌面端：推 `v*` 标签 → `.github/workflows/release.yml`
+- 手机版：推 `railpanel-v*` 标签 → `.github/workflows/railpanel-release.yml`
+
+手机版发新版的步骤：
+
+```bash
+# 1. 改 package.json 里的 mobileVersion（比如 1.0.1），提交并推 main
+git commit -am "chore(mobile): 手机版版本号提升至 1.0.1" && git push
+# 2. 打标签并推送（前缀必须是 railpanel-v，推 v* 会触发桌面端发版）
+git tag railpanel-v1.0.1 && git push origin railpanel-v1.0.1
+```
+
+流水线会：跑手机版单测 → 构建 APK → 校验体积 → 创建 Release 并把 APK 作为附件上传。
+之后下载地址就是稳定可分享的：
+
+```
+https://github.com/GitHub-lcb/ToolCove/releases/download/railpanel-v<版本>/railpanel-release.apk
+```
+
+它**不需要任何仓库密钥**（APK 用 debug 签名），所以在还没配 `TAURI_SIGNING_PRIVATE_KEY`
+的环境里也能直接跑通。标签与 `mobileVersion` 不一致时流水线会明确报错退出，
+不会产出「tag 叫 1.1、包里写着 1.0」这种事后很难查的发版。
+
 ## 二、装上之后怎么用（按顺序）
 
 1. **拷 APK 到手机**：微信/QQ 传文件、数据线、网盘都行。点开安装时系统会问
