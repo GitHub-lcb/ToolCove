@@ -16,6 +16,11 @@ export default defineConfig(async ({ mode }) => ({
     environment: "node",
     // mobile/ 下是铁路大亨手机版 HUD（悬浮窗 + 网页版共用），纯 JS 逻辑同样进单测
     include: ["src/**/*.{test,spec}.js", "mobile/**/*.{test,spec}.js"],
+    // 默认 5s / 10s 在 CI 共享机器上会把「整包字典编译」（i18n）与「重组件装载」
+    // （render 测试的 beforeAll）直接判超时——那是环境慢，不是断言失败，却会卡死发版。
+    // 统一放宽到 20s：慢机器只会变慢，不会变红。断言标准不变。
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
