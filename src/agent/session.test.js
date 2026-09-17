@@ -7,6 +7,7 @@ vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async ()
 import { aiComplete } from "../ai.js";
 import { buildAgentRegistry } from "./tools.js";
 import { canResume } from "./runStore.js";
+import { foldTimeline } from "./timeline.js";
 import {
   agentSession,
   clearTimeline,
@@ -94,18 +95,117 @@ describe("一次完整运行", () => {
     expect(agentSession.steps.some((s) => s.type === "notice" && s.code === "failed")).toBe(true);
   });
 
-  it("写入工具无授权门禁：确认后直达执行，失败原因来自传输层", async () => {
+  it("写文件在确认前就被读后写门禁拦下（门禁先于执行，先于传输层）", async () => {
+    agentSession.cfg = { ...agentSession.cfg, maxSteps: 1 };
     scriptPlanner([call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" })]);
     const run = startAgentRun("写个文件");
     await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"));
     expect(agentSession.pending.tool).toBe("file.write_text");
     expect(agentSession.pending.risk).toBe("write");
+    // callId 要进 pending：审计事件靠它指回具体这一次调用
+    expect(agentSession.pending.callId).toBeTruthy();
     expect(agentSession.status).toBe("waiting");
     resolvePending(true);
     await run;
-    // node 环境没有 Tauri IPC：工具真的被调用了，失败来自传输层而不是门禁
-    expect(agentSession.errorCode).toBe("TAURI_COMMAND_FAILED");
-    expect(agentSession.errorCode).not.toBe("FORBIDDEN");
+    // 没有先读过该文件：门禁拒绝，而不是走到 Tauri 传输层才失败
+    expect(agentSession.steps.find((s) => s.type === "tool_error").code).toBe("OBSERVATION_REQUIRED");
+  });
+});
+
+describe("逐次批准与审计", () => {
+  it("换参数的写调用要重新问：批准不再覆盖同一 run 内的后续同类调用", async () => {
+    agentSession.cfg = { ...agentSession.cfg, requireConfirmation: "always" };
+    scriptPlanner([
+      call("json.format", { text: '{"a":1}' }),
+      call("json.format", { text: '{"b":2}' }),
+      final("done"),
+    ]);
+    expect(await startAgentRun("格式化两段 JSON")).toBe(true);
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
+    resolvePending(true);
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull()); // 第二次仍然要问
+    resolvePending(true);
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.steps.filter((s) => s.type === "approval_asked")).toHaveLength(2);
+  });
+
+  it("同工具同参数的重复调用折叠成一次询问", async () => {
+    agentSession.cfg = { ...agentSession.cfg, requireConfirmation: "always" };
+    scriptPlanner([
+      // 先读一次，让读后写门禁放行；再连续两次同参数写入（第三次折叠成复用）
+      call("base64.encode", { text: "hi" }),
+      call("base64.encode", { text: "hi" }),
+      call("base64.encode", { text: "hi" }),
+      final("done"),
+    ]);
+    const run = startAgentRun("编码三遍");
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
+    resolvePending(true);
+    await run;
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.steps.filter((s) => s.type === "approval_asked")).toHaveLength(1);
+    // 三次调用各有结论（后两次是折叠沿用），所以 decided 仍是三条
+    expect(agentSession.steps.filter((s) => s.type === "approval_decided")).toHaveLength(3);
+  });
+
+  it("拒绝后把拒绝回灌给模型，而不是立刻取消整个目标", async () => {
+    scriptPlanner([
+      call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" }),
+      final("那我改用只读方式"),
+    ]);
+    const run = startAgentRun("写文件");
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
+    resolvePending(false);
+    await run;
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.answer).toBe("那我改用只读方式");
+    // 审计要留下「谁拒了哪一次」
+    const decided = agentSession.steps.find((s) => s.type === "approval_decided");
+    expect(decided).toMatchObject({ approved: false, source: "human" });
+  });
+
+  it("第一个确认卡就被拒且模型没有别的办法：记为用户拒绝而非模糊的已取消", async () => {
+    scriptPlanner([call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" })]);
+    const run = startAgentRun("写文件");
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
+    resolvePending(false);
+    await run;
+    // scriptPlanner 用完后回 final，所以这里会完成；换一个「一直写」的规划器才走到 cancelled
+    expect(agentSession.steps.some((s) => s.type === "approval_decided" && s.approved === false)).toBe(true);
+  });
+
+  it("时间线折叠出审计行，且带上「为什么问」的原因", async () => {
+    scriptPlanner([call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" }), final("done")]);
+    const run = startAgentRun("写文件");
+    await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
+    resolvePending(true);
+    await run;
+    const folded = foldTimeline(agentSession.steps);
+    const audit = folded.filter((item) => item.kind === "approval");
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ tool: "file.write_text", asked: true, decided: true, approved: true, source: "human", reason: "risky-write" });
+  });
+
+  it("never 策略下没有确认卡，审计写「策略放行」", async () => {
+    scriptPlanner([call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" }), final("done")]);
+    await startAgentRun("写文件");
+    const asked = agentSession.steps.filter((s) => s.type === "approval_asked");
+    expect(asked).toHaveLength(0);
+    const decided = agentSession.steps.find((s) => s.type === "approval_decided");
+    expect(decided).toMatchObject({ approved: true, source: "policy", reason: "risky-write" });
+  });
+
+  it("模型返回非 JSON 时先尝试修复，修复过程进时间线", async () => {
+    let n = 0;
+    aiComplete.mockImplementation(async () => {
+      n += 1;
+      if (n === 1) return "好的，我先看看这个任务";
+      return JSON.stringify(final("修复后完成"));
+    });
+    await startAgentRun("随便看看");
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.answer).toBe("修复后完成");
+    expect(agentSession.steps.some((s) => s.type === "model_repair")).toBe(true);
   });
 });
 

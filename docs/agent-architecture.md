@@ -89,7 +89,27 @@ Tool Adapters
 
 ## 落地状态（与代码同步，改代码时一并维护）
 
-- 引擎：`runtime.js`（受控循环 + 超时/重试/停止）、`tools.js`（配置钳制与 registry 装配）、`session.js`（模块级运行态单例，视图销毁不丢运行）、`runStore.js`（历史脱敏落盘）、`timeline.js`（事件折叠）。
+- 引擎：`runtime.js`（受控循环 + 超时/重试/停止 + 逐次批准门禁 + 读后写门禁 + 模型退避重试）、
+  `approval.js`（批准策略，见下）、`observation.js`（读后写门禁，见下）、`tools.js`（配置钳制与 registry 装配）、
+  `session.js`（模块级运行态单例，视图销毁不丢运行）、`runStore.js`（历史脱敏落盘）、
+  `timeline.js`（事件折叠，含审计行）、`index.js`（宽松解析 + `createRepairingPlanner` 解析失败回灌重试）。
+- 副作用治理（对标 DSH，分析见 `docs/agent-dsh-borrow.md`）：
+  - **逐次批准**（`approval.js`）：批准只对「这一次调用」有效。旧实现按 risk 分级后，某次批准会让同一 run 内
+    后续同类调用直接放行，等于无意的批量授权。现在每次调用都重新问，只有「同工具 + 同参数」折叠为一次；
+    批准与拒绝**都记账**——被拒绝的同一调用直接判拒（`denied-before`），不重复弹卡。
+    `requireConfirmation` 三档语义：`always` 全问 / `risky` 写类问 / `never` 不问。
+  - **审计事件**：每次工具调用都落 `approval_asked` + `approval_decided` 一对
+    （`source: 'human' | 'policy'`，`by: 'user' | 'policy'`）。没问人不等于没决定——只读工具也要写明
+    「是策略放行的」，否则「谁放行的」答不出来。`timeline.js` 折叠成一条 `kind:'approval'` 审计行。
+  - **拒绝不终止任务**：拒绝作为反馈回灌给模型换招（旧行为直接 `cancelled`）；连续被拒 5 次才收尾。
+  - **读后写门禁**（`observation.js`）：`file.write_text` / `file.preview_write` 要求先 `file.read_text`
+    读过该文件。两套记账刻意分开：**内容观察**才能开门禁，**存在性证据**（含 `file.inspect`）只能阻止
+    「盲创建覆盖同名文件」——同名不等于同内容。读过但报「不存在」→ 允许创建；其余读取失败一律拒绝
+    （Tauri 把 IO 错误统一包成「无法读取文件：…」字符串，前端无法可靠区分不存在与读不了，所以让模型
+    自己用 `file.inspect` 澄清）。门禁按运行独立，错误码 `OBSERVATION_REQUIRED`。
+  - **模型调用退避重试**：`RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT` 退避重试（500ms→5s，上限 3 次尝试），
+    鉴权/配置类错误不重试。重试落 `model_retry` 事件，时间线上可见。
+  - **模型输出修复**：解析失败把错误原文回灌给规划器自我修正（上限 2 次），落 `model_repair` 事件。
 - 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
 - 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
@@ -105,7 +125,7 @@ Tool Adapters
   全部迁移到 `repository.mutate`，并订阅 `data-changed`（本地无未保存编辑时重载，有编辑时只提示）。
   `iterations` 的迭代页 / 需求大盘 / 任务页三处写入不再互相覆盖。
 - 平台过滤：`src/platform/env.js` 是平台判定唯一真相源；`tools.js` 的 `buildAgentRegistry` / `listAgentTools` 与 `toolboxTools.js` 的 `visibleToolboxTools()` 在浏览器端剔除 `desktopOnly` 工具，规划器不会选中注定失败的工具；运行期兜底由 `platform/invoke.js` 抛 `DESKTOP_ONLY`。门禁行为由 `src/platform/browserGating.test.js` 覆盖。
-- i18n：`agent.*`（94 键）与 `toolbox.ai.mode*` 已入 zh-CN / en-US，键数对齐由 `src/i18n/i18n.test.js` 强制。引擎内部错误文本仍是中文原文，UI 侧按 `errorCode` 映射到词条。
+- i18n：`agent.*`（113 键）与 `toolbox.ai.mode*` 已入 zh-CN / en-US，键数对齐由 `src/i18n/i18n.test.js` 强制。引擎内部错误文本仍是中文原文，UI 侧按 `errorCode` 映射到词条（`ERROR_KEY` / `NOTICE_KEY` / `APPROVAL_REASON_KEY`）。
 - 云同步：装配层（`src/sync/index.js`）的数据源直接来自 `repository` 的 kind 镜像，视图无需注册，未打开的视图也能同步；
   信封加密载荷携带 `kind` 防止跨类别串写；删除以墓碑传播（30 天过期）。双设备装配级与真实服务端测试见
   `src/sync/wiring.test.js` / `src/sync/realServer.test.js`。

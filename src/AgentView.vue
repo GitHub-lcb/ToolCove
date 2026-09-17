@@ -74,9 +74,21 @@ const riskChip = (risk) => RISK_CHIP[risk] || "tc-neutral";
 const riskKey = (risk) => RISK_KEY[risk] || "agent.riskRead";
 
 const ATTEMPT_KEY = { running: "agent.statusRunning", ok: "agent.statusSuccess", retry: "agent.stepRetry", error: "agent.stepError" };
-const NOTICE_KEY = { stopped: "agent.stopped", max_steps: "agent.statusMaxSteps", failed: "agent.statusFailed" };
+const NOTICE_KEY = {
+  stopped: "agent.stopped",
+  max_steps: "agent.statusMaxSteps",
+  failed: "agent.statusFailed",
+  model_retry: "agent.retrying",
+  model_repair: "agent.modelRepair",
+};
 // 引擎消息暂不 i18n（见 docs/agent-architecture.md 落地状态段），UI 自己产生的错误按 code 映射
-const ERROR_KEY = { TIMEOUT: "agent.errTimeout", DESKTOP_ONLY: "agent.errDesktopOnly", ABORTED: "agent.stopped" };
+const ERROR_KEY = {
+  TIMEOUT: "agent.errTimeout",
+  DESKTOP_ONLY: "agent.errDesktopOnly",
+  ABORTED: "agent.stopped",
+  // 读后写门禁的稳定错误码（见 agent/observation.js）
+  OBSERVATION_REQUIRED: "agent.errObserveDenied",
+};
 
 const statusMeta = computed(() => {
   const s = agentSession;
@@ -95,6 +107,18 @@ const errorText = computed(() => {
 });
 const noticeText = (item) => (NOTICE_KEY[item.code] ? t(NOTICE_KEY[item.code]) : item.text || t("agent.statusFailed"));
 const attemptText = (a) => (ERROR_KEY[a.code] ? t(ERROR_KEY[a.code]) : a.error || "");
+// 审计行说明「为什么问了 / 为什么没问」——这是从 DSH 的 approval 审计对学到的：
+// 只写「允许/拒绝」回答不了「这次为什么需要人点头」。
+const APPROVAL_REASON_KEY = {
+  "always-confirm": "agent.reasonAlwaysConfirm",
+  "mode-always": "agent.reasonModeAlways",
+  "risky-write": "agent.reasonRiskyWrite",
+  "repeated-call": "agent.reasonRepeated",
+  "denied-before": "agent.reasonDeniedBefore",
+  "mode-never": "agent.reasonModeNever",
+  "safe-risk": "agent.reasonSafeRisk",
+};
+const approvalText = (item) => (APPROVAL_REASON_KEY[item.reason] ? t(APPROVAL_REASON_KEY[item.reason]) : item.reason || t("agent.stepConfirm"));
 
 const fmtNum = (n) => {
   const v = Number(n) || 0;
@@ -320,6 +344,7 @@ const runLabel = (rec) => t(runMeta(rec).key);
             <code v-if="agentSession.pending.kind === 'tool'" class="cf-tool">{{ agentSession.pending.tool }}</code>
             <pre v-if="agentSession.pending.args" class="cf-args">{{ payloadText(agentSession.pending.args) }}</pre>
             <p class="cf-hint">{{ t("agent.confirmArgsHint") }}</p>
+            <p v-if="agentSession.pending.kind === 'tool'" class="cf-once">{{ t("agent.confirmOnce") }}</p>
             <div class="cf-actions">
               <button ref="denyBtn" class="btn-ghost sm" @click="onDecide(false)">{{ t("agent.confirmDeny") }}</button>
               <button class="btn-primary sm" @click="onDecide(true)">{{ t("agent.confirmAllow") }}</button>
@@ -398,9 +423,20 @@ const runLabel = (rec) => t(runMeta(rec).key);
                 <b :class="item.answer ? 'ok' : 'no'">{{ item.answer ? t("agent.confirmAllow") : t("agent.confirmDeny") }}</b>
               </article>
 
+              <article v-else-if="item.kind === 'approval'" class="tl-row tl-approval">
+                <Icon :name="item.decided ? (item.approved ? 'check' : 'x') : 'alert'" :size="14" />
+                <code class="tl-name">{{ item.tool }}</code>
+                <span class="tl-text">{{ approvalText(item) }}</span>
+                <b v-if="item.decided" :class="item.approved ? 'ok' : 'no'">
+                  {{ item.approved ? (item.source === "human" ? t("agent.approvalAllowed") : t("agent.approvalAllowedPolicy")) : t("agent.approvalDenied") }}
+                </b>
+                <span v-else class="tl-text">{{ t("agent.approvalPending") }}</span>
+              </article>
+
               <article v-else-if="item.kind === 'notice'" class="tl-row tl-notice">
                 <Icon name="alert" :size="14" />
                 <span class="tl-text">{{ noticeText(item) }}</span>
+                <span v-if="item.attempt" class="tl-n">{{ t("agent.retryAttempt", { n: item.attempt }) }}</span>
               </article>
 
               <article v-else class="answer-card">
@@ -582,6 +618,7 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .cf-tool { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-code); }
 .cf-args { margin: 0; max-height: 260px; overflow: auto; padding: var(--sp-3); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-word; }
 .cf-hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
+.cf-once { margin: 0; font-size: var(--fs-xs); color: var(--warn-deep); }
 .cf-actions { display: flex; justify-content: flex-end; gap: var(--sp-3); }
 
 /* ---------- 时间线 ---------- */
@@ -618,6 +655,10 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .tl-confirm .ok { margin-left: auto; color: var(--success-deep); font-size: var(--fs-sm); }
 .tl-confirm .no { margin-left: auto; color: var(--danger-deep); font-size: var(--fs-sm); }
 .tl-notice { color: var(--warn-deep); background: var(--amber-soft); border-color: var(--amber-border); }
+/* 审计行：与确认行同款右对齐结论，但来源是事件流而非卡片 */
+.tl-approval { color: var(--text-weak); }
+.tl-approval .ok { margin-left: auto; color: var(--success-deep); font-size: var(--fs-sm); }
+.tl-approval .no { margin-left: auto; color: var(--danger-deep); font-size: var(--fs-sm); }
 .tl-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .answer-card { padding: var(--sp-4) var(--sp-5); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-md); }

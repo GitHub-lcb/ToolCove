@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createToolRegistry, runAgent } from "./runtime.js";
 import { createBuiltinRegistry } from "./builtins.js";
+import { createObservationGate } from "./observation.js";
 
 describe("agent runtime", () => {
   it("executes tool calls until the planner returns a final answer", async () => {
@@ -135,6 +136,318 @@ describe("agent runtime", () => {
       expect(result.status).toBe("cancelled");
     }
     expect(confirm).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("逐次批准", () => {
+  // 旧行为：批准一次后同一 run 内所有同类写调用直接放行 = 无意的批量授权。
+  it("risky 下换了参数就必须重新问，不再复用上一次的结构性授权", async () => {
+    let executed = 0;
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, inputSchema: { type: "object", required: ["path"], properties: { path: { type: "string" } } }, execute: () => { executed += 1; return "ok"; } }]);
+    const actions = [
+      { type: "tool_call", tool: "file.write", args: { path: "a.txt" } },
+      { type: "tool_call", tool: "file.write", args: { path: "b.txt" } },
+      { type: "final", answer: "done" },
+    ];
+    const confirm = vi.fn(async () => true);
+    const result = await runAgent("x", { registry, planner: async () => actions.shift(), confirm, requireConfirmation: "risky" });
+    expect(result.answer).toBe("done");
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(executed).toBe(2);
+  });
+
+  it("同工具同参数的重复调用折叠成一次询问（唯一允许的复用）", async () => {
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, inputSchema: { type: "object", properties: { path: { type: "string" } } }, execute: () => "ok" }]);
+    const actions = [
+      { type: "tool_call", tool: "file.write", args: { path: "a.txt" } },
+      { type: "tool_call", tool: "file.write", args: { path: "a.txt" } },
+      { type: "final", answer: "done" },
+    ];
+    const confirm = vi.fn(async () => true);
+    const result = await runAgent("x", { registry, planner: async () => actions.shift(), confirm, requireConfirmation: "risky" });
+    expect(result.answer).toBe("done");
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("拒绝后把拒绝作为反馈回灌给模型，而不是放弃整个目标", async () => {
+    const calls = [];
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, inputSchema: { type: "object", properties: { path: { type: "string" } } }, execute: ({ path }) => { calls.push(path); return "ok"; } }]);
+    const actions = [
+      { type: "tool_call", tool: "file.write", args: { path: "a.txt" } },
+      { type: "tool_call", tool: "file.write", args: { path: "b.txt" } },
+      { type: "final", answer: "换了个思路" },
+    ];
+    const confirm = vi.fn(async () => false); // 两次都拒绝
+    const result = await runAgent("x", { registry, planner: async () => actions.shift(), confirm, requireConfirmation: "risky" });
+    expect(result.answer).toBe("换了个思路");
+    expect(calls).toEqual([]); // 被拒的调用从未执行
+    // 拒绝原因进历史，模型才可能换招
+    expect(result.history.some((h) => String(h.error || "").includes("用户拒绝"))).toBe(true);
+  });
+
+  it("第一次就拒绝且模型没有别的办法时，运行以 cancelled 收尾", async () => {
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, execute: () => "ok" }]);
+    const result = await runAgent("x", { registry, planner: async () => ({ type: "tool_call", tool: "file.write", args: {} }), confirm: async () => false });
+    expect(result.status).toBe("cancelled");
+    expect(result.history).toHaveLength(0); // 一步都没走：session 据此把停止原因记为「被拒绝」
+  });
+
+  it("审计事件成对：人类批准与策略放行都留 approval_asked / approval_decided", async () => {
+    const events = [];
+    const registry = createToolRegistry([
+      { name: "json.parse", risk: "transform", execute: () => ({}) },
+      { name: "file.write", risk: "write", retryable: false, execute: () => "ok" },
+    ]);
+    const actions = [
+      { type: "tool_call", tool: "json.parse", args: {} },
+      { type: "tool_call", tool: "file.write", args: {} },
+      { type: "final", answer: "done" },
+    ];
+    await runAgent("x", { registry, planner: async () => actions.shift(), confirm: async () => true, onEvent: (e) => events.push(e) });
+
+    const asked = events.filter((e) => e.type === "approval_asked");
+    const decided = events.filter((e) => e.type === "approval_decided");
+    expect(asked).toHaveLength(1); // 只读工具不需要问人，就没有 asked
+    expect(decided).toHaveLength(2); // 但每一次调用都要有结论
+    expect(asked[0].reason).toBe("risky-write");
+    expect(asked[0].id).toBe(decided[1].id); // 成对：同一个 callId
+
+    const safe = decided.find((e) => e.source === "policy");
+    expect(safe.reason).toBe("safe-risk");
+    expect(safe.approved).toBe(true);
+    const human = decided.find((e) => e.source === "human");
+    expect(human.approved).toBe(true);
+    expect(human.by).toBe("user");
+  });
+
+  it("never 策略下审计写「策略放行」而不是「假装有人批准」", async () => {
+    const events = [];
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, execute: () => "ok" }]);
+    await runAgent("x", { registry, planner: async () => ({ type: "tool_call", tool: "file.write", args: {} }), confirm: async () => true, requireConfirmation: "never", onEvent: (e) => events.push(e) });
+    const decided = events.find((e) => e.type === "approval_decided");
+    expect(decided).toMatchObject({ approved: true, source: "policy", reason: "mode-never" });
+    expect(events.some((e) => e.type === "approval_asked")).toBe(false);
+  });
+
+  it("confirm:'always' 的工具在 never 策略下仍然要问", async () => {
+    const registry = createToolRegistry([{ name: "data.remove", risk: "write", confirm: "always", retryable: false, execute: () => "ok" }]);
+    const confirm = vi.fn(async () => false);
+    const result = await runAgent("x", { registry, planner: async () => ({ type: "tool_call", tool: "data.remove", args: {} }), confirm, requireConfirmation: "never" });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("cancelled");
+  });
+
+  // 回归：拒绝必须记账。否则模型原样重试同一调用时会对同一张卡片反复追问，
+  // 把步数预算全耗在重复确认上（验证时实测到 5 次重复询问）。
+  it("被拒绝的同一调用不再重复追问", async () => {
+    const registry = createToolRegistry([{ name: "data.remove", risk: "write", confirm: "always", retryable: false, execute: () => "ok" }]);
+    const confirm = vi.fn(async () => false);
+    const result = await runAgent("x", {
+      registry,
+      planner: async () => ({ type: "tool_call", tool: "data.remove", args: {} }), // 每轮都原样重试
+      confirm,
+      requireConfirmation: "never",
+    });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("cancelled");
+  });
+
+  // 回归：没问人不等于没决定。审计必须写出「策略放行」，否则「谁放行的」答不出来。
+  it("无需问人的调用也留一条策略放行的审计事件", async () => {
+    const events = [];
+    const registry = createToolRegistry([{ name: "json.parse", risk: "transform", execute: () => ({}) }]);
+    const actions = [{ type: "tool_call", tool: "json.parse", args: {} }, { type: "final", answer: "done" }];
+    await runAgent("x", {
+      registry,
+      planner: async () => actions.shift(),
+      confirm: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+    const decided = events.filter((e) => e.type === "approval_decided");
+    expect(decided).toHaveLength(1);
+    expect(decided[0]).toMatchObject({ approved: true, source: "policy", reason: "safe-risk", by: "policy" });
+    expect(events.some((e) => e.type === "approval_asked")).toBe(false);
+  });
+
+  it("连续被拒达到上限后用 cancelled 收尾，不死磕", async () => {
+    const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, execute: () => "ok" }]);
+    let n = 0;
+    const result = await runAgent("x", {
+      registry,
+      // 每轮都换一个参数，绕开折叠，逼出上限
+      planner: async () => ({ type: "tool_call", tool: "file.write", args: { n: (n += 1) } }),
+      confirm: async () => false,
+    });
+    expect(result.status).toBe("cancelled");
+    expect(n).toBe(5);
+  });
+});
+
+describe("读后写门禁", () => {
+  // 三个文件工具的真实形状：read 读内容、inspect 只读元信息、write 受门禁保护
+  const fileRegistry = (executed) =>
+    createToolRegistry([
+      {
+        name: "file.read_text",
+        risk: "read",
+        retryable: false,
+        inputSchema: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
+        execute: ({ path }) => ({ path, text: "旧内容" }),
+      },
+      {
+        name: "file.inspect",
+        risk: "read",
+        retryable: false,
+        inputSchema: { type: "object", required: ["paths"], properties: { paths: { type: "array", items: { type: "string" } } } },
+        execute: ({ paths }) => paths.map((path) => ({ path, size: 10 })),
+      },
+      {
+        name: "file.write_text",
+        risk: "write",
+        retryable: false,
+        inputSchema: { type: "object", required: ["path", "text"], properties: { path: { type: "string" }, text: { type: "string" } } },
+        execute: ({ path }) => { executed.push(path); return "written"; },
+      },
+    ]);
+
+  const neverAsk = { confirm: async () => true, requireConfirmation: "never" };
+
+  it("没读过就写：拒绝执行并给出可自救的错误码", async () => {
+    const executed = [];
+    const events = [];
+    const result = await runAgent("x", {
+      registry: fileRegistry(executed),
+      planner: async () => ({ type: "tool_call", tool: "file.write_text", args: { path: "C:/tmp/a.txt", text: "新内容" } }),
+      ...neverAsk,
+      onEvent: (e) => events.push(e),
+    });
+    expect(executed).toEqual([]);
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("OBSERVATION_REQUIRED");
+    expect(result.error).toContain("file.read_text"); // 提示要能教模型自救
+    expect(events.find((e) => e.type === "tool_error").code).toBe("OBSERVATION_REQUIRED");
+  });
+
+  it("先读后写：放行", async () => {
+    const executed = [];
+    const actions = [
+      { type: "tool_call", tool: "file.read_text", args: { path: "C:/tmp/a.txt" } },
+      { type: "tool_call", tool: "file.write_text", args: { path: "C:/tmp/a.txt", text: "新内容" } },
+      { type: "final", answer: "done" },
+    ];
+    const result = await runAgent("x", { registry: fileRegistry(executed), planner: async () => actions.shift(), ...neverAsk });
+    expect(result.answer).toBe("done");
+    expect(executed).toEqual(["C:/tmp/a.txt"]);
+  });
+
+  it("读过但读不到（确定不存在）：放行创建，且状态记为 absent", async () => {
+    // 注意：读取失败会让运行按工具失败收尾，所以「失败之后能否创建」无法在单次运行里断言。
+    // 这里直接用门禁契约验证：一次「读不到」之后，写入不再被拦。
+    const gate = createObservationGate();
+    gate.observeFailure("file.read_text", { path: "C:/tmp/new.txt" }, Error("无法读取文件：不存在 (os error 2)"));
+    expect(gate.statusOf("C:/tmp/new.txt")).toBe("absent");
+    expect(gate.check("file.write_text", { path: "C:/tmp/new.txt" })).toBeNull();
+
+    // 顺带确认运行确实用上了外部传入的门禁实例（runtime 支持注入，便于测试与复用）
+    const registry = createToolRegistry([
+      { name: "file.read_text", risk: "read", retryable: false, inputSchema: { type: "object", properties: { path: { type: "string" } } }, execute: () => { throw Error("无法读取文件：不存在 (os error 2)"); } },
+    ]);
+    const result = await runAgent("x", {
+      registry,
+      observationGate: gate,
+      planner: async () => ({ type: "tool_call", tool: "file.read_text", args: { path: "C:/tmp/other.txt" } }),
+      maxSteps: 1,
+      ...neverAsk,
+    });
+    expect(result.error).toContain("不存在");
+    expect(gate.statusOf("C:/tmp/other.txt")).toBe("absent");
+  });
+
+  it("inspect 只证明存在，仍不放行写入", async () => {
+    const executed = [];
+    const actions = [
+      { type: "tool_call", tool: "file.inspect", args: { paths: ["C:/tmp/a.txt"] } },
+      { type: "tool_call", tool: "file.write_text", args: { path: "C:/tmp/a.txt", text: "新内容" } },
+    ];
+    const result = await runAgent("x", { registry: fileRegistry(executed), planner: async () => actions.shift(), ...neverAsk });
+    expect(executed).toEqual([]);
+    expect(result.errorCode).toBe("OBSERVATION_REQUIRED");
+    expect(result.error).toContain("元信息"); // 说明的是「看到过但没读过」，不是「完全没观察」
+  });
+
+  it("门禁结果按运行隔离：上一次运行的读取不会放行这一次", async () => {
+    const executed = [];
+    const registry = fileRegistry(executed);
+    const read = { type: "tool_call", tool: "file.read_text", args: { path: "C:/tmp/a.txt" } };
+    await runAgent("x", { registry, planner: async () => read, maxSteps: 1, ...neverAsk });
+    const write = { type: "tool_call", tool: "file.write_text", args: { path: "C:/tmp/a.txt", text: "新内容" } };
+    const second = await runAgent("x", { registry, planner: async () => write, ...neverAsk });
+    expect(second.errorCode).toBe("OBSERVATION_REQUIRED");
+    expect(executed).toEqual([]);
+  });
+});
+
+describe("模型调用重试", () => {
+  it("限流等瞬时错误退避重试，最终成功", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const events = [];
+      const registry = createToolRegistry([{ name: "noop", execute: () => "ok" }]);
+      const planner = async () => {
+        calls += 1;
+        if (calls === 1) throw Object.assign(Error("rate limited"), { code: "RATE_LIMIT" });
+        return { type: "final", answer: "ok" };
+      };
+      const task = runAgent("x", { registry, planner, onEvent: (e) => events.push(e) });
+      await vi.advanceTimersByTimeAsync(1000);
+      const result = await task;
+      expect(result.status).toBe("completed");
+      expect(calls).toBe(2);
+      // 重试过程必须可见，否则用户只看到「卡了一下」
+      expect(events.find((e) => e.type === "model_retry")).toMatchObject({ code: "RATE_LIMIT", attempt: 1 });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("鉴权类错误不重试，立刻失败", async () => {
+    const registry = createToolRegistry([{ name: "noop", execute: () => "ok" }]);
+    let calls = 0;
+    const result = await runAgent("x", {
+      registry,
+      planner: async () => {
+        calls += 1;
+        throw Object.assign(Error("bad key"), { code: "AUTH" });
+      },
+    });
+    expect(calls).toBe(1);
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("AUTH");
+  });
+
+  it("重试上限用尽后按失败收尾，且返回最后一次的错误码", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const registry = createToolRegistry([{ name: "noop", execute: () => "ok" }]);
+      const task = runAgent("x", {
+        registry,
+        planner: async () => {
+          calls += 1;
+          throw Object.assign(Error("503"), { code: "SERVER" });
+        },
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await task;
+      expect(calls).toBe(3);
+      expect(result.status).toBe("failed");
+      expect(result.errorCode).toBe("SERVER");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

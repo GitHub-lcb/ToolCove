@@ -37,6 +37,7 @@ export function payloadText(value) {
 export function foldTimeline(events = []) {
   const out = [];
   const byId = new Map();
+  const approvals = new Map();
   const list = Array.isArray(events) ? events : [];
 
   const cardOf = (id, tool, ts) => {
@@ -47,6 +48,18 @@ export function foldTimeline(events = []) {
       out.push(card);
     }
     return card;
+  };
+  // 审计事件成对渲染：asked 先建条目，decided 补结论。只有 decided 没有 asked 的畸形事件
+  // 单独成条而不是丢弃——审计记录缺一半也必须看得见。
+  const approvalOf = (id, tool, ts) => {
+    const key = id || `${tool}@${ts}`;
+    let item = approvals.get(key);
+    if (!item) {
+      item = { kind: "approval", id: id || "", tool: tool || "", ts, asked: false, decided: false, approved: null, source: "", reason: "" };
+      approvals.set(key, item);
+      out.push(item);
+    }
+    return item;
   };
   const lastAttempt = (card) => card.attempts[card.attempts.length - 1] || null;
 
@@ -106,11 +119,36 @@ export function foldTimeline(events = []) {
       case "confirmation":
         out.push({ kind: "confirm", tool: raw.tool || "", question: raw.question || "", answer: raw.answer, ts });
         break;
+      case "approval_asked": {
+        const item = approvalOf(raw.id, raw.tool, ts);
+        item.asked = true;
+        item.tool = raw.tool || item.tool;
+        item.reason = raw.reason || item.reason;
+        item.args = raw.args ?? null;
+        item.ts = item.ts || ts;
+        break;
+      }
+      case "approval_decided": {
+        const item = approvalOf(raw.id, raw.tool, ts);
+        item.decided = true;
+        item.approved = !!raw.approved;
+        item.source = raw.source || "";
+        item.reason = raw.reason || item.reason;
+        break;
+      }
       case "final":
         out.push({ kind: "final", answer: raw.answer || "", ts });
         break;
       case "notice":
         out.push({ kind: "notice", code: raw.code || "", text: raw.text || "", ts });
+        break;
+      // 模型侧的失败也要在时间线上看得见：用户需要知道「为什么这一步慢了」，
+      // 否则退避重试与格式修复都是静默发生的。
+      case "model_retry":
+        out.push({ kind: "notice", code: "model_retry", text: raw.error || "", attempt: raw.attempt || 0, ts });
+        break;
+      case "model_repair":
+        out.push({ kind: "notice", code: "model_repair", text: raw.error || "", attempt: raw.attempt || 0, ts });
         break;
       default:
         break; // checkpoint(planning/waiting) 与未知类型不占时间线一行

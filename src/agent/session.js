@@ -9,6 +9,7 @@ import { loadToolbox, saveToolbox, saveToolboxNow } from "../toolboxStore.js";
 import { cloneJsonData } from "../jsonData.js";
 import { isAIConfigured } from "../ai.js";
 import { loadAgentConfig, saveAgentConfig } from "./config.js";
+import { createApprovalPolicy } from "./approval.js";
 import { buildAgentRegistry, listAgentTools, resolveRunOptions } from "./tools.js";
 import { runAIAgent } from "./index.js";
 import { accumulateUsage, emptyUsage, sanitizeRun } from "./runStore.js";
@@ -114,13 +115,15 @@ export async function setToolEnabled(name, enabled) {
   return saved;
 }
 
-// runtime 的两处 confirm 调用点：ask_user 传 (question, action)，工具确认传 (message, {action, tool})。
+// runtime 的两处 confirm 调用点：ask_user 传 (question, action)，工具确认传 (message, {action, tool, decision, id})。
 // 用 meta.tool 区分，返回 Promise<boolean>；不返回 true 的缺省实现会让「从不确认」策略退化成拒绝。
+// callId 进 pending：批准卡的审计事件（approval_asked/approval_decided）都要能指回具体这一次调用。
 function handleConfirm(message, meta) {
   return new Promise((resolve) => {
     const isTool = !!meta?.tool;
     agentSession.pending = {
       kind: isTool ? "tool" : "ask",
+      callId: isTool ? String(meta?.id || "") : "",
       tool: isTool ? meta.tool.name || "" : "",
       risk: isTool ? meta.tool.risk || "" : "",
       question: isTool ? "" : String(meta?.question || message || ""),
@@ -154,11 +157,15 @@ async function launch(input, resumeRun) {
   stopFlag = false;
 
   const registry = buildAgentRegistry(agentSession.cfg);
+  const runOptions = resolveRunOptions(agentSession.cfg);
+  // 逐次批准策略：存活期就是本次运行。批准只对「这一次调用」有效（同工具同参数折叠为一次）。
+  const approvalPolicy = createApprovalPolicy({ mode: runOptions.requireConfirmation });
   let run = null;
   try {
     const result = await runAIAgent(goal, {
       registry,
-      ...resolveRunOptions(agentSession.cfg),
+      ...runOptions,
+      approvalPolicy,
       ...(resumeRun ? { resume: resumeRun } : {}),
       confirm: handleConfirm,
       shouldStop: () => stopFlag,
@@ -175,8 +182,12 @@ async function launch(input, resumeRun) {
     agentSession.errorCode = result.errorCode || "";
     agentSession.runStatus = result.status || "";
     if (result.status === "max_steps") pushNotice("max_steps");
-    else if (result.status === "cancelled") pushNotice("stopped");
-    else if (result.status === "failed") pushNotice("failed", result.error || "");
+    else if (result.status === "cancelled") {
+      // 一步都没走、也没产出答案就取消 = 用户在第一个确认卡上就拒绝了，等于放弃本次目标；
+      // 走了若干步之后才取消则区分不出「用户点停止」与「模型连续被拒」，只按已取消记。
+      if (!agentSession.stopReason && !result.history?.length) agentSession.stopReason = "denied";
+      pushNotice("stopped");
+    } else if (result.status === "failed") pushNotice("failed", result.error || "");
   } catch (error) {
     // runAIAgent 只在续跑守卫与持久化失败时 reject
     agentSession.runStatus = "failed";
