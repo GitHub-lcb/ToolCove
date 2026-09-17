@@ -46,7 +46,9 @@ export function canonicalJson(value, seen = new Set()) {
   if (value === null) return "null";
   if (typeof value === "number") {
     if (Number.isNaN(value)) return '"[NaN]"';
-    if (!Number.isFinite(value)) return '"[Infinity]"';
+    // ±Infinity 必须分开：都写成 "[Infinity]" 会让 {x: Infinity} 与 {x: -Infinity}
+    // 算出同一个折叠键，一次批准就被另一个参数的调用复用（碰撞的代价是误放行）。
+    if (!Number.isFinite(value)) return value > 0 ? '"[Infinity]"' : '"[-Infinity]"';
     return String(value);
   }
   if (typeof value === "bigint") return `"[bigint:${value}]"`;

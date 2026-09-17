@@ -60,16 +60,6 @@ export function pathsOf(toolName, args) {
   return single ? [single] : [];
 }
 
-/**
- * file.inspect 的返回形状未知（可能是数组、可能包在 paths 里），所以递归收集候选路径后再逐个比对，
- * 而不是假定某个固定字段名。比对失败只是保守地不放行，不会误放行。
- */
-function candidatesIn(value) {
-  if (Array.isArray(value)) return value;
-  if (isPlainObject(value)) return [value];
-  return [];
-}
-
 function namesPath(candidate, path) {
   if (!isPlainObject(candidate)) return false;
   for (const field of ["path", "file", "name", "fullPath", "full_path"]) {
@@ -80,7 +70,14 @@ function namesPath(candidate, path) {
   return false;
 }
 
-/** 在 inspect 的结果里找该路径的证据；找到返回 true，找不到返回 undefined（= 没有证据）。 */
+/**
+ * 在 inspect 的结果里找该路径的证据；找到返回 true，找不到返回 undefined（= 没有证据）。
+ *
+ * 返回形状未知（可能是数组、也可能包在 paths / files.list 这类嵌套对象里），所以整棵树
+ * 广度优先遍历：每个对象都按候选字段名比对一次，同时继续往下走。**不能只遍历数组层的项**
+ * ——那样 { paths: [...] } 这种包装永远找不到（inspect 成功却登记不上，写入一直被拒）。
+ * seen 挡住循环引用；比对失败只是保守地不放行，不会误放行。
+ */
 export function findInspectEvidence(result, path) {
   const target = normalizePath(path);
   if (!target) return undefined;
@@ -90,14 +87,10 @@ export function findInspectEvidence(result, path) {
     const current = queue.shift();
     if (current == null || typeof current !== "object" || seen.has(current)) continue;
     seen.add(current);
-    if (Array.isArray(current)) {
-      for (const item of current) {
-        if (namesPath(item, target)) return true;
-        queue.push(item);
-      }
-      continue;
-    }
-    for (const item of candidatesIn(current)) queue.push(item);
+    // 数组本身不是候选（namesPath 只认普通对象），但它的项要继续往下走；
+    // 普通对象既可能是候选、也可能只是包装层，两件事都做。
+    if (namesPath(current, target)) return true;
+    for (const item of Array.isArray(current) ? current : Object.values(current)) queue.push(item);
   }
   return undefined;
 }

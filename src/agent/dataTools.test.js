@@ -293,7 +293,9 @@ describe("确认策略：data.remove 强制确认", () => {
     const confirm = vi.fn(async () => false);
     const run = await runAgent("删掉那条问题", { registry, planner: plannerRemove("p1"), requireConfirmation: "never", confirm });
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(run.status).toBe("cancelled");
+    // 拒绝不取消整个目标：拒绝作为反馈回灌，模型改用 final 收尾；删除从未执行
+    expect(run.status).toBe("completed");
+    expect(run.answer).toBe("完成");
     expect(store.get("problems")).toHaveLength(1);
     expect(syncMock.markTombstone).not.toHaveBeenCalled();
   });

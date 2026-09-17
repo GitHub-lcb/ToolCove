@@ -72,7 +72,8 @@ describe("一次完整运行", () => {
     expect(agentSession.currentRunId).toBe(agentSession.runs[0].id);
 
     const types = agentSession.steps.map((s) => s.type);
-    expect(types).toEqual(["tool_start", "tool_result", "final"]);
+    // 策略放行的调用也有一条 approval_decided（by=policy），审计不留空白
+    expect(types).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
   });
 
   it("时间线上的 args 与 result 也脱敏，不只脱敏持久化副本", async () => {
@@ -120,11 +121,14 @@ describe("逐次批准与审计", () => {
       call("json.format", { text: '{"b":2}' }),
       final("done"),
     ]);
-    expect(await startAgentRun("格式化两段 JSON")).toBe(true);
+    // 不能先 await 整次运行：确认卡在等人，先 await 就死锁了。
+    // 起运行拿 promise → 等卡 → 决议 → 再等第二张卡 → 最后才 await。
+    const run = startAgentRun("格式化两段 JSON");
     await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
     resolvePending(true);
     await vi.waitFor(() => expect(agentSession.pending).not.toBeNull()); // 第二次仍然要问
     resolvePending(true);
+    expect(await run).toBe(true);
     expect(agentSession.runStatus).toBe("completed");
     expect(agentSession.steps.filter((s) => s.type === "approval_asked")).toHaveLength(2);
   });
@@ -187,12 +191,15 @@ describe("逐次批准与审计", () => {
   });
 
   it("never 策略下没有确认卡，审计写「策略放行」", async () => {
+    agentSession.cfg = { ...agentSession.cfg, requireConfirmation: "never" };
     scriptPlanner([call("file.write_text", { path: "C:/tmp/x.txt", text: "hi" }), final("done")]);
     await startAgentRun("写文件");
     const asked = agentSession.steps.filter((s) => s.type === "approval_asked");
     expect(asked).toHaveLength(0);
     const decided = agentSession.steps.find((s) => s.type === "approval_decided");
-    expect(decided).toMatchObject({ approved: true, source: "policy", reason: "risky-write" });
+    // reason 说明的是「哪条规则放行的」：never 策略放行的原因是 mode-never，
+    // 而不是 risky-write（那是「为什么要问人」的原因，只在真的问人时出现）
+    expect(decided).toMatchObject({ approved: true, source: "policy", reason: "mode-never" });
   });
 
   it("模型返回非 JSON 时先尝试修复，修复过程进时间线", async () => {
@@ -210,18 +217,21 @@ describe("逐次批准与审计", () => {
 });
 
 describe("确认与停止", () => {
-  it("always 策略下每次工具调用都出内联确认卡，拒绝即取消", async () => {
+  it("always 策略下每次工具调用都出内联确认卡；拒绝只否决这一次调用", async () => {
     agentSession.cfg = { ...agentSession.cfg, requireConfirmation: "always" };
-    scriptPlanner([call("base64.encode", { text: "hi" }), final("不该到这")]);
+    scriptPlanner([call("base64.encode", { text: "hi" }), final("改用只读方式")]);
     const run = startAgentRun("编码");
     await vi.waitFor(() => expect(agentSession.pending).not.toBeNull());
     expect(agentSession.pending.kind).toBe("tool");
     expect(resolvePending(false)).toBe(true);
     await run;
-    expect(agentSession.runStatus).toBe("cancelled");
+    // 拒绝不立刻取消整个目标：拒绝作为反馈回灌，模型换一条路后本次运行仍可完成
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.answer).toBe("改用只读方式");
     expect(agentSession.pending).toBeNull();
     // 人类决定要进时间线，否则历史里看不出是谁放行的
     expect(agentSession.steps.some((s) => s.type === "confirmation" && s.answer === false)).toBe(true);
+    expect(agentSession.steps.some((s) => s.type === "approval_decided" && s.approved === false)).toBe(true);
   });
 
   it("允许后工具照常执行并完成", async () => {

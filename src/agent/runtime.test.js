@@ -15,7 +15,8 @@ describe("agent runtime", () => {
     const events = [];
     const result = await runAgent("calculate", { registry, planner: async () => actions.shift(), onEvent: (e) => events.push(e) });
     expect(result.answer).toBe("5");
-    expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_result", "final"]);
+    // 策略放行的调用也要留审计事件（approval_decided + by=policy），不是只在问人时才有
+    expect(events.map((e) => e.type)).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
   });
 
   it("pauses for confirmation before risky tools", async () => {
@@ -185,11 +186,14 @@ describe("逐次批准", () => {
     expect(result.history.some((h) => String(h.error || "").includes("用户拒绝"))).toBe(true);
   });
 
-  it("第一次就拒绝且模型没有别的办法时，运行以 cancelled 收尾", async () => {
+  it("第一次就拒绝且模型没有别的办法时，拒绝预算用尽后以 cancelled 收尾", async () => {
     const registry = createToolRegistry([{ name: "file.write", risk: "write", retryable: false, execute: () => "ok" }]);
     const result = await runAgent("x", { registry, planner: async () => ({ type: "tool_call", tool: "file.write", args: {} }), confirm: async () => false });
     expect(result.status).toBe("cancelled");
-    expect(result.history).toHaveLength(0); // 一步都没走：session 据此把停止原因记为「被拒绝」
+    // 拒绝不立刻取消：每次拒绝都作为反馈回灌，模型原样重试，
+    // 走满 MAX_DENIALS_PER_RUN 次才收尾；历史里留下的是拒绝原因，而不是空历史
+    expect(result.history.length).toBeGreaterThan(0);
+    expect(result.history.every((h) => String(h.error || "").includes("用户拒绝"))).toBe(true);
   });
 
   it("审计事件成对：人类批准与策略放行都留 approval_asked / approval_decided", async () => {

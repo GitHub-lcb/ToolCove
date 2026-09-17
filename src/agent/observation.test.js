@@ -87,7 +87,8 @@ describe("写入门禁", () => {
 describe("file.inspect 只证明存在性，不授权覆写", () => {
   it("inspect 成功 → 状态 present，但写入仍然被拒", () => {
     const g = gate();
-    g.observeSuccess("file.inspect", { path: "C:/tmp/a.txt" }, [{ path: "C:/tmp/a.txt", size: 10 }]);
+    // file.inspect 的参数形状是 paths（数组），不是 path——见下面那条专门的回归
+    g.observeSuccess("file.inspect", { paths: ["C:/tmp/a.txt"] }, [{ path: "C:/tmp/a.txt", size: 10 }]);
     expect(g.statusOf("C:/tmp/a.txt")).toBe(OBSERVATION_STATUS.PRESENT);
     const refusal = g.check("file.write_text", { path: "C:/tmp/a.txt" });
     // 同名不等于同内容：只看到元信息不足以授权用新内容覆盖
