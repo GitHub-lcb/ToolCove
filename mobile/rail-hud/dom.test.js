@@ -9,6 +9,10 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import * as i18n from "./i18n.js";
+import * as view from "./view.js";
+import * as data from "./data.js";
+import * as railTycoon from "../../src/tools/railTycoon.js";
 
 const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("./main.js", import.meta.url), "utf8");
@@ -87,6 +91,67 @@ describe("构建产物约束", () => {
     // 而占位注释在构建时会被整段替换掉（build.mjs 会校验替换是否发生）
     expect(html).not.toMatch(/<script\s+src/);
     expect([...html.matchAll(/<!-- SCRIPT -->/g)].length).toBe(1);
+  });
+});
+
+// ── 模块契约：用到的导出必须 import（v1.0.2 启动即死的回归）────────────
+//
+// 现象：railpanel-v1.0.2 装上后，面板只剩空壳——结论、进度、录入全是空的，
+// 所有按钮点了没反应（用户实测截图）。
+//
+// 根因：main.js 末尾调了 `setPanelMode(mode === "panel")`，但顶部 import 列表漏了它。
+// esbuild 打包不会报这个错——它把漏 import 的名字当成「全局变量」原样写进产物，
+// 真机启动时才抛 `ReferenceError: setPanelMode is not defined`，而它排在 boot 的
+// 中后段：setPanelMode 之前只做了「读 bootstrap + 决议语言」，之后的
+// bind()（挂事件）、renderStatic()、render()（渲染结论/进度/录入）全都没跑。
+// 构建不报、类型不查、当时的单测也照过，所以单独锁一条：拿模块的**真实导出**
+// 与 main.js 的 import 列表逐一对齐，漏一个就红。
+function stripCommentsAndStrings(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ")
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+}
+
+/** main.js 顶部所有具名 import（支持多行、as 别名；不按来源区分——view.js 会转发 railTycoon 的导出） */
+function importedNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*"[^"]+"/g)) {
+    for (const part of match[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) names.add(name);
+    }
+  }
+  return names;
+}
+
+describe("模块契约：main.js 用到的导出都在 import 列表里", () => {
+  const code = stripCommentsAndStrings(main);
+  const modules = [
+    ["./i18n.js", i18n],
+    ["./view.js", view],
+    ["./data.js", data],
+    ["../../src/tools/railTycoon.js", railTycoon],
+  ];
+
+  it("没有「用了但没 import」的名字", () => {
+    const imported = importedNames(main);
+    const missing = [];
+    for (const [spec, mod] of modules) {
+      for (const name of Object.keys(mod)) {
+        if (imported.has(name)) continue;
+        if (new RegExp(`(?<![\\w$.])${name}(?![\\w$])`).test(code)) {
+          missing.push(`${name}（可从 ${spec} 取）`);
+        }
+      }
+    }
+    expect(missing, `这些名字在 main.js 里用了但没 import：${missing.join("、")}`).toEqual([]);
+  });
+
+  it("import 列表与四个本地模块都有内容（防止上面那条空跑）", () => {
+    expect(importedNames(main).size).toBeGreaterThan(15);
+    for (const [, mod] of modules) expect(Object.keys(mod).length).toBeGreaterThan(0);
   });
 });
 

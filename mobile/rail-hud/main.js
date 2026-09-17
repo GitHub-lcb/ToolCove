@@ -17,7 +17,7 @@
 // 状态只有一份（observed / hints / cursor），存在 localStorage，并实时回传给原生侧
 // （window.railHudApi），这样悬浮窗和全屏页读的是同一份进度。
 
-import { initLocale, isPanelMode, hasNative, setLocale, t } from "./i18n.js";
+import { initLocale, isPanelMode, hasNative, setLocale, setPanelMode, t } from "./i18n.js";
 import { canHintAt, HINT_SAME, hintMax, nextIncompleteAfter, isStationComplete } from "../../src/tools/railTycoon.js";
 import {
   allRecorded,

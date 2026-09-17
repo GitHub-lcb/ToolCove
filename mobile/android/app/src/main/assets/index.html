@@ -831,6 +831,9 @@ html, body {
   var FALLBACK_LOCALE = "en-US";
   var locale = DEFAULT_LOCALE;
   var panelMode = false;
+  var setPanelMode = (value) => {
+    panelMode = !!value;
+  };
   var isPanelMode = () => panelMode;
   var hasNative = () => typeof window !== "undefined" && !!window.railHudApi;
   function resolveLocale(preference, systemLocale) {
