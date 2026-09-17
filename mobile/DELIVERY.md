@@ -9,9 +9,16 @@
 
 | 文件 | 是什么 | 怎么用 |
 |------|--------|--------|
-| `mobile/android/out/railpanel-release.apk` | **手机应用**（688 KB） | 拷到手机上点开安装 |
+| **发布下载页**：<https://github.com/GitHub-lcb/ToolCove/releases/tag/railpanel-v1.0.1> | **手机应用**（688 KB） | **在手机浏览器里打开这个链接直接下载安装**（最省事） |
+| `mobile/android/out/railpanel-release.apk` | 同一份 APK 的本地副本 | 用数据线 / 微信传文件也行 |
 | `mobile/rail-hud/dist/index.html` | 单文件网页版（80 KB，无外部依赖） | 丢了也行；用手机浏览器直接打开就能当纯网页版用 |
 | `mobile/android/README.md` | 工程说明（给改代码的人） | 开发时看 |
+
+稳定的 APK 直链（可以直接发给别人）：
+
+```
+https://github.com/GitHub-lcb/ToolCove/releases/download/railpanel-v1.0.1/railpanel-release.apk
+```
 
 APK 是 **debug 签名**的，侧载（自己装）完全够用，不用任何账号。
 
