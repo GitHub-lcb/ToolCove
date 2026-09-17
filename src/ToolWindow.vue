@@ -1,12 +1,14 @@
 <script setup>
 // 工具箱工具独立窗口容器：迷你标题栏（拖拽区 + 最小化/关闭）+ 工具组件
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onErrorCaptured, onMounted, provide, ref, watch } from "vue";
 import { getCurrentWindow } from "./platform/window.js";
 import { applyAccent, resetAccent, loadAccentKey } from "./accentTheme.js";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
 import { TOOLBOX_TOOLS } from "./toolboxTools.js";
 import { getToolComponent } from "./toolComponents.js";
+import { formatLoadErrorDetail } from "./toolWindow.js";
+import ToolErrorPanel from "./ToolErrorPanel.vue";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
 
@@ -32,6 +34,39 @@ function applyWindowAccent() {
 
 const meta = computed(() => TOOLBOX_TOOLS.find((t) => t.key === props.tool) || TOOLBOX_TOOLS.find((t) => t.key === "json"));
 const toolComponent = computed(() => getToolComponent(props.tool));
+
+// 工具加载/初始化的兜底出口。
+// 窗口是 visible:false 建的，靠 @ready 或 App.vue 的 3s 兜底才 show；而 <Suspense> 只负责「等待时显示 fallback」——
+// 一旦动态 import 失败、或工具 setup/首次渲染抛错，这里就会永远停在纯底色 fallback 上：
+// 用户看到的是「窗口开着但一片空白」，只能按 F12 才知道发生了什么。
+// 这里把错误接住渲染成可见面板，并立刻把窗口显示出来。
+const TOOL_LOAD_TIMEOUT_MS = 15000;
+const loadError = ref(null);
+let loadTimer = null;
+
+function failTool(reasonKey, hintKey, detail, hintParams) {
+  if (loadError.value) return; // 首个错误为准，后续重复错误不再覆盖
+  loadError.value = { reason: t(reasonKey), hint: t(hintKey, hintParams), detail };
+  reveal();
+}
+function reveal() {
+  if (loadTimer) {
+    clearTimeout(loadTimer);
+    loadTimer = null;
+  }
+  emit("ready");
+}
+// errorCaptured 能同时接住两类错误：异步组件 import 失败、工具组件 setup/渲染抛错
+// （两者都沿组件链向上冒泡到这里，见 Vue 的 handleError）。
+onErrorCaptured((err, _instance, info) => {
+  console.error(t("common.toolLoadFail"), { tool: props.tool, err, info });
+  failTool("common.toolLoadFail", "common.toolLoadFailHint", formatLoadErrorDetail(err, info), { tool: t(meta.value.labelKey) });
+  return false; // 已自行展示，阻断继续上报，避免控制台再刷一遍「Unhandled error」
+});
+onMounted(() => {
+  // import 既不 resolve 也不 reject（资源请求挂死）时也要有出路
+  loadTimer = setTimeout(() => failTool("common.toolLoadTimeout", "common.toolLoadTimeoutHint", "", { sec: TOOL_LOAD_TIMEOUT_MS / 1000 }), TOOL_LOAD_TIMEOUT_MS);
+});
 
 // 置顶：把工具窗口压在其它窗口之上，用于「显示辅助」类工具浮在游戏画面上。
 // 偏好全局记忆（所有工具窗口共用），窗口打开时自动恢复；属性失败即回滚，
@@ -107,6 +142,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlistenClose?.();
   unlistenClose = null;
+  if (loadTimer) {
+    clearTimeout(loadTimer);
+    loadTimer = null;
+  }
   flushToolbox();
   flushSecureToolbox();
 });
@@ -150,7 +189,9 @@ function winClose() {
     </header>
 
     <main class="tw-body">
-      <Suspense @resolve="emit('ready')">
+      <!-- 工具加载/初始化失败：给出明确报错与原因，而不是留一个永远空白的窗口 -->
+      <ToolErrorPanel v-if="loadError" :reason="loadError.reason" :hint="loadError.hint" :detail="loadError.detail" />
+      <Suspense v-else @resolve="reveal">
         <component :is="toolComponent" :show-toast="showToast" />
         <template #fallback><div class="tw-loading" aria-hidden="true"></div></template>
       </Suspense>

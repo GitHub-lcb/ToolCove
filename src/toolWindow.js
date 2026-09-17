@@ -11,6 +11,18 @@ export function isTauriEnv() {
   return isDesktop;
 }
 
+/**
+ * 工具加载失败时的「原因」单行文本：错误消息 + Vue 的 info（如 "setup function"）。
+ * 抽出来是因为这段文本要直接展示给用户、并会被贴进 issue，不能出现 undefined/null。
+ */
+export function formatLoadErrorDetail(err, info) {
+  // 注意不能写成 `err.message || err`：message 为空串时会退化成 Error 对象，界面就显示成 "Error"
+  const raw = err && typeof err.message === "string" ? err.message : err;
+  const message = String(raw ?? "").trim();
+  const extra = String(info || "").trim();
+  return [message, extra].filter(Boolean).join(" · ");
+}
+
 /** 独立窗口跟随主窗口主题：先看用户显式选择，再问系统，最后回退 prefers-color-scheme。 */
 export async function resolveToolWindowTheme() {
   const mode = localStorage.getItem("themeMode") || "system";

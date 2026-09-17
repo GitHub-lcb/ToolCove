@@ -529,7 +529,8 @@ function persistEnvs() {
   saveSecureToolbox("request-envs", envs.value, protectRequestEnvs, secureSaveError);
 }
 
-function deriveName(t) { return splitUrl(t.url).base.split("/").filter(Boolean).pop() || t("toolbox.request.reqNewName"); }
+// 同上：参数不能叫 t，否则尾部的 i18n 兜底名会被当成「调用标签对象」
+function deriveName(tab) { return splitUrl(tab.url).base.split("/").filter(Boolean).pop() || t("toolbox.request.reqNewName"); }
 
 function openCollDialog() {
   collName.value = "";
@@ -701,9 +702,10 @@ function importCurl() {
 const renameId = ref("");
 const renameText = ref("");
 const renameInputRef = ref(null);
-function tabLabel(t) {
-  if (t.name.trim()) return t.name;
-  const seg = splitUrl(t.url).base.split("/").filter(Boolean).pop();
+// 参数名不能叫 t：与 useI18n 的 t 同名，函数体里再调 t("...") 就变成「t is not a function」
+function tabLabel(tab) {
+  if (tab.name.trim()) return tab.name;
+  const seg = splitUrl(tab.url).base.split("/").filter(Boolean).pop();
   return seg || t("toolbox.request.reqNewName");
 }
 function closeTab(id) {
@@ -734,14 +736,14 @@ function commitRename() {
 
 // 标签右键菜单：关闭 / 关闭左侧 / 关闭右侧 / 全部关闭（走 App.vue 全局 openCtxMenu，z 400 分层）
 const openCtxMenu = inject("openCtxMenu");
-function openCtx(e, t) {
-  const isFirst = t.id === tabs.value[0]?.id;
-  const isLast = t.id === tabs.value[tabs.value.length - 1]?.id;
+function openCtx(e, tb) {
+  const isFirst = tb.id === tabs.value[0]?.id;
+  const isLast = tb.id === tabs.value[tabs.value.length - 1]?.id;
   openCtxMenu(e, [
-    { label: t("toolbox.request.closeTab"), icon: "x", fn: () => closeTab(t.id) },
+    { label: t("toolbox.request.closeTab"), icon: "x", fn: () => closeTab(tb.id) },
     // 首/尾标签无左/右侧可关，直接不出菜单项（全局菜单无禁用态）
-    ...(isFirst ? [] : [{ label: t("toolbox.request.closeLeft"), icon: "minus", fn: () => closeLeft(t.id) }]),
-    ...(isLast ? [] : [{ label: t("toolbox.request.closeRight"), icon: "minus", fn: () => closeRight(t.id) }]),
+    ...(isFirst ? [] : [{ label: t("toolbox.request.closeLeft"), icon: "minus", fn: () => closeLeft(tb.id) }]),
+    ...(isLast ? [] : [{ label: t("toolbox.request.closeRight"), icon: "minus", fn: () => closeRight(tb.id) }]),
     { label: t("toolbox.request.closeAll"), icon: "trash", danger: true, fn: closeAll },
   ]);
 }
@@ -792,19 +794,20 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
     <section class="col-main">
       <!-- 多请求页标签栏 -->
       <div class="tab-bar">
+        <!-- 循环变量不能叫 t：模板里会遮蔽 useI18n 的 t，导致 t(...) 变成「t is not a function」 -->
         <div
-          v-for="t in tabs"
-          :key="t.id"
+          v-for="tb in tabs"
+          :key="tb.id"
           class="tab"
-          :class="{ on: t.id === activeTabId }"
-          :title="t.url"
-          @click="activeTabId = t.id"
-          @dblclick="startRename(t)"
-          @contextmenu.prevent="openCtx($event, t)"
+          :class="{ on: tb.id === activeTabId }"
+          :title="tb.url"
+          @click="activeTabId = tb.id"
+          @dblclick="startRename(tb)"
+          @contextmenu.prevent="openCtx($event, tb)"
         >
-          <span class="mtag" :class="methodClass(t.method)">{{ t.method }}</span>
+          <span class="mtag" :class="methodClass(tb.method)">{{ tb.method }}</span>
           <input
-            v-if="renameId === t.id"
+            v-if="renameId === tb.id"
             ref="renameInputRef"
             v-model="renameText"
             class="tab-name-input"
@@ -814,9 +817,9 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
             @keyup.esc="renameId = ''"
             @blur="commitRename"
           />
-          <span v-else class="tab-name">{{ tabLabel(t) }}</span>
-          <span v-if="t.loading" class="tab-spin" :title="t('toolbox.request.loading')"></span>
-          <button class="tab-close" :title="t('toolbox.request.closeTab')" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></button>
+          <span v-else class="tab-name">{{ tabLabel(tb) }}</span>
+          <span v-if="tb.loading" class="tab-spin" :title="t('toolbox.request.loading')"></span>
+          <button class="tab-close" :title="t('toolbox.request.closeTab')" @click.stop="closeTab(tb.id)"><Icon name="x" :size="11" /></button>
         </div>
         <button class="tab-add" :title="t('toolbox.request.newTab')" @click="newTab"><Icon name="plus" :size="14" /></button>
       </div>

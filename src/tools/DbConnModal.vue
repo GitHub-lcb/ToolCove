@@ -29,7 +29,8 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
       <label class="fld">
         <span>{{ t("toolbox.db.type") }}</span>
         <select v-model="editing.type">
-          <option v-for="t in DB_TYPES" :key="t.type" :value="t.type">{{ t('toolbox.db.' + t.labelKey) }}</option>
+          <!-- 循环变量不能叫 t：模板里会遮蔽 useI18n 的 t，导致 t(...) 变成「t is not a function」 -->
+          <option v-for="tp in DB_TYPES" :key="tp.type" :value="tp.type">{{ t('toolbox.db.' + tp.labelKey) }}</option>
         </select>
       </label>
       <label class="fld">

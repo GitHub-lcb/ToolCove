@@ -5,39 +5,33 @@ import { i18n } from "./i18n/index.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 
-// 支持的数据库类型元数据（顺序即表单下拉顺序）
+// 支持的数据库类型元数据（顺序即表单下拉顺序）。
+// 约定：这里每个 *Key 字段都是 ui 直接拼进 `toolbox.db.` 取文案的键后缀，
+// 必须在中英两份字典里都存在——缺键不会报错，只会把裸键渲染到界面上（db.test.js 有守卫用例）。
 export const DB_TYPES = [
   {
     type: "mysql",
     labelKey: "typeMysql",
     defaultPort: 3306,
-    hostLabelKey: "hostLabel",
     dbLabelKey: "dbLabel",
-    hintKey: "hintMysql",
   },
   {
     type: "postgres",
     labelKey: "typePostgres",
     defaultPort: 5432,
-    hostLabelKey: "hostLabel",
     dbLabelKey: "dbLabel",
-    hintKey: "hintPostgres",
   },
   {
     type: "sqlite",
     labelKey: "typeSqlite",
     defaultPort: null,
-    hostLabelKey: "",
     dbLabelKey: "sqliteDbLabel",
-    hintKey: "hintSqlite",
   },
   {
     type: "oracle",
     labelKey: "typeOracle",
     defaultPort: 1521,
-    hostLabelKey: "hostLabel",
     dbLabelKey: "oracleDbLabel",
-    hintKey: "hintOracle",
   },
 ];
 
@@ -62,6 +56,46 @@ export function defaultConn(type) {
 /** 判断 ODBC 驱动名是否为 Oracle 相关（名称含 oracle，忽略大小写） */
 export function isOracleDriver(name) {
   return String(name || "").toLowerCase().includes("oracle");
+}
+
+// 连接态看门狗：桌面端 Rust 侧连接/测试有 15s 超时必然回包，超过这个宽限还没落地，
+// 说明这次 IPC 的响应丢了（命令 panic、窗口/进程异常）。不兜住的话 connecting 会永远停在 true，
+// 而 selectConn 对 connecting 是静默 return —— 用户看到的就是「点连接没有任何反应」。
+export const CONNECT_WATCHDOG_MS = 20000;
+
+/**
+ * 按连接 id 管理一次性超时定时器：arm 开始计时，收到结果后 clear，超时回调由调用方复位状态。
+ * 纯逻辑（只依赖 setTimeout/clearTimeout），便于用假定时器做单测。
+ */
+export function createConnWatchdog({ timeoutMs = CONNECT_WATCHDOG_MS, onTimeout } = {}) {
+  const timers = new Map();
+
+  function clear(id) {
+    const timer = timers.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timers.delete(id);
+    }
+  }
+
+  function clearAll() {
+    for (const timer of timers.values()) clearTimeout(timer);
+    timers.clear();
+  }
+
+  function arm(id) {
+    if (id === undefined || id === null || id === "") return;
+    clear(id); // 同一连接重复发起时只保留最新的一次
+    timers.set(
+      id,
+      setTimeout(() => {
+        timers.delete(id);
+        onTimeout?.(id);
+      }, timeoutMs)
+    );
+  }
+
+  return { arm, clear, clearAll, get active() { return timers.size; } };
 }
 
 // Oracle 驱动包：托管在 GitHub 固定 Release（tag drivers）资产（规格：Oracle 驱动分发）

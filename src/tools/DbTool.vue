@@ -14,6 +14,7 @@ import { loadToolbox, saveToolbox, flushToolbox } from "../toolboxStore.js";
 import { saveSecureToolbox, flushSecureToolbox, protectDbConnections, restoreDbConnections } from "../secureToolbox.js";
 import {
   DB_TYPES, defaultConn, validateConn, connLabel, isOracleDriver, driverInstallUrl, isTrustedDriverUrl, isSha256, isReadOnlySql, dialectHint,
+  createConnWatchdog,
   sanitizeForSave, hydrateConn, pushHistory, toMarkdownTable,
   quoteIdent, genUpdateSQL, genInsertSQL, genDeleteSQL, genDeleteByRowSQL, extractTable,
   toCSV, toJSONExport, pushFav, favLabel,
@@ -35,6 +36,18 @@ const conns = ref([]); // [{ id, type, name, host, port, user, password, databas
 const editing = ref(null); // 编辑中的表单副本；null = 不显示表单
 const editingNew = ref(false); // 新建 or 编辑已有
 const connState = ref({}); // { [id]: { connecting, connected, error } }
+
+// 连接态看门狗：Rust 侧连接有 15s 超时必然回包，超宽限仍未落地说明本次响应丢了。
+// 不复位的话 connecting 会永远停在 true，而 selectConn 对 connecting 是静默 return——
+// 表现出来就是「第一次点击没反馈，之后每次点击都没有任何反应」。
+const connectWatchdog = createConnWatchdog({
+  onTimeout: (id) => {
+    const cur = connState.value[id];
+    if (!cur || !cur.connecting) return;
+    connState.value = { ...connState.value, [id]: { ...cur, connecting: false, error: t("toolbox.db.connTimeout") } };
+    props.showToast(t("toolbox.db.connTimeout"));
+  },
+});
 const activeConnId = ref(""); // 当前已连接的连接 id
 const collapsed = ref(false); // 连接管理面板收起（给 SQL 工作区更大空间）
 const allDrivers = ref([]); // 本机全部 ODBC 驱动
@@ -192,7 +205,7 @@ async function installDriver() {
 async function selectConn(conn) {
   if (!isTauri) return props.showToast(t("toolbox.db.needDesktop"));
   const st = connState.value[conn.id] || {};
-  if (st.connecting) return;
+  if (st.connecting) return props.showToast(t("toolbox.db.connectingTip", { name: connLabel(conn) }));
   // 已连接：直接设为活动（用 Rust 侧 connId），加载其表结构
   if (st.connected) {
     const cid = st.connId || conn.id;
@@ -204,6 +217,7 @@ async function selectConn(conn) {
     return;
   }
   connState.value = { ...connState.value, [conn.id]: { ...st, connecting: true, error: "" } };
+  connectWatchdog.arm(conn.id);
   try {
     const connId = await invoke("db_connect", { opts: conn });
     activeConnId.value = connId;
@@ -216,6 +230,8 @@ async function selectConn(conn) {
   } catch (e) {
     connState.value = { ...connState.value, [conn.id]: { connected: false, connecting: false, error: String(e) } };
     props.showToast(friendlyDbError(e, conn.type));
+  } finally {
+    connectWatchdog.clear(conn.id);
   }
 }
 
@@ -225,13 +241,16 @@ async function testEditingConn() {
   if (!isTauri) return props.showToast(t("toolbox.db.needDesktop"));
   const form = editing.value;
   const st = connState.value.__testing || {};
+  if (st.connecting) return props.showToast(t("toolbox.db.testingTip"));
   connState.value = { ...connState.value, __testing: { ...st, connecting: true } };
+  connectWatchdog.arm("__testing");
   try {
     const r = await invoke("db_test", { opts: form });
     props.showToast(t("toolbox.db.testOk", { ms: r.durationMs }));
   } catch (e) {
     props.showToast(friendlyDbError(e, form.type));
   } finally {
+    connectWatchdog.clear("__testing");
     const cur = connState.value.__testing || {};
     connState.value = { ...connState.value, __testing: { ...cur, connecting: false } };
   }
@@ -316,8 +335,9 @@ async function updateSuggest() {
   if (!ctx) return closeSuggest();
   if (ctx.mode === "table") {
     const list = meta.value.tables
-      .filter((t) => (t.name || "").toLowerCase().startsWith(ctx.prefix.toLowerCase()))
-      .map((t) => ({ name: t.name, kind: t.kind === "view" ? t("toolbox.db.view") : t("toolbox.db.table") }));
+      .filter((tb) => (tb.name || "").toLowerCase().startsWith(ctx.prefix.toLowerCase()))
+      // 箭头参数不能叫 t：里面还要调 i18n 的 t("toolbox.db.view")
+      .map((tb) => ({ name: tb.name, kind: tb.kind === "view" ? t("toolbox.db.view") : t("toolbox.db.table") }));
     showSuggest(ctx, list, pos);
     return;
   }
@@ -443,26 +463,27 @@ async function loadColumns(table) {
 }
 
 // 点表名：填充 SELECT 到编辑器（不执行），并展开列结构看字段；双击打开表数据标签
-function onTreeNameClick(t) {
-  sql.value = `SELECT * FROM ${quoteIdent(t.name, activeConn.value?.type)} ${limitClause(activeConn.value?.type)}`;
-  if (!expanded.value[t.name]) toggleTable(t);
+// 形参不能叫 t：函数体里还要用 i18n 的 t(...) 弹提示
+function onTreeNameClick(tb) {
+  sql.value = `SELECT * FROM ${quoteIdent(tb.name, activeConn.value?.type)} ${limitClause(activeConn.value?.type)}`;
+  if (!expanded.value[tb.name]) toggleTable(tb);
   props.showToast(t("toolbox.db.selectFilled"));
 }
 
 // ---------- 表树右键菜单（全局 openCtxMenu，App.vue provide） ----------
 const openCtxMenu = inject("openCtxMenu");
-function onTreeCtx(e, t) {
+function onTreeCtx(e, tb) {
   openCtxMenu(e, [
-    { label: t("toolbox.db.ctxOpenData"), icon: "database", fn: () => quickQuery(t) },
-    { label: t("toolbox.db.ctxGenSelect"), icon: "note", fn: () => genSelectTemplate(t) },
-    { label: t("toolbox.db.ctxGenInsert"), icon: "plus", fn: () => genInsertTemplate(t) },
-    { label: t("toolbox.db.ctxGenUpdate"), icon: "edit", fn: () => genUpdateTemplate(t) },
-    { label: t("toolbox.db.ctxIndexes"), icon: "layers", fn: () => openDetail(t, "indexes") },
-    { label: t("toolbox.db.ctxDdl"), icon: "note", fn: () => openDetail(t, "ddl") },
-    { label: t("toolbox.db.ctxCopyTable"), icon: "copy", fn: () => copyTableName(t) },
+    { label: t("toolbox.db.ctxOpenData"), icon: "database", fn: () => quickQuery(tb) },
+    { label: t("toolbox.db.ctxGenSelect"), icon: "note", fn: () => genSelectTemplate(tb) },
+    { label: t("toolbox.db.ctxGenInsert"), icon: "plus", fn: () => genInsertTemplate(tb) },
+    { label: t("toolbox.db.ctxGenUpdate"), icon: "edit", fn: () => genUpdateTemplate(tb) },
+    { label: t("toolbox.db.ctxIndexes"), icon: "layers", fn: () => openDetail(tb, "indexes") },
+    { label: t("toolbox.db.ctxDdl"), icon: "note", fn: () => openDetail(tb, "ddl") },
+    { label: t("toolbox.db.ctxCopyTable"), icon: "copy", fn: () => copyTableName(tb) },
   ]);
 }
-function onColCtx(e, t, c) {
+function onColCtx(e, tb, c) {
   openCtxMenu(e, [
     { label: t("toolbox.db.ctxInsertCol"), icon: "edit", fn: () => insertColumn(c.name) },
     { label: t("toolbox.db.ctxCopyCol"), icon: "copy", fn: () => copyTableName({ name: c.name }) },
@@ -519,30 +540,30 @@ function useDetailDDL() {
 function tableIdent(t) {
   return quoteIdent(t.name, activeConn.value?.type);
 }
-function genSelectTemplate(t) {
-  sql.value = `SELECT * FROM ${tableIdent(t)} WHERE 1=1`;
+function genSelectTemplate(tb) {
+  sql.value = `SELECT * FROM ${tableIdent(tb)} WHERE 1=1`;
   props.showToast(t("toolbox.db.selectTemplateFilled"));
 }
-function genInsertTemplate(t) {
-  const cols = (meta.value.columns[t.name] || []).filter((c) => !c.pk);
+function genInsertTemplate(tb) {
+  const cols = (meta.value.columns[tb.name] || []).filter((c) => !c.pk);
   if (!cols.length) return props.showToast(t("toolbox.db.needExpandCols"));
   const names = cols.map((c) => quoteIdent(c.name, activeConn.value?.type)).join(", ");
   const vals = cols.map(() => "?").join(", ");
-  sql.value = `INSERT INTO ${tableIdent(t)} (${names}) VALUES (${vals});`;
+  sql.value = `INSERT INTO ${tableIdent(tb)} (${names}) VALUES (${vals});`;
   props.showToast(t("toolbox.db.insertTemplateFilled"));
 }
-function genUpdateTemplate(t) {
-  const cols = (meta.value.columns[t.name] || []).filter((c) => !c.pk);
-  const pks = (meta.value.columns[t.name] || []).filter((c) => c.pk);
+function genUpdateTemplate(tb) {
+  const cols = (meta.value.columns[tb.name] || []).filter((c) => !c.pk);
+  const pks = (meta.value.columns[tb.name] || []).filter((c) => c.pk);
   if (!cols.length || !pks.length) return props.showToast(t("toolbox.db.needPkUpdate"));
   const sets = cols.map((c) => `${quoteIdent(c.name, activeConn.value?.type)} = ?`).join(",\n  ");
   const where = pks.map((c) => `${quoteIdent(c.name, activeConn.value?.type)} = ?`).join(" AND ");
-  sql.value = `UPDATE ${tableIdent(t)}\nSET ${sets}\nWHERE ${where};`;
+  sql.value = `UPDATE ${tableIdent(tb)}\nSET ${sets}\nWHERE ${where};`;
   props.showToast(t("toolbox.db.updateTemplateFilled"));
 }
-async function copyTableName(t) {
-  const ok = await copyText(t.name);
-  props.showToast(ok ? t("toolbox.db.copiedName", { name: t.name }) : t("toolbox.db.copyFailed"));
+async function copyTableName(tb) {
+  const ok = await copyText(tb.name);
+  props.showToast(ok ? t("toolbox.db.copiedName", { name: tb.name }) : t("toolbox.db.copyFailed"));
 }
 function genWhereCond(col) {
   sql.value += (sql.value.trim() ? (/\bWHERE\b/i.test(sql.value) ? "\n  AND " : "\nWHERE ") : "WHERE ") + `${quoteIdent(col, activeConn.value?.type)} = ?`;
@@ -636,10 +657,10 @@ function closeAllTabs() {
   tabs.value = [];
   activeTabId.value = "";
 }
-function onTabCtx(e, t) {
+function onTabCtx(e, tb) {
   openCtxMenu(e, [
-    { label: t("toolbox.db.ctxCloseTab"), icon: "x", fn: () => closeTab(t.id) },
-    { label: t("toolbox.db.ctxCloseOthers"), icon: "minus", fn: () => closeOtherTabs(t.id) },
+    { label: t("toolbox.db.ctxCloseTab"), icon: "x", fn: () => closeTab(tb.id) },
+    { label: t("toolbox.db.ctxCloseOthers"), icon: "minus", fn: () => closeOtherTabs(tb.id) },
     { label: t("toolbox.db.ctxCloseAll"), icon: "trash", fn: () => closeAllTabs() },
   ]);
 }
@@ -1278,6 +1299,7 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onWinKey);
+  connectWatchdog.clearAll();
   flushSecureToolbox();
   flushToolbox(); // 卸载前冲刷全部待写数据，避免视图切换丢失
 });
@@ -1489,19 +1511,20 @@ function onWinKey(e) {
       <div class="result-area">
         <!-- 标签栏：切换 / 关闭 / 右键菜单 -->
         <div v-if="tabs.length" class="tab-bar">
+          <!-- 循环变量不能叫 t：模板里会遮蔽 useI18n 的 t，导致 t(...) 变成「t is not a function」 -->
           <button
-            v-for="t in tabs"
-            :key="t.id"
+            v-for="tb in tabs"
+            :key="tb.id"
             class="db-tab"
-            :class="{ on: t.id === activeTabId }"
-            :title="t.kind === 'table' ? t('toolbox.db.tabTable', { name: t.table }) : t('toolbox.db.tabQuery', { sql: t.sql })"
-            @click="switchTab(t.id)"
-            @contextmenu.prevent="onTabCtx($event, t)"
+            :class="{ on: tb.id === activeTabId }"
+            :title="tb.kind === 'table' ? t('toolbox.db.tabTable', { name: tb.table }) : t('toolbox.db.tabQuery', { sql: tb.sql })"
+            @click="switchTab(tb.id)"
+            @contextmenu.prevent="onTabCtx($event, tb)"
           >
-            <Icon :name="t.kind === 'table' ? 'database' : 'note'" :size="13" />
-            <span v-if="t.running" class="tab-spin"></span>
-            <span class="db-tab-title">{{ t.title }}</span>
-            <span class="db-tab-x" :title="t('toolbox.db.closeTabTip')" @click.stop="closeTab(t.id)"><Icon name="x" :size="11" /></span>
+            <Icon :name="tb.kind === 'table' ? 'database' : 'note'" :size="13" />
+            <span v-if="tb.running" class="tab-spin"></span>
+            <span class="db-tab-title">{{ tb.title }}</span>
+            <span class="db-tab-x" :title="t('toolbox.db.closeTabTip')" @click.stop="closeTab(tb.id)"><Icon name="x" :size="11" /></span>
           </button>
           <span class="tab-bar-tip">{{ t("toolbox.db.tabBarTip") }}</span>
         </div>

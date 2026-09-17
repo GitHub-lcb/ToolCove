@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, onErrorCaptured, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { WebviewWindow } from "./platform/window.js";
 import { emitTo } from "./platform/events.js";
 import Icon from "./Icon.vue";
 import { relativeTime } from "./shared.js";
-import { openToolWindow, isTauriEnv } from "./toolWindow.js";
+import { openToolWindow, isTauriEnv, formatLoadErrorDetail } from "./toolWindow.js";
+import ToolErrorPanel from "./ToolErrorPanel.vue";
 import { loadToolbox, saveToolbox, saveToolboxNow, flushToolbox } from "./toolboxStore.js";
 import { createJsonHandoffQueue, JSON_HANDOFF_EVENT } from "./tools/jsonHandoff.js";
 import { prepareJsonHandoff } from "./tools/jsonWorkspace.js";
@@ -80,6 +81,25 @@ const activeMeta = computed(() => TOOLS.find((t) => t.key === activeTool.value) 
 const toolComp = computed(() => (activeMeta.value ? getToolComponent(activeMeta.value.key) : null));
 // 仅 API 调试工具需要跨工具跳转钩子（其余组件未声明该 prop，不能透传避免落到根元素）
 const toolProps = computed(() => (activeTool.value === "request" ? { "open-in-json": openInJson } : {}));
+
+// 内嵌工具的失败出口：这里没有 <Suspense>，异步组件 import 失败或工具 setup/渲染抛错时
+// 详情区会只剩一片空白（整窗空白那次的同款形态，只是换了个容器）。独立窗口走 ToolWindow 的同名兜底。
+const toolError = ref(null);
+onErrorCaptured((err, _instance, info) => {
+  console.error(t("common.toolLoadFail"), { tool: activeTool.value, err, info });
+  if (toolError.value) return false; // 首个错误为准
+  const name = activeMeta.value ? t(activeMeta.value.labelKey) : activeTool.value;
+  toolError.value = {
+    reason: t("common.toolLoadFail"),
+    hint: t("common.toolLoadFailHint", { tool: name }),
+    detail: formatLoadErrorDetail(err, info),
+  };
+  return false; // 已自行展示，阻断继续上报
+});
+// 换工具或返回画廊时清掉上一次的报错，否则下次进来会一直显示旧错误
+watch(activeTool, () => {
+  toolError.value = null;
+});
 
 function recordRecent(tool) {
   const list = recent.value.filter((r) => r.key !== tool.key);
@@ -192,7 +212,9 @@ function openInJson(text) {
         <span class="crumb-desc">{{ t(activeMeta.descKey) }}</span>
       </div>
       <section class="detail-body">
-        <component :is="toolComp" :show-toast="showToast" v-bind="toolProps" />
+        <!-- 加载/初始化失败时给出可见报错，而不是留一片空白 -->
+        <ToolErrorPanel v-if="toolError" :reason="toolError.reason" :hint="toolError.hint" :detail="toolError.detail" />
+        <component v-else :is="toolComp" :show-toast="showToast" v-bind="toolProps" />
       </section>
     </template>
 

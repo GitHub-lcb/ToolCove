@@ -20,6 +20,24 @@ describe("i18n 字典", () => {
     }
   });
 
+  // 回归：词条里的裸花括号会被 vue-i18n 当成占位符定界符，编译期抛 SyntaxError，
+  // 而且只在 t(key) 首次调用时爆——表现是「整块界面空白 / 点了没反应」，排查成本极高。
+  // 需要输出字面量花括号写 {'{'} / {'}'}，需要输出反斜杠写 \\（单写 \ 会把后面的 { 转义掉）。
+  // 例：`-d '{...}'` 必须写成 `-d '{'{'}...{'}'}'`。
+  it("所有词条都能通过消息编译器（裸花括号会在这里抛错）", () => {
+    const original = i18n.global.locale.value;
+    try {
+      for (const [locale, dict] of [["zh-CN", zh], ["en-US", en]]) {
+        i18n.global.locale.value = locale;
+        for (const key of flatKeys(dict)) {
+          expect(() => i18n.global.t(key), `${locale} ${key}`).not.toThrow();
+        }
+      }
+    } finally {
+      i18n.global.locale.value = original;
+    }
+  });
+
   it("工具箱注册表引用的词条键都真实存在", () => {
     const keys = [
       ...TOOLBOX_GROUPS.flatMap((group) => [group.labelKey, group.descKey]),

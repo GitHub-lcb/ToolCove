@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   DB_TYPES,
   defaultConn,
@@ -23,6 +23,8 @@ import {
   toJSONExport,
   pushFav,
   favLabel,
+  CONNECT_WATCHDOG_MS,
+  createConnWatchdog,
 } from "./db.js";
 import { i18n } from "./i18n/index.js";
 
@@ -31,6 +33,30 @@ describe("DB_TYPES", () => {
     expect(DB_TYPES.map((t) => t.type)).toEqual(["mysql", "postgres", "sqlite", "oracle"]);
     expect(DB_TYPES.find((t) => t.type === "mysql").defaultPort).toBe(3306);
     expect(DB_TYPES.find((t) => t.type === "oracle").defaultPort).toBe(1521);
+  });
+
+  // 回归：DB_TYPES 里曾同时挂着 hostLabelKey / hintKey 这类没有任何组件读、字典里也没有词条的
+  // 「死字段」；更早还漏过 typeMysql / dbLabel 等 7 个键，界面直接显示成裸键（toolbox.db.typeMysql）。
+  // 约定：每个 *Key 字段都要能在两份字典里解析出文案。
+  it("每个 *Key 元数据字段都能解析出本地化文案，而不是裸键", () => {
+    const original = i18n.global.locale.value;
+    try {
+      for (const type of DB_TYPES) {
+        const fields = Object.keys(type).filter((k) => k.endsWith("Key") && typeof type[k] === "string" && type[k]);
+        expect(fields.length, `${type.type} 没有可解析的 *Key 字段`).toBeGreaterThan(0);
+
+        for (const field of fields) {
+          const key = `toolbox.db.${type[field]}`;
+          for (const locale of ["zh-CN", "en-US"]) {
+            i18n.global.locale.value = locale;
+            // 缺键时 vue-i18n 原样返回键名
+            expect(i18n.global.t(key), `${locale} ${type.type}.${field} → ${key}`).not.toBe(key);
+          }
+        }
+      }
+    } finally {
+      i18n.global.locale.value = original;
+    }
   });
 });
 
@@ -426,5 +452,95 @@ describe("isReadOnlySql", () => {
   });
   it("does not misdetect write keywords inside strings", () => {
     expect(isReadOnlySql("SELECT 'delete from t' AS sample")).toBe(true);
+  });
+});
+
+// 连接态看门狗：桌面端连接/测试若是「没有回包」，connecting 会永远卡在 true，
+// 而 selectConn 对 connecting 是静默 return —— 用户看到的就是「点连接没有任何反应」。
+describe("连接态看门狗", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function makeWatchdog(timeoutMs = 1000) {
+    const fired = [];
+    const watchdog = createConnWatchdog({ timeoutMs, onTimeout: (id) => fired.push(id) });
+    return { fired, watchdog };
+  }
+
+  it("宽限期默认比 Rust 侧 15s 连接超时更宽", () => {
+    expect(CONNECT_WATCHDOG_MS).toBeGreaterThan(15000);
+  });
+
+  it("到点回调一次并自动出队", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("c1");
+    expect(watchdog.active).toBe(1);
+
+    vi.advanceTimersByTime(999);
+    expect(fired).toEqual([]);
+
+    vi.advanceTimersByTime(1);
+    expect(fired).toEqual(["c1"]);
+    expect(watchdog.active).toBe(0);
+  });
+
+  it("结果回来后 clear，不会误报超时", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("c1");
+    watchdog.clear("c1");
+
+    vi.advanceTimersByTime(5000);
+    expect(fired).toEqual([]);
+    expect(watchdog.active).toBe(0);
+  });
+
+  it("同一连接重复发起时重新计时，只有最后一次生效", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("c1");
+    vi.advanceTimersByTime(600);
+    watchdog.arm("c1"); // 重连：重新计时
+
+    vi.advanceTimersByTime(600);
+    expect(fired).toEqual([]); // 第一次的定时器不该在 1000ms 处触发
+
+    vi.advanceTimersByTime(400);
+    expect(fired).toEqual(["c1"]);
+  });
+
+  it("多个连接各自独立计时，互不干扰", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("c1"); // t=0 起算，1000ms 到点
+    vi.advanceTimersByTime(500);
+    watchdog.arm("__testing"); // t=500 起算，1500ms 到点
+    watchdog.clear("c1");
+
+    vi.advanceTimersByTime(500); // t=1000：c1 已 clear，不该响
+    expect(fired).toEqual([]);
+
+    vi.advanceTimersByTime(500); // t=1500
+    expect(fired).toEqual(["__testing"]);
+    expect(watchdog.active).toBe(0);
+  });
+
+  it("clearAll 一次清空（组件卸载时用）", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("c1");
+    watchdog.arm("c2");
+    watchdog.clearAll();
+    expect(watchdog.active).toBe(0);
+
+    vi.advanceTimersByTime(5000);
+    expect(fired).toEqual([]);
+  });
+
+  it("空 id 不入队，避免把不同连接串到同一个定时器上", () => {
+    const { fired, watchdog } = makeWatchdog();
+    watchdog.arm("");
+    watchdog.arm(undefined);
+    watchdog.arm(null);
+    expect(watchdog.active).toBe(0);
+
+    vi.advanceTimersByTime(5000);
+    expect(fired).toEqual([]);
   });
 });

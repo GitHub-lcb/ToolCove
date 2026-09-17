@@ -59,35 +59,36 @@ const emit = defineEmits(["update:tableFilter"]);
               <span class="nav-group-cnt">{{ group.length }}</span>
             </div>
             <div class="meta-tree">
-              <div v-for="t in group" :key="t.name" class="tree-item" @contextmenu.prevent="onTreeCtx($event, t)">
+              <!-- 循环变量不能叫 t：模板里会遮蔽 useI18n 的 t，导致 t(...) 变成「t is not a function」 -->
+              <div v-for="tb in group" :key="tb.name" class="tree-item" @contextmenu.prevent="onTreeCtx($event, tb)">
                 <div class="tree-row">
-                  <span class="tree-caret" :title="t('toolbox.db.expandCols')" @click="toggleTable(t)">
-                    <Icon :name="expanded[t.name] ? 'chevron' : 'chevron-right'" :size="12" />
+                  <span class="tree-caret" :title="t('toolbox.db.expandCols')" @click="toggleTable(tb)">
+                    <Icon :name="expanded[tb.name] ? 'chevron' : 'chevron-right'" :size="12" />
                   </span>
-                  <span class="tree-name" :title="t('toolbox.db.treeNameTitle')" @click="onTreeNameClick(t)" @dblclick="quickQuery(t)">{{ t.name }}</span>
+                  <span class="tree-name" :title="t('toolbox.db.treeNameTitle')" @click="onTreeNameClick(tb)" @dblclick="quickQuery(tb)">{{ tb.name }}</span>
                   <span class="tree-actions">
-                    <button class="tree-action" :title="t('toolbox.db.viewIdx')" :aria-label="t('toolbox.db.viewIdx')" @click.stop="openDetail(t, 'indexes')"><Icon name="layers" :size="12" /></button>
-                    <button class="tree-action" :title="t('toolbox.db.viewDDL')" :aria-label="t('toolbox.db.viewDDL')" @click.stop="openDetail(t, 'ddl')"><Icon name="note" :size="12" /></button>
+                    <button class="tree-action" :title="t('toolbox.db.viewIdx')" :aria-label="t('toolbox.db.viewIdx')" @click.stop="openDetail(tb, 'indexes')"><Icon name="layers" :size="12" /></button>
+                    <button class="tree-action" :title="t('toolbox.db.viewDDL')" :aria-label="t('toolbox.db.viewDDL')" @click.stop="openDetail(tb, 'ddl')"><Icon name="note" :size="12" /></button>
                   </span>
-                  <span class="tree-kind" :class="t.kind">{{ t.kind === "view" ? t("toolbox.db.groupView") : t("toolbox.db.groupTable") }}</span>
+                  <span class="tree-kind" :class="tb.kind">{{ tb.kind === "view" ? t("toolbox.db.groupView") : t("toolbox.db.groupTable") }}</span>
                 </div>
-                <div v-if="expanded[t.name]" class="tree-cols">
-                  <div v-if="loadingCols[t.name]" class="meta-tip">{{ t("toolbox.db.loadingCols") }}</div>
+                <div v-if="expanded[tb.name]" class="tree-cols">
+                  <div v-if="loadingCols[tb.name]" class="meta-tip">{{ t("toolbox.db.loadingCols") }}</div>
                   <template v-else>
                     <div
-                      v-for="c in meta.columns[t.name] || []"
+                      v-for="c in meta.columns[tb.name] || []"
                       :key="c.name"
                       class="tree-col"
                       :title="t('toolbox.db.colTitle', { ident: quoteIdent(c.name, activeConn?.type) })"
                       @dblclick="insertColumn(c.name)"
-                      @contextmenu.prevent="onColCtx($event, t, c)"
+                      @contextmenu.prevent="onColCtx($event, tb, c)"
                     >
                       <span class="col-pk" :class="{ on: c.pk }" :title="t('toolbox.db.pk')">PK</span>
                       <span class="col-name">{{ c.name }}</span>
                       <span class="col-type" :title="c.type">{{ c.type }}</span>
                       <span v-if="c.comment" class="col-comment" :title="c.comment">{{ c.comment }}</span>
                     </div>
-                    <p v-if="!(meta.columns[t.name] || []).length" class="meta-tip">{{ t("toolbox.db.noCols") }}</p>
+                    <p v-if="!(meta.columns[tb.name] || []).length" class="meta-tip">{{ t("toolbox.db.noCols") }}</p>
                   </template>
                 </div>
               </div>
