@@ -17,6 +17,10 @@ release-out
 tmp
 tmp-deploy
 tmp-debug
+# 根目录下随手起的临时排查脚本 / 输出：它们**不该**进仓库，而 `git add -A` 会顺手扫进去
+# （已经犯过三次）。只匹配 `/tmp-*` 前缀，不写 `tmp*`——那会把仓库里的 tmp/ 目录一起挡掉。
+/tmp-*
+*.tmp
 
 # WorkBuddy 会话的工作区数据（本地备忘/日志，不入库）
 .workbuddy/
