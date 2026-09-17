@@ -142,15 +142,26 @@ class RailPanelService : Service(), RailBridge.Host {
             if (collapsed) dp(BAR_WIDTH_DP) else dp(PANEL_WIDTH_DP),
             if (collapsed) dp(BAR_HEIGHT_DP) else dp(PANEL_HEIGHT_DP),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            // 只保留这三个，**不要**再加 FLAG_LAYOUT_IN_SCREEN：
+            // 它让窗口按整屏（含系统栏区域）布局，在 gravity = TOP|START 下会造成
+            // 窗口的实际位置与触摸投递区域错位——表现就是浮窗「看得见、点不着」。
+            // 面板本来就会被 clampToScreen 钳在屏幕内，不需要它来贴边。
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,
         ).apply {
+            // 显式写死 TOP|START：位置完全由 x/y 决定，配合 clampToScreen 保证面板始终在屏内。
+            // 「可见却点不着」最常见的两个成因就是重力与 LAYOUT_IN_SCREEN 不一致导致的
+            // 窗口位置与触摸投递区域错位，所以这两处都不留默认值。
             gravity = Gravity.TOP or Gravity.START
             val saved = restorePosition()
             x = saved.first
             y = saved.second
+            // 刘海/挖孔屏：让窗口可以延伸到短边，否则面板可能被系统推离我们计算的位置
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         try {

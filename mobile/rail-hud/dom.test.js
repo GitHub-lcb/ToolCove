@@ -89,3 +89,65 @@ describe("构建产物约束", () => {
     expect([...html.matchAll(/<!-- SCRIPT -->/g)].length).toBe(1);
   });
 });
+
+// ── 真机回归：弹层点不动（用户实测反馈）────────────────────────────────
+//
+// 现象：悬浮窗里清空确认弹层的「取消 / 清空并回始发站」两个按钮点了没有任何反应。
+// 根因是弹层贴在屏幕最底部（align-items: flex-end + 只有 12px 内边距），按钮正好压在
+// 安卓手势导航条上，手势条优先吃触摸。
+//
+// 这类故障编译不报错、单测（当时的）也照过，只在真机上表现为「点了没反应」，
+// 所以单独锁两条：安全区内边距、以及「面板里不许开页内弹层」的边界。
+describe("弹层可点击性（真机回归）", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+
+  it("弹层底部内边距叠加了安全区，按钮不会压在手势导航条上", () => {
+    const rule = css.match(/\.dialog\s*\{[^}]*\}/);
+    expect(rule, "找不到 .dialog 规则").toBeTruthy();
+    expect(rule[0]).toMatch(/--safe-bottom/);
+  });
+
+  it("弹层靠屏幕底部对齐（这正是必须留安全区的原因）", () => {
+    const rule = css.match(/\.dialog\s*\{[^}]*\}/)[0];
+    expect(rule).toContain("flex-end");
+  });
+
+  it("[hidden] 时确实不显示（display:flex 会盖掉浏览器默认的 hidden 样式）", () => {
+    // 弹层用 display:flex 布局，若不显式处理 [hidden]，隐藏的弹层会一直盖在界面上、
+    // 吃掉所有点击——这是同一类「按钮没反应」的另一种成因。
+    expect(css).toMatch(/\.dialog\[hidden\]\s*\{[^}]*display:\s*none/);
+  });
+
+  it("toast 也留了安全区", () => {
+    expect(css.match(/\.toast\s*\{[^}]*\}/)[0]).toMatch(/--safe-bottom/);
+  });
+
+  it("面板模式（panel）里不渲染任何弹层入口——转交全屏页", () => {
+    // 三个会开弹层的动作都必须先走 openInActivity：
+    // 全部记录 / 清空确认 / 导入
+    expect(main).toMatch(/function openRecords\(\)\s*\{[\s\S]{0,200}?openInActivity\(ACTION_RECORDS\)/);
+    expect(main).toMatch(/function doReset\(\)\s*\{[\s\S]{0,200}?openInActivity\(ACTION_RESET\)/);
+    expect(main).toMatch(/function openInActivity\(action\)/);
+  });
+
+  it("转交动作名与 Kotlin 侧逐字一致（写错只会表现为点了没反应）", () => {
+    const kt = readFileSync(
+      new URL("../android/app/src/main/java/com/githublcb/railpanel/SupportActivity.kt", import.meta.url),
+      "utf8",
+    );
+    const jsActions = [...main.matchAll(/const (ACTION_[A-Z]+) = "([^"]+)"/g)].map((m) => [m[1], m[2]]);
+    expect(jsActions.length, "main.js 里没找到 ACTION_* 常量").toBeGreaterThanOrEqual(4);
+    for (const [name, value] of jsActions) {
+      expect(kt, `Kotlin 侧没有 ${name} = "${value}"`).toContain(`const val ${name} = "${value}"`);
+    }
+  });
+
+  it("原生确认清空后回灌页面的钩子存在（否则原生清了、页面还留着旧记录）", () => {
+    expect(main).toMatch(/confirmReset\(\)\s*\{[\s\S]{0,80}?resetAll\(\)/);
+    const kt = readFileSync(
+      new URL("../android/app/src/main/java/com/githublcb/railpanel/SupportActivity.kt", import.meta.url),
+      "utf8",
+    );
+    expect(kt).toContain("window.railHud.confirmReset()");
+  });
+});

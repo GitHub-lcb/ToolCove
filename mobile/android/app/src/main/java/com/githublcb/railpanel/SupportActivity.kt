@@ -1,6 +1,7 @@
 package com.githublcb.railpanel
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -40,7 +41,12 @@ class SupportActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = getString(
-            if (intent?.action == ACTION_EXPORT) R.string.export_title else R.string.import_title,
+            when (intent?.action) {
+                ACTION_EXPORT -> R.string.export_title
+                ACTION_RECORDS -> R.string.records_title
+                ACTION_RESET -> R.string.reset_confirm_title
+                else -> R.string.import_title
+            },
         )
 
         // 悬浮窗转交过来的导出内容优先：它可能比 SharedPreferences 里的更新
@@ -63,9 +69,36 @@ class SupportActivity : Activity() {
             when (intent?.action) {
                 ACTION_EXPORT -> evaluate("window.railHudExport && window.railHudExport()")
                 ACTION_IMPORT -> evaluate("window.railHudImport && window.railHudImport()")
+                ACTION_RECORDS -> evaluate("window.railHudRecords && window.railHudRecords()")
+                // 清空用**原生**对话框，不经过页面：确认之后直接调页面的 confirmReset()。
+                // 这样两条入口（页内弹层 / 原生对话框）最终都落到同一段执行逻辑，
+                // 不会出现「原生清了、页面还留着旧记录」这种分叉。
+                ACTION_RESET -> confirmReset()
             }
             pendingExport = null
         }, 350)
+    }
+
+    /**
+     * 「清空全部 16 站」的原生确认框。
+     *
+     * 为什么用原生 AlertDialog 而不是页内弹层：悬浮窗里页内弹层的按钮会压在手势导航条上、
+     * 点了没反应（真机反馈），所以面板把清空整件事转交到这里；既然已经在 Activity 里了，
+     * 用一个原生对话框比再加载一层页面更直接，也不受 WebView 子窗口那类问题的牵连。
+     */
+    private fun confirmReset() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reset_confirm_title)
+            .setMessage(R.string.reset_confirm_body)
+            .setNegativeButton(R.string.reset_cancel) { dialog, _ -> dialog.dismiss() }
+            .setPositiveButton(R.string.reset_ok) { dialog, _ ->
+                evaluate("window.railHud && window.railHud.confirmReset()")
+                dialog.dismiss()
+            }
+            .setOnDismissListener {
+                // 确认框关掉就没什么可做的了，回到面板（用户按返回键即可）
+            }
+            .show()
     }
 
     private fun evaluate(script: String) = web?.evaluateJavascript(script, null)
@@ -111,6 +144,16 @@ class SupportActivity : Activity() {
     companion object {
         const val ACTION_EXPORT = "com.githublcb.railpanel.EXPORT"
         const val ACTION_IMPORT = "com.githublcb.railpanel.IMPORT"
+
+        /**
+         * 面板转交过来的另两件事。悬浮窗里不能开页内弹层（按钮会压在手势导航条上、
+         * 点了没反应），所以「全部记录」和「清空确认」也走到这一页来做。
+         *
+         * ⚠️ 这四个字符串必须与 mobile/rail-hud/main.js 顶部的 ACTION_* 常量逐字一致：
+         * 它们是 JS 与原生之间唯一的协议，写错不会编译报错，只会「点了没反应」。
+         */
+        const val ACTION_RECORDS = "com.githublcb.railpanel.RECORDS"
+        const val ACTION_RESET = "com.githublcb.railpanel.RESET"
 
         private const val REQUEST_PICK = 201
 

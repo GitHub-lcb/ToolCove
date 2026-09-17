@@ -24,6 +24,11 @@
 
     <string name="export_title">导出进度</string>
     <string name="import_title">导入进度</string>
+    <string name="records_title">全部 16 站</string>
+    <string name="reset_confirm_title">清空全部 16 站记录？</string>
+    <string name="reset_confirm_body" formatted="false">16 站的类型与提示都会清掉，光标回到始发站。这一步不能撤销。</string>
+    <string name="reset_cancel">取消</string>
+    <string name="reset_ok">清空并回始发站</string>
 
     <string name="no_settings_page">这个系统里找不到对应的设置页面，请到「设置 → 应用 → 本应用」里手动开启。</string>
     <string name="no_file_picker">没有可用的文件选择器。</string>

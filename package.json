@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.6.1",
   "//mobileVersion": "手机版（铁路大亨悬浮面板）的独立版本号：与桌面端各走各的发版线，见 .github/workflows/railpanel-release.yml",
-  "mobileVersion": "1.0.1",
+  "mobileVersion": "1.0.2",
   "type": "module",
   "scripts": {
     "dev": "vite",

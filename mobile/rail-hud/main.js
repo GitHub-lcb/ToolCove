@@ -17,7 +17,7 @@
 // 状态只有一份（observed / hints / cursor），存在 localStorage，并实时回传给原生侧
 // （window.railHudApi），这样悬浮窗和全屏页读的是同一份进度。
 
-import { initLocale, setLocale, t } from "./i18n.js";
+import { initLocale, isPanelMode, hasNative, setLocale, t } from "./i18n.js";
 import { canHintAt, HINT_SAME, hintMax, nextIncompleteAfter, isStationComplete } from "../../src/tools/railTycoon.js";
 import {
   allRecorded,
@@ -73,6 +73,17 @@ function h(tag, attrs = {}, children = []) {
 }
 
 const $ = (sel) => document.querySelector(sel);
+
+/**
+ * 转交全屏页的动作名。
+ *
+ * 这四个字符串必须与 Kotlin 侧 SupportActivity 的常量**逐字一致**——它们是
+ * JS 与原生之间唯一的协议，写错不会编译报错，只会「点了没反应」。
+ */
+const ACTION_EXPORT = "com.githublcb.railpanel.EXPORT";
+const ACTION_IMPORT = "com.githublcb.railpanel.IMPORT";
+const ACTION_RECORDS = "com.githublcb.railpanel.RECORDS";
+const ACTION_RESET = "com.githublcb.railpanel.RESET";
 
 /** 原生桥：Android 侧注入 window.railHudApi 后接管「保存文件 / 选文件」这两件 WebView 做不好的事。 */
 const native = typeof window !== "undefined" ? window.railHudApi ?? null : null;
@@ -333,6 +344,8 @@ function adviceNode(item) {
 
 // ── 全部记录（覆盖层）────────────────────────────────────────────────
 function openRecords() {
+  // 面板里不开这一层（理由见 openInActivity）：改走全屏页
+  if (openInActivity(ACTION_RECORDS)) return;
   const list = $("#records-list");
   list.replaceChildren();
   for (let i = 0; i < result.stationCount; i += 1) {
@@ -392,6 +405,23 @@ function recordResultText(i) {
 }
 
 // ── 弹层 ────────────────────────────────────────────────────────────
+//
+// ⚠️ 悬浮窗里**不开任何页内弹层**，一律转交全屏页。这是真机踩出来的：
+//   1) 面板是 FLAG_NOT_FOCUSABLE 的 overlay 窗口；弹层的按钮贴屏幕底部，
+//      会压在手势导航条上——手势条优先吃触摸，按钮点了「没有任何反应」
+//      （用户实测：清空确认里的「取消 / 清空并回始发站」两个按钮全点不动）；
+//   2) 依赖子窗口的控件（`<select>`、文件选择器）在 overlay 窗口里也不可靠。
+// 全屏页是 Activity 窗口，没有这两个限制。手机浏览器里（没有原生桥）弹层照常可用。
+function openInActivity(action) {
+  if (!isPanelMode() || !hasNative() || typeof native.openSupport !== "function") return false;
+  try {
+    native.openSupport(action);
+    return true;
+  } catch {
+    return false; // 原生那侧出问题时退回页内弹层，至少还有个反馈
+  }
+}
+
 function openDialog(sel) {
   const el = $(sel);
   el.hidden = false;
@@ -440,8 +470,8 @@ async function doCopy() {
 function doExport() {
   const json = toJSON(state);
   const name = exportFileName();
-  if (native?.saveFile) {
-    // Android：交给原生走 SAF，能落到「下载」或用户挑的目录
+  if (hasNative() && typeof native.saveFile === "function") {
+    // Android：交给原生走支持页（悬浮窗里没有可复制的界面）
     try {
       native.saveFile(name, json);
     } catch {
@@ -471,7 +501,7 @@ function showExportText(json, name) {
 
 /** 导入：优先让原生选文件（Android 的 WebView 里 <input file> 需要 onShowFileChooser 支持）。 */
 function doImportPick() {
-  if (native?.pickFile) {
+  if (hasNative() && typeof native.pickFile === "function") {
     try {
       native.pickFile();
       return;
@@ -501,6 +531,9 @@ function applyImportText(text) {
 }
 
 function doReset() {
+  // 面板里的弹层按钮会压在手势导航条上、点了没反应（用户实测反馈），
+  // 所以清空的确认交给全屏页的原生对话框来做
+  if (openInActivity(ACTION_RESET)) return;
   openDialog("#reset");
 }
 
@@ -663,6 +696,16 @@ window.railHud = {
   applyImportText(text) {
     return applyImportText(text);
   },
+  /**
+   * 原生确认「清空并回始发站」后调用。
+   *
+   * 清空这个动作在面板里走的是原生对话框（弹层在浮窗里点不动，见 openInActivity），
+   * 所以真正的执行入口要留给原生回调——两条入口（页内弹层 / 原生对话框）
+   * 最终都落到 resetAll()，不会出现「原生清了、页面还留着旧记录」的分叉。
+   */
+  confirmReset() {
+    resetAll();
+  },
 };
 
 /**
@@ -674,6 +717,8 @@ window.railHud = {
  */
 window.railHudExport = () => doExport();
 window.railHudImport = () => openDialog("#import");
+// 「全部记录」在面板里被转交到全屏页，由原生调它来就地打开那一层
+window.railHudRecords = () => openRecords();
 // 「选择文件…」按 data 属性接线：index.html 里那颗按钮不写 id，
 // 免得和上面 bind() 里逐个 getElementById 的风格混起来（两种都做就是两处都要维护）。
 document.querySelector("[data-import-pick]")?.addEventListener("click", doImportPick);
@@ -682,6 +727,8 @@ const boot = bootstrap();
 initLocale(boot?.lang ? `?lang=${boot.lang}` : window.location.search);
 mode = document.querySelector("#root")?.dataset.mode ?? "full";
 if (boot?.mode) mode = boot.mode;
+// 告诉 i18n 层「现在跑在悬浮窗里」：弹层边界判定要用（见 openInActivity）
+setPanelMode(mode === "panel");
 
 // 原生给了权威状态就用它；否则读本地存档（浏览器直接打开时就是这条路径）
 if (boot?.state) {

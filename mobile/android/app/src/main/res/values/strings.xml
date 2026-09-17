@@ -37,6 +37,11 @@
 
     <string name="export_title">Export progress</string>
     <string name="import_title">Import progress</string>
+    <string name="records_title">All 16 stops</string>
+    <string name="reset_confirm_title">Clear all 16 stops?</string>
+    <string name="reset_confirm_body" formatted="false">Every stop type and hint will be erased and the cursor returns to the origin. This cannot be undone.</string>
+    <string name="reset_cancel">Cancel</string>
+    <string name="reset_ok">Clear and return to origin</string>
 
     <string name="no_settings_page">This system has no matching settings page; open Settings → Apps → this app and enable it manually.</string>
     <string name="no_file_picker">No file picker available.</string>

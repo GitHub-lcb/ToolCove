@@ -1,4 +1,4 @@
-// 手机版 HUD 的极简 i18n：只需要「按点分键取字符串 + 替换 {name} 占位符」。
+// 手机版 HUD 的 i18n：只需要「按点分键取字符串 + 替换 {name} 占位符」。
 //
 // 不用 vue-i18n：手机端没有 Vue（整个 HUD 是原生 DOM + 直引 railTycoon.js），
 // 为了 30 条文案引进一整个 i18n 运行时并不划算。这里缺的是复数/日期等能力，
@@ -13,6 +13,27 @@ export const DEFAULT_LOCALE = "zh-CN";
 const FALLBACK_LOCALE = "en-US";
 
 let locale = DEFAULT_LOCALE;
+
+/**
+ * 是否运行在悬浮窗里。
+ *
+ * 由原生注入的 bootstrap 决定，是**能力探测**而不是 UA 判断：只有 Android 侧的
+ * RailWebView 会注入 mode=panel，手机浏览器里永远是 full。
+ */
+let panelMode = false;
+export const setPanelMode = (value) => {
+  panelMode = !!value;
+};
+export const isPanelMode = () => panelMode;
+
+/**
+ * 原生桥是否存在（Android WebView 会注入 window.railHudApi）。
+ *
+ * 必须用 typeof 读全局：直接写 `window.railHudApi` 在桥不存在时是 undefined，
+ * 而桥存在但某个方法没实现时访问会抛——两种情况都要能安全退化成「没有原生能力」。
+ */
+export const hasNative = () =>
+  typeof window !== "undefined" && !!window.railHudApi;
 
 /** 按「显式偏好优先，其次系统语言前缀」决议语言——与主程序 resolveInitialLocale 同一口径。 */
 export function resolveLocale(preference, systemLocale) {
