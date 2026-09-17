@@ -15,7 +15,8 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   plans, calls tools (including file, database, and network tools on the desktop build), shows
   every step live, and asks for confirmation before risky writes. Bring your own OpenAI-compatible
   endpoint; a run log is kept so an interrupted task can be resumed.
-- **Toolbox** — 14 built-in tools, each opens in its own draggable/resizable window:
+- **Toolbox** — 15 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
+  keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
 
   | Group | Tools |
   |-------|-------|
@@ -24,6 +25,7 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export) |
   | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
   | AI | AI chat (multi-session, image input, prompt presets) |
+  | Game helpers | Rail Tycoon route solver (Lord of the Mysteries homestead trade run: enumerates every valid stop layout from the "next 3 stops" hints, locks the next stop and advises which card to take) |
 
   Network diagnostics, file processing, the database manager and label printing need native capabilities
   and are available in the desktop build only; everything else — including the PDF toolkit, which runs in
@@ -33,6 +35,14 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   The gallery home has its own search (tool name, capability, or keyword), a quick-access row built
   from your pinned and recently used tools, and collapsible groups whose tools render as two-column
   cards on wide windows. Pinned tools and expanded groups are remembered locally.
+
+  The Rail Tycoon route solver (game helpers) targets the challenge route in Lord of the Mysteries'
+  homestead trade run: it treats each stop's "next 3 stops" hint as a constraint, enumerates every
+  valid layout, marks the stops that are uniquely determined, and turns the inference into card
+  advice. It ships a "Cockpit" HUD layout (oversized next-stop verdict plus one-tap recording for the
+  current stop) and a "Full layout" table, and the window can be pinned above everything else to sit
+  over the game. Everything runs locally — no network, no injection, no game-process access — and it
+  works in both the desktop and browser builds.
 
 - **Snippets** — quick notes with one-click copy, global search, password masking, and image attachments.
 - **Problems** — lightweight issue tracker with local tags, AI-assisted analysis, and team-experience reuse.
@@ -168,8 +178,8 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
 
 - **Agent 工作台**：默认首屏。用自然语言描述目标，Agent 规划并调用工具（桌面端含文件、数据库、
   网络等能力），过程实时可见，写入类操作先确认后执行；支持中断续跑与运行记录。
-- **工具箱**：14 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
-  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话，每个工具独立窗口，即开即用。
+- **工具箱**：15 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
+  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话、铁路大亨站点推断，每个工具独立窗口，即开即用。
   其中网络诊断、文件处理、数据库管理、标签打印依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
@@ -178,6 +188,10 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   预览与实打同源，可导出 `.prn` 给供应商排查。
   首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏与最近使用排列，分类可同时展开、
   宽窗口下工具卡两列排布；收藏与展开状态本地记忆。
+  铁路大亨站点推断（游戏辅助）面向《诡秘之主》家园「列车贸易」的挑战线路：把每站的「未来 3 站」
+  提示当作约束，穷举全部合法排列后标出能被唯一确定的站点，并按推断结果给策略卡建议；
+  提供「驾驶舱」HUD 版面（巨型下一站结论 + 当前站一键录入）与「完整版面」全表，窗口可置顶，
+  配合游戏的无边框窗口模式就能浮在画面上；全程纯本地计算，不联网、不注入、不读取游戏进程。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。
 - **问题记录**：轻量问题跟踪，本地标签分类，支持 AI 辅助分析与经验复用。
 - **云同步（可选）**：速记与问题记录的多设备端到端加密同步；服务端只见密文，配对码入伙、

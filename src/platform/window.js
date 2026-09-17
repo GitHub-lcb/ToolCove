@@ -4,7 +4,7 @@ import { getCurrentWindow as tauriCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow as TauriWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { isDesktop } from "./env.js";
 
-const noop = () => {};
+const noop = async () => {};
 
 const browserWindow = {
   label: "main",
@@ -17,6 +17,7 @@ const browserWindow = {
   isMaximized: async () => false,
   theme: async () => null,
   setTheme: noop,
+  setAlwaysOnTop: noop,
   onResized: async () => noop,
   onCloseRequested: async () => noop,
 };

@@ -42,20 +42,21 @@ describe("searchToolboxTools", () => {
     expect(new Set(TOOLBOX_TOOLS.map((tool) => tool.key)).size).toBe(TOOLBOX_TOOLS.length);
   });
 
-  it("按五个明确大类分组，每个工具只出现一次", () => {
+  it("按六个明确大类分组，每个工具只出现一次", () => {
     const groups = groupToolboxTools();
-    expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手"]);
+    expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "diff", "time", "json", "generator"],
       ["network", "request"],
       ["file", "image", "pdf", "label"],
       ["crypto", "db"],
       ["chat"],
+      ["rail"],
     ]);
     const groupedKeys = groups.flatMap((group) => group.tools.map((tool) => tool.key));
     expect(groupedKeys).toHaveLength(TOOLBOX_TOOLS.length);
     expect(new Set(groupedKeys).size).toBe(TOOLBOX_TOOLS.length);
-    expect(TOOLBOX_GROUPS).toHaveLength(5);
+    expect(TOOLBOX_GROUPS).toHaveLength(6);
   });
 
   it("可按 AI 对话的关键词搜索", () => {
@@ -72,6 +73,16 @@ describe("searchToolboxTools", () => {
 
   it("标签打印是桌面独占工具（依赖本机打印队列）", () => {
     expect(TOOLBOX_TOOLS.find((tool) => tool.key === "label")?.desktopOnly).toBe(true);
+  });
+
+  it("可按铁路大亨的关键词搜索", () => {
+    for (const keyword of ["铁路大亨", "火车大亨", "诡秘之主", "跑商", "站点推断", "序列"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("rail");
+    }
+  });
+
+  it("站点推断是纯前端工具，浏览器端也可见", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "rail")?.desktopOnly).toBeFalsy();
   });
 });
 

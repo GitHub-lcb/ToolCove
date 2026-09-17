@@ -129,7 +129,28 @@ const r = spawnSync("npm", ["run", "tauri", "build"], { stdio: "inherit", shell:
 if (r.status !== 0) process.exit(r.status ?? 1);
 
 const version = JSON.parse(fs.readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8")).version;
-const nsisDir = path.join(root, "src-tauri", "target", "release", "bundle", "nsis");
+
+// 解析 cargo 实际使用的 target 目录（受 --config / .cargo/config.toml / 环境变量影响）。
+// 解析失败时回退到默认的 src-tauri/target，保证未做重定向的机器行为不变。
+function resolveTargetDir() {
+  const meta = spawnSync("cargo", ["metadata", "--format-version", "1", "--no-deps"], {
+    cwd: path.join(root, "src-tauri"),
+    encoding: "utf8",
+    shell: true,
+  });
+  if (meta.status === 0 && meta.stdout) {
+    try {
+      const dir = JSON.parse(meta.stdout).target_directory;
+      if (dir) return dir;
+    } catch {
+      // 忽略，走兜底
+    }
+  }
+  return path.join(root, "src-tauri", "target");
+}
+// target 目录可能被 .cargo/config.toml 的 build.target-dir 重定向（本机因 D 盘空间不足
+// 重定向到了 C 盘），所以这里用 cargo metadata 动态解析，不能硬编码 src-tauri/target。
+const nsisDir = path.join(resolveTargetDir(), "release", "bundle", "nsis");
 const setupName = `ToolCove_${version}_x64-setup.exe`;
 const setupPath = path.join(nsisDir, setupName);
 const sigPath = setupPath + ".sig";

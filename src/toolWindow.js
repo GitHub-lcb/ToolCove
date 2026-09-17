@@ -37,13 +37,21 @@ export async function openToolWindow(tool, { showToast, onFallback } = {}) {
       return;
     }
     const theme = await resolveToolWindowTheme();
-    const win = new WebviewWindow(label, {
-      url: "/index.html?tool=" + tool.key,
-      title: t(tool.labelKey),
+    // 工具可在注册表里用 window 字段覆盖尺寸（如「显示辅助」类工具要小一圈好压在游戏上）
+    const size = {
       width: 980,
       height: 720,
       minWidth: 720,
       minHeight: 520,
+      ...(tool.window || {}),
+    };
+    const win = new WebviewWindow(label, {
+      url: "/index.html?tool=" + tool.key,
+      title: t(tool.labelKey),
+      width: size.width,
+      height: size.height,
+      minWidth: size.minWidth,
+      minHeight: size.minHeight,
       decorations: false,
       center: true,
       visible: false,

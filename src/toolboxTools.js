@@ -19,6 +19,7 @@ export const TOOLBOX_GROUPS = [
   { key: "file", labelKey: "toolbox.registry.groupFile", icon: "folder", descKey: "toolbox.registry.groupFileDesc" },
   { key: "development", labelKey: "toolbox.registry.groupDevelopment", icon: "wrench", descKey: "toolbox.registry.groupDevelopmentDesc" },
   { key: "ai", labelKey: "toolbox.registry.groupAi", icon: "sparkles", descKey: "toolbox.registry.groupAiDesc" },
+  { key: "game", labelKey: "toolbox.registry.groupGame", icon: "train", descKey: "toolbox.registry.groupGameDesc" },
 ];
 
 export const TOOLBOX_TOOLS = [
@@ -84,6 +85,21 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwLabel",
     ready: true,
     desktopOnly: true,
+  },
+  {
+    key: "rail",
+    labelKey: "toolbox.registry.toolRail",
+    icon: "train",
+    category: "game",
+    descKey: "toolbox.registry.toolRailDesc",
+    keywordsKey: "toolbox.registry.kwRail",
+    ready: true,
+    // 这个工具是「显示辅助」：要能压在游戏画面上，默认窗口就比其它工具小一圈，
+    // 并且允许缩到一条矮面板（可在标题栏用图钉置顶）。不写则用 toolWindow.js 的通用尺寸。
+    // 640×410 是驾驶舱版面实测的免滚动下限（中英文一致）：再矮，底部建议区会开始滚动。
+    // 再窄（<620）会掉进竖排、由 .rail-tool 整体滚动——仍可用，但不是默认体验。
+    // 版面预算与实测数据见 RailTycoonTool.vue 的版面骨架注释。
+    window: { width: 640, height: 410, minWidth: 560, minHeight: 320 },
   },
 ];
 

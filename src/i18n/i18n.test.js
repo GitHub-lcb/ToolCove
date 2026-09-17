@@ -4,6 +4,7 @@ import zh from "./zh-CN.json";
 import en from "./en-US.json";
 import { flatKeys, resolveInitialLocale, applyLocale, i18n } from "./index.js";
 import { TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "../toolboxTools.js";
+import { ADVICE_KEYS } from "../tools/railTycoon.js";
 
 describe("i18n 字典", () => {
   it("中英文字典键集合完全一致", () => {
@@ -28,6 +29,24 @@ describe("i18n 字典", () => {
     for (const key of keys) {
       expect(get(zh, key), `zh ${key}`).toBeDefined();
       expect(get(en, key), `en ${key}`).toBeDefined();
+    }
+  });
+});
+
+// 驾驶舱与完整版面都按 `toolbox.rail.adv.<key>.title / .act / .detail` 三段取文案，
+// 缺了 title 不会抛错，只会静默渲染出空标题——所以单独锁一条。
+describe("铁路大亨建议文案", () => {
+  it("每条建议的标题在两种语言里都存在", () => {
+    for (const key of ADVICE_KEYS) {
+      expect(get(zh, `toolbox.rail.adv.${key}.title`), `zh ${key}`).toBeTruthy();
+      expect(get(en, `toolbox.rail.adv.${key}.title`), `en ${key}`).toBeTruthy();
+    }
+  });
+
+  it("建议条目写成三段结构，没有残留的单字符串", () => {
+    for (const key of ADVICE_KEYS) {
+      expect(typeof get(zh, `toolbox.rail.adv.${key}`), key).toBe("object");
+      expect(typeof get(en, `toolbox.rail.adv.${key}`), key).toBe("object");
     }
   });
 });

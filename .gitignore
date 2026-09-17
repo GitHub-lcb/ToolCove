@@ -18,6 +18,12 @@ tmp
 tmp-deploy
 tmp-debug
 
+# WorkBuddy 会话的工作区数据（本地备忘/日志，不入库）
+.workbuddy/
+
+# 本机专用的 cargo 构建目录重定向（含本机绝对路径，不入库）
+.cargo/config.toml
+
 # 自动更新签名私钥（红线：绝不入库）
 src-tauri/updater.key
 # 商业化时期的授权私钥（相关功能已移除，留作本地存档也绝不入库）
