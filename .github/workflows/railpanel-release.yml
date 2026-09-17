@@ -107,3 +107,7 @@ jobs:
             本包含 debug 签名，仅用于侧载；进度保存在本机，跨设备用应用内的「导出 / 导入」。
           draft: false
           prerelease: false
+          # 安卓版必须 make_latest: false：桌面端更新器读的是 /releases/latest/download/latest.json，
+          # 而 GitHub 的 latest = 最新非预发布 Release。不禁止的话，安卓版发版会顶掉桌面端的 latest，
+          # 桌面端检查更新就会 404（2026-09-17 railpanel-v1.0.2 顶掉 v0.6.0 的事故）。
+          make_latest: "false"
