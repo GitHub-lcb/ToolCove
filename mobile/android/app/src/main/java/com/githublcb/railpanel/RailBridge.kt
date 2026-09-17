@@ -34,6 +34,13 @@ class RailBridge(
          * 页面只是**请求**，真正改窗口尺寸的是原生侧。
          */
         fun onCollapseRequest(collapsed: Boolean)
+        /**
+         * 页面请求切换朝向（竖屏 / 横屏）。
+         *
+         * 悬浮窗 = 换窗口宽高；全屏页 = 改 Activity 的 requestedOrientation。
+         * 实现方各自持久化，下次开窗口/重进页面时经 bootstrap 注入回页面。
+         */
+        fun onOrientationRequest(mode: String)
     }
 
     /**
@@ -70,10 +77,22 @@ class RailBridge(
         host.onCollapseRequest(collapsed)
     }
 
+    /** 页面上的「竖屏 / 横屏」切换：归一后再交给宿主，脏字符串一律当竖屏。 */
+    @JavascriptInterface
+    fun setOrientation(mode: String) {
+        host.onOrientationRequest(if (mode == ORIENT_LANDSCAPE) ORIENT_LANDSCAPE else ORIENT_PORTRAIT)
+    }
+
     /** 前端要提示用户时用（悬浮窗里没有 toast 位置，交给原生）。 */
     @JavascriptInterface
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        /** 朝向取值：与 mobile/rail-hud/main.js 的 bootstrap.orientation 逐字一致。 */
+        const val ORIENT_PORTRAIT = "portrait"
+        const val ORIENT_LANDSCAPE = "landscape"
     }
 }
 

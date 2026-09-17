@@ -36,6 +36,10 @@ class SupportActivity : Activity() {
         override fun onCollapseRequest(collapsed: Boolean) {
             // 这里不是悬浮窗
         }
+
+        override fun onOrientationRequest(mode: String) {
+            // 支持页不提供朝向切换（按钮只在 HUD 页出现）；这里跟随系统即可
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,7 +58,13 @@ class SupportActivity : Activity() {
         val pending = pendingExport
         val bootstrapState = if (intent?.action == ACTION_EXPORT && pending != null) pending.json else RailState.read(this)
 
-        val view = RailWebView(this, bootstrapState, "full", RailBridge(this, host))
+        val orientation =
+            if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                RailBridge.ORIENT_LANDSCAPE
+            } else {
+                RailBridge.ORIENT_PORTRAIT
+            }
+        val view = RailWebView(this, bootstrapState, "full", RailBridge(this, host), orientation)
         web = view
         setContentView(
             view,

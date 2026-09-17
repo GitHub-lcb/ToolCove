@@ -179,6 +179,8 @@ html, body {
 .cell.end { border-right-width: 2px; }
 /* 全工具唯一的彩色语义 = 100% 锁定（推断唯一的确定结果）；类型不再各染一色。 */
 .cell.pred { border: 2px dashed var(--primary); background: var(--primary-soft); color: var(--primary-hover); }
+/* 推断自动填入的类型：虚线下划线说明「来源是推断，不是亲眼录入」，手动改过后消失。 */
+.cell.auto { text-decoration: underline dotted; text-underline-offset: 2px; }
 .strip-note { min-height: 14px; color: var(--text-dim); font-size: var(--fs-xs); }
 .strip-note.warn { color: var(--warn-deep); font-weight: 700; }
 
@@ -250,6 +252,11 @@ html, body {
 /* 选中态不只用颜色：主色描边 + 内侧竖条 + 同色文字（形状差异扛住色觉差异）。 */
 .btn.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 3px 0 0 var(--primary); }
 .chip-btn { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-pill); background: transparent; color: var(--text-dim); font-size: var(--fs-sm); cursor: pointer; }
+/* 横竖屏切换：与「清除」同族的小按钮，文字是两字（横屏 / 竖屏），按目标方向显示。 */
+.chip-btn.orient { width: auto; padding: 0 9px; font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+/* 录入区底部的下一步：本站记全后出现（手动推进，见 goNext）；没记全时给一句浅色说明。 */
+.go-next { height: 36px; border: 1px solid var(--primary); border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-md); font-weight: 800; cursor: pointer; }
+.setup-wait { margin: 0; color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.4; }
 
 /* ── 底部动作�?─────────────────────────────────────────────────── */
 .actionbar { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
@@ -314,6 +321,19 @@ html, body {
 #root[data-mode="panel"] .actionbar { display: none; }
 #root[data-mode="panel"] .row-label, #root[data-mode="panel"] .setup-title, #root[data-mode="panel"] .setup-tag { display: none; }
 #root[data-mode="panel"] .setup-done { display: none; }
+
+/* 悬浮窗横屏：窗口更宽更矮（原生侧 560×200dp），左右分栏——左结论 + 进度，右录入。
+   同样整块不滚动：分栏后宽度富余、高度更省，对游戏画面的遮挡更小。 */
+#root[data-mode="panel"][data-orient="landscape"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  grid-template-rows: auto auto;
+  column-gap: 7px;
+  align-content: start;
+}
+#root[data-mode="panel"][data-orient="landscape"] .hero { grid-column: 1; grid-row: 1; }
+#root[data-mode="panel"][data-orient="landscape"] .strip-wrap { grid-column: 1; grid-row: 2; }
+#root[data-mode="panel"][data-orient="landscape"] .setup { grid-column: 2; grid-row: 1 / span 2; }
 
 /* 收起成一条：只剩结论那一行，用来在游戏画面上「瞄一眼就走�?*/
 #root[data-mode="bar"] { gap: 0; align-items: stretch; justify-content: center; padding: 3px 6px; }
@@ -633,6 +653,9 @@ html, body {
       "mobileModeHint": "悬浮窗",
       "mobileCollapse": "收起成一条",
       "mobileExpand": "展开面板",
+      "orientPortrait": "竖屏",
+      "orientLandscape": "横屏",
+      "orientSwitch": "切换到{mode}",
       "mobileNoOverlay": "还没拿到「显示在其他应用上层」权限",
       "mobileGrant": "去授权",
       "mobileStart": "开启悬浮面板",
@@ -821,6 +844,9 @@ html, body {
       "mobileModeHint": "Floating panel",
       "mobileCollapse": "Collapse to one line",
       "mobileExpand": "Expand panel",
+      "orientPortrait": "Portrait",
+      "orientLandscape": "Landscape",
+      "orientSwitch": "Switch to {mode}",
       "mobileNoOverlay": 'The "display over other apps" permission is not granted yet',
       "mobileGrant": "Grant permission",
       "mobileStart": "Show floating panel",
@@ -1148,6 +1174,12 @@ html, body {
     return w.from === w.to ? t("hintCoversOneShort", { to: w.to }) : t("hintCoversShort", { from: w.from, to: w.to });
   }
   var isOrigin = (index) => index === ORIGIN_INDEX;
+  function lockedTypeAt(result2, index) {
+    var _a4;
+    if (!result2.consistent || !result2.locked[index]) return null;
+    const type = (_a4 = result2.possibleTypes[index]) == null ? void 0 : _a4[0];
+    return type === void 0 ? null : type;
+  }
   var hintable = (index, stationCount = STATION_COUNT) => hintRange(index, stationCount) !== null;
   function hintText(value) {
     if (value === null || value === void 0) return "";
@@ -1173,9 +1205,9 @@ html, body {
     ).join(t("culpritSep"));
   }
   function heroView(result2) {
-    var _a3;
+    var _a4;
     if (!result2.consistent) {
-      const what = culpritText(((_a3 = buildAdvice(result2, { stationCount: result2.stationCount }).find((item) => item.key === "conflict")) == null ? void 0 : _a3.culprits) ?? []);
+      const what = culpritText(((_a4 = buildAdvice(result2, { stationCount: result2.stationCount }).find((item) => item.key === "conflict")) == null ? void 0 : _a4.culprits) ?? []);
       return {
         kind: "conflict",
         cls: "t-danger",
@@ -1241,11 +1273,11 @@ html, body {
     return bits.join(" · ");
   }
   function summaryText(result2, observed, hints) {
-    var _a3;
+    var _a4;
     const lines = [t("copyTitle")];
     if (!result2.consistent) {
       lines.push(t("conflictTitle"));
-      const what = culpritText(((_a3 = buildAdvice(result2, { stationCount: result2.stationCount }).find((item) => item.key === "conflict")) == null ? void 0 : _a3.culprits) ?? []);
+      const what = culpritText(((_a4 = buildAdvice(result2, { stationCount: result2.stationCount }).find((item) => item.key === "conflict")) == null ? void 0 : _a4.culprits) ?? []);
       if (what) lines.push(t("conflictCulprits", { what }));
       return lines.join("\n");
     }
@@ -1313,11 +1345,11 @@ html, body {
   };
   var emptyRow = (n = STATION_COUNT) => new Array(n).fill(null);
   function normalizeState(raw, stationCount = STATION_COUNT) {
-    var _a3, _b;
+    var _a4, _b;
     const observed = emptyRow();
     const hints = emptyRow();
     for (let i = 0; i < stationCount; i += 1) {
-      observed[i] = normalizeType((_a3 = raw == null ? void 0 : raw.observed) == null ? void 0 : _a3[i]);
+      observed[i] = normalizeType((_a4 = raw == null ? void 0 : raw.observed) == null ? void 0 : _a4[i]);
       hints[i] = canHintAt(i, stationCount) ? normalizeHint((_b = raw == null ? void 0 : raw.hints) == null ? void 0 : _b[i]) : null;
     }
     observed[ORIGIN_INDEX] = null;
@@ -1404,6 +1436,8 @@ html, body {
   var mode = "full";
   var adviceOpen = false;
   var toastTimer = null;
+  var autoFilled = [];
+  var orientation = "portrait";
   function load() {
     try {
       const raw = localStorage.getItem(STATE_KEY);
@@ -1434,19 +1468,41 @@ html, body {
   function recordType(index, typeIndex) {
     const observed = state.observed.slice();
     observed[index] = observed[index] === typeIndex ? null : typeIndex;
-    advance({ ...state, observed }, index);
+    autoFilled = autoFilled.filter((i) => i !== index);
+    setState({ ...state, observed });
   }
   function recordHint(index, value) {
     const hints = state.hints.slice();
     hints[index] = hints[index] === value ? null : value;
-    advance({ ...state, hints }, index);
+    setState({ ...state, hints });
   }
-  function advance(next, index) {
-    if (index === next.cursor && isStationComplete(next.observed, next.hints, index, result.stationCount)) {
-      const to = nextIncompleteAfter(next.observed, next.hints, index, result.stationCount);
-      if (to !== -1) next = { ...next, cursor: to };
+  function withPrefill(next) {
+    const index = next.cursor;
+    if (next.observed[index] !== null) return [next, false];
+    const type = lockedTypeAt(solveRailRoute(next), index);
+    if (type === null) return [next, false];
+    const observed = next.observed.slice();
+    observed[index] = type;
+    if (!autoFilled.includes(index)) autoFilled = [...autoFilled, index];
+    return [{ ...next, observed }, true];
+  }
+  function goNext() {
+    if (!isStationComplete(state.observed, state.hints, state.cursor, result.stationCount)) return;
+    let next = state;
+    for (let guard = 0; guard < result.stationCount; guard += 1) {
+      const to = nextIncompleteAfter(next.observed, next.hints, next.cursor, result.stationCount);
+      if (to === -1) break;
+      next = { ...next, cursor: to };
+      const [filled, prefilled] = withPrefill(next);
+      next = filled;
+      if (!prefilled) break;
+      if (!isStationComplete(next.observed, next.hints, next.cursor, result.stationCount)) break;
     }
     setState(next);
+  }
+  function selectStation(index) {
+    const [next, prefilled] = withPrefill({ ...state, cursor: index });
+    setState(next, prefilled ? {} : { persist: false });
   }
   function clearStation(index) {
     const observed = state.observed.slice();
@@ -1464,6 +1520,7 @@ html, body {
     const root = $("#root");
     if (!root) return;
     root.dataset.mode = mode;
+    root.dataset.orient = orientation;
     if (adviceOpen) root.dataset.advice = "on";
     else delete root.dataset.advice;
     renderHero();
@@ -1510,14 +1567,16 @@ html, body {
     strip.replaceChildren();
     for (let i = 0; i < result.stationCount; i += 1) {
       const cell = stripCellView(result, state.observed, state.hints, i, state.cursor);
+      const auto = autoFilled.includes(i);
+      const tip = stripTip(result, state.observed, state.hints, i) + (auto ? ` · ${t("stripAuto")}` : "");
       strip.append(
         h("button", {
-          class: `cell ${cell.classes.join(" ")}`,
+          class: `cell ${cell.classes.join(" ")}${auto ? " auto" : ""}`,
           type: "button",
-          title: stripTip(result, state.observed, state.hints, i),
-          "aria-label": stripTip(result, state.observed, state.hints, i),
+          title: tip,
+          "aria-label": tip,
           text: cell.text,
-          onclick: () => setState({ ...state, cursor: i }, { persist: false })
+          onclick: () => selectStation(i)
         })
       );
     }
@@ -1533,12 +1592,22 @@ html, body {
     const index = state.cursor;
     const origin = isOrigin(index);
     const recorded = allRecorded(state.observed, state.hints, result.stationCount);
+    const target = t(orientation === "portrait" ? "orientLandscape" : "orientPortrait");
     box.append(
       h("div", { class: "setup-head" }, [
         h("span", { class: "setup-title", text: t("hudRecordShort") }),
         h("span", { class: "setup-tag", text: t("hudCurTag") }),
         h("b", { class: "setup-nth", text: stationName(index) }),
         h("span", { class: "spacer" }),
+        // 横竖屏切换：只在原生支持时出现（浏览器里没有窗口可转）。文字显示的是**目标**方向。
+        (native == null ? void 0 : native.setOrientation) ? h("button", {
+          class: "chip-btn orient",
+          type: "button",
+          title: t("orientSwitch", { mode: target }),
+          "aria-label": t("orientSwitch", { mode: target }),
+          text: target,
+          onclick: toggleOrientation
+        }) : null,
         state.observed[index] !== null || state.hints[index] !== null ? h("button", { class: "chip-btn", type: "button", title: t("hudClearFull"), "aria-label": t("hudClearFull"), text: "✕", onclick: () => clearStation(index) }) : null
       ])
     );
@@ -1592,6 +1661,20 @@ html, body {
     box.append(hintRow);
     if (recorded) {
       box.append(h("p", { class: "setup-done", text: t("hudDoneAllDesc") }));
+    } else if (isStationComplete(state.observed, state.hints, index, result.stationCount)) {
+      const to = nextIncompleteAfter(state.observed, state.hints, index, result.stationCount);
+      if (to !== -1) {
+        box.append(
+          h("button", {
+            class: "go-next",
+            type: "button",
+            text: `${t("hudGoNext", { n: stationNumber(to) })} →`,
+            onclick: goNext
+          })
+        );
+      }
+    } else {
+      box.append(h("p", { class: "setup-wait", text: t("hudWaitNext") }));
     }
   }
   function renderAdvice() {
@@ -1624,9 +1707,9 @@ html, body {
         h("button", {
           class: "rec-n",
           type: "button",
-          text: origin ? t("origin") : String(i),
+          text: String(stationNumber(i)),
           onclick: () => {
-            setState({ ...state, cursor: i }, { persist: false });
+            selectStation(i);
             closeDialog();
           }
         })
@@ -1811,8 +1894,8 @@ html, body {
       });
     }
     $("#file-input").addEventListener("change", async (e) => {
-      var _a3;
-      const file = (_a3 = e.target.files) == null ? void 0 : _a3[0];
+      var _a4;
+      const file = (_a4 = e.target.files) == null ? void 0 : _a4[0];
       if (!file) return;
       applyImportText(await file.text());
       e.target.value = "";
@@ -1872,9 +1955,24 @@ html, body {
       $("#btn-expand").hidden = true;
     }
   }
+  function toggleOrientation() {
+    const next = orientation === "portrait" ? "landscape" : "portrait";
+    try {
+      native.setOrientation(next);
+    } catch {
+      return;
+    }
+    orientation = next;
+    render();
+  }
   window.railHud = {
     setMode(next) {
       mode = ["full", "panel", "bar"].includes(next) ? next : "full";
+      render();
+    },
+    /** 原生侧告诉页面「窗口 / Activity 现在是哪个朝向」（除了 bootstrap，运行中也可能变）。 */
+    setOrientation(next) {
+      orientation = next === "landscape" ? "landscape" : "portrait";
       render();
     },
     setLocale(next) {
@@ -1930,6 +2028,8 @@ html, body {
   var _a2;
   mode = ((_a2 = document.querySelector("#root")) == null ? void 0 : _a2.dataset.mode) ?? "full";
   if (boot == null ? void 0 : boot.mode) mode = boot.mode;
+  var _a3;
+  orientation = (boot == null ? void 0 : boot.orientation) === "landscape" || (boot == null ? void 0 : boot.orientation) === "portrait" ? boot.orientation : ((_a3 = window.matchMedia) == null ? void 0 : _a3.call(window, "(orientation: landscape)").matches) ? "landscape" : "portrait";
   setPanelMode(mode === "panel");
   if (boot == null ? void 0 : boot.state) {
     try {

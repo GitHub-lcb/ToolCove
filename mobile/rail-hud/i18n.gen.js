@@ -1,5 +1,5 @@
 // 本文件由 mobile/rail-hud/gen-i18n.mjs 自动生成，请勿手改。
-// 源：src/i18n/{zh-CN,en-US}.json 的 toolbox.rail.* 子树（共 164 条）。
+// 源：src/i18n/{zh-CN,en-US}.json 的 toolbox.rail.* 子树（共 167 条）。
 // 改文案请改源字典后重新执行 npm run build:mobile。
 // 生成时间：2026-09-17
 
@@ -183,6 +183,9 @@ export const MESSAGES = {
     "mobileModeHint": "悬浮窗",
     "mobileCollapse": "收起成一条",
     "mobileExpand": "展开面板",
+    "orientPortrait": "竖屏",
+    "orientLandscape": "横屏",
+    "orientSwitch": "切换到{mode}",
     "mobileNoOverlay": "还没拿到「显示在其他应用上层」权限",
     "mobileGrant": "去授权",
     "mobileStart": "开启悬浮面板",
@@ -371,6 +374,9 @@ export const MESSAGES = {
     "mobileModeHint": "Floating panel",
     "mobileCollapse": "Collapse to one line",
     "mobileExpand": "Expand panel",
+    "orientPortrait": "Portrait",
+    "orientLandscape": "Landscape",
+    "orientSwitch": "Switch to {mode}",
     "mobileNoOverlay": "The \"display over other apps\" permission is not granted yet",
     "mobileGrant": "Grant permission",
     "mobileStart": "Show floating panel",
@@ -382,4 +388,4 @@ export const MESSAGES = {
   }
 };
 
-export const MESSAGE_COUNT = 164;
+export const MESSAGE_COUNT = 167;

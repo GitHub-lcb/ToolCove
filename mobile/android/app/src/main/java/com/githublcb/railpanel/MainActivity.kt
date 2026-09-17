@@ -277,8 +277,10 @@ class HudActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 用户上次在本页选过朝向就照旧；没选过则跟随系统（不锁死），页面上的按钮负责切换
+        savedOrientation()?.let { applyRequestedOrientation(it) }
         bridge = RailBridge(this, host)
-        web = RailWebView(this, RailState.initialFor(this), "full", bridge)
+        web = RailWebView(this, RailState.initialFor(this), "full", bridge, currentOrientation())
         setContentView(web)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(stateReceiver, IntentFilter(RailState.ACTION_STATE), RECEIVER_NOT_EXPORTED)
@@ -299,6 +301,45 @@ class HudActivity : Activity() {
         override fun onCollapseRequest(collapsed: Boolean) {
             // 全屏页不是悬浮窗，没有「收成一条」这回事
         }
+
+        /**
+         * 全屏页的朝向切换：直接改 Activity 的 requestedOrientation。
+         *
+         * 用运行时请求而不是靠系统自动旋转：手机常常锁了自动旋转，而玩游戏时又需要
+         * 把面板转成横的，所以这里必须能**主动**转。选过的方向持久化，下次进来照旧。
+         */
+        override fun onOrientationRequest(mode: String) {
+            applyRequestedOrientation(mode)
+            prefs().edit().putString(KEY_ORIENTATION, mode).apply()
+        }
+    }
+
+    private fun prefs() = getSharedPreferences(PREFS, MODE_PRIVATE)
+
+    private fun savedOrientation(): String? = prefs().getString(KEY_ORIENTATION, null)
+
+    private fun applyRequestedOrientation(mode: String) {
+        requestedOrientation =
+            if (mode == RailBridge.ORIENT_LANDSCAPE) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+    }
+
+    /** 传给页面做初始版面：优先用请求过的朝向，没请求过就看当前配置。 */
+    private fun currentOrientation(): String {
+        savedOrientation()?.let { return it }
+        return if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            RailBridge.ORIENT_LANDSCAPE
+        } else {
+            RailBridge.ORIENT_PORTRAIT
+        }
+    }
+
+    private companion object {
+        const val PREFS = "rail_panel"
+        const val KEY_ORIENTATION = "full_orientation"
     }
 
     /**

@@ -27,6 +27,8 @@ class RailWebView(
     initialJson: String,
     mode: String,
     bridge: RailBridge,
+    /** 当前朝向（portrait / landscape）：页面据此摆版面、决定切换按钮写的是哪个目标方向。 */
+    orientation: String = RailBridge.ORIENT_PORTRAIT,
 ) : WebView(context) {
 
     init {
@@ -43,7 +45,7 @@ class RailWebView(
         }
         setBackgroundColor(Color.TRANSPARENT)
         addJavascriptInterface(bridge, "railHudApi")
-        loadHud(initialJson, mode)
+        loadHud(initialJson, mode, orientation)
     }
 
     /**
@@ -62,11 +64,12 @@ class RailWebView(
      * localStorage 归属不变，而 bootstrap 保证先于页面脚本执行。
      * 产物是单文件（样式与脚本都已内联），没有相对资源要解析，所以这种加载方式没有副作用。
      */
-    private fun loadHud(initialJson: String, mode: String) {
+    private fun loadHud(initialJson: String, mode: String, orientation: String) {
         val bootstrap = JSONObject()
             .put("state", initialJson)
             .put("mode", mode)
             .put("lang", java.util.Locale.getDefault().language)
+            .put("orientation", orientation)
             .toString()
 
         val html = try {

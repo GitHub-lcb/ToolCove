@@ -73,6 +73,18 @@ export function hintCoversShort(index, stationCount = STATION_COUNT) {
 
 export const isOrigin = (index) => index === ORIGIN_INDEX;
 
+/**
+ * 推断已唯一确定的站返回它的类型下标；未锁定 / 记录不一致时返回 null。
+ *
+ * 用于「到站自动补类型」：所有合法排列在本站本来就都取这一类，补上不改变解空间，
+ * 只是把已知结论落到记录上，用户只需再记提示。桌面端取同一口径。
+ */
+export function lockedTypeAt(result, index) {
+  if (!result.consistent || !result.locked[index]) return null;
+  const type = result.possibleTypes[index]?.[0];
+  return type === undefined ? null : type;
+}
+
 export const hintable = (index, stationCount = STATION_COUNT) => hintRange(index, stationCount) !== null;
 
 /** 已录提示的短文案（`数量相同` / `酒庄最多`）。按值反查，不去解析编码。 */

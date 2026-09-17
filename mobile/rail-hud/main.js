@@ -18,7 +18,14 @@
 // （window.railHudApi），这样悬浮窗和全屏页读的是同一份进度。
 
 import { initLocale, isPanelMode, hasNative, setLocale, setPanelMode, t } from "./i18n.js";
-import { canHintAt, HINT_SAME, hintMax, nextIncompleteAfter, isStationComplete } from "../../src/tools/railTycoon.js";
+import {
+  canHintAt,
+  HINT_SAME,
+  hintMax,
+  isStationComplete,
+  nextIncompleteAfter,
+  stationNumber,
+} from "../../src/tools/railTycoon.js";
 import {
   allRecorded,
   heroView,
@@ -27,6 +34,7 @@ import {
   hintable,
   hudAdvice,
   isOrigin,
+  lockedTypeAt,
   missingHints,
   percent,
   progressPct,
@@ -94,6 +102,10 @@ let result = solveRailRoute(state);
 let mode = "full";
 let adviceOpen = false;
 let toastTimer = null;
+/** 「推断自动填入」类型的站下标：格子加虚线下划线，手动改过后移除（与桌面端同一套语言）。 */
+let autoFilled = [];
+/** 竖屏 / 横屏。由原生持久化并随 bootstrap 注入；浏览器里退回屏幕实际方向。 */
+let orientation = "portrait";
 
 function load() {
   try {
@@ -130,25 +142,58 @@ function setState(next, { persist: save = true, notifyNative = true } = {}) {
 function recordType(index, typeIndex) {
   const observed = state.observed.slice();
   observed[index] = observed[index] === typeIndex ? null : typeIndex;
-  advance({ ...state, observed }, index);
+  // 手动改动（含清除）后不再是「推断自动填入」
+  autoFilled = autoFilled.filter((i) => i !== index);
+  setState({ ...state, observed });
 }
 
 function recordHint(index, value) {
   const hints = state.hints.slice();
   hints[index] = hints[index] === value ? null : value;
-  advance({ ...state, hints }, index);
+  setState({ ...state, hints });
 }
 
 /**
- * 记完一站才自动前进。
- * 只填类型就跳，会让人永远记不上这一站的提示——而提示才是推断唯一的约束来源。
+ * 把当前站换成「推断已确定」的类型；返回 [新状态, 是否填了]。
+ * 不改变解空间（所有合法排列本就都取这一类），只是把已知结论落到记录上。
  */
-function advance(next, index) {
-  if (index === next.cursor && isStationComplete(next.observed, next.hints, index, result.stationCount)) {
-    const to = nextIncompleteAfter(next.observed, next.hints, index, result.stationCount);
-    if (to !== -1) next = { ...next, cursor: to };
+function withPrefill(next) {
+  const index = next.cursor;
+  if (next.observed[index] !== null) return [next, false];
+  const type = lockedTypeAt(solveRailRoute(next), index);
+  if (type === null) return [next, false];
+  const observed = next.observed.slice();
+  observed[index] = type;
+  if (!autoFilled.includes(index)) autoFilled = [...autoFilled, index];
+  return [{ ...next, observed }, true];
+}
+
+/**
+ * 去下一站（显式动作，录入区底部的按钮）。
+ *
+ * 为什么不自动前进：记完提示 ≠ 离开这一站——玩家还在本站购物、选卡，自动跳站会让
+ * 「当前站」跟着跑到下一站。推进时下一站若推断已确定，类型自动补上（只需记提示）；
+ * 已记全的站会被跳过（历史站留下的空档不会挡路）。
+ */
+function goNext() {
+  if (!isStationComplete(state.observed, state.hints, state.cursor, result.stationCount)) return;
+  let next = state;
+  for (let guard = 0; guard < result.stationCount; guard += 1) {
+    const to = nextIncompleteAfter(next.observed, next.hints, next.cursor, result.stationCount);
+    if (to === -1) break;
+    next = { ...next, cursor: to };
+    const [filled, prefilled] = withPrefill(next);
+    next = filled;
+    if (!prefilled) break;
+    if (!isStationComplete(next.observed, next.hints, next.cursor, result.stationCount)) break;
   }
   setState(next);
+}
+
+/** 手动跳到某一站（点进度格 / 覆盖层的站号）：顺手把推断已确定的类型补上。 */
+function selectStation(index) {
+  const [next, prefilled] = withPrefill({ ...state, cursor: index });
+  setState(next, prefilled ? {} : { persist: false });
 }
 
 function clearStation(index) {
@@ -170,6 +215,7 @@ function render() {
   const root = $("#root");
   if (!root) return;
   root.dataset.mode = mode;
+  root.dataset.orient = orientation;
   if (adviceOpen) root.dataset.advice = "on";
   else delete root.dataset.advice;
   renderHero();
@@ -220,14 +266,16 @@ function renderCells() {
   strip.replaceChildren();
   for (let i = 0; i < result.stationCount; i += 1) {
     const cell = stripCellView(result, state.observed, state.hints, i, state.cursor);
+    const auto = autoFilled.includes(i);
+    const tip = stripTip(result, state.observed, state.hints, i) + (auto ? ` · ${t("stripAuto")}` : "");
     strip.append(
       h("button", {
-        class: `cell ${cell.classes.join(" ")}`,
+        class: `cell ${cell.classes.join(" ")}${auto ? " auto" : ""}`,
         type: "button",
-        title: stripTip(result, state.observed, state.hints, i),
-        "aria-label": stripTip(result, state.observed, state.hints, i),
+        title: tip,
+        "aria-label": tip,
         text: cell.text,
-        onclick: () => setState({ ...state, cursor: i }, { persist: false }),
+        onclick: () => selectStation(i),
       }),
     );
   }
@@ -247,12 +295,24 @@ function renderSetup() {
   const origin = isOrigin(index);
   const recorded = allRecorded(state.observed, state.hints, result.stationCount);
 
+  const target = t(orientation === "portrait" ? "orientLandscape" : "orientPortrait");
   box.append(
     h("div", { class: "setup-head" }, [
       h("span", { class: "setup-title", text: t("hudRecordShort") }),
       h("span", { class: "setup-tag", text: t("hudCurTag") }),
       h("b", { class: "setup-nth", text: stationName(index) }),
       h("span", { class: "spacer" }),
+      // 横竖屏切换：只在原生支持时出现（浏览器里没有窗口可转）。文字显示的是**目标**方向。
+      native?.setOrientation
+        ? h("button", {
+            class: "chip-btn orient",
+            type: "button",
+            title: t("orientSwitch", { mode: target }),
+            "aria-label": t("orientSwitch", { mode: target }),
+            text: target,
+            onclick: toggleOrientation,
+          })
+        : null,
       (state.observed[index] !== null || state.hints[index] !== null)
         ? h("button", { class: "chip-btn", type: "button", title: t("hudClearFull"), "aria-label": t("hudClearFull"), text: "✕", onclick: () => clearStation(index) })
         : null,
@@ -311,8 +371,24 @@ function renderSetup() {
   }
   box.append(hintRow);
 
+  // 下一步操作：本站记全后出现「去第 N 站」；没记全时用一句浅色说明填住这块。
+  // 手动推进的原因见 goNext——记完提示不代表玩家已经购物完/离开本站。
   if (recorded) {
     box.append(h("p", { class: "setup-done", text: t("hudDoneAllDesc") }));
+  } else if (isStationComplete(state.observed, state.hints, index, result.stationCount)) {
+    const to = nextIncompleteAfter(state.observed, state.hints, index, result.stationCount);
+    if (to !== -1) {
+      box.append(
+        h("button", {
+          class: "go-next",
+          type: "button",
+          text: `${t("hudGoNext", { n: stationNumber(to) })} →`,
+          onclick: goNext,
+        }),
+      );
+    }
+  } else {
+    box.append(h("p", { class: "setup-wait", text: t("hudWaitNext") }));
   }
 }
 
@@ -354,9 +430,9 @@ function openRecords() {
       h("button", {
         class: "rec-n",
         type: "button",
-        text: origin ? t("origin") : String(i),
+        text: String(stationNumber(i)),
         onclick: () => {
-          setState({ ...state, cursor: i }, { persist: false });
+          selectStation(i);
           closeDialog();
         },
       }),
@@ -652,6 +728,25 @@ function requestMode(next) {
 }
 
 /**
+ * 横竖屏切换。
+ *
+ * 页面只负责「请求 + 把自己的版面切成对应方向」；真正改窗口/Activity 朝向的是原生
+ * （悬浮窗 = 换窗口宽高，全屏页 = requestedOrientation）。原生持久化选择，下次开窗口
+ * 由 bootstrap 注入回来，所以这里不需要自己存。
+ * 原生调用失败时不改本地状态——否则页面切了、窗口没切，两边说的不是一个方向。
+ */
+function toggleOrientation() {
+  const next = orientation === "portrait" ? "landscape" : "portrait";
+  try {
+    native.setOrientation(next);
+  } catch {
+    return;
+  }
+  orientation = next;
+  render();
+}
+
+/**
  * 原生侧的回调面（Kotlin 通过 evaluateJavascript 调这里，见 RailPanelService.onReceive）。
  *
  * 四个口子对应原生真正需要的四件事：切模式（展开/收起）、跟随系统语言、
@@ -661,6 +756,11 @@ function requestMode(next) {
 window.railHud = {
   setMode(next) {
     mode = ["full", "panel", "bar"].includes(next) ? next : "full";
+    render();
+  },
+  /** 原生侧告诉页面「窗口 / Activity 现在是哪个朝向」（除了 bootstrap，运行中也可能变）。 */
+  setOrientation(next) {
+    orientation = next === "landscape" ? "landscape" : "portrait";
     render();
   },
   setLocale(next) {
@@ -727,6 +827,13 @@ const boot = bootstrap();
 initLocale(boot?.lang ? `?lang=${boot.lang}` : window.location.search);
 mode = document.querySelector("#root")?.dataset.mode ?? "full";
 if (boot?.mode) mode = boot.mode;
+// 朝向：原生持久化并注入；浏览器里按屏幕实际方向初始化（那边没有切换按钮）
+orientation =
+  boot?.orientation === "landscape" || boot?.orientation === "portrait"
+    ? boot.orientation
+    : window.matchMedia?.("(orientation: landscape)").matches
+      ? "landscape"
+      : "portrait";
 // 告诉 i18n 层「现在跑在悬浮窗里」：弹层边界判定要用（见 openInActivity）
 setPanelMode(mode === "panel");
 

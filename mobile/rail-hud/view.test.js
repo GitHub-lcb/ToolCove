@@ -14,6 +14,7 @@ import {
   hintText,
   hudAdvice,
   isOrigin,
+  lockedTypeAt,
   missingHints,
   progressPct,
   stationName,
@@ -276,6 +277,28 @@ describe("建议与一句话结论", () => {
     expect(text).toContain("铁路大亨");
     // 首个未确认站是下标 1 = 第 2 站
     expect(text).toContain("第 2 站");
+  });
+});
+
+describe("推断自动填入", () => {
+  it("锁定站给出唯一类型；未锁定 / 记录冲突时返回 null", () => {
+    // 始发站提示「酒庄最多」覆盖第 1~3 站，第 1 站已确认食铺 → 第 2、3 站锁定酒庄
+    const state = blank();
+    state.observed[1] = 1;
+    state.hints[0] = hintMax(0);
+    const result = solve(state);
+    expect(lockedTypeAt(result, 2)).toBe(0);
+    expect(lockedTypeAt(result, 3)).toBe(0);
+    // 第 4 站不受这条提示约束，仍是三选一
+    expect(lockedTypeAt(result, 4)).toBeNull();
+
+    // 记录冲突时不自动填任何类型（解空间为空）
+    const bad = blank();
+    bad.hints[0] = HINT_SAME;
+    bad.observed[1] = 0;
+    bad.observed[2] = 0;
+    bad.observed[3] = 0;
+    expect(lockedTypeAt(solve(bad), 4)).toBeNull();
   });
 });
 

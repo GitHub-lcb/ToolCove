@@ -67,6 +67,8 @@ class RailPanelService : Service(), RailBridge.Host {
     private var webView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
     private var collapsed = false
+    /** 面板朝向：竖屏 360×272，横屏 560×200（左右分栏）。由页面上的按钮切换并持久化。 */
+    private var orientation = RailBridge.ORIENT_PORTRAIT
 
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -121,7 +123,18 @@ class RailPanelService : Service(), RailBridge.Host {
     private fun showPanel() {
         if (panel != null) return
 
-        val web = RailWebView(this, RailState.initialFor(this), if (collapsed) MODE_BAR else MODE_PANEL, RailBridge(this, this))
+        orientation = if (restoreOrientation() == RailBridge.ORIENT_LANDSCAPE) {
+            RailBridge.ORIENT_LANDSCAPE
+        } else {
+            RailBridge.ORIENT_PORTRAIT
+        }
+        val web = RailWebView(
+            this,
+            RailState.initialFor(this),
+            if (collapsed) MODE_BAR else MODE_PANEL,
+            RailBridge(this, this),
+            orientation,
+        )
         webView = web
 
         val container = FrameLayout(this)
@@ -139,8 +152,8 @@ class RailPanelService : Service(), RailBridge.Host {
         )
 
         val layoutParams = WindowManager.LayoutParams(
-            if (collapsed) dp(BAR_WIDTH_DP) else dp(PANEL_WIDTH_DP),
-            if (collapsed) dp(BAR_HEIGHT_DP) else dp(PANEL_HEIGHT_DP),
+            if (collapsed) dp(BAR_WIDTH_DP) else dp(panelWidthDp()),
+            if (collapsed) dp(BAR_HEIGHT_DP) else dp(panelHeightDp()),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             // 只保留这三个，**不要**再加 FLAG_LAYOUT_IN_SCREEN：
             // 它让窗口按整屏（含系统栏区域）布局，在 gravity = TOP|START 下会造成
@@ -256,13 +269,40 @@ class RailPanelService : Service(), RailBridge.Host {
         if (collapsed == next && panel != null) return
         collapsed = next
         val lp = params ?: return
-        lp.width = dp(if (next) BAR_WIDTH_DP else PANEL_WIDTH_DP)
-        lp.height = dp(if (next) BAR_HEIGHT_DP else PANEL_HEIGHT_DP)
+        lp.width = dp(if (next) BAR_WIDTH_DP else panelWidthDp())
+        lp.height = dp(if (next) BAR_HEIGHT_DP else panelHeightDp())
         clampToScreen(lp)
         runCatching { windowManager.updateViewLayout(panel, lp) }
         evaluate("window.railHud && window.railHud.setMode('${if (next) MODE_BAR else MODE_PANEL}')")
         saveCollapsed(next)
     }
+
+    /**
+     * 切换面板朝向（页面上的「竖屏 / 横屏」按钮触发）。
+     *
+     * 页面自己也会立刻按新方向重排版面（data-orient），原生这边负责的只是窗口尺寸：
+     * 换了更宽的窗口后把 x 拉回屏内，避免横屏面板挂出右边界。收起成一条时不改尺寸
+     * （那条横条与朝向无关），但选择照样持久化。
+     */
+    private fun applyOrientation(mode: String) {
+        orientation = if (mode == RailBridge.ORIENT_LANDSCAPE) RailBridge.ORIENT_LANDSCAPE else RailBridge.ORIENT_PORTRAIT
+        prefs().edit().putString(KEY_ORIENTATION, orientation).apply()
+        val lp = params ?: return
+        if (collapsed) return
+        lp.width = dp(panelWidthDp())
+        lp.height = dp(panelHeightDp())
+        // 横屏窗口更宽：把 x/y 拉回可见区，否则可能整块挂在屏幕右外侧
+        val metrics = resources.displayMetrics
+        lp.x = lp.x.coerceIn(0, (metrics.widthPixels - lp.width).coerceAtLeast(0))
+        clampToScreen(lp)
+        runCatching { windowManager.updateViewLayout(panel, lp) }
+    }
+
+    private fun panelWidthDp() =
+        if (orientation == RailBridge.ORIENT_LANDSCAPE) PANEL_LANDSCAPE_WIDTH_DP else PANEL_WIDTH_DP
+
+    private fun panelHeightDp() =
+        if (orientation == RailBridge.ORIENT_LANDSCAPE) PANEL_LANDSCAPE_HEIGHT_DP else PANEL_HEIGHT_DP
 
     // ── RailBridge.Host ──────────────────────────────────────────────
 
@@ -281,6 +321,8 @@ class RailPanelService : Service(), RailBridge.Host {
     }
 
     override fun onCollapseRequest(collapsed: Boolean) = applyCollapsed(collapsed)
+
+    override fun onOrientationRequest(mode: String) = applyOrientation(mode)
 
     // ── 跨窗口同步 ───────────────────────────────────────────────────
 
@@ -360,6 +402,9 @@ class RailPanelService : Service(), RailBridge.Host {
 
     private fun saveCollapsed(value: Boolean) = prefs().edit().putBoolean(KEY_COLLAPSED, value).apply()
 
+    private fun restoreOrientation(): String =
+        prefs().getString(KEY_ORIENTATION, RailBridge.ORIENT_PORTRAIT) ?: RailBridge.ORIENT_PORTRAIT
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
@@ -376,6 +421,15 @@ class RailPanelService : Service(), RailBridge.Host {
          */
         private const val PANEL_WIDTH_DP = 360
         private const val PANEL_HEIGHT_DP = 272
+
+        /**
+         * 横屏面板：左右分栏（左结论 + 进度，右录入），所以更宽、更矮。
+         * 高度按 styles.css 的横屏分栏算：hero 62 + strip 19 + setup 140 + 间距/padding，
+         * 200dp 留了余量。改这里要同时改那边的注释与 main.js 的朝向取值。
+         */
+        private const val PANEL_LANDSCAPE_WIDTH_DP = 560
+        private const val PANEL_LANDSCAPE_HEIGHT_DP = 200
+
         private const val BAR_WIDTH_DP = 360
         private const val BAR_HEIGHT_DP = 46
         private const val HANDLE_HEIGHT_DP = 18
@@ -393,5 +447,6 @@ class RailPanelService : Service(), RailBridge.Host {
         private const val KEY_X = "x"
         private const val KEY_Y = "y"
         private const val KEY_COLLAPSED = "collapsed"
+        private const val KEY_ORIENTATION = "orientation"
     }
 }
