@@ -4,6 +4,9 @@
 //   node mobile/android/build-apk.mjs              # 打 release（debug 签名，适合侧载）
 //   node mobile/android/build-apk.mjs --debug      # 打 debug
 //   node mobile/android/build-apk.mjs --offline    # 工具链齐备后离线构建
+//   node mobile/android/build-apk.mjs --system-toolchain
+//        用**环境里已有的** JDK/Gradle/SDK，不下载自带的 .toolchain。
+//        CI（ubuntu-latest 自带 Android SDK）走这条；本地默认用自带工具链。
 //
 // 产物复制到 mobile/android/out/，文件名统一为 toolcove-<variant>.apk。
 //
@@ -16,7 +19,6 @@ import { existsSync, mkdirSync, readdirSync, rmSync, cpSync, writeFileSync } fro
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { ensureToolchain, runBat } from "./setup-toolchain.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
@@ -25,14 +27,43 @@ const outDir = join(here, "out");
 const argv = process.argv.slice(2);
 const variant = argv.includes("--debug") ? "debug" : "release";
 const offline = argv.includes("--offline");
+const useSystemToolchain = argv.includes("--system-toolchain") || process.env.TC_SYSTEM_TOOLCHAIN === "1";
+/** 是否配置了正式签名（由环境变量传入，见 app/build.gradle 与 mobile-release.yml）。 */
+const signedRelease = !!process.env.TC_KEYSTORE_PATH;
 const task = variant === "debug" ? "assembleDebug" : "assembleRelease";
 
 const log = (...a) => console.log("[apk]", ...a);
 
+/**
+ * 解析工具链：两条路径。
+ *
+ * 本地（默认）：用自带的 .toolchain（本机系统只有 JDK 1.7，AGP 8 要 17+，所以必须自带）。
+ * CI（--system-toolchain）：用环境里已有的 JDK/Gradle/SDK——GitHub 的 ubuntu runner 已预装
+ * Android SDK，再下一份 1.5GB 的工具链既慢又没必要；而且 setup-toolchain.mjs 是为 Windows
+ * 写的（sdkmanager.bat、commandlinetools-win），在 Linux 上跑不起来。
+ */
+async function resolveToolchain() {
+  if (!useSystemToolchain) {
+    const { ensureToolchain } = await import("./setup-toolchain.mjs");
+    const { jdk, gradle, sdk } = await ensureToolchain();
+    return { jdk, gradle, sdk, runner: "local" };
+  }
+
+  const jdk = process.env.JAVA_HOME || "";
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
+  const gradleHome = process.env.GRADLE_HOME || "";
+  if (!jdk) throw new Error("--system-toolchain 需要设置 JAVA_HOME");
+  if (!sdk) throw new Error("--system-toolchain 需要设置 ANDROID_HOME 或 ANDROID_SDK_ROOT");
+
+  // Gradle 优先用环境里的；没有就回退到 PATH 上的 gradle
+  const gradle = gradleHome && existsSync(gradleHome) ? gradleHome : "";
+  return { jdk, gradle, sdk, runner: "system" };
+}
+
 // ── 1. 工具链（幂等：已装好时只做几次 existsSync） ──────────────────
-const { jdk, gradle, sdk } = await ensureToolchain();
-log(`工具链：JDK ${jdk}`);
-log(`        Gradle ${gradle}`);
+const { jdk, gradle, sdk, runner } = await resolveToolchain();
+log(`工具链（${runner === "system" ? "环境自带" : "项目自带"}）：JDK ${jdk}`);
+log(`        Gradle ${gradle || "（用 PATH 上的 gradle）"}`);
 log(`        SDK ${sdk}`);
 
 // ── 2. 前端产物 ─────────────────────────────────────────────────────
@@ -82,7 +113,16 @@ if (offline) gradleArgs.push("--offline");
 log(`Gradle ${task}${offline ? "（离线）" : ""} …`);
 log(`  依赖缓存：${gradleHome}`);
 log("  （首次要下载 AGP / Kotlin 插件，可能要几分钟）");
-runBat(join(gradle, "bin", "gradle.bat"), gradleArgs, { env, cwd: here });
+
+if (gradle) {
+  // 自带工具链：直接调它的 launcher（Windows 上是 gradle.bat，Linux/macOS 上是 gradle）
+  const { runBat } = await import("./setup-toolchain.mjs");
+  runBat(join(gradle, "bin", process.platform === "win32" ? "gradle.bat" : "gradle"), gradleArgs, { env, cwd: here });
+} else {
+  // 环境自带模式：用 PATH 上的 gradle（CI 的 runner 已装好）
+  log("  使用 PATH 上的 gradle");
+  execFileSync("gradle", gradleArgs, { env, cwd: here, stdio: "inherit" });
+}
 
 // ── 5. 收集产物 ─────────────────────────────────────────────────────
 const apkDir = join(here, "app", "build", "outputs", "apk", variant);
@@ -103,13 +143,22 @@ for (const apk of picked) {
   results.push(target);
 }
 
-// ── 6. 汇报 ─────────────────────────────────────────────────────────
+// ── 6. 产物自检 ─────────────────────────────────────────────────────
+// 构建成功 ≠ 包能用：**空壳包能装上、能启动、打开是白屏**，这是最难排查的失败形态
+// （上一代手机端就出过：assets 同步路径算错，包 645KB 却没有任何页面）。
+// 所以构建完立刻验产物本身，失败就非零退出，别把空壳包交给发版流程。
+for (const file of results) {
+  log(`自检 ${file} …`);
+  execFileSync(process.execPath, [join(here, "verify-apk.mjs"), file], { stdio: "inherit" });
+}
+
+// ── 7. 汇报 ─────────────────────────────────────────────────────────
 log("完成：");
 for (const file of results) {
   const { statSync } = await import("node:fs");
   const kb = Math.round(statSync(file).size / 1024);
   log(`  ${file}  (${kb} KB)`);
 }
-if (variant === "release" && !offline) {
-  log("提示：release 用 debug 签名，仅供侧载自用；上架需要自己的 keystore。");
+if (variant === "release" && !signedRelease) {
+  log("提示：release 用 debug 签名，仅供侧载自用；上架需要配置签名（见 mobile-release.yml 的 Secrets）。");
 }

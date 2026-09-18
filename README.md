@@ -119,12 +119,28 @@ updater only sees published releases). Re-runs are available from the Actions ta
 
 ### Mobile app
 
-The Android app is being rebuilt from scratch to reach feature parity with the desktop build —
-see [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md) for the architecture, phasing and the
+The Android app reaches feature parity with the desktop build — see
+[`docs/mobile-app-plan.md`](docs/mobile-app-plan.md) for the architecture, phasing and the
 platform limits that cannot be matched (JDBC, raw label printing, ICMP/DNS diagnostics).
 The previous phone build (a rail-tycoon floating panel) has been removed; the Rail Tycoon tool
-itself stays: its solver lives in `src/tools/railTycoon.js` and is used by the desktop and browser
-builds, and it will return to the app as one of its tools.
+itself stayed: its solver lives in `src/tools/railTycoon.js`, is used by the desktop and browser
+builds, and came back to the app as one of its tools.
+
+Build and release:
+
+```bash
+npm run build:apk      # 出 APK（先构建前端，再交给 Gradle），产物在 mobile/android/out/
+npm run test:android   # 桥的 JVM 单测（编解码、命令分发、选择器时序，不需要设备）
+npm run verify:apk     # 产物自检：前端资源是否真的打进包、版本号是否与 package.json 一致
+```
+
+The phone version releases on its own track: bump `mobileVersion` in `package.json` (the Gradle
+`versionName`/`versionCode` are derived from it — single source of truth), push `main`, then push an
+`apk-v<version>` tag. That runs
+[`mobile-release.yml`](.github/workflows/mobile-release.yml), which builds the APK on CI and
+attaches it to a published release. The tag prefix matters: `v*` triggers the desktop release,
+`apk-v*` the phone one. The APK is debug-signed unless you add the signing secrets
+(`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
 
 One-time setup — repository secrets (Settings → Secrets and variables → Actions):
 

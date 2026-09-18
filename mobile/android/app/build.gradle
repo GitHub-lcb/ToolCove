@@ -10,6 +10,11 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// 版本号从 package.json 的 mobileVersion 读，**单一真相源**：
+// 发版工作流会校验 tag / package.json / 这里的 versionName 三者一致，
+// 两处手改迟早会出现「标签说 1.2.0、装到手机上显示 1.1.0」这种最难查的事故。
+def mobileVersion = new groovy.json.JsonSlurper().parseText(file('../../../package.json').text).mobileVersion
+
 android {
     namespace 'com.githublcb.toolcove'
     compileSdk 35
@@ -19,10 +24,30 @@ android {
         applicationId 'com.githublcb.toolcove'
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '0.7.0'
+        // versionCode 必须单调递增，否则安卓会拒绝安装"版本更旧"的包。
+        // 用 1.2.3 → 10203 的编码方式从 mobileVersion 推导，省掉手工维护两个数字。
+        versionCode = {
+            def parts = mobileVersion.tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 }
+            while (parts.size() < 3) parts << 0
+            return parts[0] * 10000 + parts[1] * 100 + parts[2]
+        }()
+        versionName mobileVersion
         // 侧载应用，不做多语言分包：中英两套 strings 都留在包里
         resourceConfigurations += ['zh', 'en']
+    }
+
+    // 正式签名（可选）：CI 配了 Secrets 时由环境变量传入，本地不配则用 debug 签名。
+    // 为什么做成"可选"而不是强制：侧载自用不需要发布密钥，而把 keystore 带进仓库是红线。
+    def keystorePath = System.getenv('TC_KEYSTORE_PATH')
+    if (keystorePath) {
+        signingConfigs {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv('TC_KEYSTORE_PASSWORD') ?: ''
+                keyAlias System.getenv('TC_KEY_ALIAS') ?: ''
+                keyPassword System.getenv('TC_KEY_PASSWORD') ?: ''
+            }
+        }
     }
 
     buildTypes {
@@ -30,8 +55,8 @@ android {
             // 没有反射、没有序列化、不需要混淆规则，开 minify 只会引入风险而没有收益
             minifyEnabled false
             shrinkResources false
-            // 用 debug 签名：侧载自用不需要发布密钥，也避免把 keystore 带进仓库
-            signingConfig signingConfigs.debug
+            // 有正式签名就用正式签名，否则退回 debug 签名（仅供侧载）
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
         }
     }
 

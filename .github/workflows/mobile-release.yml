@@ -1,0 +1,146 @@
+# 手机端（安卓 App）发版：推 apk-v* 标签（或在 Actions 手动触发）时构建 APK 并创建 GitHub Release。
+#
+# 与桌面端发版的关系：
+#   · 两条独立的发版线：`v*` 触发桌面端（release.yml），`apk-v*` 触发手机端（本文件）。
+#     标签前缀必须区分——上一代手机端就踩过「前缀写错、APK 顶掉桌面版 Release」的事故。
+#   · 版本号也独立：手机端用 package.json 的 mobileVersion，与桌面 version 各走各的。
+#
+# 一次性前置配置：
+#   若要**正式签名**（上架或长期分发），配以下 Secrets；不配则用 debug 签名（仅供侧载自用）：
+#     ANDROID_KEYSTORE_BASE64  keystore 文件的 base64（单行）
+#     ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+#   未配置时本工作流**照常出包**，只是在 Release 说明里标注「debug 签名，仅供侧载」。
+#
+# 供应链加固：所有第三方 Action 都 pin 到完整 commit SHA（浮动 tag 可被上游重新指向）。
+# 升级方式：查 `GET /repos/<owner>/<repo>/commits/<tag>` 拿新 SHA，替换并把注释里的版本号一起改。
+name: Mobile Release
+
+on:
+  push:
+    tags: ["apk-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: 构建 APK 并发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # 版本号一致性：标签 ↔ package.json 的 mobileVersion。
+      # 注意**不校验 app/build.gradle**：那里的 versionName/versionCode 是从 package.json
+      # 派生出来的（单一真相源），拿正则去读它只会读到变量名而不是值——实测踩过这个坑。
+      # 真正该验的是**产物里的版本**，所以下面构建完会用 aapt2 dump 出来再比一次。
+      - name: 校验 tag 与版本号一致
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#apk-v}"
+          pkg=$(node -p "require('./package.json').mobileVersion")
+          echo "tag=$tag package.json=$pkg"
+          if [ "$tag" != "$pkg" ]; then echo "::error::标签 apk-v$tag 与 package.json 的 mobileVersion $pkg 不一致，请先改版本号再打标签"; exit 1; fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Gradle 用 runner 自带的（ubuntu-latest 预装）；不下载项目自带的 .toolchain（1.5GB，
+      # 而且 setup-toolchain.mjs 是给 Windows 写的：sdkmanager.bat / commandlinetools-win）。
+      - name: 确认 Android SDK 可用
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platforms" || true
+
+      - run: npm ci
+
+      # 发布前必须全绿：标签指向的提交要是坏的，用户装到手机上就是坏版本
+      - name: 发布前单测（前端）
+        run: npm test
+
+      # 桥的核心逻辑有 JVM 单测（编解码、命令分发、选择器时序），发版前同样要过
+      - name: 发布前单测（安卓桥）
+        run: |
+          cd mobile/android
+          gradle :app:testDebugUnitTest --no-daemon --console=plain
+
+      - name: 配置正式签名（有 Secrets 时）
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            {
+              echo "TC_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore"
+              echo "TC_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+              echo "TC_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+              echo "TC_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            } >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 ANDROID_KEYSTORE_BASE64，将使用 debug 签名（仅供侧载自用）"
+          fi
+
+      - name: 构建 APK
+        env:
+          TC_SYSTEM_TOOLCHAIN: "1"
+        run: node mobile/android/build-apk.mjs --system-toolchain
+
+      - name: 收集产物信息
+        id: artifact
+        run: |
+          apk=mobile/android/out/toolcove-release.apk
+          ls -la "$apk"
+          size=$(du -k "$apk" | cut -f1)
+          echo "size_kb=$size" >> "$GITHUB_OUTPUT"
+          # 校验产物确实包含前端资源：空壳包能装上、但打开是白屏（最难排查的失败形态）
+          unzip -l "$apk" | grep -q "assets/index.html" || { echo "::error::APK 里没有 assets/index.html，是个空壳包"; exit 1; }
+          echo "包含前端产物 ✓"
+          # 校验产物里的版本号与 package.json 一致：这才是用户装到手机上会看到的那个数字。
+          # 拿 aapt2 读产物本身（而不是读 build.gradle 源码——那里是变量引用）。
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          actual=$("$aapt" dump badging "$apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          expected=$(node -p "require('./package.json').mobileVersion")
+          echo "产物 versionName=$actual 期望=$expected"
+          if [ "$actual" != "$expected" ]; then echo "::error::APK 里的版本号 $actual 与 package.json 的 $expected 不一致"; exit 1; fi
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [ -z "$tag" ] || [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            tag="apk-v$(node -p "require('./package.json').mobileVersion")"
+          fi
+          signed="${{ steps.signing.outputs.signed }}"
+          if [ "$signed" = "true" ]; then
+            note="正式签名构建。"
+          else
+            note="**debug 签名，仅供侧载自用**（未配置签名 Secrets）。上架或长期分发请配置 ANDROID_KEYSTORE_BASE64 等 Secrets 后重跑。"
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          ToolCove 安卓版 $tag（${{ steps.artifact.outputs.size_kb }} KB）
+
+          $note
+
+          安装：下载下方 APK 传到手机点开安装（需允许「安装未知来源应用」）。
+
+          **首次使用建议先到「设置 → AI 模型」配好接口**，否则 Agent 无法运行；
+          配置后记录、工作台、工具箱与 Agent 都可离线使用（数据只存本机）。
+          EOF
+          gh release create "$tag" \
+            mobile/android/out/toolcove-release.apk \
+            --title "ToolCove Android $tag" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            || gh release upload "$tag" mobile/android/out/toolcove-release.apk --clobber
