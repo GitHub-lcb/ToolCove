@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Rust 构建产物：src-tauri 与 crates/* 各自的 target/ 都可重建，不入库
+src-tauri/target/
+crates/*/target/
+# 标签引擎的 wasm 产物也是可重建的（npm run build:label-wasm），但它**会随 APK 分发**，
+# 所以构建脚本会把它复制到 mobile/app/vendor/ 下由前端按需加载——那份要入库。
+
 # 本地打包产物与临时文件
 release-out
 tmp

@@ -22,7 +22,8 @@
     "tauri": "tauri",
     "release": "node scripts/release.js",
     "test:android": "node mobile/android/test-bridge.mjs",
-    "verify:apk": "node mobile/android/verify-apk.mjs"
+    "verify:apk": "node mobile/android/verify-apk.mjs",
+    "build:label-wasm": "node crates/label-core/build-wasm.mjs"
   },
   "dependencies": {
     "@jspawn/qpdf-wasm": "^0.0.2",

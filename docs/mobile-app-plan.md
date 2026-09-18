@@ -78,11 +78,33 @@
 
 1. **标签工具不重写 JS 版**：桌面端的 TSPL 排版是 Rust 侧 1550 行引擎（`src-tauri/src/label.rs`），
    JS 侧只有表单归一化与预览几何。把排版用 JS 再实现一遍等于同一件事两份实现，
-   迟早不一致——而"所见即所打"是这个工具的立身之本。留待把 Rust 引擎以 WASM 复用。
+   迟早不一致——而"所见即所打"是这个工具的立身之本。
+   **已找到可行路径：把引擎抽成独立 crate 并编译到 WASM**（见 §6）。
 2. **P6 提前到 P3 之前做**：安卓壳与发版链路是唯一能"证明这套技术路线成立"的东西，
    越早打通越好（本地 HTTP 服务、crypto.subtle 可用性、资源寻址都要靠装机验）。
-3. **P5 的桥分层做**：HTTP/TCP/Keystore/SAF 逐个落地，每个都把"可测的部分"挪出 Android 依赖
+3. **P5 的桥分层做**：HTTP/TCP/Keystore/SAF/SQLite 逐个落地，每个都把"可测的部分"挪出 Android 依赖
    （JSON、编解码、命令分发、选择器时序），使 JVM 单测能覆盖绝大部分逻辑，装机只剩接线。
+
+## 6. 标签引擎的 WASM 复用（已验证可行）
+
+标签工具卡在"排版引擎只有 Rust 一份"上。解法不是重写，而是**让两端跑同一份代码**：
+
+| 步骤 | 做法 | 验证 |
+|---|---|---|
+| 抽 crate | `crates/label-core`：把 `label.rs` 的纯逻辑（1–1155 行）逐字搬过来，**不依赖 tauri / 文件系统 / 打印** | `cargo test` **29 条原有单测全绿**（无损搬运的证据） |
+| 编译 WASM | `wasm32-unknown-unknown`，导出层用裸 `extern "C"` + 手写内存协议（不引 wasm-bindgen 那一整套工具链） | 产物 **472 KB**，导出 `alloc`/`layout_json`/`source_json`/`last_len`/`release_last` |
+| 真跑一次 | `node crates/label-core/build-wasm.mjs`：编译后立刻实例化并比对排版结果 | **9 项全过**：画布 400×240、间隙 16 点、文字居中 x=152、指令 `SIZE 50 mm,30 mm`、两次调用一致、坏参数返回结构化错误 |
+
+**过程中踩到并修掉的一个真缺陷**：最初让 JS 用 `last_len()` 的返回值去释放结果内存，
+运行即崩（`__rdl_dealloc` 断言）——`Vec` 的容量可能大于长度，用 len 释放是未定义行为。
+改成 **wasm 侧按真实容量释放**（`release_last()`，JS 不传长度）：让分配方负责释放。
+
+**下一步**：把 `label.rs` 的命令层改为引用 `label-core`（re-export 类型 + 调 `build_render_payload`），
+桌面端因此与手机端共用同一份引擎；然后手机端加 `labelEngine.js` 加载 wasm、实现标签工具页。
+
+**未验证**：真机上加载 472 KB 的 wasm（安卓 WebView 支持 WebAssembly，但首次加载耗时需实测）；
+桌面端接线后 `cargo test` 需全绿（保证搬运与 re-export 没有改变行为）。
+
 
 ## 6. 验收标准（移动端）
 

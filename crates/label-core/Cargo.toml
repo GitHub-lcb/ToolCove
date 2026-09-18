@@ -1,0 +1,26 @@
+[package]
+name = "label-core"
+version = "0.1.0"
+edition = "2021"
+# 不发布：这是仓库内的共享 crate，桌面端（Tauri）与手机端（WASM）都从源码引用它。
+publish = false
+description = "TSPL 标签排版引擎：纯计算，无平台依赖，桌面端与手机端共用同一份实现"
+
+# 关键约束：**不依赖 tauri / std::fs / 打印相关的东西**。
+# 这样它既能被 Tauri 命令层调用，也能编译成 wasm32 给手机端用——
+# 「所见即所打」靠的就是两端跑同一份排版代码，而不是各写一份。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 下面三个都是**纯计算** crate（无平台依赖），因此可以进 core 并编译到 wasm32：
+#   · unicode-width：字符宽度决定换行与居中（打印机是定宽点阵字体）
+#   · qrcode / barcoders：二维码与条码的模块序列，预览要用
+#   · encoding_rs：中文 GB18030 编码（TSPL 指令按 GB18030 输出）
+unicode-width = "0.2"
+qrcode = { version = "0.14", default-features = false }
+barcoders = "2"
+encoding_rs = "0.8"
+
+[lib]
+# cdylib 供 wasm 使用；rlib 供桌面端以普通依赖方式引用
+crate-type = ["cdylib", "rlib"]
