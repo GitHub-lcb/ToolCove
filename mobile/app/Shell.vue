@@ -9,6 +9,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import RecordsView from "./RecordsView.vue";
+import WorkView from "./WorkView.vue";
 
 const props = defineProps({
   bridged: { type: Boolean, default: false },
@@ -24,7 +25,7 @@ const { t } = useI18n();
 /** 标签定义：key 与桌面端导航同名（nav.*），方便后续把同一模块的桌面视图移动端化。 */
 const TABS = [
   { key: "records", labelKey: "nav.records", icon: "☰", ready: true },
-  { key: "work", labelKey: "nav.work", icon: "▤", ready: false },
+  { key: "work", labelKey: "nav.work", icon: "▤", ready: true },
   { key: "toolbox", labelKey: "nav.toolbox", icon: "⚒", ready: false },
   { key: "agent", labelKey: "nav.agent", icon: "✦", ready: false },
   { key: "settings", labelKey: "nav.settings", icon: "⚙", ready: false },
@@ -44,6 +45,7 @@ const platform = computed(() => {
   <div class="m-app" :data-platform="platform">
     <main class="m-page">
       <RecordsView v-if="current.key === 'records'" />
+      <WorkView v-else-if="current.key === 'work'" />
 
       <!-- 其余标签先给占位：如实说明「还没做」，而不是画一个点不动的界面 -->
       <section v-else class="m-todo" :data-tab="current.key">

@@ -423,7 +423,6 @@ body,
   margin: 0 0 8px;
   font-size: 1.1rem;
 }
-
 .m-todo-body {
   margin: 0 0 var(--m-gap);
   color: var(--m-muted);
@@ -455,4 +454,81 @@ body,
 .m-status li[data-on="false"] {
   border-left: 3px solid var(--m-muted);
   color: var(--m-muted);
+}
+
+/* ---------- 工作台（迭代 → 需求 → 子任务） ---------- */
+.m-h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-back {
+  width: var(--m-touch);
+  min-height: var(--m-touch);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  color: var(--m-text);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 完成态：加删除线并降一档亮度（不靠颜色单独表达） */
+.m-item-title.done {
+  text-decoration: line-through;
+  color: var(--m-muted);
+}
+
+.m-status-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--m-border);
+  font-size: 0.75rem;
+  color: var(--m-muted);
+}
+
+.m-status-chip[data-status="dev"] { color: var(--m-primary); border-color: var(--m-primary); }
+.m-status-chip[data-status="live"] { color: var(--m-ok); border-color: var(--m-ok); }
+
+/* 进度条：细条 + 主色填充，宽度由需求完成率驱动 */
+.m-bar {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--m-soft);
+  overflow: hidden;
+}
+
+.m-bar i {
+  display: block;
+  height: 100%;
+  background: var(--m-primary);
+}
+
+.m-size {
+  display: inline-block;
+  padding: 0 6px;
+  margin-right: 6px;
+  border-radius: 4px;
+  background: var(--m-soft);
+  font-size: 0.75rem;
+}
+
+.m-over {
+  margin-left: 6px;
+  color: var(--m-danger);
+  font-size: 0.78rem;
+}
+
+.m-modal-ok.primary {
+  background: var(--m-primary);
 }

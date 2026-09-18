@@ -2965,6 +2965,26 @@
     "capsTitle": "Platform capabilities (mobile)",
     "capOn": "Available",
     "capOff": "Not supported",
-    "tabTodo": "This module is still being ported; screens land one module at a time."
+    "tabTodo": "This module is still being ported; screens land one module at a time.",
+    "status": {
+      "plan": "Planning",
+      "dev": "In dev",
+      "test": "Testing",
+      "pending": "Ready to ship",
+      "live": "Shipped"
+    },
+    "workAddIteration": "New iteration",
+    "workAddRequirement": "Add requirement",
+    "workAddSubtask": "Add subtask",
+    "workNoIteration": "No iterations yet. Create one, then attach requirements.",
+    "workNoRequirement": "Nothing matches this filter.",
+    "workNoSubtask": "No subtasks on this requirement yet.",
+    "workReqProgress": "{done}/{total} requirements",
+    "workProgress": "Progress",
+    "workNextStatus": "Next status",
+    "workHours": "{actual} / est. {estimate}",
+    "workHoursLabel": "Hours",
+    "workOverrun": "{hours} over estimate",
+    "workNameRequired": "Enter a name first"
   }
 }

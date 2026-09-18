@@ -2965,6 +2965,26 @@
     "capsTitle": "平台能力（手机端）",
     "capOn": "可用",
     "capOff": "不支持",
-    "tabTodo": "该模块还在迁移中：功能页会按模块逐个替换上来。"
+    "tabTodo": "该模块还在迁移中：功能页会按模块逐个替换上来。",
+    "status": {
+      "plan": "规划",
+      "dev": "开发",
+      "test": "测试",
+      "pending": "待上线",
+      "live": "已上线"
+    },
+    "workAddIteration": "新建迭代",
+    "workAddRequirement": "新增需求",
+    "workAddSubtask": "新增子任务",
+    "workNoIteration": "还没有迭代。建一个，再把需求挂上去。",
+    "workNoRequirement": "这个筛选下没有需求。",
+    "workNoSubtask": "这条需求还没有子任务。",
+    "workReqProgress": "需求 {done}/{total}",
+    "workProgress": "完成进度",
+    "workNextStatus": "下一状态",
+    "workHours": "{actual} / 估算 {estimate}",
+    "workHoursLabel": "工时（小时）",
+    "workOverrun": "超估算 {hours}",
+    "workNameRequired": "请先填名称"
   }
 }

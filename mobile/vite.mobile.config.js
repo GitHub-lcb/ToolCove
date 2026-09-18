@@ -21,8 +21,11 @@ export default defineConfig({
   base: "./",
   plugins: [vue()],
   resolve: {
-    // 共享代码用 `@/...` 引用仓库根：手机端目录层级较深，写相对路径容易算错（已经踩过一次）
-    alias: { "@": resolve(here, "..") },
+    // 共享代码用 `@root/...` 引用仓库的 src/：手机端目录层级较深，写相对路径容易算错（已经踩过一次）。
+    // 用 `@root/src/...` 这种形态而不是裸 `@`，是为了**单测也能直接 import**——
+    // 单测跑的是根 vite 配置（没有这个别名），而 mobile/app/work.js 要 import 共享逻辑，
+    // 所以共享引用一律写成从这里出发也能解析的相对路径（见 work.js 的写法）。
+    alias: { "@root": resolve(here, "..", "src") },
   },
   define: {
     __BUILD_STAMP__: JSON.stringify(BUILD_STAMP),

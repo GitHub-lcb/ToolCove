@@ -7,8 +7,9 @@
 // 界面在这个阶段只是一屏接地气的「能力清单」，用来确认平台判定与桥接是否正确；
 // 真正的页面（记录 / 工作台 / 工具 / Agent）在后续 Phase 逐个替换。
 import { createApp, h } from "vue";
-import { i18n, initLocale, warmFallbackLocale } from "@/src/i18n/index.js";
-import { capabilities, isMobile, isDesktop, isBrowser } from "@/src/platform/env.js";
+// 共享逻辑一律用相对路径：单测（根 vite 配置）与手机端构建都能解析
+import { i18n, initLocale, warmFallbackLocale } from "../../src/i18n/index.js";
+import { capabilities, isMobile, isDesktop, isBrowser } from "../../src/platform/env.js";
 import { installNativeBridge, nativeAvailable } from "./platform/bridge.js";
 import Shell from "./Shell.vue";
 import "./styles/shell.css";

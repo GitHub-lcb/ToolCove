@@ -9,7 +9,7 @@
 // 安卓侧约定（Kotlin 里用 @JavascriptInterface 暴露同名方法，参数为 JSON 字符串）：
 //   window.ToolCove.invoke(cmd, argsJson) -> 返回 JSON 字符串；抛错时返回 {"__error": "..."}
 //   window.ToolCove.isMobile === true
-import { setMobileBridge, hasMobileBridge } from "@/src/platform/invoke.js";
+import { setMobileBridge, hasMobileBridge } from "../../../src/platform/invoke.js";
 
 /** 安卓原生桥是否存在（浏览器里跑移动端前端时为 false）。 */
 export function nativeAvailable() {

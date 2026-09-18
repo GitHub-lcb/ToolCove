@@ -6,7 +6,7 @@
 // 逻辑判断都在 records.js 的纯函数里（已单测），这里只负责渲染与调用。
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { create, load as loadKind, onDataChanged, remove, update } from "@/src/data/repository.js";
+import { create, load as loadKind, onDataChanged, remove, update } from "../../src/data/repository.js";
 import { RECORD_KINDS, filterByStatus, filterRecords, recordSummary, sortRecords, toPayload } from "./records.js";
 
 const { t } = useI18n();
