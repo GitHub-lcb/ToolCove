@@ -3219,6 +3219,22 @@
     "badge_deploying": "In progress",
     "deploy_auto": "Auto",
     "deploy_container": "Container",
-    "deploy_host": "Host"
+    "deploy_host": "Host",
+    "setSelfTestTitle": "Native capability self-test",
+    "setSelfTestNote": "Tap once after installing to verify each native capability (storage, local server, TCP, encryption, file picker, SQLite). Checks that need a file are not run automatically — run them individually. You can copy the report afterwards.",
+    "setSelfTestRun": "Run self-test",
+    "setSelfTestCopy": "Copy report",
+    "setSelfTestCopied": "Report copied — paste it anywhere.",
+    "setSelfTestCopyFail": "Copy failed: {err}",
+    "setSelfTestSummary": "{pass} passed · {fail} failed",
+    "check_store": "Data storage",
+    "check_http": "Local server (HTTP)",
+    "check_tcp": "TCP reachability",
+    "check_crypto": "Encryption round-trip",
+    "check_filePicker": "File picker",
+    "check_sqlite": "SQLite read/write",
+    "checkPass": "Passed",
+    "checkManual": "Needs a picked file — run it with the button",
+    "checkRunOne": "Run"
   }
 }

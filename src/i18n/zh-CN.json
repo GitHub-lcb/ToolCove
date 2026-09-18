@@ -3219,6 +3219,22 @@
     "badge_deploying": "进行中",
     "deploy_auto": "自动",
     "deploy_container": "容器",
-    "deploy_host": "主机"
+    "deploy_host": "主机",
+    "setSelfTestTitle": "原生能力自检",
+    "setSelfTestNote": "装到手机上后点一下，逐项验证原生能力（存储、本机服务、TCP、加密、文件选择、SQLite）。需要选文件的项不会自动跑，可以单独点。跑完可一键复制报告。",
+    "setSelfTestRun": "运行自检",
+    "setSelfTestCopy": "复制报告",
+    "setSelfTestCopied": "报告已复制，可直接粘贴发出。",
+    "setSelfTestCopyFail": "复制失败：{err}",
+    "setSelfTestSummary": "通过 {pass} · 失败 {fail}",
+    "check_store": "数据存储",
+    "check_http": "本机服务（HTTP）",
+    "check_tcp": "TCP 连通",
+    "check_crypto": "加密往返",
+    "check_filePicker": "文件选择器",
+    "check_sqlite": "SQLite 读写",
+    "checkPass": "通过",
+    "checkManual": "需要点选文件，点右侧按钮单独跑",
+    "checkRunOne": "运行"
   }
 }

@@ -19,6 +19,7 @@ import { applyBackup, buildBackup, describeBackup, downloadBackup } from "./back
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
 import { nativeAvailable, pickFile } from "./platform/bridge.js";
 import { capabilities } from "../../src/platform/env.js";
+import { formatReport, runOne, runSelfTest } from "./selfTest.js";
 import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
 
 const { t } = useI18n();
@@ -34,6 +35,73 @@ const nativeReady = nativeAvailable();
  * 手写的清单迟早与代码不一致，而这里正是用户排查"这个功能怎么不好用"的地方。
  * 每一项都给出"能用"或"为什么不能用"，而不是只标一个叉。
  */
+// ---------- 原生能力自检 ----------
+// 装到手机上后一键验完所有原生能力，并把结果复制成报告发出去。
+// 这解决的是"开发机没有设备、只能靠人工核对清单"的问题——自检比我列清单可靠。
+const selfTestBusy = ref(false);
+const selfTestResults = ref([]);
+const selfTestError = ref("");
+const reportCopied = ref(false);
+
+const selfTestSummary = computed(() => {
+  const list = selfTestResults.value;
+  if (!list.length) return "";
+  const pass = list.filter((item) => item.status === "pass").length;
+  const fail = list.filter((item) => item.status === "fail").length;
+  return t("mobile.setSelfTestSummary", { pass, fail });
+});
+
+/** 跑全部自动项（需要用户点选文件的项会标成 manual，不会自动弹选择器）。 */
+async function runChecks() {
+  if (selfTestBusy.value) return;
+  selfTestBusy.value = true;
+  selfTestError.value = "";
+  reportCopied.value = false;
+  try {
+    selfTestResults.value = await runSelfTest({
+      invoke,
+      // 用当前页面地址做 HTTP/TCP 的目标：它指向本机的资源服务，
+      // 所以这两项同时验证了"原生通道"与"内置服务在监听"
+      origin: typeof location !== "undefined" ? location.origin : "",
+    });
+  } catch (e) {
+    selfTestError.value = e?.message || String(e);
+  } finally {
+    selfTestBusy.value = false;
+  }
+}
+
+/** 单独跑一项（文件选择器 / SQLite 需要用户点选文件）。 */
+async function runSingle(key) {
+  selfTestError.value = "";
+  try {
+    const result = await runOne(key, { invoke, origin: typeof location !== "undefined" ? location.origin : "" });
+    const list = selfTestResults.value.slice();
+    const index = list.findIndex((item) => item.key === key);
+    if (index >= 0) list[index] = result;
+    else list.push(result);
+    selfTestResults.value = list;
+  } catch (e) {
+    selfTestError.value = e?.message || String(e);
+  }
+}
+
+/** 复制报告：用户直接发出来就能定位问题。 */
+async function copyReport() {
+  selfTestError.value = "";
+  try {
+    const report = formatReport(selfTestResults.value, {
+      build: BUILD_STAMP_TEXT,
+      bridge: nativeReady ? t("mobile.bridgeOn") : t("mobile.bridgeOff"),
+    });
+    await navigator.clipboard.writeText(report);
+    reportCopied.value = true;
+    setTimeout(() => (reportCopied.value = false), 3000);
+  } catch (e) {
+    selfTestError.value = t("mobile.setSelfTestCopyFail", { err: e?.message || String(e) });
+  }
+}
+
 const CAPABILITY_ROWS = [
   { key: "sqlite", labelKey: "mobile.capSqlite" },
   { key: "filePicker", labelKey: "mobile.capFilePicker" },
@@ -499,6 +567,40 @@ async function renameDevice(event) {
             <span>{{ cap.on ? t("mobile.capYes") : cap.note }}</span>
           </li>
         </ul>
+      </div>
+
+      <!-- 原生能力自检：装到手机上后一键验完所有原生能力。
+           为什么放在这里：SAF 选择器、Keystore 加密、SQLite 读写、wasm 加载这些
+           只有设备上才能验，而"请手工核对四处"这种清单既麻烦又容易漏。
+           自检跑一遍给出结构化结果，还能一键复制成报告。 -->
+      <div class="m-card">
+        <div class="m-card-head">
+          <b>{{ t("mobile.setSelfTestTitle") }}</b>
+          <span class="m-zone" data-role="selftest-summary">{{ selfTestSummary }}</span>
+        </div>
+        <p class="m-hint-sm">{{ t("mobile.setSelfTestNote") }}</p>
+        <div class="m-actions">
+          <button class="m-btn primary" :disabled="selfTestBusy" data-role="run-selftest" @click="runChecks">
+            {{ selfTestBusy ? t("common.loading") : t("mobile.setSelfTestRun") }}
+          </button>
+          <button class="m-btn" :disabled="!selfTestResults.length" data-role="copy-report" @click="copyReport">{{ t("mobile.setSelfTestCopy") }}</button>
+        </div>
+        <ul v-if="selfTestResults.length" class="m-stats" data-role="selftest-results">
+          <li v-for="item in selfTestResults" :key="item.key" :data-check="item.key" :data-status="item.status">
+            <b>{{ t(`mobile.check_${item.key}`) }}</b>
+            <span>
+              <em class="m-mark" :data-status="item.status">{{ item.status === "pass" ? "✓" : item.status === "fail" ? "✗" : "—" }}</em>
+              {{ item.status === "manual" ? t("mobile.checkManual") : item.detail || (item.status === "pass" ? t("mobile.checkPass") : "") }}
+              <template v-if="item.ms != null"> · {{ item.ms }}ms</template>
+            </span>
+            <!-- 需要用户点选文件的项：给一个单独按钮，避免一跑自检就弹选择器 -->
+            <button v-if="item.status === 'manual'" class="m-op" :data-role="`run-${item.key}`" @click="runSingle(item.key)">
+              {{ t("mobile.checkRunOne") }}
+            </button>
+          </li>
+        </ul>
+        <p v-if="selfTestError" class="m-err" data-role="selftest-error">{{ selfTestError }}</p>
+        <p v-if="reportCopied" class="m-ok" data-role="report-copied">{{ t("mobile.setSelfTestCopied") }}</p>
       </div>
     </template>
 

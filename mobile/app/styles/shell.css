@@ -1233,3 +1233,29 @@ body,
 .m-chips::-webkit-scrollbar {
   display: none;
 }
+
+/* ---------- 原生能力自检 ---------- */
+/* 结果标记用颜色 + 符号双重区分：色盲用户也能分辨 */
+.m-mark {
+  display: inline-block;
+  width: 1.1em;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.m-mark[data-status="pass"] {
+  color: var(--m-ok, #1e7e34);
+}
+
+.m-mark[data-status="fail"] {
+  color: var(--m-danger, #c0392b);
+}
+
+.m-mark[data-status="manual"] {
+  color: var(--m-muted);
+}
+
+/* 自检结果项：失败项整行也要能一眼看到 */
+.m-stats li[data-status="fail"] {
+  background: var(--m-danger-soft, #fdecea);
+}
