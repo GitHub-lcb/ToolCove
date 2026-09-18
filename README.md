@@ -36,17 +36,12 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   from your pinned and recently used tools, and collapsible groups whose tools render as two-column
   cards on wide windows. Pinned tools and expanded groups are remembered locally.
 
-  The Rail Tycoon route solver (game helpers) targets the challenge route in Lord of the Mysteries'
-  homestead trade run: it treats each stop's "next 3 stops" hint as a constraint, enumerates every
+  Homestead trade run: it treats each stop's "next 3 stops" hint as a constraint, enumerates every
   valid layout, marks the stops that are uniquely determined, and turns the inference into card
   advice. It ships a "Cockpit" HUD layout (oversized next-stop verdict plus one-tap recording for the
   current stop) and a "Full layout" table, and the window can be pinned above everything else to sit
   over the game. Everything runs locally — no network, no injection, no game-process access — and it
-  works in both the desktop and browser builds. **A phone version** ([`mobile/`](mobile/android/README.md))
-  ships as a standalone Android app that floats the panel over the game itself
-  (`TYPE_APPLICATION_OVERLAY`, draggable, collapsible to a single line), with JSON export/import to
-  move progress between phone and PC. `npm run build:mobile` emits just the single-file HUD page
-  (openable straight from a phone browser); `npm run build:apk` emits an installable APK.
+  works in both the desktop and browser builds.
 
 - **Snippets** — quick notes with one-click copy, global search, password masking, and image attachments.
 - **Problems** — lightweight issue tracker with local tags, AI-assisted analysis, and team-experience reuse.
@@ -122,11 +117,14 @@ and opens a **draft** release — review the artifacts and hit *Publish release*
 updater only sees published releases). Re-runs are available from the Actions tab
 (`workflow_dispatch`).
 
-The **phone version releases on its own track**: bump `mobileVersion` (also in `package.json` — it is
-deliberately separate from the desktop `version`), push `main`, then push a `railpanel-v<version>` tag.
-That runs [`railpanel-release.yml`](.github/workflows/railpanel-release.yml), which builds the APK on
-CI and attaches it to a published release. It needs no repository secrets (the APK is debug-signed),
-and the tag prefix matters: `v*` triggers the desktop release, `railpanel-v*` the phone one.
+### Mobile app
+
+The Android app is being rebuilt from scratch to reach feature parity with the desktop build —
+see [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md) for the architecture, phasing and the
+platform limits that cannot be matched (JDBC, raw label printing, ICMP/DNS diagnostics).
+The previous phone build (a rail-tycoon floating panel) has been removed; the Rail Tycoon tool
+itself stays: its solver lives in `src/tools/railTycoon.js` and is used by the desktop and browser
+builds, and it will return to the app as one of its tools.
 
 One-time setup — repository secrets (Settings → Secrets and variables → Actions):
 
@@ -209,10 +207,10 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   提示当作约束，穷举全部合法排列后标出能被唯一确定的站点，并按推断结果给策略卡建议；
   提供「驾驶舱」HUD 版面（巨型下一站结论 + 当前站一键录入）与「完整版面」全表，窗口可置顶，
   配合游戏的无边框窗口模式就能浮在画面上；全程纯本地计算，不联网、不注入、不读取游戏进程。
-  **另有手机版**（[`mobile/`](mobile/android/README.md)）：独立安卓应用，把面板浮在游戏画面之上
-  （`TYPE_APPLICATION_OVERLAY` 悬浮窗，可拖动、可收成一条），支持导出 / 导入 JSON 在手机与电脑
-  之间搬运进度。`npm run build:mobile` 只出单文件 HUD 页面（手机浏览器直接打开即可用），
-  `npm run build:apk` 出可安装的 APK。
+- **手机端**：安卓 App 正在重做，目标是**功能对齐桌面端**——架构、分期与无法对齐的平台能力
+  （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。
+  旧的手机端实现（铁路大亨悬浮面板）已整体移除；铁路大亨的求解逻辑仍在
+  `src/tools/railTycoon.js`，桌面端与浏览器端照常使用，后续会作为 App 里的一个工具回归。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。
 - **问题记录**：轻量问题跟踪，本地标签分类，支持 AI 辅助分析与经验复用。
 - **云同步（可选）**：速记与问题记录的多设备端到端加密同步；服务端只见密文，配对码入伙、

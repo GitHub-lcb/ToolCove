@@ -40,8 +40,9 @@
 - **踩过的坑（留着提醒）**：`const cfg = await readSyncConfig()`、`const e = await getEngine()` 这类
   「赋值后没再被引用」的语句**不能当死代码删**——它们有副作用（刷新引擎配置快照、初始化传输层）。
   删掉后「创建/加入同步集合」会报 `Failed to parse URL from /v1/pair`，被 `realServer.test.js` 当场抓住。
-  同理：rail-hud 的 `ACTION_EXPORT/IMPORT` 由 `dom.test.js` 的契约测试守着，pdfDecrypt 的 `outputBuffer`
-  只被「写后读」使用——这三处都已加显式豁免与注释。
+  同理：pdfDecrypt 的 `outputBuffer` 只被「写后读」使用（lint 的 no-unused-vars 会误报）——
+  这类位置都已加显式豁免与注释，而不是删掉。
+  （曾经还有一处 rail-hud 的动作名常量由契约测试守着，但那份手机端实现已于 2026-09-20 整体移除。）
 
 ### 试过但**无效**（记录以免重复尝试）
 

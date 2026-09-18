@@ -10,7 +10,7 @@ import globals from "globals";
 const browserAndNode = { ...globals.browser, ...globals.node };
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", "src-tauri/**", "mobile/android/build/**", "mobile/android/.gradle/**", "mobile/android/.toolchain/**", "test-results/**", "playwright-report/**", "tmp*/**", "release-out/**"] },
+  { ignores: ["dist/**", "node_modules/**", "src-tauri/**", "mobile/android/build/**", "mobile/android/.gradle/**", "mobile/.toolchain/**", "mobile/android/.toolchain/**", "test-results/**", "playwright-report/**", "tmp*/**", "release-out/**"] },
   js.configs.recommended,
   ...vue.configs["flat/recommended"],
   {

@@ -33,10 +33,13 @@ playwright/.cache
 # 本机专用的 cargo 构建目录重定向（含本机绝对路径，不入库）
 .cargo/config.toml
 
-# ── 手机版（mobile/）──────────────────────────────────────────────────
+# ── 手机端（mobile/，重建中：见 docs/mobile-app-plan.md）─────────────────
+# 旧铁路大亨悬浮面板已整体删除（含其 dist 例外规则）；以下为**新安卓 App 模块**要挡的东西。
 # 便携 Android 工具链：JDK / Gradle / SDK 合计约 1.5 GB，谁都下得动，不该进仓库
+mobile/.toolchain/
 mobile/android/.toolchain/
 # Gradle 增量构建的本地缓存（.lock/.bin/.probe），每次构建都会变，纯本机状态
+mobile/.gradle/
 mobile/android/.gradle/
 # 工具链位置是机器相关的（SDK 路径），本地生成
 mobile/android/local.properties
@@ -44,13 +47,6 @@ mobile/android/local.properties
 mobile/android/build/
 mobile/android/app/build/
 mobile/android/out/
-# 上面那条通用的 `dist` 规则（第 11 行，无斜杠 → 匹配任意层级）会把手机版 HUD 的
-# 产物目录一并挡掉。可那一份是**最终产物**：单文件、无外部依赖，用手机浏览器直接
-# 打开就能当网页版用，80 KB 也值得随源码一起分发。所以在这里显式放开。
-# 注意 assets/index.html 是它的副本（APK 打包要用），同样入库——
-# 这样离线环境直接 build-apk 也能出包，不必先跑一遍 rail-hud 构建。
-!mobile/rail-hud/dist/
-!mobile/rail-hud/dist/index.html
 
 # 自动更新签名私钥（红线：绝不入库）
 src-tauri/updater.key

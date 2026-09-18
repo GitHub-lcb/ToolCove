@@ -22,8 +22,8 @@ export default defineConfig(async ({ mode }) => ({
   // 单元测试（Vitest）：仅测纯函数逻辑，node 环境即可，无需 jsdom
   test: {
     environment: "node",
-    // mobile/ 下是铁路大亨手机版 HUD（悬浮窗 + 网页版共用），纯 JS 逻辑同样进单测
-    include: ["src/**/*.{test,spec}.js", "mobile/**/*.{test,spec}.js"],
+    // 手机端（mobile/）重建后同样只放纯 JS 逻辑，仍进单测；新模块落位后在这里放开即可
+    include: ["src/**/*.{test,spec}.js"],
     // 默认 5s / 10s 在 CI 共享机器上会把「整包字典编译」（i18n）与「重组件装载」
     // （render 测试的 beforeAll）直接判超时——那是环境慢，不是断言失败，却会卡死发版。
     // 统一放宽到 20s：慢机器只会变慢，不会变红。断言标准不变。
