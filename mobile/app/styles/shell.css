@@ -532,3 +532,151 @@ body,
 .m-modal-ok.primary {
   background: var(--m-primary);
 }
+/* ---------- 工具箱 ---------- */
+.m-toolbox .m-group {
+  margin-top: var(--m-gap);
+}
+
+.m-group-title {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--m-muted);
+}
+
+.m-progress {
+  font-size: 0.8rem;
+  color: var(--m-muted);
+  white-space: nowrap;
+}
+
+/* 未迁移的条目：可读但不可点，并带一枚角标说明原因 */
+.m-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--m-soft);
+  color: var(--m-muted);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.m-item-main[disabled] {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* ---------- 工具通用件 ---------- */
+.m-card {
+  margin-bottom: var(--m-gap);
+  padding: var(--m-gap);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+}
+
+.m-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.m-zone {
+  font-size: 0.75rem;
+  color: var(--m-muted);
+}
+
+.m-big {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.4rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.m-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.m-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: var(--m-gap) 0 0;
+}
+
+.m-btn {
+  min-height: var(--m-touch);
+  padding: 0 14px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  color: var(--m-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.m-btn.primary {
+  border-color: var(--m-primary);
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+  font-weight: 600;
+}
+
+.m-btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.m-tool textarea,
+.m-tool input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.m-stats {
+  list-style: none;
+  margin: var(--m-gap) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-stats li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-card);
+  font-size: 0.85rem;
+}
+
+.m-stats b {
+  color: var(--m-muted);
+  font-weight: 500;
+}
+
+.m-ok {
+  margin: 0 0 var(--m-gap);
+  padding: 10px 12px;
+  border-radius: var(--m-radius);
+  background: var(--m-soft);
+  color: var(--m-ok);
+  font-size: 0.85rem;
+}
+
+.m-hint-sm {
+  margin: var(--m-gap) 0 0;
+  color: var(--m-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
