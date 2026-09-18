@@ -293,7 +293,50 @@ HEAD（body 空但长度真实）、OPTIONS 204、POST 405、**四种路径穿�
 | `export_file` | 用浏览器下载 | 手机端用 `<a download>` + 系统分享 |
 | 外观（主题色/密度） | 只保留密度 | 主题色是桌面端场景；密度在手机上有实际意义（一屏信息量） |
 
-## 7. 标签引擎的 WASM 复用（已验证可行）
+## 7. 交付证据（逐条可复现）
+
+每条声明都落到**可复现的检查**上，而不是"我记得做过"。核验方式写在括号里。
+
+| 目标声明 | 证据 | 核验方式 |
+|---|---|---|
+| 删除旧悬浮面板实现 | `mobile/rail-hud` 不存在；manifest 只声明 `INTERNET`（无 `SYSTEM_ALERT_WINDOW`/`FOREGROUND_SERVICE`/`<service>`）；无 `railpanel-v*` 发版线 | 文件存在性 + manifest 解析 |
+| 新发版线 | `mobile-release.yml` 用 `apk-v*`（桌面是 `v*`，两条线分离） | 工作流文本 |
+| 独立移动端模块 | `mobile/app/` + `mobile/vite.mobile.config.js` + `mobile/android/` | 文件存在性 |
+| 复用平台无关层 | 手机端直接引用 `src/` 的 8 个模块：`data/repository.js`、`sync/index.js`、`tasks.js`、`requirementMetrics.js`、`chatSession.js`、`ai.js`、`toolboxStore.js`、`platform/invoke.js` | 源码引用扫描 |
+| `platform/invoke` 安卓实现 | `invoke.js` 的 `isMobile` 分支 + `mobile/app/platform/bridge.js` 适配原生桥 | 源码 + E2E（真机环境用例） |
+| 工具箱 15 个工具 | 桌面 15 / 手机 15，键集合逐一对应 | `mobile/app/parity.test.js` 机器比对（读桌面端注册表） |
+| 五大模块 | 记录 / 工作台（4 分段）/ 工具箱 / Agent / 设置 | 视图文件 + E2E |
+| 工作台完整 | 概览、迭代（→需求→子任务）、领域（→Pool）、发布 | `WorkOverview.vue` / `DomainPanel.vue` / `ReleasePanel.vue` + 19 条 E2E |
+| 云同步 / AI | 设置页含 `createSyncCollection`/`joinSyncCollection`/`syncNowManual`/`listDevices`/`testAI` | 源码引用 |
+| 能力降级可见 | 设置 → 关于 → **能力说明**（读 `env.js`，不手写第二份）+ **原生能力自检**（可执行） | 源码 + E2E |
+| 能力矩阵守卫 | `env.capabilities.test.js` 桌面端**全量快照 + 键集合**（负向验证过：改坏 `rawPrint` 会失败） | 单测 |
+| 桌面端保持现状不改 | i18n 2726 老键 **0 删除 / 0 改值**（+261 新增）；`env.js` 4 项表达式变更但**桌面取值不变**；`invoke.js` 桌面分支**逐字未变** | 语义级比对（不看行数看值） |
+| 每阶段跑通单测与 E2E | Phase 0 以来 **29 个提交**，工作区干净且与远端同步 | `git log` |
+
+### 7.1 最终验证结果（本轮实测）
+
+| 套件 | 结果 |
+|---|---|
+| JS 单测（Vitest） | **1363 通过 / 97 文件** |
+| E2E（Playwright，含移动视口） | **175 通过** |
+| Kotlin JVM 单测（原生桥/编解码/资源服务/选择器时序） | **121 通过** |
+| 桌面端 Rust 单测 | **72 通过** |
+| 排版引擎 `label-core` 单测 | **29 通过** |
+| lint | **0 error** / 57 warning（warning 是刻意保留的提示） |
+| 三端构建 | 桌面 ✓ / 网页 ✓ / 手机 ✓ |
+| APK 产物自检 | ✓ 1428 KB、30 个前端 chunk、排版引擎、资源布局与候选前缀一致 |
+
+### 7.2 唯一未做的：真机验证
+
+**做不了的原因**：本机 `adb devices` 为空（无设备）；也起不了模拟器——虚拟化固件支持
+（`VirtualizationFirmwareEnabled=True`、SLAT 支持），但 **Hyper-V / WHPX 未启用**
+（`HypervisorPresent=False`），启用需要管理员权限 + 重启，不能为此重启开发机。
+
+**已把它的成本降到最低**：装机后 设置 → 关于 → **运行自检** → **复制报告**。
+六项检查（存储 / 本机服务 / TCP / 加密往返 / 文件选择器 / SQLite）逐项给出结论与耗时，
+报告可直接粘贴发出。若某项失败，报告里会写明报什么错。
+
+## 8. 标签引擎的 WASM 复用（已验证可行）
 
 标签工具卡在"排版引擎只有 Rust 一份"上。解法不是重写，而是**让两端跑同一份代码**：
 
@@ -314,7 +357,7 @@ HEAD（body 空但长度真实）、OPTIONS 204、POST 405、**四种路径穿�
 
 **未验证**：真机上加载 472 KB 的 wasm 的首次耗时（安卓 WebView 支持 WebAssembly，但需实测）。
 
-## 8. 验收标准（移动端）
+## 9. 验收标准（移动端）
 
 - **性能**：冷启动到首屏 < 2s；交互响应中位数 < 200ms；无 > 100ms 的长任务堆积；APK < 20 MB。
 - **稳定性**：无白屏、无未处理异常；**系统返回键行为正确**（页面内逐层回退而不是直接退出）。
@@ -324,7 +367,7 @@ HEAD（body 空但长度真实）、OPTIONS 204、POST 405、**四种路径穿�
 - **回归**：复用同一批 E2E 用例跑移动视口（Playwright device emulation），关键路径不允许只靠人工验证。
 - **桌面端不受影响**：`npm test`、E2E、双端构建保持全绿。
 
-## 9. 风险
+## 10. 风险
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
