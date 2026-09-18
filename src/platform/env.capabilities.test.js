@@ -70,15 +70,46 @@ describe("能力矩阵", () => {
     expect(capabilities.imageStore).toBe(true);
   });
 
-  it("桌面端：能力矩阵保持原样（手机端的改造不能动到桌面）", async () => {
+  it("桌面端：能力矩阵全量快照（手机端的改造不能动到桌面）", async () => {
     const { capabilities } = await loadEnv({ tauri: true });
-    expect(capabilities.jdbc).toBe(true);
-    expect(capabilities.rawPrint).toBe(true);
-    expect(capabilities.icmpDiagnostics).toBe(true);
-    expect(capabilities.multiWindow).toBe(true);
-    expect(capabilities.updater).toBe(true);
-    expect(capabilities.tray).toBe(true);
-    expect(capabilities.localFile).toBe(true);
+    // ⚠️ 这里刻意用**全量快照**而不是抽查几项：手机端重做期间我改过 4 个能力的表达式
+    // （systemProxy / secureStore / backup / cloudSync 从 `isDesktop` 改成 `isDesktop || isMobile`），
+    // 当时抽查的用例恰好没覆盖这几个——虽然逐项验算后桌面取值确实没变，
+    // 但"没被覆盖"意味着下次真改坏了也没人知道。全量快照让任何一项的变化都必须显式改这里。
+    expect(capabilities).toEqual({
+      multiWindow: true,
+      nativeDialog: true,
+      localFile: true,
+      filePicker: true,
+      jdbc: true,
+      sqlite: true,
+      git: true,
+      systemProxy: true,
+      secureStore: true,
+      updater: true,
+      autostart: true,
+      tray: true,
+      backup: true,
+      telemetryUpload: true,
+      cloudSync: true,
+      imageStore: true,
+      aiRequest: true,
+      rawPrint: true,
+      icmpDiagnostics: true,
+    });
+  });
+
+  it("桌面端：能力项的键集合固定（新增能力必须显式加进来）", async () => {
+    // 键集合本身也是契约：前端用 capabilities.xxx 判断功能可见性，
+    // 少一个键会让某个功能在桌面上莫名消失
+    const { capabilities } = await loadEnv({ tauri: true });
+    expect(Object.keys(capabilities).sort()).toEqual(
+      [
+        "aiRequest", "autostart", "backup", "cloudSync", "filePicker", "git", "icmpDiagnostics",
+        "imageStore", "jdbc", "localFile", "multiWindow", "nativeDialog", "rawPrint", "secureStore",
+        "sqlite", "systemProxy", "telemetryUpload", "tray", "updater",
+      ].sort()
+    );
   });
 
   it("浏览器端：桌面独占能力全关，纯 Web 能力保留", async () => {
