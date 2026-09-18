@@ -547,6 +547,6 @@ function parseJSONLoose(text) {
         /* try next */
       }
     }
-    throw new Error(t("toolbox.ai.errParseJson", { text: s.slice(0, 120) }));
+    throw new Error(t("toolbox.ai.errParseJson", { text: s.slice(0, 120) }), { cause: e });
   }
 }

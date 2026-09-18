@@ -16,7 +16,6 @@ import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { TOOLCHAIN, VERSIONS } from "./setup-toolchain.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
 const downloads = join(TOOLCHAIN, "_downloads");
 const sdk = join(TOOLCHAIN, "android-sdk");
 const MANIFEST = join(downloads, "repository2-3.xml");

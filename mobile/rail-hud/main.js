@@ -30,7 +30,6 @@ import {
   allRecorded,
   heroView,
   hintCoversShort,
-  hintText,
   hintable,
   hudAdvice,
   isOrigin,
@@ -45,7 +44,6 @@ import {
   TYPE_KEYS,
   typeLabel,
   typeShort,
-  upcoming,
 } from "./view.js";
 import {
   decodeState,
@@ -87,9 +85,12 @@ const $ = (sel) => document.querySelector(sel);
  *
  * 这四个字符串必须与 Kotlin 侧 SupportActivity 的常量**逐字一致**——它们是
  * JS 与原生之间唯一的协议，写错不会编译报错，只会「点了没反应」。
+ * EXPORT / IMPORT 目前没有调用点，但**不能删**：dom.test.js 会逐个核对四个名字与 Kotlin 一致。
  */
+/* eslint-disable no-unused-vars -- 见上：这两个常量是 JS↔原生协议的一部分，由契约测试守着 */
 const ACTION_EXPORT = "com.githublcb.railpanel.EXPORT";
 const ACTION_IMPORT = "com.githublcb.railpanel.IMPORT";
+/* eslint-enable no-unused-vars */
 const ACTION_RECORDS = "com.githublcb.railpanel.RECORDS";
 const ACTION_RESET = "com.githublcb.railpanel.RESET";
 

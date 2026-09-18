@@ -24,7 +24,6 @@ import {
   normalizeType,
   ORIGIN_INDEX,
   RECORD_DONE,
-  RECORD_EMPTY,
   RECORD_HALF,
   solveRailRoute,
   stationNumber,

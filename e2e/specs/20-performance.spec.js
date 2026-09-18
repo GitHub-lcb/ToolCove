@@ -105,8 +105,10 @@ test("首屏性能基线（3 次取中位数）", async ({ browser }) => {
   expect(fcp.length, "FCP 采样次数").toBeGreaterThan(0);
   expect(median(fcp), "FCP 中位数").toBeLessThan(2500);
   expect(median(cls), "CLS 中位数").toBeLessThan(0.1);
-  // 2026-09-20 实测：语言包按需加载前是 989KB，之后 875KB（入口 552→438KB）
-  expect(bootScriptKb, "启动阶段脚本总量").toBeLessThan(950);
+  // 启动阶段脚本量的演进：989KB（都静态打进入口）
+  //   → 875KB（语言包按需加载）→ 532KB（工具实现懒加载，luxon/js-yaml/hash-wasm 移出首屏）。
+  // 这条断言就是这两次优化的防回退锁：谁把重依赖静态 import 回首屏，这里立刻红。
+  expect(bootScriptKb, "启动阶段脚本总量").toBeLessThan(600);
   expect(critical.length, "入口静态引用数").toBeLessThan(6);
 });
 

@@ -137,7 +137,7 @@ export function getNextCronRuns(expression, options = {}) {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new Error(t("toolbox.time.errInvalidCron", { err: message }));
+    throw new Error(t("toolbox.time.errInvalidCron", { err: message }), { cause: e });
   }
 }
 

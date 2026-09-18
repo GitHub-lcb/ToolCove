@@ -35,13 +35,13 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
       </label>
       <label class="fld">
         <span>{{ t("toolbox.db.connName") }}</span>
-        <input v-model="editing.name" placeholder="" :placeholder="t('toolbox.db.connNamePh')" />
+        <input v-model="editing.name" :placeholder="t('toolbox.db.connNamePh')" />
       </label>
       <template v-if="editing.type === 'sqlite'">
         <label class="fld">
           <span>{{ t("toolbox.db.dbFile") }}</span>
           <div class="fld-row">
-            <input v-model="editing.database" placeholder="" :placeholder="t('toolbox.db.dbFilePh')" />
+            <input v-model="editing.database" :placeholder="t('toolbox.db.dbFilePh')" />
             <button class="mini-btn" @click="emit('pick-file')">{{ t("toolbox.db.pick") }}</button>
           </div>
         </label>
@@ -69,12 +69,12 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
         </div>
         <label class="fld">
           <span>{{ t('toolbox.db.' + typeMeta(editing.type).dbLabelKey) }}</span>
-          <input v-model="editing.database" placeholder="" :placeholder="t('toolbox.db.dbNamePh')" />
+          <input v-model="editing.database" :placeholder="t('toolbox.db.dbNamePh')" />
         </label>
         <template v-if="editing.type === 'oracle'">
           <label class="fld">
             <span>{{ t("toolbox.db.serviceName") }}</span>
-            <input v-model="editing.oracleService" placeholder="" :placeholder="t('toolbox.db.serviceNamePh')" />
+            <input v-model="editing.oracleService" :placeholder="t('toolbox.db.serviceNamePh')" />
           </label>
           <label class="fld">
             <span>{{ t("toolbox.db.odbcDriver") }}</span>
@@ -90,12 +90,12 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
           <div v-else class="driver-install">
             <p class="form-tip danger">{{ t("toolbox.db.noDriverTip") }}</p>
             <div class="fld-row">
-              <input :value="driverUrl" placeholder="" :placeholder="t('toolbox.db.driverUrlPh')" @input="emit('update:driverUrl', $event.target.value)" />
+              <input :value="driverUrl" :placeholder="t('toolbox.db.driverUrlPh')" @input="emit('update:driverUrl', $event.target.value)" />
               <button class="mini-btn" :disabled="installingDriver || !driverUrl.trim() || !driverSha256.trim()" @click="emit('install-driver')">{{ installingDriver ? t("toolbox.db.installing") : t("toolbox.db.installOneClick") }}</button>
             </div>
             <label class="fld">
               <span>{{ t("toolbox.db.sha256") }}</span>
-              <input :value="driverSha256" placeholder="" :placeholder="t('toolbox.db.sha256Ph')" spellcheck="false" @input="emit('update:driverSha256', $event.target.value)" />
+              <input :value="driverSha256" :placeholder="t('toolbox.db.sha256Ph')" spellcheck="false" @input="emit('update:driverSha256', $event.target.value)" />
             </label>
             <p class="form-tip">{{ t("toolbox.db.driverPathTip") }}</p>
           </div>

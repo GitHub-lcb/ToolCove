@@ -26,8 +26,8 @@ describe("resolveRunOptions", () => {
 });
 
 describe("buildAgentRegistry / listAgentTools", () => {
-  it("默认包含全部内置工具，且都可执行", () => {
-    const registry = buildAgentRegistry(null);
+  it("默认包含全部内置工具，且都可执行", async () => {
+    const registry = await buildAgentRegistry(null);
     const names = registry.list().map((t) => t.name);
     expect(names).toContain("json.parse");
     expect(names).toContain("file.write_text");
@@ -35,9 +35,9 @@ describe("buildAgentRegistry / listAgentTools", () => {
     expect(typeof registry.get("file.write_text").execute).toBe("function");
   });
 
-  it("停用清单把工具从 registry 移除，能力清单同步反映", () => {
+  it("停用清单把工具从 registry 移除，能力清单同步反映", async () => {
     const cfg = { disabledTools: ["base64.encode", "file.write_text"] };
-    const names = buildAgentRegistry(cfg).list().map((t) => t.name);
+    const names = (await buildAgentRegistry(cfg)).list().map((t) => t.name);
     expect(names).not.toContain("base64.encode");
     expect(names).not.toContain("file.write_text");
     const listed = listAgentTools(cfg);
@@ -46,8 +46,10 @@ describe("buildAgentRegistry / listAgentTools", () => {
     expect(listed.find((t) => t.name === "json.parse").enabled).toBe(true);
   });
 
-  it("能力清单携带 UI 展示所需的描述键与工具键", () => {
+  it("能力清单是同步的，且不依赖工具实现（首屏不带 luxon 等重依赖）", () => {
+    // listAgentTools 只读 catalog：这里不 await、也不触发动态 import
     const item = listAgentTools(null).find((t) => t.name === "json.parse");
     expect(item).toMatchObject({ risk: "transform", descriptionKey: "agent.toolJsonParse", toolKey: "json", enabled: true });
+    expect(item.execute).toBeUndefined();
   });
 });

@@ -10,6 +10,9 @@
 import { looksEncryptedPdf, pdfError } from "./pdfTool.js";
 
 let modulePromise = null;
+// wasm 侧 printf 的输出缓冲：qpdf 会用它吐错误详情，下面按行收集后再归因。
+// 它只被「写后读」使用（+= 之后逐行取走），lint 的 no-unused-vars 会误报，故显式豁免。
+// eslint-disable-next-line no-unused-vars
 let outputBuffer = "";
 
 /**

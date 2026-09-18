@@ -30,6 +30,7 @@ export function createSyncEngine(deps) {
     getConfig,             // () => sync settings 对象（含 enabled/serverUrl/.../cursor/lastPushedAt）
     saveConfig,            // async (patch) => 合并写回 settings
     masterKeyProvider,     // async () => masterKeyB64（DPAPI 解密后）
+    // eslint-disable-next-line no-unused-vars -- 这个参数名必须留在解构里：currentSources 会读 deps.recordSources
     recordSources,         // [{ key:'snippets'|'problems', get: ()=>Array, apply: (ops)=>Array（新列表）, setAll: (records)=>void }]
     getTombstones,         // () => {id: updatedAt}
     setTombstones,         // (map) => void（持久化由调用方保证）
@@ -291,7 +292,7 @@ export function createSyncEngine(deps) {
         const own = decrypted.filter(
           (d) => (d.tombstone && d.realId && d.realKind === kind) || (d.envelope && d.envelope.record && d.envelope.kind === kind)
         );
-        const { records, ops } = mergeRemote(local, own, deviceId);
+        const { ops } = mergeRemote(local, own, deviceId);
         if (ops.length) await src.apply(ops);
       }
       total += items.length;

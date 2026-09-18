@@ -12,7 +12,7 @@ import { loadAgentConfig, saveAgentConfig } from "./config.js";
 import { createApprovalPolicy } from "./approval.js";
 import { buildAgentRegistry, listAgentTools, resolveRunOptions } from "./tools.js";
 import { runAIAgent } from "./index.js";
-import { spillStore } from "./builtins.js";
+import { spillStore } from "./spillStoreInstance.js";
 import { extractSkill } from "./skills.js";
 import { loadSkills, removeSkill, saveSkills, upsertSkill } from "./skillStore.js";
 import { invoke } from "../platform/invoke.js";
@@ -216,11 +216,15 @@ async function launch(input, resumeRun) {
   agentSession.status = "running";
   stopFlag = false;
 
-  const registry = buildAgentRegistry(agentSession.cfg);
+  // 注册表与技能库都在**运行开始前**才准备：工具实现层是动态加载的（首屏不带 luxon/js-yaml 等），
+  // 技能库读取失败不该拦住运行。
+  const [registry, skills] = await Promise.all([
+    buildAgentRegistry(agentSession.cfg),
+    agentSession.skills?.length ? Promise.resolve(agentSession.skills) : loadSkills().catch(() => []),
+  ]);
   const runOptions = resolveRunOptions(agentSession.cfg);
   // 技能：命中者的正文进 prompt（目录不进）。设置里关掉的技能在这里就被排除，
-  // 不会出现「关掉了却还在悄悄生效」。技能库读取失败不该拦住运行。
-  const skills = agentSession.skills?.length ? agentSession.skills : await loadSkills().catch(() => []);
+  // 不会出现「关掉了却还在悄悄生效」。
   agentSession.skills = skills;
   const skillOptions = { skills, disabledSkills: agentSession.cfg?.disabledSkills || [] };
   // 逐次批准策略：存活期就是本次运行。批准只对「这一次调用」有效（同工具同参数折叠为一次）。

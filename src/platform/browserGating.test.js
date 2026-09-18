@@ -110,7 +110,7 @@ describe("Agent 工具注册表平台过滤", () => {
   it("浏览器端剔除桌面独占工具，保留通用工具", async () => {
     stubBrowser();
     const { buildAgentRegistry, listAgentTools } = await import("../agent/tools.js");
-    const names = buildAgentRegistry(null).list().map((tool) => tool.name);
+    const names = (await buildAgentRegistry(null)).list().map((tool) => tool.name);
     for (const name of DESKTOP_ONLY_TOOLS) expect(names).not.toContain(name);
     expect(names).toContain("http.request");
     expect(names).toContain("json.parse");
@@ -124,7 +124,7 @@ describe("Agent 工具注册表平台过滤", () => {
   it("被剔除的桌面工具在浏览器端不可执行", async () => {
     stubBrowser();
     const { buildAgentRegistry } = await import("../agent/tools.js");
-    const registry = buildAgentRegistry(null);
+    const registry = await buildAgentRegistry(null);
     expect(registry.get("file.read_text")).toBeUndefined();
     expect(registry.get("json.parse")).toBeTruthy();
   });
@@ -140,7 +140,7 @@ describe("Agent 工具注册表平台过滤", () => {
 
   it("桌面端（默认环境）保留 db/file/network 工具", async () => {
     const { buildAgentRegistry } = await import("../agent/tools.js");
-    const names = buildAgentRegistry(null).list().map((tool) => tool.name);
+    const names = (await buildAgentRegistry(null)).list().map((tool) => tool.name);
     expect(names).toContain("file.read_text");
     expect(names).toContain("db.query_readonly");
     expect(names).toContain("network.ping");

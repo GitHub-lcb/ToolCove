@@ -2,7 +2,7 @@
 // Pool 发布弹窗：本地发布步骤记录（打包 → 上传 → 发布 → 验证）。
 // 每步手动确认「标记完成」记时间戳，全部完成后落盘为已发布；可中途放弃（记为发布失败）。
 // 数据写入 pool.lastRelease（对象引用共享），父组件监听 @saved 负责持久化。
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted } from "vue";
 import Icon from "./Icon.vue";
 import { RELEASE_STEPS, currentStepKey, doneStepsCount, stepLabel } from "./publishState.js";
 import { relativeTime } from "./shared.js";
@@ -16,7 +16,6 @@ const emit = defineEmits(["close", "saved"]);
 
 const rel = computed(() => props.pool.lastRelease || null);
 const curKey = computed(() => currentStepKey(rel.value));
-const allDone = computed(() => rel.value?.status === "done");
 
 // 步骤元信息（序号 / 是否完成 / 是否进行中 / 完成时间）
 const stepMeta = computed(() => {

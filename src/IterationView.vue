@@ -6,7 +6,7 @@ import Icon from "./Icon.vue";
 import AiExtract from "./AiExtract.vue";
 import ReleasePackage from "./ReleasePackage.vue";
 import { openPath, openUrl } from "./platform/shell.js";
-import { weekday, nextReleaseDate, fmtDate, subLogsByDate, subRemaining, subPushedHours, DOMAIN_COLORS, extractCode, parseIssueUrl, bugStatusInfo, errText } from "./shared.js";
+import { weekday, nextReleaseDate, fmtDate, subLogsByDate, subPushedHours, DOMAIN_COLORS, extractCode, parseIssueUrl, bugStatusInfo, errText } from "./shared.js";
 import { askConfirm } from "./confirm.js";
 import { useDragSort } from "./dragsort.js";
 import { cloneJsonData } from "./jsonData.js";

@@ -9,12 +9,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "./Icon.vue";
-import {
-  aiExtractStream,
-  aiExtractManyStream,
-  aiExtractGroupsStream,
-  isAIConfigured,
-} from "./ai.js";
+import { isAIConfigured } from "./ai.js";
 import {
   startExtractTask,
   getExtractTask,

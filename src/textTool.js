@@ -19,7 +19,7 @@ function compileRegex(pattern, flags) {
     return new RegExp(String(pattern ?? ""), normalizeFlags(flags));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new Error(t("toolbox.text.errInvalidRegex", { err: message }));
+    throw new Error(t("toolbox.text.errInvalidRegex", { err: message }), { cause: e });
   }
 }
 

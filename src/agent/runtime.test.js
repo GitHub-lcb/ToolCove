@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createToolRegistry, runAgent } from "./runtime.js";
-import { createBuiltinRegistry } from "./builtins.js";
+import { buildAgentRegistry } from "./tools.js";
 import { createObservationGate } from "./observation.js";
 
 describe("agent runtime", () => {
@@ -26,7 +26,7 @@ describe("agent runtime", () => {
   });
 
   it("exposes safe JSON tools in the builtin registry", async () => {
-    const tool = createBuiltinRegistry().get("json.parse");
+    const tool = (await buildAgentRegistry(null)).get("json.parse");
     expect(await tool.execute({ text: '{"a":1}' })).toEqual({ a: 1 });
   });
 
@@ -93,7 +93,7 @@ describe("agent runtime", () => {
   });
 
   it("returns bounded failure for malformed planner output and step exhaustion", async () => {
-    const registry = createBuiltinRegistry();
+    const registry = await buildAgentRegistry(null);
     expect((await runAgent("x", { registry, planner: async () => ({ type: "shell", command: "x" }) })).status).toBe("failed");
     const result = await runAgent("x", { registry, maxSteps: 1, planner: async () => ({ type: "tool_call", tool: "json.parse", args: { text: "{}" } }) });
     expect(result.status).toBe("max_steps");

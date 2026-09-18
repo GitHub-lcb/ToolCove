@@ -6,7 +6,7 @@ import { invoke } from "../platform/invoke.js";
 import { createSyncEngine } from "./engine.js";
 import { normalizeSync } from "../settingsConfig.js";
 import { encryptValue, decryptValue } from "../secure.js";
-import { cachedDerive, newSalt } from "./crypto.js";
+import { cachedDerive } from "./crypto.js";
 import { KINDS, load as loadKind, applyRemote } from "../data/repository.js";
 
 const TOMBSTONE_KEY = "sync-tombstones";
@@ -200,6 +200,7 @@ export async function clearTombstone(id) {
 
 /** 创建同步集合 */
 export async function createSyncCollection(serverUrl, password) {
+  // eslint-disable-next-line no-unused-vars -- readSyncConfig 有副作用：它会刷新引擎取数用的配置快照（serverUrl 就来自它）
   const cfg = await readSyncConfig();
   const urlClean = String(serverUrl || "").trim().replace(/\/$/, "");
   // 先验证服务器可达（创建集合）
@@ -225,7 +226,9 @@ export async function createSyncCollection(serverUrl, password) {
 /** 加入已有集合（带集合 ID；实际入口） */
 export async function joinSyncCollectionFull(serverUrl, collectionId, code, password) {
   const urlClean = String(serverUrl || "").trim().replace(/\/$/, "");
-  const e = await getEngine();
+  // 副作用是必需的：getEngine 初始化传输层，readSyncConfig 刷新引擎的配置快照（serverUrl 由它提供）。
+  // 两个都曾因「变量没被引用」被删掉，realServer.test.js 立刻报 Failed to parse URL from /v1/pair。
+  await getEngine();
   const probe = await transport({
     method: "POST",
     url: urlClean + "/v1/pair",
@@ -244,7 +247,6 @@ export async function joinSyncCollectionFull(serverUrl, collectionId, code, pass
     body: JSON.stringify({ collectionId, code, deviceName: (await readSyncConfig()).deviceName || "device" }),
   });
   await setupKeyAndPair(password, probe.json.salt, collectionId);
-  const cfg = await readSyncConfig();
   await writeSyncConfig({
     enabled: true,
     serverUrl: urlClean,
@@ -270,7 +272,6 @@ async function setupKeyAndPair(password, salt, collectionId) {
 /** 手动同步 */
 export async function syncNowManual(showToast, t) {
   const e = await getEngine();
-  const before = e.currentStatus().status;
   await e.syncNow();
   const after = e.currentStatus();
   if (showToast && t) showToast(t("sync.syncNowOk", { pushed: after.pushed || 0, pulled: after.pulled || 0 }));

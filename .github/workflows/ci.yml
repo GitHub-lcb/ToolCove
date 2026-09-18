@@ -9,7 +9,7 @@ on:
 
 jobs:
   frontend-test:
-    name: 前端单测与构建
+    name: 前端 lint / 单测 / 构建
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -18,10 +18,36 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # 只把 error 当失败：warning 是刻意保留的提示（见 eslint.config.js 的说明），
+      # 严重级别已在配置里定好，这里不需要再传 --max-warnings（npm 会把参数当成文件模式）。
+      - run: npm run lint
       - run: npm test
       - run: npm run build
       # 双端产物都要能构建：桌面包（base=/）与静态站点（base=./）
       - run: npm run build:web
+
+  # 依赖审计：生产依赖出现 high/critical 漏洞时提示并失败。
+  # 两点刻意设计：
+  #   1) 只在默认 registry（registry.npmjs.org）上跑——审计接口是 registry 专有的，
+  #      国内镜像（npmmirror 等）不实现 /-/npm/v1/security/*，在镜像上跑必然 404 假失败；
+  #   2) continue-on-error：审计结果依赖上游披露节奏，不该挡住我们自己的修复发版。
+  audit:
+    name: 依赖审计（生产依赖）
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: npm audit（仅默认 registry）
+        if: ${{ !endsWith(vars.NPM_REGISTRY || 'registry.npmjs.org', 'npmmirror.com') }}
+        run: npm audit --omit=dev --audit-level=high
+      - name: 跳过说明
+        if: ${{ endsWith(vars.NPM_REGISTRY || 'registry.npmjs.org', 'npmmirror.com') }}
+        run: echo "registry 指向镜像，跳过 npm audit（镜像不提供审计接口）"
 
   # E2E：跑在 web 构建产物上（纯静态站点，不需要 Tauri）。
   # 覆盖单测测不出来的视图层行为：写前预览的 diff、提问卡的文本回答、拒绝写入不产生写操作。

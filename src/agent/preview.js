@@ -16,8 +16,6 @@ export const PREVIEW_CONTEXT = 1;
   return type === "added" || type === "removed" || type === "modified" || type === "change";
 }
 
-const text = (value) => (typeof value === "string" ? value : "");
-
 /**
  * 预览行的几种来源形状归一：{ rows } / { lines } / 裸数组。
  * 认不出来时返回空数组，由 describePreview 标 schemaUnsupported —— **不静默画一张空卡**：

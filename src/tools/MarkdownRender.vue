@@ -27,6 +27,7 @@ function onMdClick(e) {
 </script>
 
 <template>
+  <!-- eslint-disable-next-line vue/no-v-html -- 唯一渲染入口是 shared.renderMarkdown：先 escapeHtml 再套行内标记 -->
   <div class="md" v-html="html" @click="onMdClick"></div>
 </template>
 

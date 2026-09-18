@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { TOOLCHAIN, ensureToolchain, runBat } from "./setup-toolchain.mjs";
+import { ensureToolchain, runBat } from "./setup-toolchain.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");

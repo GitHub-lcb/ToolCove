@@ -51,8 +51,8 @@ export async function browserHttpRequest(args = {}) {
     }
     return payload;
   } catch (error) {
-    if (error && error.name === "AbortError") throw new Error(`请求超时（${limit}ms）`);
-    throw new Error(`请求失败：${(error && error.message) || error}`);
+    if (error && error.name === "AbortError") throw new Error(`请求超时（${limit}ms）`, { cause: error });
+    throw new Error(`请求失败：${(error && error.message) || error}`, { cause: error });
   } finally {
     clearTimeout(timer);
   }

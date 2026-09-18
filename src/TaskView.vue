@@ -945,6 +945,7 @@ async function historyEditSave() {
       </div>
       <div v-if="generating" class="report-loading"><Icon name="sparkles" :size="14" /> AI 正在根据工时与迭代数据撰写周报...</div>
       <textarea v-else-if="editingReport" v-model="reportText" class="report-edit" spellcheck="false" placeholder="直接修改 Markdown 原文，编辑过程中会自动保存草稿"></textarea>
+      <!-- eslint-disable-next-line vue/no-v-html -- reportHtml 走 renderMarkdown（先 escapeHtml），来源是本地周报文本 -->
       <div v-else-if="reportText" class="report-body md" v-html="reportHtml"></div>
       <div v-else class="report-loading">点“重新生成”开始撰写</div>
       <!-- 本周心得：可指定主题方向单独重写 -->
@@ -996,6 +997,7 @@ async function historyEditSave() {
           <span class="hist-detail-title">{{ historyDetail.rangeLabel }} · 更新于 {{ relTime(historyDetail.updatedAt) }}</span>
         </div>
         <textarea v-if="historyEdit" v-model="historyDetail.text" class="hist-edit" spellcheck="false"></textarea>
+        <!-- eslint-disable-next-line vue/no-v-html -- 与 MarkdownRender 同一渲染路径（先 escapeHtml） -->
         <div v-else class="report-body md" v-html="renderMarkdown(historyDetail.text)"></div>
         <div class="hist-detail-ops">
           <button v-if="!historyEdit" class="btn-ghost sm" @click="historyEdit = true"><Icon name="edit" :size="13" /> 手动微调</button>

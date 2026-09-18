@@ -341,30 +341,30 @@ describe("步数上限", () => {
 
 describe("历史", () => {
   // 与 AgentView.resumeMap 同款判定：续跑用的必须是「新运行将使用的同一个过滤后 registry」
-  const resumable = (run) => !!run?.input && canResume(run, buildAgentRegistry(agentSession.cfg));
+  const resumable = async (run) => !!run?.input && canResume(run, await buildAgentRegistry(agentSession.cfg));
 
   it("含脱敏内容的历史不可续跑", async () => {
     scriptPlanner([call("base64.encode", { text: 'password="hunter2-secret"' }), final("done")]);
     await startAgentRun("编码");
     const run = agentSession.runs[0];
-    expect(resumable(run)).toBe(false);
+    expect(await resumable(run)).toBe(false);
   });
 
-  it("干净的只读历史可续跑", () => {
+  it("干净的只读历史可续跑", async () => {
     const run = { id: "r1", input: "编码 hello", status: "success", history: [{ action: { type: "tool_call", tool: "base64.encode" }, result: "aGk=" }] };
-    expect(resumable(run)).toBe(true);
+    expect(await resumable(run)).toBe(true);
   });
 
-  it("历史里用过的工具被停用后不可续跑", () => {
+  it("历史里用过的工具被停用后不可续跑", async () => {
     const run = { id: "r1", input: "编码 hello", status: "success", history: [{ action: { type: "tool_call", tool: "base64.encode" }, result: "aGk=" }] };
-    expect(resumable(run)).toBe(true);
+    expect(await resumable(run)).toBe(true);
     agentSession.cfg = { ...agentSession.cfg, disabledTools: ["base64.encode"] };
-    expect(resumable(run)).toBe(false);
+    expect(await resumable(run)).toBe(false);
   });
 
-  it("空输入或缺 id 的历史不可续跑", () => {
-    expect(resumable(null)).toBe(false);
-    expect(resumable({ id: "x", input: "" })).toBe(false);
+  it("空输入或缺 id 的历史不可续跑", async () => {
+    expect(await resumable(null)).toBe(false);
+    expect(await resumable({ id: "x", input: "" })).toBe(false);
   });
 
   it("丢弃历史条目并清空时间线", async () => {

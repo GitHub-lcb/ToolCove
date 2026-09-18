@@ -779,6 +779,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
             <Icon name="sparkles" :size="13" /> {{ t("problem.aiRunning") }}
             <button class="btn-ghost xs2 ai-abort" :title="t('problem.aiAbortTitle')" @click="cancelAnalysis(p)"><Icon name="x" :size="12" /> {{ t("problem.aiAbort") }}</button>
           </div>
+          <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown 先 escapeHtml 再做行内标记，不外泄原始 HTML -->
           <div v-if="p.aiAnalysis" class="ai-result md" v-html="renderAnalysis(p.aiAnalysis.text)"></div>
 
           <div class="sub-title res-title">{{ t("problem.imgsTitle") }} <em v-if="(p.images || []).length">{{ t("problem.imgsCount", { count: p.images.length }) }}</em></div>

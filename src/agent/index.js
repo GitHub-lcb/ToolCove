@@ -1,6 +1,6 @@
 import { aiComplete } from "../ai.js";
 import { runAgent } from "./runtime.js";
-import { createBuiltinRegistry } from "./builtins.js";
+import { buildAgentRegistry } from "./tools.js";
 import { createRun, appendStep, canResume, addUsage } from "./runStore.js";
 import { historyPromptText } from "./history.js";
 import { matchSkills, skillsPromptSection } from "./skills.js";
@@ -104,9 +104,14 @@ export function createRepairingPlanner(planner, options = {}) {
   };
 }
 
-export function runAIAgent(input, options = {}) {
-  const registry = options.registry || createBuiltinRegistry();
-  if (options.resume && !canResume(options.resume, registry)) return Promise.reject(Error('该任务包含脱敏信息或副作用步骤，无法安全恢复'));
+/**
+ * 跑一次 Agent。**异步**且注册表可选：不传 registry 时用全部内置工具
+ * （这一步会动态加载实现层，见 tools.js 的分层说明）。
+ * 续跑守卫放在注册表就绪之后判定——canResume 需要按风险分级检查历史里的工具调用。
+ */
+export async function runAIAgent(input, options = {}) {
+  const registry = options.registry || (await buildAgentRegistry(options.cfg));
+  if (options.resume && !canResume(options.resume, registry)) throw Error('该任务包含脱敏信息或副作用步骤，无法安全恢复');
   const run = createRun(input);
   if (options.resume) { run.parentId = options.resume.id; run.history = structuredClone(options.resume.history || []); }
   const save = async () => { await options.onRun?.(structuredClone(run)); };
@@ -118,8 +123,15 @@ export function runAIAgent(input, options = {}) {
     maxRepairAttempts: options.maxRepairAttempts,
     onRepair: (info) => onEvent({ type: 'model_repair', attempt: info.attempt, error: info.error }),
   });
-  return save().then(() => runAgent(input, { ...options, onEvent, registry, planner: repairing, history: run.history })).then(async result => { run.status = result.status === 'completed' ? 'success' : result.status; run.error = result.error || ''; run.finishedAt = Date.now(); run.history = result.history || run.history; await save(); return { ...result, run }; });
+  await save();
+  const result = await runAgent(input, { ...options, onEvent, registry, planner: repairing, history: run.history });
+  run.status = result.status === 'completed' ? 'success' : result.status;
+  run.error = result.error || '';
+  run.finishedAt = Date.now();
+  run.history = result.history || run.history;
+  await save();
+  return { ...result, run };
 }
 
 export { createToolRegistry, runAgent } from "./runtime.js";
-export { createBuiltinRegistry } from "./builtins.js";
+export { allTools, buildAgentRegistry, listAgentTools, resolveRunOptions } from "./tools.js";

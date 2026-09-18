@@ -98,12 +98,6 @@ export function startExtractTask(config) {
   const finishTimer = () => {
     if (timer) clearInterval(timer);
   };
-  const countOf = (value) => {
-    if (t.mode === "groups") {
-      return (t.groups || []).reduce((n, g) => n + ((value && value[g.key]) || []).length, 0);
-    }
-    return Array.isArray(value) ? value.length : 1;
-  };
   const handlers = {
     onPartial: (v) => {
       if (task !== t || t.status !== "running") return;

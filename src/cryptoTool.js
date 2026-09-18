@@ -140,7 +140,7 @@ export async function decryptAes(payload, password) {
     return DECODER.decode(plain);
   } catch (error) {
     if (error instanceof Error && error.isDataError) throw error;
-    throw new Error(t("toolbox.crypto.errDecryptFailed"));
+    throw new Error(t("toolbox.crypto.errDecryptFailed"), { cause: error });
   }
 }
 

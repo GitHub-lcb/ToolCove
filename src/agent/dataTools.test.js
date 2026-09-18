@@ -165,13 +165,13 @@ describe("工具定义与注册", () => {
     const { buildAgentRegistry, listAgentTools, AGENT_TOOL_NAMES } = await import("./tools.js");
     for (const env of [{ desktop: true }, { desktop: false }]) {
       vi.stubGlobal("window", env.desktop ? { __TAURI_INTERNALS__: {} } : {});
-      const names = buildAgentRegistry(null).list().map((t) => t.name);
+      const names = (await buildAgentRegistry(null)).list().map((t) => t.name);
       expect(names).toContain("data.query");
       expect(names).toContain("data.get");
       expect(AGENT_TOOL_NAMES).toContain("data.query");
     }
     const cfg = { disabledTools: ["data.query"] };
-    expect(buildAgentRegistry(cfg).list().map((t) => t.name)).not.toContain("data.query");
+    expect((await buildAgentRegistry(cfg)).list().map((t) => t.name)).not.toContain("data.query");
     const listed = listAgentTools(cfg);
     expect(listed.find((t) => t.name === "data.query").enabled).toBe(false);
     expect(listed.find((t) => t.name === "data.get")).toMatchObject({ risk: "read", enabled: true });
