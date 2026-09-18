@@ -248,7 +248,8 @@
     "restoreDone": "Restore done: {summary}, restarting…",
     "restoreFailed": "Restore failed, current data unchanged: {err}",
     "updateTitle": "Updates",
-    "buildStampTip": "Build time of the frontend you are running; check this first when a new feature does not show up", "updateVer": "Current v{version}",
+    "buildStampTip": "Build time of the frontend you are running; check this first when a new feature does not show up",
+    "updateVer": "Current v{version}",
     "updateDesc": "Check for new versions from GitHub Releases. One-click download, install and restart; local data is not affected. Also checked automatically on launch.",
     "updateBtn": "Check for updates",
     "updateCheckingBtn": "Checking...",
@@ -2737,7 +2738,12 @@
     "answerSkip": "Skip and stop",
     "answerEmpty": "Write an answer before sending",
     "answered": "Answered: {text}",
-    "capSpills": "Spilled results", "capSpillsDesc": "Large results saved to disk take space (max 30 items / 7 days, pruned automatically). This clears the index and blanks the bodies right away.", "spillClear": "Clear spilled results", "spillCleared": "Cleared {n} spilled result(s) (~{chars} chars)", "spillClearEmpty": "There were no spilled results", "capManual": "Manual tools",
+    "capSpills": "Spilled results",
+    "capSpillsDesc": "Large results saved to disk take space (max 30 items / 7 days, pruned automatically). This clears the index and blanks the bodies right away.",
+    "spillClear": "Clear spilled results",
+    "spillCleared": "Cleared {n} spilled result(s) (~{chars} chars)",
+    "spillClearEmpty": "There were no spilled results",
+    "capManual": "Manual tools",
     "capManualDesc": "These tools are made for manual use — click to open one in its own window",
     "capSkills": "Skills",
     "capSkillsDesc": "Successful paths you saved. They are attached automatically when they match; switch one off to stop injecting it (a skill is a hint — parameters are always re-checked).",
@@ -2861,7 +2867,8 @@
     "previewNewChip": "New file",
     "previewNewFile": "This file cannot be read right now (it may be new): {path}",
     "previewSame": "No content change",
-    "previewModified": "{n} modified", "previewUnreadable": "Preview data arrived but could not be parsed — please screenshot this card (this is a bug, not a clean file)",
+    "previewModified": "{n} modified",
+    "previewUnreadable": "Preview data arrived but could not be parsed — please screenshot this card (this is a bug, not a clean file)",
     "previewTruncated": "Showing {shown} lines around the changes (file has {total} lines)"
   },
   "tray": {
@@ -2946,5 +2953,16 @@
     "noDevices": "No devices connected yet",
     "errShortPw": "Sync password must be at least 8 characters",
     "statusTitle": "Cloud sync status (click to open settings)"
+  },
+  "mobile": {
+    "shellIntro": "The mobile app is being rebuilt. This build confirms three things: platform detection, the native bridge and the translation catalogue. Feature screens land module by module.",
+    "bridgeOn": "Native bridge connected (files, HTTP and the keystore come from the app)",
+    "bridgeOff": "No native bridge: running as a web page (data in local IndexedDB, AI direct)",
+    "nativeOn": "Running inside the Android app",
+    "nativeOff": "Running in a browser (used for development and automated tests)",
+    "i18nReady": "Translation catalogue ready",
+    "capsTitle": "Platform capabilities (mobile)",
+    "capOn": "Available",
+    "capOff": "Not supported"
   }
 }

@@ -10,7 +10,7 @@ import globals from "globals";
 const browserAndNode = { ...globals.browser, ...globals.node };
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", "src-tauri/**", "mobile/android/build/**", "mobile/android/.gradle/**", "mobile/.toolchain/**", "mobile/android/.toolchain/**", "test-results/**", "playwright-report/**", "tmp*/**", "release-out/**"] },
+  { ignores: ["dist/**", "dist", "mobile/**/dist/**", "node_modules/**", "src-tauri/**", "mobile/android/build/**", "mobile/android/.gradle/**", "mobile/.toolchain/**", "mobile/android/.toolchain/**", "test-results/**", "playwright-report/**", "tmp*/**", "release-out/**"] },
   js.configs.recommended,
   ...vue.configs["flat/recommended"],
   {
@@ -22,6 +22,9 @@ export default [
         ...browserAndNode,
         // Vite 注入的构建期常量
         __BUILD_STAMP__: "readonly",
+        // 手机端构建注入（见 mobile/vite.mobile.config.js）：桌面与网页端不存在该常量，
+        // env.js 用 typeof 判定，所以这里只声明不断言其存在
+        __MOBILE__: "readonly",
       },
     },
     rules: {

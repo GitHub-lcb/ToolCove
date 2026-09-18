@@ -248,7 +248,8 @@
     "restoreDone": "恢复完成：{summary}，正在重启…",
     "restoreFailed": "恢复失败，当前数据未更改：{err}",
     "updateTitle": "版本更新",
-    "buildStampTip": "当前前端的构建时间；若界面没出现预期的新功能，先核对这里是否已经更新", "updateVer": "当前 v{version}",
+    "buildStampTip": "当前前端的构建时间；若界面没出现预期的新功能，先核对这里是否已经更新",
+    "updateVer": "当前 v{version}",
     "updateDesc": "从 GitHub Releases 检查新版本，发现新版后一键下载安装并自动重启，本地数据不受影响。应用启动时也会自动检查一次。",
     "updateBtn": "检查更新",
     "updateCheckingBtn": "检查中...",
@@ -2737,7 +2738,12 @@
     "answerSkip": "跳过并结束",
     "answerEmpty": "先填写回答内容再发送",
     "answered": "已回答：{text}",
-    "capSpills": "溢出结果区", "capSpillsDesc": "大结果落盘后的正文会占磁盘（最多 30 份 / 保留 7 天，超限自动清理）；这里可以立刻清空索引并清掉正文。", "spillClear": "清空溢出结果区", "spillCleared": "已清掉 {n} 条溢出结果（约 {chars} 字符）", "spillClearEmpty": "溢出结果区本来就是空的", "capManual": "手动工具箱",
+    "capSpills": "溢出结果区",
+    "capSpillsDesc": "大结果落盘后的正文会占磁盘（最多 30 份 / 保留 7 天，超限自动清理）；这里可以立刻清空索引并清掉正文。",
+    "spillClear": "清空溢出结果区",
+    "spillCleared": "已清掉 {n} 条溢出结果（约 {chars} 字符）",
+    "spillClearEmpty": "溢出结果区本来就是空的",
+    "capManual": "手动工具箱",
     "capManualDesc": "这些工具适合手动操作，点击即可在独立窗口打开",
     "capSkills": "技能库",
     "capSkillsDesc": "你沉淀下来的成功路径：命中时自动带上；关掉就不再注入（技能只是提示，参数仍会重新核对）。",
@@ -2861,7 +2867,8 @@
     "previewNewChip": "新建文件",
     "previewNewFile": "该文件当前读不到（可能是新建）：{path}",
     "previewSame": "内容没有变化",
-    "previewModified": "修改 {n}", "previewUnreadable": "拿到了预览数据，但格式无法解析：请把这张卡片截图反馈（这是缺陷，不是文件没问题）",
+    "previewModified": "修改 {n}",
+    "previewUnreadable": "拿到了预览数据，但格式无法解析：请把这张卡片截图反馈（这是缺陷，不是文件没问题）",
     "previewTruncated": "仅显示改动附近的 {shown} 行（全文共 {total} 行）"
   },
   "tray": {
@@ -2946,5 +2953,16 @@
     "noDevices": "暂无已接入设备",
     "errShortPw": "同步密码至少 8 位",
     "statusTitle": "云同步状态（点击进入设置）"
+  },
+  "mobile": {
+    "shellIntro": "手机端正在重做：这一版先确认平台判定、原生桥与字典三件事到位。功能页会按模块逐个替换上来。",
+    "bridgeOn": "原生桥已接上（文件、HTTP、密钥库等由 App 提供）",
+    "bridgeOff": "未接上原生桥：当前以网页形态运行（数据存本地 IndexedDB，AI 直连）",
+    "nativeOn": "运行在安卓 App 内",
+    "nativeOff": "运行在浏览器里（用于开发与自动化测试）",
+    "i18nReady": "多语言字典就绪",
+    "capsTitle": "平台能力（手机端）",
+    "capOn": "可用",
+    "capOff": "不支持"
   }
 }

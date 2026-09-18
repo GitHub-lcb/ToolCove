@@ -4,7 +4,7 @@
 // 用命名空间导入：既有单测会 mock "@tauri-apps/api/core" 且只提供部分导出，
 // 具名导入会在链接/求值期直接抛错，命名空间访问则可按需取用。
 import * as tauriCore from "@tauri-apps/api/core";
-import { isDesktop, desktopOnly } from "./env.js";
+import { isDesktop, isMobile, desktopOnly } from "./env.js";
 import { kvGet, kvSet, kvDelete } from "./kv.js";
 import { browserHttpRequest } from "./net.js";
 import { downloadBase64, downloadText } from "./download.js";
@@ -107,7 +107,28 @@ export const browserHandlers = {
   },
 };
 
+/**
+ * 手机端原生桥（安卓）：由 App 启动时注入，形状为 `{ invoke(cmd, args) }`。
+ *
+ * 为什么用注入而不是在 src/ 里 import 安卓代码：这套前端要能**在浏览器里跑**——
+ * 于是移动端的平台能力可以被 Playwright（移动视口）自动化验证，而不必先有 APK 可跑。
+ * 注入点只有这一个，桌面端与网页端的行为完全不受影响（它们永远不会设置这个桥）。
+ */
+let mobileBridge = null;
+export function setMobileBridge(bridge) {
+  mobileBridge = bridge && typeof bridge.invoke === "function" ? bridge : null;
+  return mobileBridge;
+}
+export const hasMobileBridge = () => !!mobileBridge;
+
 export async function invoke(command, args = {}) {
+  if (isMobile) {
+    // 手机端：先给原生桥，再退回浏览器实现（存储、下载等纯 Web 能力不需要原生参与）
+    if (mobileBridge) return mobileBridge.invoke(command, args || {});
+    const handler = browserHandlers[command];
+    if (handler) return handler(args || {});
+    throw desktopOnly(command);
+  }
   if (isDesktop) return tauriCore.invoke(command, args);
   const handler = browserHandlers[command];
   if (!handler) throw desktopOnly(command);

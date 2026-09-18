@@ -46,8 +46,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // 先构建静态站点再起静态服务器：E2E 永远跑在真实产物上，避免「源码对、产物旧」
-    command: `npm run build:web && node e2e/server.mjs dist`,
+    // 先构建静态站点再起静态服务器：E2E 永远跑在真实产物上，避免「源码对、产物旧」。
+    // 手机端（mobile/app/dist）也一起构建并挂到 /mobile/ 下，供移动视口用例访问。
+    command: `npm run build:web && npm run build:mobile && node e2e/server.mjs dist`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

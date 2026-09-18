@@ -1,0 +1,153 @@
+/* 手机端基础样式：只放壳层与后续页面都要用的东西（安全区、字号、触摸目标）。
+   设计取向与桌面端一致（同一套语义色），但版式按手机重排：
+   - 触摸目标不小于 44px（Android 无障碍建议）；
+   - 安全区内边距：全面屏的刘海与手势条不遮挡内容；
+   - 字号用 rem 便于跟随系统字号设置。 */
+
+:root {
+  --m-bg: #ffffff;
+  --m-card: #ffffff;
+  --m-text: #1f2328;
+  --m-muted: #5f6773;
+  --m-border: #d8dee4;
+  --m-primary: #0969da;
+  --m-danger: #cf222e;
+  --m-ok: #1a7f37;
+  --m-radius: 12px;
+  --m-gap: 12px;
+  --m-pad: 16px;
+  --m-touch: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --m-bg: #0d1117;
+    --m-card: #161b22;
+    --m-text: #e6edf3;
+    --m-muted: #9aa4b2;
+    --m-border: #30363d;
+    --m-primary: #58a6ff;
+    --m-danger: #ff7b72;
+    --m-ok: #3fb950;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 安全区：内容不进入刘海/手势条区域，背景色仍铺满 */
+.m-shell {
+  min-height: 100vh;
+  padding: calc(var(--m-pad) + env(safe-area-inset-top)) calc(var(--m-pad) + env(safe-area-inset-right))
+    calc(var(--m-pad) + env(safe-area-inset-bottom)) calc(var(--m-pad) + env(safe-area-inset-left));
+}
+
+.m-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--m-gap);
+  margin-bottom: var(--m-gap);
+}
+
+.m-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.m-ver {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border: 1px solid var(--m-border);
+  border-radius: 999px;
+  color: var(--m-muted);
+}
+
+.m-hint {
+  margin: 0 0 var(--m-gap);
+  color: var(--m-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.m-status {
+  list-style: none;
+  margin: 0 0 var(--m-gap);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-status li {
+  min-height: var(--m-touch);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--m-pad);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  font-size: 0.95rem;
+}
+
+/* 状态用色块区分：绿=可用、琥珀=降级（不依赖颜色单独表达，文案里也写清楚） */
+.m-status li[data-on="true"] {
+  border-left: 3px solid var(--m-ok);
+}
+
+.m-status li[data-on="false"] {
+  border-left: 3px solid var(--m-muted);
+  color: var(--m-muted);
+}
+
+.m-caps-title {
+  margin: var(--m-gap) 0 8px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.m-caps ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-cap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--m-touch);
+  padding: 0 var(--m-pad);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+}
+
+.m-cap.off {
+  color: var(--m-muted);
+}
+
+.m-cap-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.m-cap-val {
+  font-size: 0.85rem;
+}
