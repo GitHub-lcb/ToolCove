@@ -3,9 +3,17 @@ import vue from "@vitejs/plugin-vue";
 
 const host = process.env.TAURI_DEV_HOST;
 
+// 构建指纹：注入到前端，用于回答「我现在打开的到底是哪一次构建」。
+// 起因是一次真实排查——改了确认卡却没在界面上看到，无法判断是代码没生效还是实例是旧的。
+const BUILD_STAMP = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
   plugins: [vue()],
+
+  define: {
+    __BUILD_STAMP__: JSON.stringify(BUILD_STAMP),
+  },
 
   // 静态站点（npm run build:web --mode web）：相对 base 让 dist/ 可部署到任意子路径
   // （GitHub Pages 项目页 / 自建目录）；桌面构建保持根路径不变。

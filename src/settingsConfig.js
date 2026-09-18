@@ -64,6 +64,8 @@ export const AGENT_CONFIRM_POLICIES = Object.freeze(["risky", "always", "never"]
 export const AGENT_MAX_STEPS_HARD_CAP = 50;
 export const AGENT_MAX_RETRIES = 3;
 
+const AGENT_DISABLED_SKILLS_CAP = 200;
+
 // Agent 设置归一（旧数据/缺字段补默认）。用【停用清单】而非启用清单：将来新增的内置工具
 // 对老用户默认开启，与本文件既有的「旧数据自动补默认」惯例一致。
 export function normalizeAgent(raw, allToolNames) {
@@ -81,5 +83,10 @@ export function normalizeAgent(raw, allToolNames) {
     : [];
   // 全关等于空 registry（Agent 什么都做不了），视为未配置
   if (names.length && disabledTools.length >= names.length) disabledTools = [];
-  return { maxSteps, retries, requireConfirmation, disabledTools };
+  // 技能 id 是用户自己沉淀出来的，设置页写进来时无法预先校验存在性，所以只做形状与条数约束；
+  // 找不到的 id 在匹配阶段自然被忽略（见 skills.js 的 matchSkills）。
+  const disabledSkills = Array.isArray(a.disabledSkills)
+    ? [...new Set(a.disabledSkills.filter((id) => typeof id === "string" && id.trim()))].slice(0, AGENT_DISABLED_SKILLS_CAP)
+    : [];
+  return { maxSteps, retries, requireConfirmation, disabledTools, disabledSkills };
 }

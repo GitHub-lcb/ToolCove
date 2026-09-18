@@ -8,17 +8,23 @@ import MarkdownRender from "./tools/MarkdownRender.vue";
 import { errText, relativeTime } from "./shared.js";
 import { buildAgentRegistry, listAgentTools } from "./agent/tools.js";
 import { foldTimeline, payloadText, COLLAPSE_AT } from "./agent/timeline.js";
+import { describePreview, rowKind, rowText } from "./agent/preview.js";
 import { canResume, sanitizeRun } from "./agent/runStore.js";
 import { visibleToolboxTools, findToolboxTool } from "./toolboxTools.js";
 import { openToolWindow, isTauriEnv } from "./toolWindow.js";
 import { track } from "./telemetry.js";
 import {
   agentSession,
+  answerPending,
+  clearSpills,
   clearTimeline,
+  deleteSkill,
   discardRun,
   initAgentSession,
+  promoteRunToSkill,
   resolvePending,
   resumeAgentRun,
+  setSkillEnabled,
   setToolEnabled,
   startAgentRun,
   stopAgentRun,
@@ -80,6 +86,7 @@ const NOTICE_KEY = {
   failed: "agent.statusFailed",
   model_retry: "agent.retrying",
   model_repair: "agent.modelRepair",
+  spill_failed: "agent.spillFailed",
 };
 // 引擎消息暂不 i18n（见 docs/agent-architecture.md 落地状态段），UI 自己产生的错误按 code 映射
 const ERROR_KEY = {
@@ -105,7 +112,15 @@ const errorText = computed(() => {
   const key = ERROR_KEY[agentSession.errorCode];
   return key ? t(key) : agentSession.error || "";
 });
-const noticeText = (item) => (NOTICE_KEY[item.code] ? t(NOTICE_KEY[item.code]) : item.text || t("agent.statusFailed"));
+const noticeText = (item) => {
+  // 需要参数的两类：结果被裁剪（省略了多少）、完整结果落盘（key 是什么）。
+  // 模型侧看的是引擎原文，人看的是词条——两边都要能说清「这一步为什么信息变少了」。
+  if (item.code === "tool_clip") return t("agent.noticeToolClip", { omitted: item.omittedChars || 0, original: item.originalChars || 0 });
+  if (item.code === "tool_spill") return t("agent.noticeToolSpill", { key: item.text || "", chars: item.chars || 0 });
+  return NOTICE_KEY[item.code] ? t(NOTICE_KEY[item.code]) : item.text || t("agent.statusFailed");
+};
+// 写前预览：确认卡上的 diff 摘要（长文件只显示改动附近，见 agent/preview.js）
+const pendingPreview = computed(() => describePreview(agentSession.pending?.preview));
 const attemptText = (a) => (ERROR_KEY[a.code] ? t(ERROR_KEY[a.code]) : a.error || "");
 // 审计行说明「为什么问了 / 为什么没问」——这是从 DSH 的 approval 审计对学到的：
 // 只写「允许/拒绝」回答不了「这次为什么需要人点头」。
@@ -154,6 +169,9 @@ function dismissHint() {
 const goal = ref("");
 const goalBox = ref(null);
 const denyBtn = ref(null);
+// 提问卡的回答草稿。与 goal 分开：提问的回答常常是路径这类短文本，不该污染上一条目标。
+const answerDraft = ref("");
+const answerBox = ref(null);
 
 onMounted(async () => {
   await initAgentSession();
@@ -191,18 +209,38 @@ function useExample(key) {
   nextTick(() => goalBox.value?.focus());
 }
 
-// 确认卡自动聚焦「拒绝」：Enter 落到拒绝上，不会误批准一个写入
+// 确认卡自动聚焦：批准卡聚焦「拒绝」（Enter 落到拒绝上，不会误批准一个写入）；
+// 提问卡聚焦输入框（这里要的是内容，不是判断）。
 watch(
   () => agentSession.pending,
   async (p) => {
     if (!p) return;
     await nextTick();
+    if (p.kind === "ask") {
+      answerDraft.value = "";
+      answerBox.value?.focus();
+      return;
+    }
     denyBtn.value?.focus();
   }
 );
 
 function onDecide(approved) {
   if (resolvePending(approved)) props.showToast(t(approved ? "agent.confirmAllow" : "agent.confirmDeny"));
+}
+
+/** 提交提问卡的回答（文本）。空回答不发：让用户看见提示，而不是把空串回灌给模型。 */
+function onAnswer() {
+  if (!answerPending(answerDraft.value)) {
+    props.showToast(t("agent.answerEmpty"));
+    return;
+  }
+  answerDraft.value = "";
+}
+
+/** 跳过提问 = 放弃这次目标（与 runtime 的 cancelled 语义一致）。 */
+function onAnswerSkip() {
+  if (stopAgentRun("denied")) props.showToast(t("agent.stopped"));
 }
 
 async function onToggleTool(tool) {
@@ -244,6 +282,55 @@ async function onResume(rec) {
   }
   track("agent.resume");
   await resumeAgentRun(rec);
+}
+
+// ------- 技能库 -------
+// 技能是「可选增强」：关掉/删掉都不影响可执行能力，所以没有「至少留一条」的校验（对比工具开关）。
+const skillDisabled = (id) => (agentSession.cfg?.disabledSkills || []).includes(id);
+const skillsOpen = ref(false);
+
+async function onPromoteRun(runId) {
+  try {
+    const result = await promoteRunToSkill(runId);
+    if (!result.ok) {
+      props.showToast(t("agent.skillNotSkillable"));
+      return;
+    }
+    track("agent.skill.save");
+    props.showToast(t(result.updated ? "agent.skillUpdated" : "agent.skillSaved", { name: result.skill.name }));
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
+}
+
+async function onToggleSkill(skill) {
+  try {
+    await setSkillEnabled(skill.id, skillDisabled(skill.id));
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
+}
+
+async function onDeleteSkill(skill) {
+  try {
+    if (await deleteSkill(skill.id)) props.showToast(t("agent.skillDeleted", { name: skill.name }));
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
+}
+
+/** 清空溢出结果区。没有可清的条目时如实说「本来就是空的」，不要假装成功。 */
+async function onClearSpills() {
+  try {
+    const result = await clearSpills();
+    props.showToast(
+      result.cleared
+        ? t("agent.spillCleared", { n: result.cleared, chars: fmtNum(result.chars) })
+        : t("agent.spillClearEmpty")
+    );
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
 }
 
 const RUN_STATUS = {
@@ -341,14 +428,63 @@ const runLabel = (rec) => t(runMeta(rec).key);
                 {{ t(riskKey(agentSession.pending.risk)) }}
               </span>
             </div>
-            <code v-if="agentSession.pending.kind === 'tool'" class="cf-tool">{{ agentSession.pending.tool }}</code>
-            <pre v-if="agentSession.pending.args" class="cf-args">{{ payloadText(agentSession.pending.args) }}</pre>
-            <p class="cf-hint">{{ t("agent.confirmArgsHint") }}</p>
-            <p v-if="agentSession.pending.kind === 'tool'" class="cf-once">{{ t("agent.confirmOnce") }}</p>
-            <div class="cf-actions">
-              <button ref="denyBtn" class="btn-ghost sm" @click="onDecide(false)">{{ t("agent.confirmDeny") }}</button>
-              <button class="btn-primary sm" @click="onDecide(true)">{{ t("agent.confirmAllow") }}</button>
-            </div>
+            <!-- 提问卡：ask_user 要的是**文本**答案（路径、SQL、口令…），不是允许/拒绝。
+                 旧实现把它画成同一张确认卡，于是「允许」把布尔当答案回灌，模型只会再问一遍。 -->
+            <template v-if="agentSession.pending.kind === 'ask'">
+              <p class="cf-question">{{ agentSession.pending.question }}</p>
+              <textarea
+                ref="answerBox"
+                v-model="answerDraft"
+                class="cf-answer"
+                rows="3"
+                :placeholder="t('agent.answerPlaceholder')"
+                @keydown.enter.exact.prevent="onAnswer"
+              ></textarea>
+              <p class="cf-hint">{{ t("agent.answerHint") }}</p>
+              <div class="cf-actions">
+                <button class="btn-ghost sm" @click="onAnswerSkip">{{ t("agent.answerSkip") }}</button>
+                <button class="btn-primary sm" :disabled="!answerDraft.trim()" @click="onAnswer">{{ t("agent.answerSend") }}</button>
+              </div>
+            </template>
+            <template v-else>
+              <code v-if="agentSession.pending.kind === 'tool'" class="cf-tool">{{ agentSession.pending.tool }}</code>
+              <!-- 写前预览：runtime 在问人之前已经把旧内容读出来做过 diff，这里只负责显示。
+                   长文件只给改动附近的若干行，并明说这是节选——否则「改动在文件末尾」会看不见。 -->
+              <div v-if="pendingPreview" class="cf-preview">
+                <div class="cf-pv-head">
+                  <b>{{ t("agent.previewTitle") }}</b>
+                  <code class="cf-pv-path">{{ pendingPreview.path }}</code>
+                  <span v-if="pendingPreview.isNew" class="tc-chip sm tc-primary">{{ t("agent.previewNewChip") }}</span>
+                  <span v-else-if="!pendingPreview.hasChanges" class="tc-chip sm tc-neutral">{{ t("agent.previewSame") }}</span>
+                  <span v-else class="cf-pv-stat">
+                    +{{ pendingPreview.added }} / -{{ pendingPreview.removed }}
+                    <!-- 单行替换在 textDiff 里是 modified（既不算增也不算删）：不显式写出来，
+                         「有 diff 行、计数却是 +0 / -0」会让人以为没改动 -->
+                    <template v-if="pendingPreview.modified">{{ " " }}· {{ t("agent.previewModified", { n: pendingPreview.modified }) }}</template>
+                  </span>
+                </div>
+                <div v-if="pendingPreview.rows.length" class="cf-pv-body">
+                  <div v-for="(row, i) in pendingPreview.rows" :key="i" class="cf-pv-row" :class="'pv-' + rowKind(row)">
+                    <span class="cf-pv-no">{{ row.right?.number ?? row.left?.number ?? "" }}</span>
+                    <span class="cf-pv-text">{{ rowText(row) }}</span>
+                  </div>
+                </div>
+                <!-- 有 diff 却一行都取不出来 / 没有 diff：都要说清原因，
+                     否则「卡片上一个字都没有」比没有预览更让人困惑（用户实测反馈）。 -->
+                <p v-else-if="pendingPreview.schemaUnsupported" class="cf-pv-more">{{ t("agent.previewUnreadable") }}</p>
+                <p v-else-if="!pendingPreview.hasChanges" class="cf-pv-more">{{ t("agent.previewSame") }}</p>
+                <p v-if="pendingPreview.hidden > 0" class="cf-pv-more">
+                  {{ t("agent.previewTruncated", { shown: pendingPreview.shown, total: pendingPreview.total }) }}
+                </p>
+              </div>
+              <pre v-if="agentSession.pending.args" class="cf-args">{{ payloadText(agentSession.pending.args) }}</pre>
+              <p class="cf-hint">{{ t("agent.confirmArgsHint") }}</p>
+              <p v-if="agentSession.pending.kind === 'tool'" class="cf-once">{{ t("agent.confirmOnce") }}</p>
+              <div class="cf-actions">
+                <button ref="denyBtn" class="btn-ghost sm" @click="onDecide(false)">{{ t("agent.confirmDeny") }}</button>
+                <button class="btn-primary sm" @click="onDecide(true)">{{ t("agent.confirmAllow") }}</button>
+              </div>
+            </template>
           </section>
 
           <!-- 步骤时间线 -->
@@ -444,6 +580,15 @@ const runLabel = (rec) => t(runMeta(rec).key);
                   <Icon name="sparkles" :size="14" />
                   <b>{{ t("agent.stepFinal") }}</b>
                   <button class="link xs" @click="onCopy(item.answer, 'agent.copied')">{{ t("agent.copyAnswer") }}</button>
+                  <!-- 沉淀为技能：只有真的跑成功、且用过工具的运行才值得复用（引擎侧判定） -->
+                  <button
+                    v-if="agentSession.runStatus === 'completed'"
+                    class="link xs ans-skill"
+                    :title="t('agent.skillPromoteTip')"
+                    @click="onPromoteRun(agentSession.currentRunId)"
+                  >
+                    <Icon name="sparkles" :size="12" />{{ t("agent.skillPromote") }}
+                  </button>
                 </div>
                 <MarkdownRender :text="item.answer" :show-toast="showToast" />
               </article>
@@ -504,6 +649,40 @@ const runLabel = (rec) => t(runMeta(rec).key);
             </div>
           </section>
 
+          <!-- 技能库：用户自己沉淀的成功路径。默认折叠——技能是可选增强，不该挤占能力清单的位置。 -->
+          <section class="cap-group">
+            <button class="cap-head skill-head" :aria-expanded="skillsOpen" @click="skillsOpen = !skillsOpen">
+              <Icon name="chevron-right" :size="13" class="tl-arrow" :class="{ open: skillsOpen }" />
+              <span class="tc-chip sm tc-primary">{{ t("agent.capSkills") }}</span>
+              <span class="cap-count">{{ agentSession.skills.length }}</span>
+            </button>
+            <template v-if="skillsOpen">
+              <p class="rail-desc">{{ t("agent.capSkillsDesc") }}</p>
+              <p v-if="!agentSession.skills.length" class="rail-desc">{{ t("agent.skillEmpty") }}</p>
+              <div v-for="skill in agentSession.skills" :key="skill.id" class="cap-row" :class="{ off: skillDisabled(skill.id) }">
+                <div class="cap-main">
+                  <code class="cap-name">{{ skill.name }}</code>
+                  <span class="cap-item-desc">{{ skill.description || t("agent.skillNoDesc") }}</span>
+                </div>
+                <div class="cap-side">
+                  <button class="link xs danger" :title="t('agent.skillDelete')" @click="onDeleteSkill(skill)">
+                    <Icon name="trash" :size="12" />
+                  </button>
+                  <button
+                    class="switch"
+                    role="switch"
+                    :aria-checked="!skillDisabled(skill.id)"
+                    :aria-label="t('agent.skillToggle')"
+                    :class="{ on: !skillDisabled(skill.id) }"
+                    @click="onToggleSkill(skill)"
+                  >
+                    <span class="knob"></span>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </section>
+
           <section class="cap-group">
             <h4 class="cap-head">
               <span class="tc-chip sm tc-neutral">{{ t("agent.capManual") }}</span>
@@ -520,6 +699,17 @@ const runLabel = (rec) => t(runMeta(rec).key);
             </button>
           </section>
           <p class="rail-desc">{{ t("agent.capSettingsHint") }}</p>
+          <!-- 溢出结果区：大结果落盘的正文会占磁盘，这里给一个手动出口。
+               措辞如实——桌面端删不掉文件本体，只能清索引并把正文覆写成空。 -->
+          <section class="cap-group">
+            <h4 class="cap-head">
+              <span class="tc-chip sm tc-neutral">{{ t("agent.capSpills") }}</span>
+            </h4>
+            <p class="rail-desc">{{ t("agent.capSpillsDesc") }}</p>
+            <button class="btn-ghost sm wide" :disabled="busy" @click="onClearSpills">
+              <Icon name="trash" :size="13" />{{ t("agent.spillClear") }}
+            </button>
+          </section>
         </div>
 
         <div v-else class="rail-body">
@@ -616,9 +806,25 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .cf-head { display: flex; align-items: center; gap: var(--sp-3); color: var(--warn-deep); }
 .cf-head b { font-size: var(--fs-base); color: var(--text); }
 .cf-tool { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-code); }
+/* 提问卡：问题是正文（不是工具名），回答是文本（不是允许/拒绝） */
+.cf-question { margin: 0; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.cf-answer { width: 100%; padding: var(--sp-3); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); resize: vertical; }
 .cf-args { margin: 0; max-height: 260px; overflow: auto; padding: var(--sp-3); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-word; }
 .cf-hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
 .cf-once { margin: 0; font-size: var(--fs-xs); color: var(--warn-deep); }
+/* 写前预览：diff 行用语义色（新增=成功绿、删除=危险红、修改=主色），与时间线同一套色板 */
+.cf-preview { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cf-pv-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--muted); }
+.cf-pv-path { font-family: var(--font-mono); color: var(--text-code); word-break: break-all; }
+.cf-pv-stat { font-family: var(--font-mono); color: var(--muted); }
+.cf-pv-body { max-height: 220px; overflow: auto; padding: var(--sp-2) 0; font-family: var(--font-mono); font-size: var(--fs-xs); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); }
+.cf-pv-row { display: flex; gap: var(--sp-2); padding: 0 var(--sp-2); line-height: var(--lh-body); }
+.cf-pv-no { flex: 0 0 3.2em; text-align: right; color: var(--muted); user-select: none; }
+.cf-pv-text { white-space: pre-wrap; word-break: break-word; color: var(--text-code); }
+.cf-pv-row.pv-added { background: var(--success-soft); }
+.cf-pv-row.pv-removed { background: var(--danger-soft); }
+.cf-pv-row.pv-changed { background: var(--primary-soft); }
+.cf-pv-more { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
 .cf-actions { display: flex; justify-content: flex-end; gap: var(--sp-3); }
 
 /* ---------- 时间线 ---------- */
@@ -690,6 +896,11 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .cap-name { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 .cap-item-desc { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cap-side { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-1); }
+/* 技能库：折叠头是可点击的整行按钮，不是标题（观感与 cap-head 保持一致） */
+.skill-head { width: 100%; display: flex; align-items: center; gap: var(--sp-2); background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.skill-head .tl-arrow { transition: transform 0.15s; color: var(--muted); }
+.skill-head .tl-arrow.open { transform: rotate(90deg); }
+.ans-skill { margin-left: auto; }
 
 /* 开关：能力面板里启停单个工具 */
 .switch { position: relative; width: 34px; height: 19px; flex-shrink: 0; display: inline-flex; align-items: center; padding: 0 2px; background: var(--well-hover); border: 1px solid var(--border-strong); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, border-color 0.15s; color: var(--warn); }

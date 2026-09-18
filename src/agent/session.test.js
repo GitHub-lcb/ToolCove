@@ -10,6 +10,7 @@ import { canResume } from "./runStore.js";
 import { foldTimeline } from "./timeline.js";
 import {
   agentSession,
+  answerPending,
   clearTimeline,
   discardRun,
   initAgentSession,
@@ -265,6 +266,61 @@ describe("确认与停止", () => {
 
   it("空闲时点停止是 no-op", () => {
     expect(stopAgentRun()).toBe(false);
+  });
+});
+
+// 旧行为：ask_user 复用布尔确认卡，点「允许」把 true 当答案回灌，模型只能再问一遍
+// （用户实测反馈：点了允许却始终没机会输入文件路径）。现在提问走文本入口。
+describe("ask_user 的文本回答", () => {
+  const ask = (question) => ({ type: "ask_user", question });
+
+  it("回答文本进历史、进时间线，运行继续到收尾", async () => {
+    scriptPlanner([ask("请提供两个文件的绝对路径"), final("已比较")]);
+    const run = startAgentRun("比较两个文件");
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("ask"));
+    expect(agentSession.pending.question).toContain("绝对路径");
+    expect(answerPending("/tmp/a.txt /tmp/b.txt")).toBe(true);
+    await run;
+    expect(agentSession.runStatus).toBe("completed");
+    expect(agentSession.steps.some((s) => s.type === "confirmation" && s.answer === "/tmp/a.txt /tmp/b.txt")).toBe(true);
+  });
+
+  it("空回答不发：pending 保留，等用户补内容（而不是把空串回灌给模型）", async () => {
+    scriptPlanner([ask("要比较哪两个文件？"), final("done")]);
+    const run = startAgentRun("比较");
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("ask"));
+    expect(answerPending("   ")).toBe(false);
+    expect(agentSession.pending).not.toBeNull();
+    expect(answerPending("/tmp/a.txt /tmp/b.txt")).toBe(true);
+    await run;
+    expect(agentSession.runStatus).toBe("completed");
+  });
+
+  it("工具确认卡不接受文本回答（两条路径不互相串）", async () => {
+    // 用写类工具（默认 risky 策略会弹确认卡），但不落文件系统：http.request 只出站请求，
+    // 既避开读后写门禁，也避开真实文件副作用。这里验证的是两条确认路径不互相串。
+    scriptPlanner([call("http.request", { method: "GET", url: "http://127.0.0.1:1/" }), final("done")]);
+    const run = startAgentRun("发个请求");
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"));
+    // 文本入口对工具确认卡无效
+    expect(answerPending("随便写点什么")).toBe(false);
+    expect(agentSession.pending).not.toBeNull();
+    // 布尔入口才是它的回答方式
+    expect(resolvePending(true)).toBe(true);
+    await run;
+    // 时间线里记的是布尔答案，而不是把文本塞进确认事件
+    expect(agentSession.steps.some((s) => s.type === "confirmation" && s.answer === true)).toBe(true);
+    expect(agentSession.steps.some((s) => s.type === "tool_start" && s.tool === "http.request")).toBe(true);
+  });
+
+  it("跳过提问等于放弃目标（cancelled）", async () => {
+    scriptPlanner([ask("要比较哪两个文件？")]);
+    const run = startAgentRun("比较");
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("ask"));
+    stopAgentRun("denied");
+    await run;
+    expect(agentSession.runStatus).toBe("cancelled");
+    expect(agentSession.pending).toBeNull();
   });
 });
 

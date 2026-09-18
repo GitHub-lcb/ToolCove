@@ -360,6 +360,9 @@ async function testAIConn() {
 }
 
 const appVersion = pkg.version;
+// 构建时间戳（vite.config.js 的 define 注入）。开发态取编译时刻，因此改完代码重启 dev 即变。
+// typeof 保护：node 单测环境没有这个全局，直接引用会 ReferenceError。
+const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__.replace("T", " ").replace("Z", "") : "dev";
 const checkingUpdate = ref(false);
 async function checkUpdateNow() {
   checkingUpdate.value = true;
@@ -440,6 +443,8 @@ async function restoreNow() {
       </button>
       <div class="sv-foot">
         <span class="ver-tag">v{{ appVersion }}</span>
+        <!-- 构建指纹：排查「界面没变」时先看这里——是代码没生效，还是打开的实例是旧的 -->
+        <span class="ver-tag ver-stamp" :title="t('settings.buildStampTip')">{{ buildStamp }}</span>
       </div>
     </aside>
 
@@ -788,6 +793,7 @@ async function restoreNow() {
 .sv-nav-label { white-space: nowrap; }
 .sv-foot { margin-top: auto; padding: 10px 10px 2px; }
 .ver-tag { font-size: var(--fs-xs); color: var(--faint); }
+.ver-stamp { font-family: var(--font-mono); opacity: 0.75; }
 
 /* 右侧内容区 */
 .sv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }

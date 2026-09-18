@@ -1,6 +1,15 @@
 /** 工具白名单与受控执行循环。 */
 import { createApprovalPolicy } from "./approval.js";
 import { GUARDED_TOOLS, OBSERVE_TOOLS, createObservationGate } from "./observation.js";
+import {
+  EVENT_PAYLOAD_LIMIT,
+  budgetEvent,
+  clipNote,
+  finalizeResult,
+  planResult,
+  retainedBudget,
+  spillNote,
+} from "./resultBudget.js";
 
 // 模型调用失败的重试预算。与工具重试（options.retries）是两件事——那个重试的是工具执行，
 // 这个重试的是模型请求本身（限流、5xx、网络）。工具结果里的模型输出格式问题由 index.js 的
@@ -115,7 +124,11 @@ export async function runAgent(input, options = {}) {
   const history = structuredClone(options.history || []);
   const maxSteps = bounded(options.maxSteps, 12, 50);
   const maxOutput = bounded(options.maxOutputLength, 32000, 100000);
-  const emit = async event => { await options.onEvent?.(event); };
+  // 事件载荷比历史预算小得多：历史要大是为了让模型继续推理，事件只需要让用户看清这一步做了什么。
+  // 而旧实现把工具原始结果直接挂进事件——一个 5 MB 的查询结果会顺着 session.steps 进 DOM 与持久化 run。
+  const eventLimit = bounded(options.eventPayloadLimit, EVENT_PAYLOAD_LIMIT, maxOutput);
+  const emitRaw = async event => { await options.onEvent?.(event); };
+  const emit = async event => { await emitRaw(budgetEvent(event, eventLimit)); };
   const check = () => { if (signal?.aborted || shouldStop?.()) throw abortError(); };
   const wait = (fn, timeout, label) => guarded(fn, { signal, shouldStop, timeout }, label);
   const timeouts = {
@@ -132,8 +145,28 @@ export async function runAgent(input, options = {}) {
   /** 询问人类并落审计事件。返回是否放行。 */
   async function requestApproval(message, meta, tool, args) {
     const { decision, id } = meta;
-    await emit({ type: 'approval_asked', id, tool: tool.name, risk: tool.risk || '', reason: decision.reason, args });
-    const approved = await wait(() => options.confirm?.(message, { ...meta, tool }) ?? false, timeouts.confirm, '等待确认');
+    // 写前预览：模型不一定想得到先调 file.preview_write，但人做决定时一定需要看到 diff。
+    // 预览失败不阻断批准——读不到旧文件（新建）也得允许用户决定，只是没有 diff 可看。
+    let preview = null;
+    if (tool.previewBefore && typeof options.preview === 'function') {
+      try {
+        preview = (await options.preview(tool, args, signal)) || null;
+      } catch {
+        preview = null;
+      }
+    }
+    // 预览成功意味着这次运行**确实读到了该文件的内容**（预览就是把旧内容读出来做 diff），
+    // 所以它应当像 file.read_text 一样登记为内容观察——否则会出现「看着 diff 点了允许，
+    // 执行时却被读后写门禁拦住」这种自相矛盾的体验。
+    if (preview && !preview.isNew) {
+      try {
+        gate.observeSuccess('file.read_text', args, preview.before ?? '');
+      } catch {
+        // 登记失败只是少一次放行凭据，不该影响这次确认
+      }
+    }
+    await emit({ type: 'approval_asked', id, tool: tool.name, risk: tool.risk || '', reason: decision.reason, args, ...(preview ? { preview } : {}) });
+    const approved = await wait(() => options.confirm?.(message, { ...meta, tool, ...(preview ? { preview } : {}) }) ?? false, timeouts.confirm, '等待确认');
     check();
     // 批准与拒绝都要记账：批准供同参数折叠，拒绝让同一调用不再被反复追问。
     approval.record(decision.collapseKey, !!approved);
@@ -177,6 +210,55 @@ export async function runAgent(input, options = {}) {
     }
   }
 
+  /**
+   * 收一次工具结果：保证进历史的那一份不超过 maxOutput。
+   * 返回 { result, meta }：meta 为空对象表示原样保留（旧行为），否则带 clipped / spilled 标记。
+   * 「保留说明」自身也占历史空间，所以它和摘要一起算进预算——裁剪后反而超预算是这类改动的常见翻车点。
+   */
+  async function retainResult(value, tool, onDegrade) {
+    const plan = planResult(value, maxOutput);
+    if (plan.kind === 'keep') return { result: value ?? null, meta: {} };
+    // spill 说明按最坏情况（key 长、字符数长）先扣出来，保证「摘要 + 说明」落在预算内。
+    // 这里用确定性的占位说明来算余量：真实 key 是写入后才生成的，等拿到它再算就成了循环依赖。
+    const reserved = spillNote({ key: 'spill:'.padEnd(40, 'x'), chars: plan.size });
+    const room = retainedBudget(maxOutput, reserved);
+    const fitted = finalizeResult({ ...plan, maxOutput: room });
+    const meta = {
+      clipped: true,
+      spilled: false,
+      originalChars: fitted.originalChars,
+      retainedChars: fitted.retainedChars,
+      omittedChars: fitted.omittedChars,
+    };
+    // 值得落盘的条件：确实是 spill 档，且完整文本比「摘要 + 说明」更大（否则不如直接裁剪）
+    const worthSpilling = plan.kind === 'spill' && plan.size > room + reserved.length;
+    if (worthSpilling && typeof options.spill === 'function') {
+      let saved = null;
+      try {
+        saved = await options.spill({ tool: tool.name, text: plan.text, size: plan.size });
+      } catch {
+        // 落盘失败走下面的降级路径；异常本身没有可展示信息（调用方会看到 spill_failed 通知）
+        saved = null;
+      }
+      if (saved?.key) {
+        await emit({ type: 'tool_spill', tool: tool.name, key: saved.key, chars: saved.chars || plan.size });
+        return {
+          result: fitted.value,
+          meta: { ...meta, spilled: true, spillRef: { key: saved.key, chars: saved.chars || plan.size }, note: spillNote(saved) },
+        };
+      }
+      onDegrade?.();
+    }
+    await emit({
+      type: 'tool_clip',
+      tool: tool.name,
+      originalChars: fitted.originalChars,
+      retainedChars: fitted.retainedChars,
+      omittedChars: fitted.omittedChars,
+    });
+    return { result: fitted.value, meta: { ...meta, note: clipNote(fitted) } };
+  }
+
   try {
     if (typeof input !== 'string' || !input.trim() || input.length > 64000) throw Error('请输入任务目标（最多 64000 字符）');
     for (let step = 0; step < maxSteps; step++) {
@@ -202,13 +284,23 @@ export async function runAgent(input, options = {}) {
       if (action.type === 'ask_user') {
         if (typeof action.question !== 'string' || !action.question.trim()) throw Error('模型未提供问题');
         await options.onCheckpoint?.({ type: 'waiting', question: action.question, history });
-        const answer = options.askUser
-          ? await wait(() => options.askUser(action.question), timeouts.confirm, '等待回答')
-          : await wait(() => options.confirm?.(action.question, action) ?? false, timeouts.confirm, '等待确认');
+        const answer = await wait(
+          () => options.askUser
+            ? options.askUser(action.question, action)
+            : options.confirm?.(action.question, action) ?? false,
+          timeouts.confirm,
+          '等待回答'
+        );
         check();
-        if (answer == null || answer === false) return { status: 'cancelled', history };
-        history.push({ action, answer });
-        await emit({ type: 'confirmation', question: action.question, answer });
+        // 回答是**文本**，不是布尔：ask_user 要的是「那两个文件的路径」这类内容，
+        // 把 true/false 当答案回灌等于告诉模型「用户同意了但什么都没说」。
+        // 只有取消类回答（null / false / 纯空白）才结束整个目标。
+        if (answer == null || answer === false || (typeof answer === 'string' && !answer.trim())) {
+          return { status: 'cancelled', history };
+        }
+        const text = typeof answer === 'string' ? answer.trim().slice(0, 4000) : String(answer);
+        history.push({ action, answer: text });
+        await emit({ type: 'confirmation', question: action.question, answer: text });
         continue;
       }
       if (action.type !== 'tool_call') throw Error(`Unknown action type: ${action.type}`);
@@ -273,9 +365,14 @@ export async function runAgent(input, options = {}) {
           return { status: 'failed', error: error.message || String(error), errorCode: error.code || '', history };
         }
         check();
-        if (JSON.stringify(value ?? null).length > maxOutput) throw Error('工具结果过大，请缩小输入后重试');
-        history.push({ action: { ...action, id }, result: value ?? null });
-        await emit({ type: 'tool_result', id, tool: tool.name, args, result: value ?? null });
+        // 分层保留结果：小结果原样、中结果头尾保留、大结果落盘（spill）。
+        // 旧实现一超限就 throw「请缩小输入后重试」——把「结果太大」变成「这步白做」。
+        const outcome = await retainResult(value, tool, () => {
+          // 落盘失败降级成裁剪是**静默的信息损失**，必须留痕：用户要能看出这步为什么信息变少了
+          emit({ type: 'notice', code: 'spill_failed', text: '完整结果落盘失败，已改为一并裁剪' });
+        });
+        history.push({ action: { ...action, id }, result: outcome.result, ...(outcome.meta || {}) });
+        await emit({ type: 'tool_result', id, tool: tool.name, args, result: outcome.result, ...(outcome.meta || {}) });
         break;
       }
     }

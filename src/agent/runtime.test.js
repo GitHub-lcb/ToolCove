@@ -494,3 +494,234 @@ describe("错误码透传", () => {
     expect(aborted.errorCode).toBe("ABORTED");
   });
 });
+
+// 旧行为：结果超过 maxOutput 直接 throw「工具结果过大，请缩小输入后重试」——「结果太大」= 「这步白做」。
+// 新行为分三层：小结果原样 / 中结果头尾保留 / 大结果落盘（spill），并保证进历史的那一份永远在预算内。
+describe("工具结果分层保留", () => {
+  const bigTool = (value) => createToolRegistry([{ name: "big", description: "", risk: "read", inputSchema: {}, execute: () => value }]);
+  /** 一次工具调用 + 收尾：planner 用 shift() 逐次返回，与文件里既有用例同形。 */
+  const plannerFor = () => {
+    const actions = [{ type: "tool_call", tool: "big", args: {} }, { type: "final", answer: "done" }];
+    return async () => actions.shift();
+  };
+
+  it("小结果原样进历史，不产生裁剪标记", async () => {
+    const registry = bigTool({ ok: true });
+    const result = await runAgent("x", { registry, planner: plannerFor(), maxOutputLength: 1000 });
+    expect(result.status).toBe("completed");
+    expect(result.history[0].result).toEqual({ ok: true });
+    expect(result.history[0].clipped).toBeUndefined();
+  });
+
+  it("超限但不算大：保留头尾，且历史那一份不超预算", async () => {
+    const events = [];
+    const registry = bigTool("H".repeat(50) + "m".repeat(3000) + "T".repeat(50));
+    const result = await runAgent("x", { registry, planner: plannerFor(), maxOutputLength: 1000, onEvent: (e) => events.push(e) });
+    const entry = result.history[0];
+    expect(entry.clipped).toBe(true);
+    expect(entry.omittedChars).toBeGreaterThan(0);
+    // 预算口径：字符串载荷的 JSON 长度（含引号）不超过 maxOutput
+    expect(JSON.stringify(entry.result).length).toBeLessThanOrEqual(1000);
+    expect(String(entry.result).startsWith("H")).toBe(true);
+    expect(String(entry.result).endsWith("T")).toBe(true);
+    expect(entry.note).toContain("省略");
+    expect(events.some((e) => e.type === "tool_clip")).toBe(true);
+  });
+
+  it("大结果落盘：历史里放引用与「怎么读回来」的说明", async () => {
+    const spilled = [];
+    const events = [];
+    const registry = bigTool({ rows: "r".repeat(9000) });
+    const result = await runAgent("x", {
+      registry,
+      planner: plannerFor(),
+      maxOutputLength: 1000,
+      spill: async (req) => { spilled.push(req); return { key: "spill:big-abc", chars: req.size }; },
+      onEvent: (e) => events.push(e),
+    });
+    const entry = result.history[0];
+    expect(spilled).toHaveLength(1);
+    expect(spilled[0].tool).toBe("big");
+    expect(entry.spilled).toBe(true);
+    expect(entry.spillRef.key).toBe("spill:big-abc");
+    expect(entry.note).toContain("spill.read");
+    expect(events.some((e) => e.type === "tool_spill" && e.key === "spill:big-abc")).toBe(true);
+    // 摘要 + 说明之和仍要在预算内：说明本身也占历史空间
+    expect(JSON.stringify(entry.result).length + entry.note.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("落盘失败降级为裁剪，并留下可见痕迹", async () => {
+    const events = [];
+    const registry = bigTool("z".repeat(9000));
+    const result = await runAgent("x", {
+      registry,
+      planner: plannerFor(),
+      maxOutputLength: 1000,
+      spill: async () => null,
+      onEvent: (e) => events.push(e),
+    });
+    expect(result.status).toBe("completed");
+    expect(result.history[0].spilled).toBe(false);
+    expect(result.history[0].clipped).toBe(true);
+    expect(events.some((e) => e.type === "tool_clip")).toBe(true);
+    expect(events.some((e) => e.type === "notice" && e.code === "spill_failed")).toBe(true);
+  });
+
+  it("没有落盘钩子（浏览器/测试）时不报错，直接裁剪", async () => {
+    const registry = bigTool("q".repeat(9000));
+    const result = await runAgent("x", { registry, planner: plannerFor(), maxOutputLength: 1000 });
+    expect(result.status).toBe("completed");
+    expect(result.history[0].clipped).toBe(true);
+    expect(JSON.stringify(result.history[0].result).length).toBeLessThanOrEqual(1000);
+  });
+
+  it("超大结果也不会把运行的返回值撑爆", async () => {
+    const registry = bigTool("w".repeat(500000));
+    const result = await runAgent("x", { registry, planner: plannerFor(), maxOutputLength: 2000 });
+    expect(JSON.stringify(result.history[0].result).length).toBeLessThanOrEqual(2000);
+  });
+
+  it("事件载荷单独收预算：5MB 结果不会顺着事件流进 DOM 与持久化", async () => {
+    const events = [];
+    const registry = bigTool({ rows: "r".repeat(200000) });
+    await runAgent("x", { registry, planner: plannerFor(), maxOutputLength: 100000, onEvent: (e) => events.push(e) });
+    const event = events.find((e) => e.type === "tool_result");
+    expect(event.payloadClipped).toBe(true);
+    expect(JSON.stringify(event.result).length).toBeLessThanOrEqual(8000 + 2);
+  });
+});
+
+describe("ask_user 的回答是文本", () => {
+  const askPlanner = () => {
+    const actions = [
+      { type: "ask_user", question: "请提供两个文件的绝对路径" },
+      { type: "final", answer: "done" },
+    ];
+    return async () => actions.shift();
+  };
+
+  it("askUser 返回的文本进历史并出现在 confirmation 事件里", async () => {
+    const events = [];
+    const seen = [];
+    const registry = createToolRegistry([{ name: "t", execute: () => "ok" }]);
+    const result = await runAgent("x", {
+      registry,
+      planner: askPlanner(),
+      askUser: async (question) => { seen.push(question); return "/tmp/a.txt 与 /tmp/b.txt"; },
+      onEvent: (e) => events.push(e),
+    });
+    expect(result.status).toBe("completed");
+    expect(seen[0]).toContain("绝对路径");
+    expect(result.history[0]).toMatchObject({ action: { type: "ask_user" }, answer: "/tmp/a.txt 与 /tmp/b.txt" });
+    expect(events.find((e) => e.type === "confirmation").answer).toBe("/tmp/a.txt 与 /tmp/b.txt");
+  });
+
+  it("布尔回答不再被当成答案（旧实现把 true 当答案回灌，模型只能再问一遍）", async () => {
+    const events = [];
+    const registry = createToolRegistry([{ name: "t", execute: () => "ok" }]);
+    const result = await runAgent("x", {
+      registry,
+      planner: askPlanner(),
+      // 只给了 confirm（布尔语义）而不是 askUser：回答被归一成字符串 "true"
+      confirm: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+    expect(result.status).toBe("completed");
+    expect(result.history[0].answer).toBe("true");
+    // 但纯空白文本视为没回答 → 结束目标，而不是把空串喂给模型
+    const blank = await runAgent("x", { registry, planner: askPlanner(), askUser: async () => "   " });
+    expect(blank.status).toBe("cancelled");
+    // null / false 仍然表示拒绝回答
+    const denied = await runAgent("x", { registry, planner: askPlanner(), askUser: async () => null });
+    expect(denied.status).toBe("cancelled");
+  });
+
+  it("答案过长被截断，不会把历史撑爆", async () => {
+    const registry = createToolRegistry([{ name: "t", execute: () => "ok" }]);
+    const result = await runAgent("x", { registry, planner: askPlanner(), askUser: async () => "x".repeat(9000) });
+    expect(result.history[0].answer.length).toBeLessThanOrEqual(4000);
+  });
+});
+
+describe("写前预览", () => {
+  const writeRegistry = () => createToolRegistry([
+    { name: "file.read_text", risk: "read", inputSchema: {}, execute: () => ({ text: "old" }) },
+    { name: "file.write_text", risk: "write", previewBefore: true, inputSchema: {}, execute: () => "ok" },
+  ]);
+  /** 先读后写：门禁要求写之前必须读过（预览成功也会登记为内容观察，见 runtime 的说明）。 */
+  const writePlanner = () => {
+    const actions = [
+      { type: "tool_call", tool: "file.read_text", args: { path: "a.txt" } },
+      { type: "tool_call", tool: "file.write_text", args: { path: "a.txt", text: "new" } },
+      { type: "final", answer: "done" },
+    ];
+    return async () => actions.shift();
+  };
+
+  it("确认卡带上 diff：人要看着 diff 才能决定放不放行", async () => {
+    const previewed = [];
+    const seen = [];
+    const result = await runAgent("x", {
+      registry: writeRegistry(),
+      planner: writePlanner(),
+      preview: async (tool, args) => ({ path: args.path, before: "old", after: args.text, diff: { hasChanges: true } }),
+      confirm: async (message, meta) => { seen.push(meta.preview); return true; },
+      onEvent: (e) => { if (e.type === "approval_asked") previewed.push(e); },
+    });
+    expect(result.status).toBe("completed");
+    expect(previewed[0].preview.diff).toEqual({ hasChanges: true });
+    expect(seen[0].path).toBe("a.txt");
+  });
+
+  it("预览成功也算「读过内容」：看着 diff 点了允许，不该再被读后写门禁拦住", async () => {
+    const result = await runAgent("x", {
+      registry: writeRegistry(),
+      planner: (() => {
+        const actions = [
+          { type: "tool_call", tool: "file.write_text", args: { path: "a.txt", text: "new" } },
+          { type: "final", answer: "done" },
+        ];
+        return async () => actions.shift();
+      })(),
+      preview: async (tool, args) => ({ path: args.path, before: "old", after: args.text, diff: {}, isNew: false }),
+      confirm: async () => true,
+    });
+    expect(result.status).toBe("completed");
+  });
+
+  it("没读过就不给写：预览也不放宽这条门禁", async () => {
+    const result = await runAgent("x", {
+      registry: writeRegistry(),
+      planner: async () => ({ type: "tool_call", tool: "file.write_text", args: { path: "a.txt", text: "new" } }),
+      // 预览报 isNew（文件不存在）时不算内容观察，写入仍须先 inspect 证明缺失
+      preview: async (tool, args) => ({ path: args.path, before: "", after: args.text, isNew: true }),
+      confirm: async () => true,
+    });
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("OBSERVATION_REQUIRED");
+  });
+
+  it("预览失败不阻断批准：读不到旧文件也得让人做决定", async () => {
+    const events = [];
+    const result = await runAgent("x", {
+      registry: writeRegistry(),
+      planner: writePlanner(),
+      preview: async () => { throw Error("no such file"); },
+      confirm: async () => true,
+      onEvent: (e) => events.push(e),
+    });
+    expect(events.find((e) => e.type === "approval_asked").preview).toBeUndefined();
+  });
+
+  it("没有预览需求的工具不会触发预览钩子", async () => {
+    let called = 0;
+    const registry = createToolRegistry([{ name: "data.remove", risk: "write", confirm: "always", inputSchema: {}, execute: () => "ok" }]);
+    await runAgent("x", {
+      registry,
+      planner: async () => ({ type: "tool_call", tool: "data.remove", args: {} }),
+      preview: async () => { called += 1; return {}; },
+      confirm: async () => true,
+    });
+    expect(called).toBe(0);
+  });
+});

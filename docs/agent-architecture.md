@@ -110,6 +110,52 @@ Tool Adapters
   - **模型调用退避重试**：`RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT` 退避重试（500ms→5s，上限 3 次尝试），
     鉴权/配置类错误不重试。重试落 `model_retry` 事件，时间线上可见。
   - **模型输出修复**：解析失败把错误原文回灌给规划器自我修正（上限 2 次），落 `model_repair` 事件。
+- **工具结果分层保留**（`resultBudget.js` + `readWindow.js` + `spillStore.js`，2026-09-20）：旧实现是
+  `if (JSON.stringify(value).length > maxOutput) throw Error('工具结果过大，请缩小输入后重试')`——
+  「结果太大」被当成「这步白做」，模型既拿不到数据，也拿不到该怎么做才对。现在分三层：
+  `≤ maxOutput` 原样进历史；`≤ 4×maxOutput` 保留头尾 + 省略标记（`tool_clip` 事件）；
+  更大则落盘（`tool_spill` 事件），历史里放 `spillRef` 与一句「用 spill.read 分段读取」的说明。
+  两个易错点都固化了：**提示文字自身的字节数要先从预算里扣掉**（否则「摘要 + 说明」一起超预算），
+  以及 spill 必须同批给出**读回通道**（`file.read_text` 的 offset/limit + `spill.read` 工具），
+  否则「完整结果已存至某处」是空头支票——一读又会撞上限。
+  落盘走 `platform/invoke` 的 save_data/load_data（桌面与应用主数据同级、参与每日备份，浏览器落 IndexedDB），
+  **不动 Rust 侧 IPC 契约**；治理是索引记账的「最多 30 份 / 保留 7 天」。落盘失败降级为裁剪，
+  并落 `spill_failed` 通知——静默的信息损失必须留痕。
+- **事件载荷单独收预算**（`budgetEvent`，上限 `EVENT_PAYLOAD_LIMIT = 8000`）：进历史的那一份已经被裁剪，
+  但发出去的 `tool_result` 事件带的是**原始对象**——一个 5 MB 的查询结果会顺着 `session.steps` 进 DOM
+  与持久化 run。现在所有出站事件的 `result/answer/preview/error/question/args/text/value` 都过一遍裁剪，
+  命中时标 `payloadClipped`。
+- **写前预览**（`preview.js` + `runtime` 的 `preview` 钩子）：`file.write_text` 声明 `previewBefore: true`，
+  运行时在问人之前先读旧内容做 diff，把 `preview` 塞进 `approval_asked` 事件与 `confirm` 的 meta，
+  确认卡直接显示 diff。预览失败（新建文件、读不到）**不阻断批准**，只是没有 diff 可看。
+  预览成功同时登记为「内容观察」——否则会出现「看着 diff 点了允许、执行时却被读后写门禁拦住」这种自相矛盾。
+  长文件只显示改动附近的若干行并明说节选（`preview.js` 的 `summarizePreviewRows`）：只截前 N 行会让
+  「改动在文件末尾」这种最常见的情况看不见。
+- **历史折叠摘要化**（`history.js`，2026-09-20）：旧实现是 `历史：JSON.stringify(history.slice(-8))`，
+  第 9 步之前的一切（包括失败原因）直接消失——长任务里模型反复重试同一件事，往往就是这个原因。
+  现在早期步骤折叠成一行式摘要（`调用 X · 参数 … · 结果 …／失败 …`），最近 8 步仍是原文，
+  摘要里显式写「已折叠」避免模型误当完整结果。预算分配两步走：**先压成摘要，再按权重分**——
+  全均分会把「第 3 步为什么失败」截成半句，而那是模型纠错唯一能依据的东西；
+  错误与写类步骤权重 ×3，剩余预算优先补满它们。参数 `keepTail` / `summaryBudget` 由
+  `createAIPlanner` 透传（默认 8 / 1500）。
+- **技能库**（`skills.js` + `skillStore.js`，2026-09-20）：把一次成功的运行沉淀成「下次自动带上」的经验。
+  这是 24 个**静态工具**之外唯一的扩展通道——用户自己的成功路径（用什么工具、按什么顺序、参数长什么样）
+  是最便宜也最贴身的扩展点。要点：
+  - `extractSkill` 只在跑成功、用过至少一个工具、正文够长时才产出技能（失败/取消/纯问答都不沉淀）。
+  - **目录不进 prompt**：`matchSkills` 打分（关键词命中 ×2、名称/描述整体命中 ×3、工具短名 ×1，阈值 3、
+    最多 3 条）只把**命中者的正文**送进 prompt，并写明「仅供参考、参数必须重新核对」。
+  - 匹配只吃**用户自己的话**（目标原文、工具名、参数键），不吃 i18n 文案，否则切语言会改变命中结果。
+  - 正文预算是**整条**判定：宁可少带一条，不要一条只带半句。
+  - 存储 50 条 / 单条 8000 字符，同名技能更新而不是堆叠；读取与写入都过 `validateSkill` 归一
+    （整体超限时按「工具名 → 关键词 → 正文」依次收紧，直到真的落进预算）。
+  - `settings.agent.disabledSkills[]`：关掉的技能不注入（不做存在性校验，找不到的 id 在匹配阶段自然失效）。
+  - UI：最终答复卡的「沉淀为技能」+ 右栏可折叠「技能库」（每条可停用/删除）。
+- **ask_user 的回答是文本**（2026-09-20，用户实测反馈修掉的老 bug）：`ask_user` 原本复用工具确认那条路
+  （`options.confirm`）且返回值只被当布尔用，UI 也只画「允许 / 拒绝」——于是点「允许」把 `true` 当答案回灌，
+  模型只能把同一个问题再问一遍（实测：让它比较两个文件，它问路径，点允许之后还是问路径）。
+  现在拆成两条路径：工具确认 `confirm` → 布尔；提问 `askUser` → **文本**
+  （`session.answerPending` + 提问卡输入框）。空白回答视为「没回答」（保留卡片请用户补内容），
+  `null / false / 纯空白` 才取消整个目标；文本上限 4000 字符并进 `confirmation` 事件与历史。
 - 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
 - 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
@@ -129,4 +175,7 @@ Tool Adapters
 - 云同步：装配层（`src/sync/index.js`）的数据源直接来自 `repository` 的 kind 镜像，视图无需注册，未打开的视图也能同步；
   信封加密载荷携带 `kind` 防止跨类别串写；删除以墓碑传播（30 天过期）。双设备装配级与真实服务端测试见
   `src/sync/wiring.test.js` / `src/sync/realServer.test.js`。
-- 待办：MCP 与定时任务未做；浏览器端云同步待服务端开放 CORS 后再接入。
+- 待办：MCP 与定时任务未做；浏览器端云同步待服务端开放 CORS 后再接入；
+  只读工具并发（`agent-dsh-borrow.md` P1-5）、可续跑检查点放宽（P2-8）仍待办。
+  本轮的「结果分层保留 / 历史折叠 / 写前预览 / 技能库」四期见
+  [`docs/superpowers/plans/2026-09-20-agent-depth.md`](superpowers/plans/2026-09-20-agent-depth.md)。

@@ -125,6 +125,8 @@ export function foldTimeline(events = []) {
         item.tool = raw.tool || item.tool;
         item.reason = raw.reason || item.reason;
         item.args = raw.args ?? null;
+        // 写前预览：确认卡要显示 diff，而 diff 是 runtime 在问人之前算好的
+        if (raw.preview) item.preview = raw.preview;
         item.ts = item.ts || ts;
         break;
       }
@@ -138,6 +140,23 @@ export function foldTimeline(events = []) {
       }
       case "final":
         out.push({ kind: "final", answer: raw.answer || "", ts });
+        break;
+      // 结果分层保留后新增的三类事件：模型侧看不到「这一步为什么不完整」，人得看得到。
+      // tool_clip = 头尾保留并省略；tool_spill = 完整结果已落盘（带 key，可读回）。
+      case "tool_clip":
+        out.push({
+          kind: "notice",
+          code: "tool_clip",
+          tool: raw.tool || "",
+          text: "",
+          originalChars: raw.originalChars || 0,
+          retainedChars: raw.retainedChars || 0,
+          omittedChars: raw.omittedChars || 0,
+          ts,
+        });
+        break;
+      case "tool_spill":
+        out.push({ kind: "notice", code: "tool_spill", tool: raw.tool || "", text: raw.key || "", chars: raw.chars || 0, ts });
         break;
       case "notice":
         out.push({ kind: "notice", code: raw.code || "", text: raw.text || "", ts });

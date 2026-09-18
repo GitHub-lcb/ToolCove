@@ -37,8 +37,87 @@ describe("parseAction 宽松解析", () => {
   });
 });
 
-describe("createRepairingPlanner", () => {
-  it("首次成功就不打修复日志", async () => {
+describe("createAIPlanner 的历史折叠", () => {
+  const longHistory = Array.from({ length: 14 }, (_, i) => ({
+    action: { type: "tool_call", tool: `tool${i}`, args: { i } },
+    result: `结果 ${i}`,
+  }));
+
+  it("长历史进 prompt 时是折叠后的摘要，而不是被丢掉的尾巴", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner();
+    await planner({ input: "目标", history: longHistory, tools: [], repairs: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    // 早期步骤仍在（摘要），并且明说了已折叠
+    expect(prompt).toContain("tool0");
+    expect(prompt).toContain("已折叠");
+    expect(prompt).toContain("tool13");
+  });
+
+  it("短历史照旧给原文", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner();
+    await planner({ input: "目标", history: longHistory.slice(0, 3), tools: [], repairs: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).not.toContain("已折叠");
+    expect(prompt).toContain("tool0");
+  });
+
+  it("折叠参数可覆盖（keepTail / summaryBudget 透传）", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ keepTail: 2, summaryBudget: 300 });
+    await planner({ input: "目标", history: longHistory, tools: [], repairs: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).toContain("最近 2 步");
+  });
+});
+
+describe("createAIPlanner 的技能注入", () => {
+  const skill = {
+    id: "s1",
+    name: "读取 order.json 导出 csv",
+    description: "读取 order.json｜file.read_text → json.parse",
+    instructions: "目标：读取 order.json，找出重复字段并导出 CSV\n- file.read_text → 12 项",
+    keywords: ["order.json", "csv", "重复"],
+    toolNames: ["file.read_text", "json.parse"],
+    createdAt: 1,
+  };
+
+  it("命中的技能正文进 prompt，并说明「仅供参考、参数要重新核对」", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ skills: [skill] });
+    await planner({ input: "读取 order.json 找出重复字段并导出 csv", history: [], tools: [], repairs: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).toContain("【技能】");
+    expect(prompt).toContain("file.read_text");
+    expect(prompt).toContain("参数必须重新核对");
+  });
+
+  it("不相关的目标不注入（目录不进 prompt，省 token）", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ skills: [skill] });
+    await planner({ input: "今天天气怎么样", history: [], tools: [], repairs: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).not.toContain("【技能】");
+    expect(prompt).not.toContain("order.json");
+  });
+
+  it("用户关掉的技能不注入", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ skills: [skill], disabledSkills: ["s1"] });
+    await planner({ input: "读取 order.json 找出重复字段并导出 csv", history: [], tools: [], repairs: [] });
+    expect(aiComplete.mock.calls[0][0]).not.toContain("【技能】");
+  });
+
+  it("没配技能库时不报错也不注入", async () => {
+    aiComplete.mockResolvedValueOnce('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner();
+    await planner({ input: "读取 order.json 导出 csv", history: [], tools: [], repairs: [] });
+    expect(aiComplete.mock.calls[0][0]).not.toContain("【技能】");
+  });
+});
+
+describe("createRepairingPlanner", () => {  it("首次成功就不打修复日志", async () => {
     const planner = vi.fn(async () => ({ type: "final", answer: "ok" }));
     const onRepair = vi.fn();
     const result = await createRepairingPlanner(planner, { onRepair })({ history: [] });

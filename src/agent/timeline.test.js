@@ -87,6 +87,31 @@ describe("foldTimeline 非工具事件", () => {
     expect(foldTimeline(null)).toEqual([]);
     expect(foldTimeline([null, 7, "x", undefined])).toEqual([]);
   });
+
+  it("结果分层保留的两类事件各占一行，参数带上便于文案说明省略了多少", () => {
+    const items = foldTimeline([
+      start("a", "db.query_readonly"),
+      { type: "tool_clip", tool: "db.query_readonly", originalChars: 90000, retainedChars: 8000, omittedChars: 82000, ts: 5 },
+      { type: "tool_spill", tool: "db.query_readonly", key: "spill:db-query-readonly-ab12", chars: 90000, ts: 6 },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["tool", "notice", "notice"]);
+    expect(items[0].tool).toBe("db.query_readonly");
+    expect(items[1]).toMatchObject({ kind: "notice", code: "tool_clip", tool: "db.query_readonly", omittedChars: 82000 });
+    expect(items[2]).toMatchObject({ kind: "notice", code: "tool_spill", text: "spill:db-query-readonly-ab12", chars: 90000 });
+  });
+
+  it("写前预览随 approval_asked 一起进条目（确认卡要渲染 diff）", () => {
+    const items = foldTimeline([
+      { type: "approval_asked", id: "c1", tool: "file.write_text", reason: "risky-write", args: { path: "a.txt" }, preview: { path: "a.txt", diff: { hasChanges: true } }, ts: 1 },
+    ]);
+    expect(items[0].preview.diff).toEqual({ hasChanges: true });
+  });
+
+  it("缺失参数的分层事件不让视图拿到 undefined", () => {
+    const items = foldTimeline([{ type: "tool_clip", tool: "t", ts: 1 }, { type: "tool_spill", ts: 2 }]);
+    expect(items[0]).toMatchObject({ omittedChars: 0, originalChars: 0, retainedChars: 0 });
+    expect(items[1]).toMatchObject({ text: "", chars: 0, tool: "" });
+  });
 });
 
 describe("hasRunning", () => {

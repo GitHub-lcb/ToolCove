@@ -116,7 +116,7 @@ describe("mergeSettingsSnapshot（设置页保存不得删除未渲染分组）"
 
 describe("normalizeAgent（Agent 设置归一）", () => {
   const TOOLS = ["json.parse", "json.format", "file.write_text"];
-  const DEFAULTS = { maxSteps: 12, retries: 1, requireConfirmation: "risky", disabledTools: [] };
+  const DEFAULTS = { maxSteps: 12, retries: 1, requireConfirmation: "risky", disabledTools: [], disabledSkills: [] };
 
   it("缺字段/非对象 → 全默认", () => {
     expect(normalizeAgent(undefined, TOOLS)).toEqual(DEFAULTS);
@@ -163,5 +163,11 @@ describe("normalizeAgent（Agent 设置归一）", () => {
     expect(normalizeAgent({ disabledTools: ["json.parse"] }, "x").disabledTools).toEqual([]);
     // 清单为空时不做全关自愈（没有可比较的总数）
     expect(normalizeAgent({ disabledTools: [] }, []).disabledTools).toEqual([]);
+  });
+
+  it("disabledSkills 只做形状与去重约束（技能 id 由用户沉淀产生，设置页无法预校验存在性）", () => {
+    expect(normalizeAgent({ disabledSkills: ["a", "a", " b ", "", 7, null] }, TOOLS).disabledSkills).toEqual(["a", " b "]);    expect(normalizeAgent({ disabledSkills: "x" }, TOOLS).disabledSkills).toEqual([]);
+    // 全是技能被关掉也不报错：技能是可选增强，不是可执行能力（与「全关工具」不同）
+    expect(normalizeAgent({ disabledSkills: ["a", "b"] }, TOOLS).disabledSkills).toEqual(["a", "b"]);
   });
 });

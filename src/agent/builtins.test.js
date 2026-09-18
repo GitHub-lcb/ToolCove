@@ -20,9 +20,17 @@ it('publishes typed schemas and rejects oversized generation requests', async ()
 });
 
 it('covers every toolbox capability with an agent tool', () => {
-  const toolKeys = [...new Set(createBuiltinRegistry().list().map(t => t.toolKey))].sort();
+  // toolKey 是「这个工具对应工具箱里的哪个入口」，agent 是引擎自己的能力（spill.read），
+  // 在工具箱里没有对应入口，所以不参与这张对照表。
+  const toolKeys = [...new Set(createBuiltinRegistry().list().map(t => t.toolKey).filter(k => k !== 'agent'))].sort();
   // chat 是面向人的对话界面，不作为 Agent 工具；其余工具箱能力都有对应工具
   expect(toolKeys).toEqual(['convert', 'crypto', 'db', 'diff', 'file', 'generator', 'image', 'json', 'network', 'request', 'time']);
+});
+
+it('exposes spill.read only for the engine itself, not as a toolbox entry', () => {
+  const tool = createBuiltinRegistry().get('spill.read');
+  expect(tool.risk).toBe('read');
+  expect(tool.toolKey).toBe('agent');
 });
 
 it('hashes text and marks remote-capable tools with the right risk', async () => {

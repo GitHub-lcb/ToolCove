@@ -2,6 +2,8 @@ import { aiComplete } from "../ai.js";
 import { runAgent } from "./runtime.js";
 import { createBuiltinRegistry } from "./builtins.js";
 import { createRun, appendStep, canResume, addUsage } from "./runStore.js";
+import { historyPromptText } from "./history.js";
+import { matchSkills, skillsPromptSection } from "./skills.js";
 
 // 模型响应修复预算：解析失败时把错误原文回灌给模型自我修正，最多这么多次，之后按失败收尾。
 // 必须有界——无上限会烧 token；每次修复都会在时间线上留一条 model_repair 事件。
@@ -35,14 +37,21 @@ export function parseAction(text) {
   throw Error(lastError?.message || "不是合法 JSON");
 }
 
-function buildPrompt(input, history, tools, repairs) {
+function buildPrompt(input, history, tools, repairs, options = {}) {
   const lines = [
     "你是 ToolCove 本地开发智能体。只能从工具列表中选择工具。",
     "每次只返回一个 JSON 动作，不要 Markdown：tool_call {type,id,tool,args}、final {type,answer} 或 ask_user {type,question}。",
     `目标：${input}`,
     `工具：${JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description, risk: t.risk, inputSchema: t.inputSchema })))}`,
-    `历史：${JSON.stringify(history.slice(-8))}`,
   ];
+  // 技能：只把**命中**的正文放进来，目录（未命中的技能）刻意不进 prompt——
+  // 否则每次运行都要为全部技能付 token（见 skills.js 的设计取舍）。
+  const matches = options.skills ? matchSkills(options.skills, input, { disabled: options.disabledSkills }) : [];
+  const skillSection = skillsPromptSection(matches);
+  if (skillSection) lines.push(skillSection);
+  // 早期步骤折叠成摘要而不是直接丢弃：长任务里模型反复重试同一件事，
+  // 往往就是因为第 3 步的失败原因已经被 slice(-8) 丢掉了（见 history.js）。
+  lines.push(`历史：${historyPromptText(history, options.historyOptions || {})}`);
   if (repairs.length) {
     lines.push(
       "注意：你上几次的回复无法解析为 JSON 动作，错误如下。请只返回一个合法 JSON 对象，不要解释文字，不要 Markdown 围栏。",
@@ -54,8 +63,13 @@ function buildPrompt(input, history, tools, repairs) {
 
 export function createAIPlanner(options = {}) {
   const modelOptions = options.modelOptions || {};
+  const plannerOptions = {
+    skills: Array.isArray(options.skills) ? options.skills : null,
+    disabledSkills: Array.isArray(options.disabledSkills) ? options.disabledSkills : [],
+    historyOptions: { keepTail: options.keepTail, summaryBudget: options.summaryBudget },
+  };
   return async ({ input, history, tools, repairs = [] }) => {
-    const prompt = buildPrompt(input, history, tools, repairs);
+    const prompt = buildPrompt(input, history, tools, repairs, plannerOptions);
     const callOptions = typeof options.onUsage === "function" ? { ...modelOptions, onUsage: options.onUsage } : modelOptions;
     return parseAction(await aiComplete(prompt, callOptions));
   };
