@@ -3025,6 +3025,17 @@
     "timeSource": "From",
     "timeTarget": "To",
     "toolType": "Type",
-    "toolContainers": "Objects / arrays"
+    "toolContainers": "Objects / arrays",
+    "cryptoHmacTab": "HMAC",
+    "cryptoInputPh": "Paste the text to hash…",
+    "cryptoCompute": "Compute",
+    "cryptoStrength": "Strength",
+    "cryptoEntropy": "Entropy",
+    "cryptoPool": "Character pool",
+    "cryptoLocalNote": "Everything is computed on this device; nothing is uploaded.",
+    "genSeedPh": "Leave empty for random",
+    "genMockNote": "Pick fields (defaults to the first three) to generate fake data you can paste straight into API debugging.",
+    "diffRows": "Line by line",
+    "diffPatch": "Unified patch"
   }
 }

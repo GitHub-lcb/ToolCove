@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as json from "../../../src/json.js";
 import * as convert from "../../../src/convert.js";
+import { generatePassword, getPasswordPoolSize } from "../../../src/cryptoTool.js";
 
 /**
  * 这两个模块是**共享层**（桌面端与手机端同一份），手机端工具视图直接依赖它们的返回契约。
@@ -77,5 +78,56 @@ describe("convert.js 的返回契约（成功给字符串，失败抛）", () =>
   it("JSON 字符串转义：解码非转义内容会抛（视图要 catch 并显示原因）", () => {
     expect(convert.encodeJsonString('a"b')).toBe('a\\"b');
     expect(() => convert.decodeJsonString('"a"')).toThrow();
+  });
+});
+
+/**
+ * 密码生成的开关键名是**静默失败**的重灾区：
+ * generatePassword / getPasswordPoolSize 只认 PASSWORD_SETS 的键
+ * （uppercase / lowercase / numbers / symbols），多出来的键被忽略、不报错。
+ * 手机端曾经写成 upper/lower/number/symbol，表现是「开关点了没反应、池大小不变」。
+ */
+describe("密码生成的字符集键名（静默忽略的坑）", () => {
+  const ALL = { uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: false };
+
+  it("关掉某一类，字符池必须变小", () => {
+    const full = getPasswordPoolSize(ALL);
+    for (const key of Object.keys(ALL)) {
+      if (key === "excludeAmbiguous") continue;
+      const without = getPasswordPoolSize({ ...ALL, [key]: false });
+      expect(without, `关掉 ${key} 后池没变，说明键名没被识别`).toBeLessThan(full);
+    }
+  });
+
+  it("默认就排除易混字符：想保留它们必须显式传 excludeAmbiguous:false", () => {
+    // 这是共享层容易被误读的地方，实测值（别凭字符集长度推算）：
+    //   {四类全开}                          → 85（默认已排除易混字符）
+    //   {四类全开, excludeAmbiguous: false}  → 85
+    //   {四类全开, excludeAmbiguous: true}   → 79
+    // 也就是「不传」与「传 false」等价，而 true 会再砍掉 6 个。
+    const all = { uppercase: true, lowercase: true, numbers: true, symbols: true };
+    expect(getPasswordPoolSize(all)).toBe(85);
+    expect(getPasswordPoolSize({ ...all, excludeAmbiguous: false })).toBe(85);
+    expect(getPasswordPoolSize({ ...all, excludeAmbiguous: true })).toBe(79);
+  });
+
+  it("语义是「不等于 false 即启用」：只想开一类也必须把其余显式关掉", () => {
+    // { numbers: true } 并不等于「只用数字」——其余三类没传，被当成启用。
+    expect(getPasswordPoolSize({ numbers: true })).toBe(85);
+    expect(getPasswordPoolSize({ uppercase: false, lowercase: false, numbers: true, symbols: false })).toBe(10);
+    expect(getPasswordPoolSize({ uppercase: false, lowercase: false, numbers: false, symbols: false })).toBe(0);
+  });
+
+  it("错误键名会被静默忽略（所以键名必须与共享层一致）", () => {
+    // 这不是期望行为，而是记录现实：写错名字不会报错，只会「没反应」
+    expect(getPasswordPoolSize({ upper: false, lowercase: false, numbers: false, symbols: false })).toBeGreaterThan(0);
+  });
+
+  it("生成的密码长度可控，且只用启用的字符集", () => {
+    const digitsOnly = generatePassword({ length: 12, uppercase: false, lowercase: false, numbers: true, symbols: false });
+    expect(digitsOnly).toHaveLength(12);
+    expect(digitsOnly).toMatch(/^[0-9]+$/);
+
+    expect(generatePassword({ length: 20, ...ALL })).toHaveLength(20);
   });
 });

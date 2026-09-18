@@ -3025,6 +3025,17 @@
     "timeSource": "源",
     "timeTarget": "目标",
     "toolType": "类型",
-    "toolContainers": "对象 / 数组"
+    "toolContainers": "对象 / 数组",
+    "cryptoHmacTab": "HMAC",
+    "cryptoInputPh": "粘贴要计算的文本…",
+    "cryptoCompute": "计算",
+    "cryptoStrength": "强度",
+    "cryptoEntropy": "熵值",
+    "cryptoPool": "字符池",
+    "cryptoLocalNote": "全部在本机计算，不上传任何内容。",
+    "genSeedPh": "留空即随机",
+    "genMockNote": "选字段（不选则默认前三个），生成可直接粘贴进接口调试的假数据。",
+    "diffRows": "逐行对比",
+    "diffPatch": "统一补丁"
   }
 }

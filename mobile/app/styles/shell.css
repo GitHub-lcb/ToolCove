@@ -680,3 +680,58 @@ body,
   font-size: 0.78rem;
   line-height: 1.6;
 }
+/* ---------- 文本对比 ---------- */
+.m-diff {
+  list-style: none;
+  margin: var(--m-gap) 0 0;
+  padding: 0;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  overflow: hidden;
+}
+
+.m-diff-row {
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--m-border);
+}
+
+.m-diff-row:last-child {
+  border-bottom: 0;
+}
+
+/* 增/删/改各有底色与符号；符号本身也表意，不只靠颜色 */
+.m-diff-row[data-type="added"] { background: rgba(26, 127, 55, 0.10); }
+.m-diff-row[data-type="removed"] { background: rgba(207, 34, 46, 0.10); }
+.m-diff-row[data-type="modified"] { background: rgba(154, 103, 0, 0.12); }
+
+.m-diff-sign {
+  flex: 0 0 12px;
+  color: var(--m-muted);
+}
+
+.m-diff-line {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.m-diff-line.arrow {
+  color: var(--m-muted);
+}
+
+/* ---------- 两列并排的小字段（手机上也常常需要两个短输入并排） ---------- */
+.m-field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.m-field-row .m-field {
+  flex: 1;
+  min-width: 0;
+}

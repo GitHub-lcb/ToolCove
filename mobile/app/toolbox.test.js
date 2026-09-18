@@ -36,7 +36,8 @@ describe("手机端工具箱目录", () => {
     expect(progressOf().ready).toBeGreaterThan(0);
   });
 
-  it("toolsOfGroup 保持清单顺序", () => {
-    expect(toolsOfGroup("data").map((t) => t.key)).toEqual(["json", "convert", "time"]);
+  it("toolsOfGroup 保持清单顺序（新增工具后这里要同步，否则界面顺序会漂）", () => {
+    expect(toolsOfGroup("data").map((t) => t.key)).toEqual(["json", "convert", "diff", "time"]);
+    expect(toolsOfGroup("development").map((t) => t.key)).toEqual(["crypto", "generator", "db"]);
   });
 });

@@ -27,9 +27,10 @@ export const TOOL_GROUPS = Object.freeze([
 export const TOOLS = Object.freeze([
   { key: "json", group: "data", labelKey: "toolbox.registry.toolJson", ready: true },
   { key: "convert", group: "data", labelKey: "toolbox.registry.toolConvert", ready: true },
+  { key: "diff", group: "data", labelKey: "toolbox.registry.toolDiff", ready: true },
   { key: "time", group: "data", labelKey: "toolbox.registry.toolTime", ready: true },
-  { key: "crypto", group: "development", labelKey: "toolbox.registry.toolCrypto", ready: false },
-  { key: "generator", group: "development", labelKey: "toolbox.registry.toolGenerator", ready: false },
+  { key: "crypto", group: "development", labelKey: "toolbox.registry.toolCrypto", ready: true },
+  { key: "generator", group: "development", labelKey: "toolbox.registry.toolGenerator", ready: true },
   { key: "db", group: "development", labelKey: "toolbox.registry.toolDb", ready: false, note: "mobile.noteDb" },
   { key: "request", group: "network", labelKey: "toolbox.registry.toolRequest", ready: false },
   { key: "network", group: "network", labelKey: "toolbox.registry.toolNetwork", ready: false, note: "mobile.noteNetwork" },

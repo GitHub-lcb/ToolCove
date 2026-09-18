@@ -25,6 +25,9 @@ const VIEWS = {
   json: defineAsyncComponent(() => import("./tools/JsonToolView.vue")),
   convert: defineAsyncComponent(() => import("./tools/ConvertToolView.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeToolView.vue")),
+  crypto: defineAsyncComponent(() => import("./tools/CryptoToolView.vue")),
+  generator: defineAsyncComponent(() => import("./tools/GeneratorToolView.vue")),
+  diff: defineAsyncComponent(() => import("./tools/DiffToolView.vue")),
 };
 
 function open(tool) {
