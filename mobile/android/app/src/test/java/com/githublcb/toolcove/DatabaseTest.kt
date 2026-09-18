@@ -159,6 +159,56 @@ class DatabaseTest {
         assertTrue(noSql.contains("SQL 为空"))
     }
 
+    // ---------- 表名校验（注入面） ----------
+    @Test
+    fun `表名校验：常规标识符通过`() {
+        for (name in listOf("users", "orders", "_private", "t1", "a_b_c", "ORDER_ITEMS", "x9")) {
+            assertTrue("$name 应通过", SqlKit.isValidTableName(name))
+        }
+    }
+
+    @Test
+    fun `表名校验：拒绝能拼进 SQL 的一切（PRAGMA 不支持占位符）`() {
+        // PRAGMA table_info(<表名>) 只能拼字符串，所以这里必须保守：
+        // 任何能改变语句语义的字符都要拒掉
+        val dangerous = listOf(
+            "users; DROP TABLE orders",       // 多语句
+            "users) --",                      // 注释截断
+            "users'",                         // 引号
+            "users\"",                        // 双引号
+            "users WHERE 1=1",                // 空格 + 关键字
+            "users\nDROP",                    // 换行
+            "1users",                         // 数字开头（SQL 标识符不允许）
+            "",                               // 空
+            "用户表",                          // 中文（SQLite 允许，但保守起见拒绝）
+            "users.table",                    // 点号（跨库/表限定）
+            "users*",                         // 通配
+        )
+        for (name in dangerous) {
+            assertFalse("$name 应被拒绝", SqlKit.isValidTableName(name))
+        }
+    }
+
+    // ---------- 连接句柄 ----------
+    @Test
+    fun `连接句柄带引擎前缀且可读`() {
+        val id = SqlKit.connectionId()
+        assertTrue("应有 sqlite- 前缀：$id", id.startsWith("sqlite-"))
+        // 前缀 + 8 位，便于日志辨认；句柄只在内存里用，不需要更长
+        assertEquals("sqlite-".length + 8, id.length)
+    }
+
+    @Test
+    fun `连接句柄不重复`() {
+        val ids = (1..200).map { SqlKit.connectionId() }.toSet()
+        assertEquals("200 次生成应互不相同", 200, ids.size)
+    }
+
+    @Test
+    fun `连接断开的错误文案统一（前端按它提示重新连接）`() {
+        assertEquals("连接已断开，请重新连接", SqlKit.NO_CONNECTION)
+    }
+
     @Test
     fun `db_tables 与 db_columns 返回前端要的形状`() {
         val b = bridge(FakeDb())

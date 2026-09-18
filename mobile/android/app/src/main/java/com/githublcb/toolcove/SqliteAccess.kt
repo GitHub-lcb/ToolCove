@@ -7,7 +7,6 @@ import com.githublcb.toolcove.bridge.DatabaseAccess
 import com.githublcb.toolcove.bridge.JsonValue
 import com.githublcb.toolcove.bridge.QueryOutcome
 import com.githublcb.toolcove.bridge.SqlKit
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -29,7 +28,7 @@ class SqliteAccess(private val context: Context) : DatabaseAccess {
     override fun open(options: JsonValue): String {
         val file = options.str("file").trim()
         require(file.isNotEmpty()) { "请选择或填写 SQLite 文件" }
-        val connId = "sqlite-" + UUID.randomUUID().toString().take(8)
+        val connId = SqlKit.connectionId()
         // OPEN_READWRITE 而不带 CREATE：路径写错时应当明确报错，而不是悄悄建一个空库
         val db = SQLiteDatabase.openDatabase(file, null, SQLiteDatabase.OPEN_READWRITE)
         connections[connId] = db
@@ -41,7 +40,7 @@ class SqliteAccess(private val context: Context) : DatabaseAccess {
     }
 
     override fun query(connId: String, sql: String): QueryOutcome {
-        val db = connections[connId] ?: throw IllegalStateException("连接已断开，请重新连接")
+        val db = connections[connId] ?: throw IllegalStateException(SqlKit.NO_CONNECTION)
         val started = System.currentTimeMillis()
         // 分类决定走 rawQuery 还是 execSQL：混用会抛异常或得到空游标（见 SqlKit.isQuery 的注释）
         if (!SqlKit.isQuery(sql)) {
@@ -79,7 +78,7 @@ class SqliteAccess(private val context: Context) : DatabaseAccess {
     }
 
     override fun tables(connId: String): List<Map<String, Any?>> {
-        val db = connections[connId] ?: throw IllegalStateException("连接已断开，请重新连接")
+        val db = connections[connId] ?: throw IllegalStateException(SqlKit.NO_CONNECTION)
         val names = ArrayList<String>()
         db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name", null).use { cursor ->
             while (cursor.moveToNext()) names.add(cursor.getString(0))
@@ -88,9 +87,9 @@ class SqliteAccess(private val context: Context) : DatabaseAccess {
     }
 
     override fun columns(connId: String, table: String): List<Map<String, Any?>> {
-        val db = connections[connId] ?: throw IllegalStateException("连接已断开，请重新连接")
+        val db = connections[connId] ?: throw IllegalStateException(SqlKit.NO_CONNECTION)
         // 表名不能参数化（PRAGMA 不支持占位符），所以必须先校验，否则就是注入面
-        require(Regex("^[A-Za-z_][A-Za-z0-9_]*$").matches(table)) { "表名不合法：$table" }
+        require(SqlKit.isValidTableName(table)) { "表名不合法：$table" }
         val result = ArrayList<Triple<String, String, Boolean>>()
         db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
             val nameIndex = cursor.getColumnIndex("name")

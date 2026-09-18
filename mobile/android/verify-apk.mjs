@@ -49,6 +49,49 @@ const wasm = names.filter((n) => n.startsWith("assets/assets/") && n.endsWith(".
 if (wasm.length) ok(`包含排版引擎 ${wasm.map((n) => n.split("/").pop()).join(", ")}`);
 else bad("缺少 label-core.wasm —— 标签工具会加载失败");
 
+// ── 资源布局与内置服务的候选前缀是否对得上 ────────────────────────────
+// 这是"空壳包白屏"事故的防线：AssetsServer 按候选前缀顺序找资源，
+// 如果三种候选都对不上真实布局，装上去就是白屏（而且构建是"成功"的）。
+//
+// 候选顺序**从 Kotlin 源码里读**（bridge/AssetPath.kt 的 candidatesFor），
+// 不在这里手写第二份——两份清单迟早会漂，而漂了就是白屏。
+const assetPathSource = readFileSync(join(here, "app", "src", "main", "java", "com", "githublcb", "toolcove", "bridge", "AssetPath.kt"), "utf8");
+const candidateLine = /fun candidatesFor\(path: String\): List<String> = (.*)/.exec(assetPathSource);
+if (!candidateLine) {
+  bad("读不到 AssetPath.candidatesFor —— 它改了名字或写法，这个检查要跟着改");
+} else {
+  // Kotlin 的写法是 listOf("web/$path", path, "web/web/$path")：
+  // 引号里的是模板，裸的 `path` 是"原样路径"（第二种候选）。
+  // 所以要把带引号的模板与裸标识符都翻出来，否则报告里会漏掉最关键的那一种
+  // （而真实 APK 恰好就是靠"原样路径"命中的——AGP 这次没保留 web 目录）。
+  const quoted = [...candidateLine[1].matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  const hasBarePath = /(^|[\s,(])path([\s,)]|$)/.test(candidateLine[1]);
+  const patterns = [...(hasBarePath ? ["$path"] : []), ...quoted];
+  if (!patterns.length) bad("候选列表解析为空 —— 检查逻辑要跟着 Kotlin 的写法改");
+
+  const inApk = names.filter((n) => n.startsWith("assets/")).map((n) => n.replace(/^assets\//, ""));
+  const applyPattern = (pattern, path) => pattern.replace("$path", path);
+  const resolveInApk = (requestPath) => patterns.map((p) => applyPattern(p, requestPath)).find((candidate) => inApk.includes(candidate)) || "";
+
+  // 包里每个"前端会请求的文件"都要能被某个候选命中
+  const requestable = inApk.filter((n) => n === "index.html" || n.startsWith("assets/"));
+  const unreachable = requestable.filter((requestPath) => !resolveInApk(requestPath));
+  if (unreachable.length) {
+    bad(`这些资源按候选前缀都找不到（会 404 → 白屏）：${unreachable.slice(0, 5).join(", ")}${unreachable.length > 5 ? ` …共 ${unreachable.length} 个` : ""}`);
+  } else {
+    ok(`资源布局与候选前缀一致（${requestable.length} 个资源都能命中）`);
+    // 报告实际命中的是哪一种：这个信息在排查"换了 AGP 版本后布局变了"时很有用
+    const hitKind = new Map();
+    for (const requestPath of requestable) {
+      const hit = resolveInApk(requestPath);
+      const pattern = patterns.find((p) => applyPattern(p, requestPath) === hit) || "?";
+      hitKind.set(pattern, (hitKind.get(pattern) || 0) + 1);
+    }
+    ok(`命中分布：${[...hitKind].map(([pattern, count]) => `${pattern} ×${count}`).join("，")}`);
+  }
+  if (!resolveInApk("index.html")) bad("index.html 无法命中 —— 装上就是白屏");
+}
+
 // ── 2. 版本号 ───────────────────────────────────────────────────────
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const aapt = join(here, ".toolchain", "android-sdk", "build-tools", "35.0.0", process.platform === "win32" ? "aapt2.exe" : "aapt2");

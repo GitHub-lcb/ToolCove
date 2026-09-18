@@ -1,12 +1,12 @@
 package com.githublcb.toolcove
 
 import android.content.res.AssetManager
+import com.githublcb.toolcove.bridge.AssetPath
 import java.io.BufferedOutputStream
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URLDecoder
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
@@ -112,31 +112,15 @@ class AssetsServer(private val assets: AssetManager) {
         }
     }
 
-    /**  URL 路径 → assets 内的相对路径；目录请求回落 index.html，未知扩展名不乱编码。 */
-    private fun resolvePath(rawPath: String): String {
-        val withoutQuery = rawPath.substringBefore('?').substringBefore('#')
-        val decoded = try {
-            URLDecoder.decode(withoutQuery, "UTF-8")
-        } catch (_: Exception) {
-            withoutQuery
-        }
-        var path = decoded.removePrefix("/")
-        if (path.isEmpty()) path = "index.html"
-        if (path.endsWith("/")) path += "index.html"
-        // 目录式路由（无扩展名且不带斜杠）也回落 index.html，支持前端将来加路由
-        if (!path.contains('.') && !path.endsWith("index.html")) path += "/index.html"
-        // 穿越防护：规范化后不允许出现 ..
-        if (path.split('/').any { it == ".." }) return "__forbidden__"
-        return path
-    }
+    /**  URL 路径 → assets 内的相对路径；规则与穿越防护见 bridge/AssetPath（那部分有单测）。 */
+    private fun resolvePath(rawPath: String): String = AssetPath.resolve(rawPath)
 
     private fun readAsset(path: String): ByteArray? {
-        if (path == "__forbidden__") return null
-        // 依次尝试几种前缀：Android 打包 assets 时会按源集结构决定是否保留一级目录名，
-        // 与其假设它一定是哪一种，不如按候选顺序找——找到就用，都不中才 404。
+        if (path == AssetPath.FORBIDDEN) return null
+        // 候选前缀顺序由 AssetPath 给出并可测：Android 打包 assets 时会按源集结构决定
+        // 是否保留一级目录名，与其假设它一定是哪一种，不如按候选顺序找——找到就用，都不中才 404。
         // （这样即使以后 Gradle/AGP 改了合并规则，也不至于变成「装了但白屏」。）
-        val candidates = listOf("web/$path", path, "web/web/$path")
-        for (candidate in candidates) {
+        for (candidate in AssetPath.candidatesFor(path)) {
             try {
                 return assets.open(candidate).use { it.readBytes() }
             } catch (_: Exception) {
@@ -154,41 +138,11 @@ class AssetsServer(private val assets: AssetManager) {
         cors: Boolean,
         contentLength: Int = body.size,
     ) {
-        val reason = when (status) {
-            200 -> "OK"
-            204 -> "No Content"
-            404 -> "Not Found"
-            405 -> "Method Not Allowed"
-            else -> "OK"
-        }
-        val head = buildString {
-            append("HTTP/1.1 $status $reason\r\n")
-            append("Content-Type: $contentType\r\n")
-            append("Content-Length: $contentLength\r\n")
-            // 前端产物带内容哈希，但 index.html 不带：统一 no-cache，避免升级后仍旧页面
-            append("Cache-Control: no-cache\r\n")
-            if (cors) append("Access-Control-Allow-Origin: *\r\n")
-            append("Connection: close\r\n\r\n")
-        }
         val out = BufferedOutputStream(socket.getOutputStream())
-        out.write(head.toByteArray(Charsets.UTF_8))
+        out.write(AssetPath.responseHead(status, contentType, contentLength, cors).toByteArray(Charsets.UTF_8))
         if (body.isNotEmpty()) out.write(body)
         out.flush()
     }
 
-    private fun mimeOf(path: String): String = when (path.substringAfterLast('.', "").lowercase()) {
-        "html" -> "text/html; charset=utf-8"
-        "js", "mjs" -> "text/javascript; charset=utf-8"
-        "css" -> "text/css; charset=utf-8"
-        "json" -> "application/json; charset=utf-8"
-        "wasm" -> "application/wasm"
-        "svg" -> "image/svg+xml"
-        "png" -> "image/png"
-        "jpg", "jpeg" -> "image/jpeg"
-        "webp" -> "image/webp"
-        "ico" -> "image/x-icon"
-        "woff2" -> "font/woff2"
-        "txt", "md" -> "text/plain; charset=utf-8"
-        else -> "application/octet-stream"
-    }
+    private fun mimeOf(path: String): String = AssetPath.mimeOf(path)
 }

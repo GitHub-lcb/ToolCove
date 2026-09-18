@@ -119,4 +119,25 @@ object SqlKit {
      */
     fun columnRows(columns: List<Triple<String, String, Boolean>>): List<Map<String, Any?>> =
         columns.map { (name, type, pk) -> mapOf("name" to name, "type" to type, "pk" to pk) }
+
+    /**
+     * 表名是否合法。
+     *
+     * ⚠️ 这是**注入面**：`PRAGMA table_info(<表名>)` 不支持占位符参数，只能拼字符串，
+     * 所以表名必须先校验。校验规则刻意保守——只允许常规标识符，
+     * 宁可拒绝一个带引号/空格的怪表名，也不能把用户输入直接拼进 SQL。
+     * （这条以前只写在 SqliteAccess 里、没有测试，等于安全约束没人守。）
+     */
+    fun isValidTableName(table: String): Boolean = Regex("^[A-Za-z_][A-Za-z0-9_]*$").matches(table)
+
+    /**
+     * 生成连接句柄。
+     *
+     * 前缀 `sqlite-` 让日志与错误信息一眼看出是哪种连接（将来若支持别的引擎也不会混淆）；
+     * 只取 UUID 前 8 位是为了可读——句柄只在内存里用，不需要全局唯一性到 32 位。
+     */
+    fun connectionId(): String = "sqlite-" + java.util.UUID.randomUUID().toString().take(8)
+
+    /** 连接不存在时的统一错误文案（前端按它提示"请重新连接"）。 */
+    const val NO_CONNECTION = "连接已断开，请重新连接"
 }
