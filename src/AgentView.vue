@@ -937,6 +937,15 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .link.xs.danger:hover { color: var(--danger); }
 .link:disabled { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
 
+/* 深色下 --primary 被压深（为了主按钮上的白字达标），文字类链接需要更亮的一档，
+   否则 12.5px 的链接只有 3.67:1（E2E 对比度审计）。同理用于 .hint-ex 的示例按钮文字。 */
+@media (prefers-color-scheme: dark) {
+  .link { color: var(--primary-light); }
+  .link:hover { color: var(--primary-bright); }
+  .hint-ex { color: var(--primary-light); }
+  .hint-ex:hover { color: var(--primary-bright); }
+}
+
 /* 窄窗口：右栏移到主列下方 */
 @media (max-width: 1000px) {
   .body { grid-template-columns: 1fr; overflow: auto; }

@@ -81,20 +81,30 @@ describe("初始语言决议", () => {
 });
 
 describe("应用语言偏好", () => {
-  it("显式偏好即时切换 locale", () => {
-    applyLocale("en-US");
+  // applyLocale 现在是异步的：字典按需加载（首屏只打包当前语言，另一种懒加载），
+  // 所以「切到一个还没加载的语言」要先 await 加载完成。启动流程在 mount 之前 await 它，
+  // 用户不会看到中间态。
+  it("显式偏好即时切换 locale（字典未加载时先加载再切）", async () => {
+    await expect(applyLocale("en-US")).resolves.toBe(true);
     expect(i18n.global.locale.value).toBe("en-US");
-    applyLocale("zh-CN");
+    expect(i18n.global.availableLocales).toContain("en-US");
+    await applyLocale("zh-CN");
     expect(i18n.global.locale.value).toBe("zh-CN");
   });
 
-  it("跟随系统按 navigator 语言决议", () => {
-    applyLocale("system");
+  it("懒加载后的字典真的可用（不是只有一个 locale 名）", async () => {
+    await applyLocale("en-US");
+    expect(i18n.global.t("nav.agent")).toBeTruthy();
+    expect(String(i18n.global.t("nav.agent"))).not.toBe("nav.agent");
+  });
+
+  it("跟随系统按 navigator 语言决议", async () => {
+    await applyLocale("system");
     expect(["zh-CN", "en-US"]).toContain(i18n.global.locale.value);
   });
 
-  it("非法偏好回退跟随系统，不抛错", () => {
-    applyLocale("fr-FR");
+  it("非法偏好回退跟随系统，不抛错", async () => {
+    await expect(applyLocale("fr-FR")).resolves.toBe(true);
     expect(["zh-CN", "en-US"]).toContain(i18n.global.locale.value);
   });
 });

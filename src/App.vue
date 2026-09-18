@@ -573,7 +573,10 @@ onUnmounted(() => {
   --text-dim: #59636e;        /* 四级文字（表格表头、弱标签） */
   --text-code: #334155;       /* 代码/预格式文本 */
   --text-invert: #ffffff;     /* 彩色底上的白字（按钮、徽标） */
-  --faint: #afb8c4;           /* 装饰性最淡文字（版权条、箭头） */
+  --faint: #626a75;           /* 最淡的一档文字色。曾经是 #afb8c4，在白底上只有 2.0:1，
+                                 而它实际用在行号、时间戳、计数、提示这类**可读文本**上（30 处），
+                                 不是纯装饰。E2E 对比度审计（e2e/specs/21-ux.spec.js）抓到的，
+                                 取值保证在 card/well 两种底色上都过 WCAG AA 4.5:1。 */
   /* 嵌入底与幽灵按钮 */
   --well: #eef1f6;            /* 嵌入浅灰底（进度槽、tag 底、缩略图占位） */
   --well-hover: #e7eaf0;      /* 嵌入底 hover */
@@ -796,7 +799,9 @@ body {
   .st-live, .st-done { color: var(--success-light); background: var(--success-soft); }
   .st-fail { color: var(--danger-light); background: var(--danger-soft); }
   .tc-danger { color: var(--danger-soft-text); background: var(--danger-soft-deep); }
-  .tc-primary { color: var(--primary-light); background: var(--primary-soft); }
+  /* chip 文字在深色 soft 底上原来用 --primary-light（#4493f8）只有 4.13:1；
+     换成主色亮一号的 #79c0ff → 6.59:1（E2E 对比度审计） */
+  .tc-primary { color: var(--primary-bright); background: var(--primary-soft); }
   .tc-amber { color: var(--amber-light); background: var(--warn-soft); }
   .tc-teal { color: var(--teal-light); background: var(--teal-soft); }
   .tc-sky { color: #7dd3fc; background: var(--sky-soft); }
@@ -815,8 +820,10 @@ body {
     --muted: #8b949e;
     --border: #21262d;
     --border-strong: #30363d;
-    --primary: #4493f8;
-    --primary-hover: #58a6ff;
+    --primary: #2b6ad0;       /* E2E 对比度审计：深色下主按钮白字原来只有 3.1:1（#4493f8 太亮），
+                                 而按钮文字是 12–13px，够不上大字号豁免。压深到 5.15:1。 */
+    --primary-hover: #58a6ff;  /* 深色下它同时是「激活态文字色」（nav-item.on / rail-tabs .on），
+                                 原来 #3478e0 在卡片底上只有 4.04:1；提到亮一档 → 6.2:1 */
     --primary-soft: #1a3352;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45);
     --grad-brand: linear-gradient(135deg, #1f6feb, #4493f8 55%, #79c0ff);
@@ -827,7 +834,7 @@ body {
     --text-soft: #8b949e;
     --text-dim: #8b949e;
     --text-code: #cbd5e1;
-    --faint: #3d444d;
+    --faint: #9aa4b2;   /* 与浅色同理：深色下也要过 AA（原 #3d444d 在卡片上只有 1.76:1，等于看不见） */
     --well: #21262d;
     --well-hover: #262d36;
     --ghost: #21262d;

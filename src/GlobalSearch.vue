@@ -313,7 +313,9 @@ defineExpose({ openPalette });
 
 @media (prefers-color-scheme: dark) {
   .gs-trigger, .gs-esc { background: var(--card-raised); }
-  .gs-kbd { background: rgba(255, 255, 255, 0.06); }
+  /* 快捷键提示在 rgba(255,255,255,.06) 的底上，用 --muted(#8b949e) 只有 4.43:1（差一点点）；
+     换成 --faint（深色下已提到 #9aa4b2）→ 5.4:1。E2E 对比度审计抓到的。 */
+  .gs-kbd { background: rgba(255, 255, 255, 0.06); color: var(--faint); }
   .gs-copy.done { background: var(--success-soft); color: var(--success-light); border-color: var(--success-light); }
   .gs-his-chip { background: var(--card-raised); }
 }

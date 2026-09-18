@@ -323,7 +323,9 @@ async function save() {
       if (capabilities.autostart) await invoke("autostart_set", { enabled: autostartOn.value });
     } catch (e) {}
     window.dispatchEvent(new CustomEvent("settings-saved"));
-    applyLocale(form.value.ui.locale); // 界面语言即时生效，无需重启
+    // 界面语言即时生效，无需重启。字典是按需加载的（首屏只打包当前语言），
+    // 所以这里要 await：切到另一种语言时先把它的字典取回来再切，避免闪一堆词条 key。
+    await applyLocale(form.value.ui.locale);
     dirty.value = false;
     props.showToast(t("settings.saved"));
   } catch (e) {
