@@ -32,13 +32,13 @@ export const TOOLS = Object.freeze([
   { key: "crypto", group: "development", labelKey: "toolbox.registry.toolCrypto", ready: true },
   { key: "generator", group: "development", labelKey: "toolbox.registry.toolGenerator", ready: true },
   { key: "db", group: "development", labelKey: "toolbox.registry.toolDb", ready: false, note: "mobile.noteDb" },
-  { key: "request", group: "network", labelKey: "toolbox.registry.toolRequest", ready: false },
+  { key: "request", group: "network", labelKey: "toolbox.registry.toolRequest", ready: true },
   { key: "network", group: "network", labelKey: "toolbox.registry.toolNetwork", ready: false, note: "mobile.noteNetwork" },
   { key: "file", group: "file", labelKey: "toolbox.registry.toolFile", ready: false },
   { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: false },
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: false },
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: false, note: "mobile.noteLabel" },
-  { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: false },
+  { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
 ]);
 
 export const TOOL_BY_KEY = Object.freeze(Object.fromEntries(TOOLS.map((tool) => [tool.key, tool])));

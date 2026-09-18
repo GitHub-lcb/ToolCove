@@ -28,6 +28,8 @@ const VIEWS = {
   crypto: defineAsyncComponent(() => import("./tools/CryptoToolView.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorToolView.vue")),
   diff: defineAsyncComponent(() => import("./tools/DiffToolView.vue")),
+  request: defineAsyncComponent(() => import("./tools/RequestToolView.vue")),
+  rail: defineAsyncComponent(() => import("./tools/RailToolView.vue")),
 };
 
 function open(tool) {

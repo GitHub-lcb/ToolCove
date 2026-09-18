@@ -735,3 +735,98 @@ body,
   flex: 1;
   min-width: 0;
 }
+/* ---------- 铁路大亨：站点一览 ---------- */
+.m-stations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.m-station {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--m-touch);
+  padding: 4px;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-card);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* 已记录 / 半记录 / 空：用边框与底色区分，不只靠颜色（文字也写了类型） */
+.m-station[data-state="done"] { border-color: var(--m-ok); background: rgba(26, 127, 55, 0.10); }
+.m-station[data-state="half"] { border-color: var(--m-primary); background: var(--m-primary-soft); }
+.m-station[data-current="true"] { outline: 2px solid var(--m-primary); outline-offset: 1px; }
+
+.m-station-no {
+  color: var(--m-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.m-station-type {
+  font-weight: 600;
+  text-align: center;
+  word-break: break-all;
+}
+
+/* ---------- 铁路大亨：驾驶舱结论 ---------- */
+.m-verdict[data-tone="ok"] { border-color: var(--m-ok); }
+.m-verdict[data-tone="info"] { border-color: var(--m-primary); }
+.m-verdict[data-tone="danger"] { border-color: var(--m-danger); }
+
+.m-verdict-text {
+  margin: 8px 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ---------- 铁路大亨：建议 ---------- */
+.m-advice {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-advice li {
+  padding: 8px 10px;
+  border: 1px solid var(--m-border);
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.m-advice li[data-tone="success"] { border-left-color: var(--m-ok); }
+.m-advice li[data-tone="warn"] { border-left-color: #9a6700; }
+.m-advice li[data-tone="danger"] { border-left-color: var(--m-danger); }
+.m-advice li[data-tone="info"] { border-left-color: var(--m-primary); }
+
+.m-advice b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+}
+
+.m-advice span {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--m-muted);
+  line-height: 1.6;
+}
+
+.m-advice-detail {
+  margin-top: 4px;
+}
+
+.m-method {
+  flex: 0 0 96px;
+}

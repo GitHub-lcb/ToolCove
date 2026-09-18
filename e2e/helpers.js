@@ -110,7 +110,7 @@ function nextContent(queue) {
  * @param {string[]} [options.readFails] 列出的路径读取时报「文件不存在」
  * @param {any[]} [options.responses] AI 动作队列（桌面形态下 AI 走 IPC，队列必须建在这里）
  */
-export async function seedDesktopIpc(page, files = {}, { readFails = [], responses = [] } = {}) {
+export async function seedDesktopIpc(page, files = {}, { readFails = [], responses = [], httpRoutes = {} } = {}) {
   const store = new Map(Object.entries(files));
   const ops = [];
   const callbacks = new Map();
@@ -122,6 +122,7 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
   const state = stateOf(page);
   state.queue = [...responses];
   state.calls = [];
+  state.httpRoutes = httpRoutes;
 
   await page.exposeFunction("__e2eIpc", async (cmd, args = {}) => {
     ops.push({ cmd, args });
@@ -162,6 +163,26 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
     if (name === "save_data") {
       await writeKv(page, args?.key, args?.data ?? null);
       return null;
+    }
+    // HTTP：请求工具的用例要在**离线**下跑，所以这里按 url 后缀回放预置响应。
+    // 被测的仍是生产代码路径（RequestToolView → platform/invoke → http_request）。
+    if (name === "http_request") {
+      const routes = state.httpRoutes || {};
+      const url = String(args?.url ?? "");
+      const match = Object.keys(routes).find((key) => url.endsWith(key) || url.includes(key));
+      if (!match) {
+        throw new Error(`请求失败：E2E 桩没有为 ${url} 配置响应`);
+      }
+      const route = routes[match];
+      if (typeof route === "function") return route(args);
+      return {
+        status: route.status ?? 200,
+        statusText: route.statusText ?? "OK",
+        headers: route.headers ?? [["content-type", route.contentType ?? "application/json"]],
+        body: route.body ?? "",
+        durationMs: route.durationMs ?? 12,
+        size: (route.body ?? "").length,
+      };
     }
     // 其余桌面命令一律「成功但无内容」：本套用例只关心 AI、文件与存储链路
     return null;

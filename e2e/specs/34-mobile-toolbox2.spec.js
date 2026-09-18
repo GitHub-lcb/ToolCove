@@ -234,8 +234,12 @@ test.describe("手机端工具箱（加密/生成器/对比）", () => {
     for (const key of ["crypto", "generator", "diff"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
-    // 进度文案形如 "已迁移 6/14"
+    // 只断言形态（已迁移 x/y），不断言具体数字——数字会随每批工具推进而变，
+    // 写死会让这条用例每加一个工具就失效（已经踩过一次）。
     const text = await page.locator('[data-role="tool-progress"]').innerText();
-    expect(text).toMatch(/6\s*\/\s*14/);
+    expect(text).toMatch(/已迁移\s*\d+\s*\/\s*\d+/);
+    // 更实的判定：页面上 data-ready="true" 的条目数必须与进度里的数字一致
+    const ready = await page.locator('.m-item[data-ready="true"]').count();
+    expect(Number(text.match(/(\d+)\s*\//)[1])).toBe(ready);
   });
 });
