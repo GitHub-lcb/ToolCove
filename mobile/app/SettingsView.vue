@@ -15,8 +15,9 @@ import { mergeSettingsSnapshot } from "../../src/settingsConfig.js";
 import { decryptValue, encryptValue } from "../../src/secure.js";
 import { invoke } from "../../src/platform/invoke.js";
 import { applyLocale } from "../../src/i18n/index.js";
+import { applyBackup, buildBackup, describeBackup, downloadBackup } from "./backup.js";
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
-import { nativeAvailable } from "./platform/bridge.js";
+import { nativeAvailable, pickFile } from "./platform/bridge.js";
 import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
 
 const { t } = useI18n();
@@ -93,6 +94,69 @@ function applyPreset(preset) {
     },
   };
   errors.value = {};
+}
+
+// ---------- 备份与恢复 ----------
+const backupBusy = ref(false);
+const backupInfo = ref("");
+const backupError = ref("");
+const backupNotice = ref("");
+
+/** 备份：把所有数据打包成一个 JSON 文件并下载。 */
+async function doBackup() {
+  if (backupBusy.value) return;
+  backupBusy.value = true;
+  backupError.value = "";
+  backupNotice.value = "";
+  try {
+    const payload = await buildBackup();
+    if (!payload.stats.keys) {
+      // 没有数据时不该给一个空文件让人以为备份成功了
+      backupError.value = t("mobile.setBackupEmpty");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadBackup(payload, `toolcove-backup-${stamp}.json`);
+    backupNotice.value = t("mobile.setBackupDone", { n: payload.stats.keys });
+  } catch (e) {
+    backupError.value = t("mobile.setBackupFailed", { err: e?.message || String(e) });
+  } finally {
+    backupBusy.value = false;
+  }
+}
+
+/** 恢复：经系统文件选择器选一个备份文件，校验后写回。 */
+async function doRestore() {
+  if (backupBusy.value) return;
+  backupBusy.value = true;
+  backupError.value = "";
+  backupNotice.value = "";
+  backupInfo.value = "";
+  try {
+    const uri = await pickFile("application/json");
+    if (!uri) return; // 用户取消：不是错误
+    const file = await invoke("file_tool_read_text", { path: uri, encoding: "UTF-8" });
+    let payload;
+    try {
+      payload = JSON.parse(file?.text || "");
+    } catch {
+      // 选错文件（比如桌面端的 zip）时给出可读原因，而不是抛一个 JSON 解析错误
+      backupError.value = t("mobile.setRestoreNotJson");
+      return;
+    }
+    const info = describeBackup(payload);
+    if (!info.ok) {
+      backupError.value = t(`mobile.setRestoreBad_${info.reason}`, { defaultValue: t("mobile.setRestoreBad") });
+      return;
+    }
+    backupInfo.value = t("mobile.setRestorePreview", { n: info.keys, at: info.createdAt.slice(0, 19).replace("T", " ") });
+    const result = await applyBackup(payload);
+    backupNotice.value = t("mobile.setRestoreDone", { n: result.written });
+  } catch (e) {
+    backupError.value = t("mobile.setRestoreFailed", { err: e?.message || String(e) });
+  } finally {
+    backupBusy.value = false;
+  }
 }
 
 async function save() {
@@ -356,6 +420,21 @@ async function renameDevice(event) {
         </select>
       </label>
       <p class="m-hint-sm">{{ t("mobile.setDensityNote") }}</p>
+
+      <!-- 备份与恢复：桌面端打成 zip 写到指定路径；手机端没有"任意路径写"，
+           所以备份走浏览器下载、恢复走系统文件选择器（SAF）。 -->
+      <div class="m-card">
+        <div class="m-card-head"><b>{{ t("mobile.setBackupTitle") }}</b></div>
+        <p class="m-hint-sm">{{ t("mobile.setBackupNote") }}</p>
+        <div class="m-actions">
+          <button class="m-btn primary" :disabled="backupBusy" data-role="backup" @click="doBackup">{{ t("mobile.setBackupBtn") }}</button>
+          <button class="m-btn" :disabled="backupBusy || !nativeReady" data-role="restore" @click="doRestore">{{ t("mobile.setRestoreBtn") }}</button>
+        </div>
+        <!-- 恢复前必须让人看清"要写回多少键、来自什么时候"，否则是盲操作 -->
+        <p v-if="backupInfo" class="m-hint-sm" data-role="backup-info">{{ backupInfo }}</p>
+        <p v-if="backupError" class="m-err" data-role="backup-error">{{ backupError }}</p>
+        <p v-if="backupNotice" class="m-ok" data-role="backup-notice">{{ backupNotice }}</p>
+      </div>
     </template>
 
     <!-- 关于 -->

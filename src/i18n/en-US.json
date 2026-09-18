@@ -3110,6 +3110,23 @@
     "labelEngineFail": "Layout engine failed to load: {err}",
     "labelNoPrint": "Android has no Windows RAW print queue: this generates the TSPL commands and preview, and you send the exported .prn with a TSPL-capable print tool. Layout uses the same engine as desktop, so what you see is what gets printed.",
     "chatLocalNote": "Messages go only to the AI endpoint you configured; no plaintext copy is kept on this device (sessions live in app-private storage).",
-    "chatStopped": "Stopped (kept what was received)"
+    "chatStopped": "Stopped (kept what was received)",
+    "setBackupTitle": "Backup and restore",
+    "setBackupNote": "A backup packs all local data into a JSON file and downloads it (keep it in cloud storage or copy it to a computer). Restoring picks that file through the system picker — desktop zip backups cannot be restored here.",
+    "setBackupBtn": "Export backup",
+    "setRestoreBtn": "Restore from backup",
+    "setBackupDone": "Backup exported ({n} items)",
+    "setBackupEmpty": "There is no data to back up yet.",
+    "setBackupFailed": "Backup failed: {err}",
+    "setRestorePreview": "This backup holds {n} items, created {at}.",
+    "setRestoreDone": "Restored {n} items.",
+    "setRestoreNotJson": "This is not a phone backup (desktop backups are zip files — restore those on a computer).",
+    "setRestoreBad": "This is not a valid phone backup.",
+    "setRestoreBad_wrongFormat": "Backup format mismatch — this may be a JSON file from another tool.",
+    "setRestoreBad_notBackup": "No backup marker in this file.",
+    "setRestoreBad_noVersion": "The backup has no version, so its format cannot be confirmed.",
+    "setRestoreBad_tooNew": "This backup comes from a newer app version; update first.",
+    "setRestoreBad_noEntries": "The backup contains no data entries.",
+    "setRestoreFailed": "Restore failed: {err}"
   }
 }

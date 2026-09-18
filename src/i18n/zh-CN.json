@@ -3110,6 +3110,23 @@
     "labelEngineFail": "排版引擎加载失败：{err}",
     "labelNoPrint": "安卓没有 Windows 的 RAW 打印队列：这里生成 TSPL 指令与预览，导出 .prn 后交给支持 TSPL 的打印工具发送。排版与桌面端是同一份引擎，所以预览所见即打印所得。",
     "chatLocalNote": "对话内容只发给你配置的 AI 接口，本机不留明文副本（会话存在应用私有存储里）。",
-    "chatStopped": "已停止（保留已收到的内容）"
+    "chatStopped": "已停止（保留已收到的内容）",
+    "setBackupTitle": "备份与恢复",
+    "setBackupNote": "备份会把本机全部数据打包成一个 JSON 文件下载（可存网盘或传到电脑）。恢复需经系统文件选择器选该文件——桌面端的 zip 备份不能在这里恢复。",
+    "setBackupBtn": "导出备份",
+    "setRestoreBtn": "从备份恢复",
+    "setBackupDone": "已导出备份（{n} 项数据）",
+    "setBackupEmpty": "还没有任何数据可备份。",
+    "setBackupFailed": "备份失败：{err}",
+    "setRestorePreview": "这个备份含 {n} 项数据，创建于 {at}。",
+    "setRestoreDone": "已恢复 {n} 项数据。",
+    "setRestoreNotJson": "这个文件不是手机端备份（桌面端的备份是 zip 包，请在电脑上恢复）。",
+    "setRestoreBad": "这个文件不是有效的手机端备份。",
+    "setRestoreBad_wrongFormat": "备份格式不匹配——这可能是其它工具的 JSON 文件。",
+    "setRestoreBad_notBackup": "文件里没有备份标记，不是备份文件。",
+    "setRestoreBad_noVersion": "备份缺少版本号，无法确认格式。",
+    "setRestoreBad_tooNew": "备份来自更新版本的 App，请先升级再恢复。",
+    "setRestoreBad_noEntries": "备份里没有任何数据条目。",
+    "setRestoreFailed": "恢复失败：{err}"
   }
 }

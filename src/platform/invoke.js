@@ -123,8 +123,25 @@ export const hasMobileBridge = () => !!mobileBridge;
 
 export async function invoke(command, args = {}) {
   if (isMobile) {
-    // 手机端：先给原生桥，再退回浏览器实现（存储、下载等纯 Web 能力不需要原生参与）
-    if (mobileBridge) return mobileBridge.invoke(command, args || {});
+    // 手机端：先给原生桥，**失败则退回浏览器实现**。
+    //
+    // 这个回退不是可选项，而是必需的：桥只实现"真正需要原生"的能力（HTTP/TCP/加密/SAF/SQLite），
+    // 而存储（load_data/save_data）、下载、图片存取这些纯 Web 能力不需要原生参与。
+    // 早先这里写成"桥存在就直接 return"，于是桥不认的命令会把错误直接抛给界面——
+    // 实测后果是真机上记录/工作台/设置/Agent 全部读写失败（它们都用 load_data/save_data），
+    // 而 E2E 测不出来：E2E 跑在没有桥的浏览器形态下，走的是另一条分支。
+    //
+    // 只对"桥明确不认识"的命令回退：桥认识的命令一旦失败（如 HTTP 超时、文件读不到），
+    // 那个错误是**真实结果**，回退到浏览器实现只会掩盖它（浏览器实现也没有那个能力）。
+    if (mobileBridge) {
+      try {
+        return await mobileBridge.invoke(command, args || {});
+      } catch (error) {
+        const handler = browserHandlers[command];
+        if (!handler || !isBridgeUnsupported(error)) throw error;
+        return handler(args || {});
+      }
+    }
     const handler = browserHandlers[command];
     if (handler) return handler(args || {});
     throw desktopOnly(command);
@@ -133,4 +150,18 @@ export async function invoke(command, args = {}) {
   const handler = browserHandlers[command];
   if (!handler) throw desktopOnly(command);
   return handler(args || {});
+}
+
+/**
+ * 判断错误是不是"桥不认识这个命令"。
+ *
+ * 桥对未实现命令返回 `__code: "unsupported"`（见 mobile/android 的 Bridge.dispatch），
+ * 适配层会把它翻成带 code 的 Error。只有这种才回退——见上面关于"不要掩盖真实错误"的说明。
+ */
+function isBridgeUnsupported(error) {
+  const code = error?.code || error?.cause?.code;
+  if (code === "unsupported") return true;
+  // 兜底：老版本桥可能没带 code，按文案判断（中文与英文两种都认）
+  const message = String(error?.message || "");
+  return /尚未实现|not implemented|unsupported/i.test(message);
 }
