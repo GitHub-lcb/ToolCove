@@ -1177,3 +1177,59 @@ body,
   background: var(--m-primary);
   transition: width 0.2s ease;
 }
+
+/* ---------- 领域 / 发布 ---------- */
+/* 状态徽标：成功/失败/进行中一眼可辨，手机上颜色比文字更快 */
+.m-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.m-badge[data-badge="success"] {
+  background: var(--m-ok-soft, #e6f4ea);
+  color: var(--m-ok, #1e7e34);
+}
+
+.m-badge[data-badge="failed"] {
+  background: var(--m-danger-soft, #fdecea);
+  color: var(--m-danger, #c0392b);
+}
+
+.m-badge[data-badge="deploying"] {
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+}
+
+/* 发布步骤区：展开后才出现，勾选框要够大好点 */
+.m-steps {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--m-border);
+}
+
+.m-steps .m-stats li {
+  align-items: center;
+}
+
+.m-steps input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* 分段 chips 在四个时也要能横向滚动而不是挤成一团 */
+.m-chips {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+}
+
+.m-chips::-webkit-scrollbar {
+  display: none;
+}

@@ -83,16 +83,28 @@ describe("手机端与桌面端的功能对齐", () => {
   });
 
   it("桌面端的导航模块在手机端都有入口", () => {
-    // 手机端把 work 的子模块合并进「工作台」标签，所以按"顶层入口"比对：
-    // 记录 / 工作台 / 工具箱 / Agent / 设置 五个标签覆盖桌面端的全部模块。
+    // 手机端把 work 的子模块做成工作台的分段（概览/迭代/领域/发布），
+    // 速记/问题并入「记录」，所以按"是否有入口"比对：
+    // 记录 / 工作台（含 4 个分段）/ 工具箱 / Agent / 设置 覆盖桌面端的全部模块。
     const nav = read("src/navConfig.js");
     const desktopModules = [...nav.matchAll(/key:\s*"([a-z]+)",\s*\n?\s*labelKey:\s*"nav\./g)].map((m) => m[1]);
     const topLevel = ["records", "work", "toolbox", "agent", "settings"];
+    // work 的子模块：手机端是工作台分段。domain 与 release 已补齐（见 DomainPanel/ReleasePanel）
     const workChildren = ["overview", "domain", "iteration", "requirement", "release", "task"];
     const snippetProblem = ["snippet", "problem"];
 
     const covered = new Set([...topLevel, ...workChildren, ...snippetProblem]);
     const uncovered = desktopModules.filter((key) => !covered.has(key));
     expect(uncovered, `桌面端模块在手机端没有归属：${uncovered.join(", ")}`).toEqual([]);
+
+    // 工作台的四个分段必须在代码里真实存在（不能只在上面这个白名单里"声明"覆盖）
+    const workView = read("mobile/app/WorkView.vue");
+    const sections = [...workView.matchAll(/key:\s*"([a-z]+)",\s*labelKey:\s*"nav\./g)].map((m) => m[1]);
+    expect(sections.sort(), "工作台分段与桌面端 work 的子模块不一致").toEqual(["domain", "iterations", "overview", "release"].sort());
+    // 领域与发布面板要真实存在且被引用
+    for (const [file, component] of [["mobile/app/work/DomainPanel.vue", "DomainPanel"], ["mobile/app/work/ReleasePanel.vue", "ReleasePanel"]]) {
+      expect(() => read(file), `${file} 不存在`).not.toThrow();
+      expect(workView, `WorkView 没有引用 ${component}`).toContain(component);
+    }
   });
 });

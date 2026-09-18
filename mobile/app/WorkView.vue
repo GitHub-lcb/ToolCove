@@ -14,6 +14,9 @@ import { ITERATION_STATUSES, filterRequirements, hoursText, iterationSummary, re
 
 // 概览按需加载：它只在第一层用得到，而手机端首屏体积要省（与工具箱同样的做法）
 const WorkOverview = defineAsyncComponent(() => import("./work/WorkOverview.vue"));
+// 领域与发布同理按需加载：桌面端这两个视图分别 716 / 722 行，手机端也用不到首屏
+const DomainPanel = defineAsyncComponent(() => import("./work/DomainPanel.vue"));
+const ReleasePanel = defineAsyncComponent(() => import("./work/ReleasePanel.vue"));
 
 const { t } = useI18n();
 
@@ -24,6 +27,8 @@ const view = reactive({ level: "overview", iterId: "", reqId: "" }); // overview
 const reqFilter = ref("active");
 const draft = reactive({ open: false, kind: "", name: "", days: "" });
 const confirmState = reactive({ open: false, kind: "", name: "" });
+/** 领域面板的引用：它内部有"领域 → Pool"两层，返回键要能回退到领域列表。 */
+const domainRef = ref(null);
 
 const currentIteration = computed(() => iterations.value.find((x) => x.id === view.iterId) || null);
 const currentRequirement = computed(() => {
@@ -34,11 +39,31 @@ const currentRequirement = computed(() => {
 const sorted = computed(() => sortIterations(iterations.value));
 const visibleRequirements = computed(() => filterRequirements(currentIteration.value?.items || [], reqFilter.value));
 
-/** 概览与迭代列表之间的分段（概览是默认层，见 view.level 的初始值）。 */
-const section = computed(() => (view.level === "overview" ? "overview" : "iterations"));
+/**
+ * 工作台的分段：概览 / 迭代 / 领域 / 发布。
+ *
+ * 为什么把领域与发布也做成工作台的分段，而不是底部标签栏的新标签：
+ * 桌面端的导航里它们与迭代同属 work 模块（见 src/navConfig.js 的 MODULE_HOME_TAB），
+ * 手机上底部已经有 5 个标签，再塞两个会让每个都变窄到难以点中。
+ * 分段是"同一模块内的视图切换"，与桌面端的模块归属一致。
+ */
+const SECTIONS = [
+  { key: "overview", labelKey: "nav.overview" },
+  { key: "iterations", labelKey: "nav.iteration" },
+  { key: "domain", labelKey: "nav.domain" },
+  { key: "release", labelKey: "nav.release" },
+];
+
+/** 当前分段：概览/领域/发布各有自己的 level，迭代用 list/iter/req。 */
+const section = computed(() => {
+  if (view.level === "overview") return "overview";
+  if (view.level === "domain" || view.level === "release") return view.level;
+  return "iterations";
+});
+
 function switchSection(key) {
-  // 切到概览时清掉钻取状态：否则从概览点回迭代会停在上次打开的那条里，像"没反应"
-  view.level = key === "overview" ? "overview" : "list";
+  // 切换分段时清掉钻取状态：否则从概览点回迭代会停在上次打开的那条里，像"没反应"
+  view.level = key === "iterations" ? "list" : key;
   view.iterId = "";
   view.reqId = "";
 }
@@ -99,6 +124,8 @@ function goBack() {
     view.level = "overview";
     return true;
   }
+  // 领域/发布面板内部的钻取由它们自己处理（领域有"领域 → Pool"两层）
+  if (view.level === "domain") return domainRef.value?.goBack?.() === true;
   return false;
 }
 
@@ -176,14 +203,19 @@ const toggleSubtaskDone = (subtask) => write((list) => updateSubTask(list, view.
   <section class="m-work" :data-level="view.level" :data-section="section">
     <p v-if="error" class="m-err">{{ error }}</p>
 
-    <!-- 分段：概览 / 迭代（与桌面端 work 模块的两个入口对应） -->
+    <!-- 分段：概览 / 迭代 / 领域 / 发布（与桌面端 work 模块的入口对应） -->
     <div class="m-chips" data-role="work-sections">
-      <button class="m-chip" :class="{ on: section === 'overview' }" data-nav="overview" @click="switchSection('overview')">{{ t("nav.overview") }}</button>
-      <button class="m-chip" :class="{ on: section === 'iterations' }" data-nav="iterations" @click="switchSection('iterations')">{{ t("nav.iteration") }}</button>
+      <button v-for="item in SECTIONS" :key="item.key" class="m-chip" :class="{ on: section === item.key }" :data-nav="item.key" @click="switchSection(item.key)">
+        {{ t(item.labelKey) }}
+      </button>
     </div>
 
     <!-- 第零层：概览 -->
     <WorkOverview v-if="view.level === 'overview'" />
+
+    <!-- 领域 / 发布：各自管理内部层级 -->
+    <DomainPanel v-else-if="view.level === 'domain'" ref="domainRef" />
+    <ReleasePanel v-else-if="view.level === 'release'" />
 
     <!-- 第一层：迭代列表 -->
     <template v-else-if="view.level === 'list'">
