@@ -172,6 +172,13 @@ Tool Adapters
   还回了句自相矛盾的「该文件已存在」，**新建文件这条路当时根本走不通**。
   现在该函数返回三态（true 存在 / false 确定不存在 / undefined 没有证据），配合 `observeSuccess`
   登记为 `absent`；`observation.test.js` 增 2 条回归。
+- **i18n 按需加载**（2026-09-20）：首屏只静态打包当前语言，另一种走动态 import（Vite 切独立 chunk）。
+  起因是量化：两份字典合计 231KB、占入口 chunk 的 41.9%，而任何人只需要一份。
+  locale 决议保持同步（显式偏好 → 系统语言 → zh-CN），启动流程在 mount 前 await 正确的字典，
+  所以不会有「先渲染词条 key 再补齐」的闪烁。预热另一种语言包放在**挂载后 1.5s**：
+  放在 mount 之前会被算进首屏字节，用 requestIdleCallback 从 0 等空闲也一样（启动那一刻就可能空闲）。
+  顺带修掉一个真实缺陷：`initLocale` 原来用 `window.__TAURI_INTERNALS__` 把关读设置，
+  于是浏览器端从来不读语言偏好；现在两条路都走平台层。
 - 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
 - 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
