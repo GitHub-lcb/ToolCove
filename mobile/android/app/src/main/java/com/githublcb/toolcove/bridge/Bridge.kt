@@ -1,4 +1,4 @@
-package com.githublcb.toolcove
+package com.githublcb.toolcove.bridge
 
 import java.io.ByteArrayOutputStream
 import java.io.InputStream

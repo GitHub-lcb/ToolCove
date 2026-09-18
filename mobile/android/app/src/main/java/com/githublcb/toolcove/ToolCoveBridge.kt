@@ -1,6 +1,7 @@
 package com.githublcb.toolcove
 
 import android.webkit.JavascriptInterface
+import com.githublcb.toolcove.bridge.Bridge
 
 /**
  * WebView 与 JS 之间的唯一接口。

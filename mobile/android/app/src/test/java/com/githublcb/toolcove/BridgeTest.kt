@@ -1,5 +1,11 @@
 package com.githublcb.toolcove
 
+import com.githublcb.toolcove.bridge.Bridge
+import com.githublcb.toolcove.bridge.HttpNative
+import com.githublcb.toolcove.bridge.HttpResult
+import com.githublcb.toolcove.bridge.JsonReader
+import com.githublcb.toolcove.bridge.JsonValue
+import com.githublcb.toolcove.bridge.NativeOps
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

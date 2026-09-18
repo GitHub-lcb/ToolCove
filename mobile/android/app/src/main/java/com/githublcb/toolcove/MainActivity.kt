@@ -11,6 +11,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
+import com.githublcb.toolcove.bridge.Bridge
+import com.githublcb.toolcove.bridge.HttpNative
 
 /**
  * 唯一 Activity：全屏 WebView + 本地资源服务。
@@ -64,7 +66,8 @@ class MainActivity : Activity() {
         // 原生桥：命令名与桌面端 platform/invoke 完全同名（http_request / network_tcp_check /
         // encrypt_text / decrypt_text），所以 src/ 里的 repository、sync、ai 一行都不用改。
         // 只暴露两个成员（isMobile 与 invoke），且只服务本地页面——多一个成员就多一个攻击面。
-        view.addJavascriptInterface(ToolCoveBridge(Bridge(HttpNative())), "ToolCove")
+        // 加密走 Keystore（密钥由系统保管），HTTP/TCP 走 HttpNative。
+        view.addJavascriptInterface(ToolCoveBridge(Bridge(KeystoreNative())), "ToolCove")
 
         val base = try {
             AssetsServer(assets).also { server = it }.start()
