@@ -28,16 +28,23 @@ test.describe("手机端地基（移动视口）", () => {
     expect(errors).toEqual([]);
   });
 
-  test("浏览器里没有原生桥：如实显示为网页形态，而不是假装有", async ({ page }) => {
-    await seedData(page, { snippets: [], problems: [] });
+  test("五个标签都能打开真实页面（没有遗留的占位页）", async ({ page }) => {
+    await seedData(page, { snippets: [], problems: [], iterations: [] });
     await page.goto(MOBILE);
-    // 桥状态只在「未迁移」的占位页上展示（Agent 是最后一个占位页；
-    // 设置页现在是真实页面，不再有那一行——这条用例因此改到 Agent）
-    await page.locator(".m-tab[data-tab='agent']").click();
-    const bridge = page.locator(".m-bridge");
-    await expect(bridge).toHaveAttribute("data-on", "false");
-    // 文案要解释「为什么没有」以及此时的降级行为，而不是一句失败
-    await expect(bridge).toContainText(/IndexedDB|网页形态/);
+
+    const EXPECT = {
+      records: ".m-records",
+      work: ".m-work",
+      toolbox: ".m-toolbox",
+      agent: ".m-agent",
+      settings: ".m-settings",
+    };
+    for (const [key, selector] of Object.entries(EXPECT)) {
+      await page.locator(`.m-tab[data-tab='${key}']`).click();
+      await expect(page.locator(selector)).toBeVisible();
+    }
+    // 占位页已随最后一块迁移完成而删除，不该再出现在 DOM 里
+    await expect(page.locator(".m-todo")).toHaveCount(0);
   });
 
   test("触摸目标不小于 44px（安卓无障碍建议）", async ({ page }) => {

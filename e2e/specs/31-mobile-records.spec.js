@@ -113,18 +113,15 @@ test.describe("手机端记录页", () => {
     await expect(page.locator(".m-item")).toHaveCount(1);
   });
 
-  test("标签栏：记录与工作台、工具箱可用，未迁移的模块如实显示为迁移中", async ({ page }) => {
+  test("标签栏：五个模块都能切换（Agent 也已迁移完成）", async ({ page }) => {
     await seedData(page, { snippets: [], problems: [] });
     await page.goto(MOBILE);
 
     await expect(page.locator(".m-tab[data-tab='records']")).toHaveAttribute("aria-selected", "true");
-    // 已迁移的模块能正常切换
     await page.locator(".m-tab[data-tab='toolbox']").click();
     await expect(page.locator(".m-toolbox")).toBeVisible();
-    // 未迁移的（Agent/设置）如实说明，而不是画一个点不动的界面
     await page.locator(".m-tab[data-tab='agent']").click();
-    await expect(page.locator(".m-todo")).toBeVisible();
-    await expect(page.locator(".m-todo-body")).toContainText(/迁移|ported/);
+    await expect(page.locator(".m-agent")).toBeVisible();
     // 标签栏常驻：切回来还能用
     await page.locator(".m-tab[data-tab='records']").click();
     await expect(page.locator(".m-records")).toBeVisible();

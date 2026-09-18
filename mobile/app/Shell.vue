@@ -12,10 +12,9 @@ import RecordsView from "./RecordsView.vue";
 import WorkView from "./WorkView.vue";
 import ToolboxView from "./ToolboxView.vue";
 import SettingsView from "./SettingsView.vue";
+import AgentView from "./AgentView.vue";
 
 const props = defineProps({
-  bridged: { type: Boolean, default: false },
-  native: { type: Boolean, default: false },
   capabilities: { type: Object, required: true },
   isMobile: { type: Boolean, default: false },
   isDesktop: { type: Boolean, default: false },
@@ -29,7 +28,7 @@ const TABS = [
   { key: "records", labelKey: "nav.records", icon: "☰", ready: true },
   { key: "work", labelKey: "nav.work", icon: "▤", ready: true },
   { key: "toolbox", labelKey: "nav.toolbox", icon: "⚒", ready: true },
-  { key: "agent", labelKey: "nav.agent", icon: "✦", ready: false },
+  { key: "agent", labelKey: "nav.agent", icon: "✦", ready: true },
   { key: "settings", labelKey: "nav.settings", icon: "⚙", ready: true },
 ];
 
@@ -49,16 +48,8 @@ const platform = computed(() => {
       <RecordsView v-if="current.key === 'records'" />
       <WorkView v-else-if="current.key === 'work'" />
       <ToolboxView v-else-if="current.key === 'toolbox'" />
+      <AgentView v-else-if="current.key === 'agent'" />
       <SettingsView v-else-if="current.key === 'settings'" />
-
-      <!-- 其余标签先给占位：如实说明「还没做」，而不是画一个点不动的界面 -->
-      <section v-else class="m-todo" :data-tab="current.key">
-        <h2 class="m-todo-title">{{ t(current.labelKey) }}</h2>
-        <p class="m-todo-body">{{ t("mobile.tabTodo") }}</p>
-        <ul class="m-status">
-          <li class="m-bridge" :data-on="bridged">{{ bridged ? t("mobile.bridgeOn") : t("mobile.bridgeOff") }}</li>
-        </ul>
-      </section>
     </main>
 
     <nav class="m-tabbar" role="tablist">

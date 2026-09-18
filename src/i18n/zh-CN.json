@@ -3050,6 +3050,15 @@
     "setDensityNote": "手机上默认「紧凑」；改成「宽松」会放大行高与间距，适合单手操作或大屏。",
     "setVersion": "构建",
     "setPlatform": "运行环境",
-    "setStorageNote": "数据存在本机（安卓应用私有存储）；云同步开启后才会离开设备，且服务端只见密文。"
+    "setStorageNote": "数据存在本机（安卓应用私有存储）；云同步开启后才会离开设备，且服务端只见密文。",
+    "skillOn": "已启用",
+    "skillOff": "已停用",
+    "agentGoal": "目标",
+    "skillReason": {
+      "run_not_found": "找不到这条运行记录。",
+      "run_not_skillable": "这次运行还不能沉淀：需要有成功的工具调用，且步骤足够完整。",
+      "invalid": "这条技能内容不合法，已跳过。",
+      "unknown": "这次运行暂时无法沉淀为技能。"
+    }
   }
 }

@@ -3050,6 +3050,15 @@
     "setDensityNote": "Compact is the phone default; Comfortable increases line height and spacing for one-handed or large-screen use.",
     "setVersion": "Build",
     "setPlatform": "Runtime",
-    "setStorageNote": "Data stays on this device (the app's private storage). It only leaves the device when cloud sync is on, and the server only ever sees ciphertext."
+    "setStorageNote": "Data stays on this device (the app's private storage). It only leaves the device when cloud sync is on, and the server only ever sees ciphertext.",
+    "skillOn": "Enabled",
+    "skillOff": "Disabled",
+    "agentGoal": "Goal",
+    "skillReason": {
+      "run_not_found": "That run record no longer exists.",
+      "run_not_skillable": "This run cannot become a skill yet: it needs a successful tool call and complete enough steps.",
+      "invalid": "The extracted skill was invalid and was skipped.",
+      "unknown": "This run cannot be turned into a skill right now."
+    }
   }
 }

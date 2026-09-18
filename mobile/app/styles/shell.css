@@ -898,3 +898,91 @@ body,
 .m-settings .m-card + .m-card {
   margin-top: var(--m-gap);
 }
+/* ---------- Agent 工作台 ---------- */
+.m-timeline {
+  list-style: none;
+  margin: var(--m-gap) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-tl-row {
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-card);
+  padding: 8px 10px;
+}
+
+.m-tl-head {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--m-text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.m-tl-body {
+  margin: 6px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.m-tl-more {
+  margin-top: 6px;
+  min-height: 32px;
+  border: 1px dashed var(--m-border);
+  border-radius: 6px;
+  background: none;
+  color: var(--m-muted);
+  font-size: 0.78rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.m-tl-note {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--m-muted);
+}
+
+.m-tl-err {
+  color: var(--m-danger);
+}
+
+/* 确认卡：整页最需要被看到的东西，用左侧粗边 + 底色抬起来 */
+.m-confirm {
+  border-left: 4px solid var(--m-primary);
+  background: var(--m-primary-soft);
+}
+
+.m-args {
+  margin: 8px 0;
+  padding: 8px;
+  max-height: 200px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--m-bg);
+  border: 1px solid var(--m-border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.m-btn.danger {
+  border-color: var(--m-danger);
+  color: var(--m-danger);
+}
