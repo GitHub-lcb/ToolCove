@@ -1,52 +1,52 @@
-// 手机端壳的冒烟：验证「平台判定 + 原生桥 + 字典」三件事，并且**不需要 APK**。
+// 手机端地基的 E2E：平台判定、原生桥、能力矩阵、触摸目标。
 //
-// 这正是把原生能力做成可注入桥的价值：移动端前端能在浏览器里以移动视口跑自动化，
-// 原生侧只需保证命令名与语义一致。安卓壳本身的编译与装机由 P1 的 Gradle 任务验证。
+// 覆盖方式说明：移动端前端在浏览器里就是普通网页（原生能力由可注入的桥提供），
+// 所以这些用例不需要 APK——安卓壳本身的编译与装机由后续的 Gradle 任务验证。
+// 页面结构在 Phase 2 变成「底部标签 + 记录页」，因此锚点是 .m-app / .m-tabbar / .m-tab。
 import { expect, test } from "@playwright/test";
+import { seedData } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
-test.describe("手机端壳（移动视口）", () => {
+test.describe("手机端地基（移动视口）", () => {
   test.use({ viewport: { width: 393, height: 851 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "zh-CN" });
 
-  test("渲染壳层，且平台判定为 mobile（不是 desktop/browser）", async ({ page }) => {
+  test("渲染壳层，平台判定为 mobile，且字典可用", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(String(error)));
+    await seedData(page, { snippets: [], problems: [] });
     await page.goto(MOBILE);
 
-    const shell = page.locator(".m-shell");
-    await expect(shell).toBeVisible();
+    const app = page.locator(".m-app");
+    await expect(app).toBeVisible();
     // 构建期常量 __MOBILE__ 生效 → env.js 判定为移动端
-    await expect(shell).toHaveAttribute("data-platform", "mobile");
-    await expect(page.locator(".m-title")).toHaveText("ToolCove");
-    // 字典可用（不是漏出词条 key）
-    await expect(page.locator(".m-hint")).not.toHaveText(/mobile\./);
+    await expect(app).toHaveAttribute("data-platform", "mobile");
+    // 底部标签栏渲染出全部 5 个模块，且不漏词条 key
+    await expect(page.locator(".m-tab")).toHaveCount(5);
+    const labels = await page.locator(".m-tab-label").allInnerTexts();
+    expect(labels.join(" ")).not.toMatch(/nav\./);
     expect(errors).toEqual([]);
   });
 
   test("浏览器里没有原生桥：如实显示为网页形态，而不是假装有", async ({ page }) => {
+    await seedData(page, { snippets: [], problems: [] });
     await page.goto(MOBILE);
-    await expect(page.locator(".m-bridge")).toHaveAttribute("data-on", "false");
-    await expect(page.locator(".m-native")).toHaveAttribute("data-on", "false");
-    // 文案要能解释清楚「为什么没有」，而不是一句失败
-    await expect(page.locator(".m-bridge")).toContainText(/IndexedDB|网页形态/);
-  });
-
-  test("能力矩阵按安卓现实取值：SQLite 可用，JDBC / 真打印 / ICMP 明确不支持", async ({ page }) => {
-    await page.goto(MOBILE);
-    const on = async (cap) => (await page.locator(`[data-cap="${cap}"]`).getAttribute("data-on")) === "true";
-    expect(await on("sqlite"), "SQLite 在安卓上可用").toBe(true);
-    expect(await on("jdbc"), "安卓没有 JDBC").toBe(false);
-    expect(await on("rawPrint"), "安卓没有 Windows RAW 打印队列").toBe(false);
-    expect(await on("icmpDiagnostics"), "WebView 无 ICMP/原始套接字").toBe(false);
-    expect(await on("multiWindow"), "安卓没有 Tauri 多窗口").toBe(false);
-    expect(await on("aiRequest"), "AI 请求可用（经桥或直连）").toBe(true);
+    // 切到未迁移的模块才能看到桥状态（记录页不展示它）
+    await page.locator(".m-tab[data-tab='settings']").click();
+    const bridge = page.locator(".m-bridge");
+    await expect(bridge).toHaveAttribute("data-on", "false");
+    // 文案要解释「为什么没有」以及此时的降级行为，而不是一句失败
+    await expect(bridge).toContainText(/IndexedDB|网页形态/);
   });
 
   test("触摸目标不小于 44px（安卓无障碍建议）", async ({ page }) => {
+    await seedData(page, { snippets: [], problems: [] });
     await page.goto(MOBILE);
-    const heights = await page.locator(".m-cap").evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().height));
-    expect(heights.length).toBeGreaterThan(3);
+    const heights = await page.locator(".m-tab").evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().height));
+    expect(heights).toHaveLength(5);
     for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
   });
+
+  // 能力矩阵（哪些能力在安卓上可用）是纯数据，由 env.capabilities.test.js 单测覆盖，
+  // 不在这里隔着构建产物做断言——那样测的是打包细节，不是能力取值。
 });

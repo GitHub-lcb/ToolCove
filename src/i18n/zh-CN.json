@@ -169,7 +169,8 @@
     "statTotal": "总工时",
     "statIteration": "迭代需求工时",
     "statProblem": "问题工时",
-    "dbSheet": "查询结果"
+    "dbSheet": "查询结果",
+    "loading": "加载中…"
   },
   "settings": {
     "navAi": "AI 模型",
@@ -2963,6 +2964,7 @@
     "i18nReady": "多语言字典就绪",
     "capsTitle": "平台能力（手机端）",
     "capOn": "可用",
-    "capOff": "不支持"
+    "capOff": "不支持",
+    "tabTodo": "该模块还在迁移中：功能页会按模块逐个替换上来。"
   }
 }

@@ -169,7 +169,8 @@
     "statTotal": "Total hours",
     "statIteration": "Iteration hours",
     "statProblem": "Problem hours",
-    "dbSheet": "Query Result"
+    "dbSheet": "Query Result",
+    "loading": "Loading…"
   },
   "settings": {
     "navAi": "AI Model",
@@ -2963,6 +2964,7 @@
     "i18nReady": "Translation catalogue ready",
     "capsTitle": "Platform capabilities (mobile)",
     "capOn": "Available",
-    "capOff": "Not supported"
+    "capOff": "Not supported",
+    "tabTodo": "This module is still being ported; screens land one module at a time."
   }
 }

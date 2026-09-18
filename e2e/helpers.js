@@ -23,10 +23,22 @@ export const AI_SETTINGS = {
 /**
  * 在页面加载前把数据写进 IndexedDB。
  * 存储契约来自 platform/kv.js：库名 toolcove、仓储名 kv，键即 load_data/save_data 的 key。
+ *
+ * ⚠️ 只在**本用例第一次加载**时播种。addInitScript 每次导航都会重跑，若无条件写入，
+ * `page.reload()`（用例常用来验证「真的落盘了」）会把测试**自己刚写的数据覆盖回初始值**——
+ * 实测表现为「创建后刷新就丢、删除后刷新又出现」，一度以为是应用没落盘。
+ * 用 sessionStorage 做每页会话标记：首次导航播种，之后的 reload 不再动数据。
  */
 export async function seedData(page, entries, { version = 1 } = {}) {
   await page.addInitScript(
     ([payload, dbVersion]) => {
+      const MARK = "__e2e_seed_done__";
+      try {
+        if (sessionStorage.getItem(MARK) === "1") return;
+        sessionStorage.setItem(MARK, "1");
+      } catch {
+        // sessionStorage 不可用时退化为「每次都播种」——保留旧行为，不因此报错
+      }
       const request = indexedDB.open("toolcove", dbVersion);
       request.onupgradeneeded = () => {
         const db = request.result;
