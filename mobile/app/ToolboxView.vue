@@ -31,6 +31,7 @@ const VIEWS = {
   request: defineAsyncComponent(() => import("./tools/RequestToolView.vue")),
   rail: defineAsyncComponent(() => import("./tools/RailToolView.vue")),
   image: defineAsyncComponent(() => import("./tools/ImageToolView.vue")),
+  pdf: defineAsyncComponent(() => import("./tools/PdfToolView.vue")),
 };
 
 function open(tool) {

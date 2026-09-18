@@ -3059,6 +3059,7 @@
       "run_not_skillable": "This run cannot become a skill yet: it needs a successful tool call and complete enough steps.",
       "invalid": "The extracted skill was invalid and was skipped.",
       "unknown": "This run cannot be turned into a skill right now."
-    }
+    },
+    "pdfLocalNote": "Everything is processed on this device; PDFs are never uploaded."
   }
 }
