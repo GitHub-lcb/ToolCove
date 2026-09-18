@@ -16,12 +16,17 @@ import { decryptValue, encryptValue } from "../../src/secure.js";
 import { invoke } from "../../src/platform/invoke.js";
 import { applyLocale } from "../../src/i18n/index.js";
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
+import { nativeAvailable } from "./platform/bridge.js";
 import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
 
 const { t } = useI18n();
 
 /** 构建戳：由 Vite 的 define 注入（桌面端也用它显示版本），手机端拿来核对"手机上装的是哪一版"。 */
 const BUILD_STAMP_TEXT = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__.replace("T", " ").replace("Z", "") : "dev";
+
+/** 原生桥是否可用：内容随构建形态而变，所以不能写死"Android · WebView"。 */
+const nativeReady = nativeAvailable();
+const platformText = computed(() => (nativeReady ? "Android · WebView · 原生桥" : "WebView（网页形态）"));
 
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi" },
@@ -357,7 +362,10 @@ async function renameDevice(event) {
     <template v-else>
       <ul class="m-stats" data-role="about">
         <li><b>{{ t("mobile.setVersion") }}</b><span data-role="build-stamp">{{ BUILD_STAMP_TEXT }}</span></li>
-        <li><b>{{ t("mobile.setPlatform") }}</b><span>Android · WebView</span></li>
+        <li><b>{{ t("mobile.setPlatform") }}</b><span>{{ platformText }}</span></li>
+        <!-- 原生桥是否接上：装了 APK 就该是「已接上」，浏览器里跑则是「网页形态」。
+             这一行也是排查"为什么某些能力没生效"的第一个抓手。 -->
+        <li><b>{{ t("mobile.setBridge") }}</b><span data-role="bridge-status" :data-on="nativeReady">{{ nativeReady ? t("mobile.bridgeOn") : t("mobile.bridgeOff") }}</span></li>
       </ul>
       <p class="m-hint-sm">{{ t("mobile.setStorageNote") }}</p>
     </template>

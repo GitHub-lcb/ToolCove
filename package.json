@@ -19,7 +19,8 @@
     "dev:mobile": "vite --config mobile/vite.mobile.config.js",
     "build:apk": "node mobile/android/build-apk.mjs",
     "tauri": "tauri",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "test:android": "node mobile/android/test-bridge.mjs"
   },
   "dependencies": {
     "@jspawn/qpdf-wasm": "^0.0.2",

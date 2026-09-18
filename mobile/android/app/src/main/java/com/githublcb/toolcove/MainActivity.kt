@@ -61,6 +61,11 @@ class MainActivity : Activity() {
         }
         view.webViewClient = WebViewClient()
 
+        // 原生桥：命令名与桌面端 platform/invoke 完全同名（http_request / network_tcp_check /
+        // encrypt_text / decrypt_text），所以 src/ 里的 repository、sync、ai 一行都不用改。
+        // 只暴露两个成员（isMobile 与 invoke），且只服务本地页面——多一个成员就多一个攻击面。
+        view.addJavascriptInterface(ToolCoveBridge(Bridge(HttpNative())), "ToolCove")
+
         val base = try {
             AssetsServer(assets).also { server = it }.start()
         } catch (e: Exception) {

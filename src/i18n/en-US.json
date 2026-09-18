@@ -3038,7 +3038,7 @@
     "diffRows": "Line by line",
     "diffPatch": "Unified patch",
     "reqNoHeaders": "No headers yet. Tap + above to add one.",
-    "reqCorsNote": "Requests go through the WebView fetch for now, so the target site CORS policy applies; once the native HTTP bridge lands this matches the desktop build.",
+    "reqCorsNote": "Inside the app, requests go out over native HTTP (no CORS restrictions, same as desktop). When previewed in a browser they use fetch and are subject to the target site CORS policy.",
     "imgLocalNote": "Everything is processed on this device; images are never uploaded.",
     "setAbout": "About",
     "setDeviceName": "Device name",
@@ -3061,7 +3061,8 @@
       "unknown": "This run cannot be turned into a skill right now."
     },
     "pdfLocalNote": "Everything is processed on this device; PDFs are never uploaded.",
-    "netTcpNote": "Port check: on mobile this uses browser reachability probing (web ports only; it cannot tell a closed port apart from a policy block). The desktop build performs a real TCP handshake and is more precise.",
-    "noteFile": "Android has no arbitrary-path file access: it goes through the system picker (SAF), which needs the native bridge. This tool opens once that bridge lands."
+    "netTcpNote": "Port check: inside the app this is a real TCP handshake (same as desktop); when previewed in a browser it degrades to reachability probing and only covers web ports.",
+    "noteFile": "Android has no arbitrary-path file access: it goes through the system picker (SAF), which needs the native bridge. This tool opens once that bridge lands.",
+    "setBridge": "Native capabilities"
   }
 }

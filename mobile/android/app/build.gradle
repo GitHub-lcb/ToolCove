@@ -50,6 +50,14 @@ android {
     }
 }
 
+// JVM 单测（src/test）：桥的核心逻辑不依赖 Android 类，因此能在电脑上直接跑——
+// 原生桥最容易变成"只能装机试"的黑盒，把可测的部分测掉，装机只剩 WebView 接线要验。
+// 用 JUnit 4：Gradle 缓存与工具链里都有它，不必引新依赖。
+// 跑法：npm run test:android
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
 // 把前端构建产物作为「生成出来的 assets」注册进来。
 //
 // 为什么不直接同步进 src/main/assets：Gradle 会校验「任务写了源目录却没声明依赖」，

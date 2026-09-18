@@ -205,7 +205,7 @@ test.describe("手机端设置页", () => {
     await expect(page.locator('[data-role="density"]')).toHaveValue("comfort");
   });
 
-  test("关于：显示构建戳，便于核对手机上装的是哪一版", async ({ page }) => {
+  test("关于：显示构建戳与原生桥状态，便于核对手机上的实际情况", async ({ page }) => {
     await seedData(page, { settings: {} });
     await page.goto(MOBILE);
     await goSettings(page);
@@ -214,6 +214,13 @@ test.describe("手机端设置页", () => {
     const stamp = await page.locator('[data-role="build-stamp"]').innerText();
     expect(stamp).not.toBe("");
     expect(stamp).not.toContain("__BUILD_STAMP__");
+
+    // 浏览器里跑（没有 window.ToolCove）→ 必须如实显示为「未接上原生桥」，
+    // 装了 APK 才会变成已接上。这一行是排查"某些能力为什么没生效"的第一个抓手。
+    const bridge = page.locator('[data-role="bridge-status"]');
+    await expect(bridge).toHaveAttribute("data-on", "false");
+    await expect(bridge).toContainText(/未接上|No native bridge/);
+    await expect(page.locator('[data-role="about"]')).toContainText("网页形态");
   });
 
   test("云同步：状态可见，入伙三要素缺一不可", async ({ page }) => {
