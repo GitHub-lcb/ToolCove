@@ -1,0 +1,92 @@
+// app 模块。刻意保持「零第三方依赖」：
+//   - 没有 androidx（没有 AppCompat / Compose / WebViewAssetLoader）；
+//   - 唯一被自动带进来的是 kotlin-stdlib（KGP 注入，不可避免）。
+// 少一层依赖，就少一类「本地能编、换台机器编不过」的问题，也让离线构建真正可行。
+//
+// 前端产物由 syncWebAssets 任务从 mobile/app 的构建产物（dist/mobile/app）同步到 assets/：
+// 这样 APK 里永远是刚构建的那一份，不需要人工拷贝，也不会把旧页面打进去。
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.githublcb.toolcove'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'com.githublcb.toolcove'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.7.0'
+        // 侧载应用，不做多语言分包：中英两套 strings 都留在包里
+        resourceConfigurations += ['zh', 'en']
+    }
+
+    buildTypes {
+        release {
+            // 没有反射、没有序列化、不需要混淆规则，开 minify 只会引入风险而没有收益
+            minifyEnabled false
+            shrinkResources false
+            // 用 debug 签名：侧载自用不需要发布密钥，也避免把 keystore 带进仓库
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        // 必须与 compileOptions 一致：Gradle 8 + KGP 2.x 对 JVM target 不一致会直接报错
+        jvmTarget = '17'
+    }
+
+    packaging {
+        resources.excludes += ['META-INF/*.kotlin_module']
+    }
+}
+
+// 把前端构建产物作为「生成出来的 assets」注册进来。
+//
+// 为什么不直接同步进 src/main/assets：Gradle 会校验「任务写了源目录却没声明依赖」，
+// 于是 lint/mergeAssets 等任务会报 implicit dependency 而构建失败（已踩过一次）。
+// 正确做法是让任务产出到 build/ 下的生成目录，再把它注册为 assets 源——
+// 源树保持干净，任务间的输入输出关系也显式。
+// 前端产物路径：从 mobile/android 出发到仓库根是两级（写成 '../dist/...' 会落到 mobile/dist，
+// 于是任务因 NO-SOURCE 被跳过、打出一个没有页面的空壳包——已踩过一次）。
+def webDist = rootProject.file('../../dist/mobile/app')
+def webAssetsDir = layout.buildDirectory.dir('generated/webAssets')
+
+android.sourceSets.main.assets.srcDirs += webAssetsDir
+
+tasks.register('syncWebAssets', Sync) {
+    into webAssetsDir
+    // 注意：assets 源目录合并时会**保留来源父目录名**，所以不能整目录 from(webDist)——
+    // 那样 index.html 会跑到 assets/web/<父目录名>/ 下面、前端 404（已踩过一次）。
+    // 这里按内容分别落位：产物根下的文件放第一层，assets/ 子目录原样带上。
+    from(webDist) {
+        include 'index.html'
+    }
+    from(new File(webDist, 'assets')) {
+        into 'assets'
+    }
+    doFirst {
+        if (!webDist.exists() || !new File(webDist, 'index.html').exists()) {
+            throw new GradleException("前端产物不存在：${webDist}\n先跑：npm run build:mobile")
+        }
+    }
+}
+
+// 所有消费 assets 的任务都先同步一次。这里不逐个列举任务类型——
+// Gradle 的任务图会因为 AGP 版本而变化，写死名字迟早漏（已经漏过 lint 两次）。
+// 统一挂在「名字里带 Assets 的 merge 任务」与「lint 分析任务」上，其余由 dependsOn 传递。
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn 'syncWebAssets'
+}
+tasks.matching { it.name.toLowerCase().contains('lint') && (it.name.contains('Analyze') || it.name.contains('ReportModel')) }.configureEach {
+    dependsOn 'syncWebAssets'
+}

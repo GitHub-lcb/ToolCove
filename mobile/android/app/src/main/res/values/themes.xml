@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      用平台自带的 Material 主题，不引 AppCompat/Material 组件库——
+      本应用只有一个全屏 WebView，为了一致外观拉进一整套 UI 库不划算。
+      windowBackground 写 day/night 两套由系统自动取（见 values-night）。
+      背景色与前端 styles/shell.css 的页面背景保持一致：原生启动页与页面之间不闪白底。
+      注意本文件是 XML，注释中不能出现连续两个减号。
+    -->
+    <style name="Theme.ToolCove" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+    </style>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ToolCove</string>
+    <string name="startup_failed">ToolCove 无法启动本地页面服务：\n%1$s\n\n重装应用通常可以解决；若持续出现，请把上面的信息反馈给开发者。</string>
+</resources>

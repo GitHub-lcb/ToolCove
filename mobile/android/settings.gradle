@@ -1,0 +1,26 @@
+// 单模块工程：一个应用模块，没有别的。
+//
+// 用 Groovy DSL 而不是 Kotlin DSL —— 这个选择是踩出来的，不是偏好：
+// Gradle 编译 Kotlin DSL 脚本时会在 gradle-home/caches/<版本>/kotlin-dsl/scripts 下
+// 「先写临时目录、再 rename 成正式目录」，在本机 Windows 上那个 rename **稳定失败**：
+//   Could not move temporary workspace ... to immutable location ...
+// 清缓存、关 daemon、关 vfs.watch、改成进程内编译都没用，换 Groovy 脚本一次通过
+// （Groovy 脚本不经过 Kotlin 编译器，不产生那个目录）。三个小文件不值得为类型安全
+// 再折腾这条链路。
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "ToolCove"
+include(":app")

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认（英文）文案。中文在 res/values-zh/strings.xml。
+  规则：默认 values 放英文、其他语言放带限定符的目录——反过来（默认中文 + values-en）不合法。
+
+  ⚠️ 写这些字符串时踩过的坑，改文案前先看一眼：
+  1) 反斜杠只有少数几个转义是合法的（\n \t \' \" \\）。写 `C:\temp` 这种路径会报
+     「Invalid unicode escape sequence」——aapt2 把 \t 当成了转义序列的起点。
+  2) 属性值里的引号用单引号，别写 \"。
+  3) 只有带格式说明符（%s/%d）的文案才需要默认的 formatted="true"。
+-->
+<resources>
+    <string name="app_name">ToolCove</string>
+    <!-- 本地服务起不来时的提示：给出原因而不是白屏 -->
+    <string name="startup_failed">ToolCove could not start its local page server:\n%1$s\n\nReinstalling the app usually fixes this. If it persists, please report the message above.</string>
+</resources>

@@ -17,6 +17,7 @@
     "test:e2e:ui": "playwright test --ui",
     "build:mobile": "vite build --config mobile/vite.mobile.config.js",
     "dev:mobile": "vite --config mobile/vite.mobile.config.js",
+    "build:apk": "node mobile/android/build-apk.mjs",
     "tauri": "tauri",
     "release": "node scripts/release.js"
   },

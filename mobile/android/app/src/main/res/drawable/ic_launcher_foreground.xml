@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  启动图标（自适应图标的前景层）。
+  视图 108×108，安全区是中心 72×72 —— 超出安全区的部分在圆形/方形裁切下会被切掉，
+  所以图形只画在 26..82 之间。
+  图形语义：收纳箱（ToolCove 的 Cove）+ 一把工具，不做写实刻画，只求在小尺寸下可辨。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 提手 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,28h14v7h-14z" />
+    <!-- 箱盖 -->
+    <path
+        android:fillColor="#C7DDFF"
+        android:pathData="M30,37h48v8H30z" />
+    <!-- 箱体 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,47h42a4,4 0 0 1 4,4v24a4,4 0 0 1 -4,4H33a4,4 0 0 1 -4,-4V51a4,4 0 0 1 4,-4z" />
+    <!-- 锁扣 -->
+    <path
+        android:fillColor="#1D4ED8"
+        android:pathData="M52,58h4v10h-4z" />
+    <!-- 工具：一把斜放的扳手轮廓，点出「工具箱」 -->
+    <path
+        android:fillColor="#1D4ED8"
+        android:pathData="M41,63l3,-3l4,4l-3,3z" />
+    <path
+        android:fillColor="#1D4ED8"
+        android:pathData="M64,63l3,3l-4,3l-3,-3z" />
+</vector>

@@ -43,11 +43,21 @@ const I18N_CALL = /\bt\(\s*["'`][\w.]+["'`]/;
  */
 const ALLOWED_SCRIPT_PARAM = new Set(["src/sync/index.js:syncNowManual"]);
 
+/**
+ * 扫描时跳过的目录名（任意层级）：
+ *   node_modules —— 第三方代码
+ *   dist / build / out —— **构建产物**。手机端（mobile/）下既有 Vite 产物，也有 Gradle 的
+ *     build/ 与 APK 的 out/；它们里面是压缩过的 bundle，扫进来只会误报（曾经真的误报过
+ *     一条「形参 t 被遮蔽」）。本测试只该看源码。
+ * 以 . 开头的目录（.git、.toolchain 等）另行跳过。
+ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "release-out"]);
+
 function sourceFiles(dir, out = []) {
   const abs = path.join(ROOT, dir);
   if (!fs.existsSync(abs)) return out;
   for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name === "dist" || entry.name.startsWith(".")) continue;
+    if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
     // 统一用正斜杠：Windows 下 path.join 给的是反斜杠，会跟白名单/测试名对不上
     const rel = `${dir}/${entry.name}`;
     if (entry.isDirectory()) sourceFiles(rel, out);

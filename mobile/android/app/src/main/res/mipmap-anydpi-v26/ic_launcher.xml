@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  启动图标。
+  只提供 adaptive-icon（API 26+）：minSdk 就是 26，所以旧的 PNG 密度桶（mipmap-hdpi…）
+  和 ic_launcher_round.png 都不需要——少一套图片资产，也少一处会和矢量图不一致的地方。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_mono" />
+</adaptive-icon>
