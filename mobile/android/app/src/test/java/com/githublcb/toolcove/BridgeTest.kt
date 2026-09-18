@@ -109,7 +109,9 @@ class BridgeTest {
 
     @Test
     fun `未实现的命令给出明确提示 而不是静默失败`() {
-        val out = bridge().dispatch("file_tool_read_text", """{"path":"/x"}""")
+        // 用真正还没实现的命令：file_* 与 network_tcp_check 现在都做了，
+        // 断言它们"未实现"会随着进展变成假失败（这条用例原来就是拿 file_tool_read_text 写的）
+        val out = bridge().dispatch("git_pull", """{"path":"/x"}""")
         assertTrue(out.contains("__error"))
         assertTrue(out, out.contains("尚未实现"))
     }

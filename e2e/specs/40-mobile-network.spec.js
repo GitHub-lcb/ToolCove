@@ -160,9 +160,9 @@ test.describe("手机端工具箱（网络）", () => {
     // 部分降级：说明文字必须还在（否则用户会以为和桌面一样）
     await expect(network).toContainText(/TCP|原生/);
 
-    // 仍未迁移的文件工具要说明"为什么不能做"
+    // 文件工具也已可用（走 SAF），且同样保留"语义差异"的说明
     const file = page.locator('.m-item[data-tool="file"]');
-    await expect(file).toHaveAttribute("data-ready", "false");
-    await expect(file).toContainText(/SAF|文件选择器/);
+    await expect(file).toHaveAttribute("data-ready", "true");
+    await expect(file).toContainText(/SAF|系统选择器/);
   });
 });

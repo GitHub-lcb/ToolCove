@@ -3062,7 +3062,21 @@
     },
     "pdfLocalNote": "Everything is processed on this device; PDFs are never uploaded.",
     "netTcpNote": "Port check: inside the app this is a real TCP handshake (same as desktop); when previewed in a browser it degrades to reachability probing and only covers web ports.",
-    "noteFile": "Android has no arbitrary-path file access: it goes through the system picker (SAF), which needs the native bridge. This tool opens once that bridge lands.",
-    "setBridge": "Native capabilities"
+    "noteFile": "Android has no arbitrary-path file access: files must be authorised through the system picker (SAF). Requires the app.",
+    "setBridge": "Native capabilities",
+    "fileOpen": "Choose a file",
+    "fileReload": "Reload",
+    "fileSaved": "Saved",
+    "fileNeedApp": "File access requires the app (browser previews have no system file picker).",
+    "fileSafNote": "Android has no arbitrary-path file access: the file must first be authorised through the system picker. The grant lasts for this installation.",
+    "fileEncoding": "Detected encoding",
+    "fileHasBom": "Has BOM",
+    "fileLossy": "This file contains bytes that could not be decoded and are shown as replacement characters — the content may be incomplete.",
+    "fileContent": "File content",
+    "fileReadEncoding": "Read as",
+    "fileWriteEncoding": "Save as",
+    "fileWriteBom": "Write BOM",
+    "fileNoChange": "No changes yet.",
+    "fileSave": "Save back to file"
   }
 }

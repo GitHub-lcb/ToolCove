@@ -9,11 +9,24 @@
 // 安卓侧约定（Kotlin 里用 @JavascriptInterface 暴露同名方法，参数为 JSON 字符串）：
 //   window.ToolCove.invoke(cmd, argsJson) -> 返回 JSON 字符串；抛错时返回 {"__error": "..."}
 //   window.ToolCove.isMobile === true
-import { setMobileBridge, hasMobileBridge } from "../../../src/platform/invoke.js";
+import { invoke, setMobileBridge, hasMobileBridge } from "../../../src/platform/invoke.js";
 
 /** 安卓原生桥是否存在（浏览器里跑移动端前端时为 false）。 */
 export function nativeAvailable() {
   return typeof window !== "undefined" && !!window.ToolCove && window.ToolCove.isMobile === true;
+}
+
+/**
+ * 弹系统文件选择器，返回授权 URI（空串表示用户取消）。
+ *
+ * 走的是桥的 `file_pick` 命令：原生侧挂起等待用户操作，超时或取消都返回空串。
+ * 所以这里**不需要**处理"选择器停住了"——它会自己结束，前端把空串当取消即可。
+ * 浏览器形态下没有选择器，抛一句能读懂的话，由调用方决定怎么提示。
+ */
+export async function pickFile(mimeType = "*/*") {
+  if (!nativeAvailable()) throw new Error("浏览器预览下没有系统文件选择器");
+  const result = await invoke("file_pick", { mimeType });
+  return String(result?.uri || "");
 }
 
 /**

@@ -2,6 +2,8 @@ package com.githublcb.toolcove
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
@@ -12,7 +14,6 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
 import com.githublcb.toolcove.bridge.Bridge
-import com.githublcb.toolcove.bridge.HttpNative
 
 /**
  * 唯一 Activity：全屏 WebView + 本地资源服务。
@@ -27,6 +28,9 @@ class MainActivity : Activity() {
 
     private var webView: WebView? = null
     private var server: AssetsServer? = null
+    private var native: AndroidNative? = null
+    /** 文件选择请求码：固定值即可，只有一处使用。 */
+    private val pickFileRequest = 1001
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,10 +68,27 @@ class MainActivity : Activity() {
         view.webViewClient = WebViewClient()
 
         // 原生桥：命令名与桌面端 platform/invoke 完全同名（http_request / network_tcp_check /
-        // encrypt_text / decrypt_text），所以 src/ 里的 repository、sync、ai 一行都不用改。
+        // encrypt_text / decrypt_text / file_pick / file_tool_read_text …），
+        // 所以 src/ 里的 repository、sync、ai 一行都不用改。
         // 只暴露两个成员（isMobile 与 invoke），且只服务本地页面——多一个成员就多一个攻击面。
-        // 加密走 Keystore（密钥由系统保管），HTTP/TCP 走 HttpNative。
-        view.addJavascriptInterface(ToolCoveBridge(Bridge(KeystoreNative())), "ToolCove")
+        val ops = AndroidNative(applicationContext) { mime ->
+            // 必须回到 UI 线程启动 Activity（JS 桥线程不是 UI 线程）
+            var launched = false
+            runOnUiThread {
+                launched = runCatching {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = mime
+                        // 拿持久读权限：选完之后还要能继续读，而不是当次会话有效
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    }
+                    startActivityForResult(intent, pickFileRequest)
+                }.isSuccess
+            }
+            launched
+        }
+        native = ops
+        view.addJavascriptInterface(ToolCoveBridge(Bridge(ops)), "ToolCove")
 
         val base = try {
             AssetsServer(assets).also { server = it }.start()
@@ -106,7 +127,39 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
+    /**
+     * 文件选择器的结果。
+     *
+     * 用户取消时 resultCode 不是 RESULT_OK、data 为 null —— 这两种情况都要**把空结果交回去**，
+     * 让挂起等待的桥线程立刻返回空串（前端表现为"取消"），而不是白等到超时。
+     */
+    @Deprecated("Deprecated in API 30+, startActivityForResult is still the simplest hook here")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == pickFileRequest) {
+            val uri: Uri? = if (resultCode == RESULT_OK) data?.data else null
+            if (uri != null) {
+                // 把持久读/写权限真的接下来：不调用的话，离开本次会话后就再也读不到这个文件
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
+                android.util.Log.i("ToolCove", "picked: $uri")
+            } else {
+                android.util.Log.i("ToolCove", "file pick cancelled")
+            }
+            native?.onPicked(uri?.toString())
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
+        // 让还在等选择器的请求立刻结束，避免线程白等到超时
+        native?.cancelPending()
+        native = null
         webView?.apply {
             loadUrl("about:blank")
             destroy()

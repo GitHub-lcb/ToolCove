@@ -67,6 +67,74 @@ export async function seedWithAI(page, extra = {}) {
   await seedData(page, { settings: { ...AI_SETTINGS, ...extra } });
 }
 
+/**
+ * 种一个**假的安卓原生桥**（`window.ToolCove`），用来在浏览器里验证手机端的前端链路。
+ *
+ * 这正是当初把桥做成"可注入"的回报：不必有设备/模拟器，就能把
+ * 「FileToolView → invoke("file_pick"/"file_tool_read_text") → bridge.js → 原生形状」
+ * 整条路径跑一遍。原生侧的对应逻辑另有 57 条 Kotlin JVM 单测。
+ *
+ * @param {{files?: Record<string,string|Uint8Array>, pick?: string|null, failPick?: boolean}} options
+ *   files：内存文件系统（键是 content:// URI）
+ *   pick：file_pick 返回的 URI；null 表示模拟"用户取消"
+ *   failPick：让 file_pick 报错（模拟没有 Activity 可用）
+ */
+export async function seedMobileBridge(page, { files = {}, pick = null, failPick = false } = {}) {
+  await page.addInitScript(
+    ([entries, pickUri, pickFails]) => {
+      const store = new Map();
+      for (const [uri, value] of entries) {
+        // 用 Latin-1 还原字节：这样 UTF-8/GBK 的字节序列在页面里保持一致
+        store.set(uri, typeof value === "string" ? new TextEncoder().encode(value) : new Uint8Array(value));
+      }
+      const ok = (value) => JSON.stringify(value);
+      const err = (message) => JSON.stringify({ __error: message, __code: "native_error" });
+
+      window.__E2E_NATIVE_CALLS__ = [];
+      window.ToolCove = {
+        isMobile: true,
+        invoke(cmd, argsJson) {
+          const args = argsJson ? JSON.parse(argsJson) : {};
+          window.__E2E_NATIVE_CALLS__.push({ cmd, args });
+          if (cmd === "file_pick") {
+            if (pickFails) return err("当前无法打开文件选择器，请重试");
+            return ok({ uri: pickUri || "" });
+          }
+          if (cmd === "file_tool_read_text") {
+            const bytes = store.get(args.path);
+            if (!bytes) return err(`无法读取该文件：文件不存在 [${args.path}]`);
+            // 与原生 FileCodec 一致的最小实现：只处理 UTF-8（含 BOM），足够验证接线
+            const hasBom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+            const body = hasBom ? bytes.slice(3) : bytes;
+            const text = new TextDecoder("utf-8").decode(body);
+            return ok({
+              path: args.path,
+              name: String(args.path).split("/").pop() || "file",
+              size: bytes.length,
+              text,
+              encoding: "UTF-8",
+              hasBom,
+              lossy: text.includes("\uFFFD"),
+            });
+          }
+          if (cmd === "file_tool_write_text") {
+            const bytes = new TextEncoder().encode(String(args.text ?? ""));
+            store.set(args.path, args.bom ? new Uint8Array([0xef, 0xbb, 0xbf, ...bytes]) : bytes);
+            return "null";
+          }
+          if (cmd === "file_tool_inspect") {
+            return ok(
+              (args.paths || []).map((path) => ({ path, name: String(path).split("/").pop() || "", size: store.get(path)?.length || 0, isFile: store.has(path), isDirectory: false, exists: store.has(path) }))
+            );
+          }
+          return err(`E2E 桥未实现该命令：${cmd}`);
+        },
+      };
+    },
+    [Object.entries(files), pick, failPick]
+  );
+}
+
 export const E2E_IPC_BASE = "http://127.0.0.1:4321/e2e-ipc";
 
 /** 把排好的动作转成 OpenAI 兼容响应体。 */

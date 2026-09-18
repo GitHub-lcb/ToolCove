@@ -3062,7 +3062,21 @@
     },
     "pdfLocalNote": "全部在本机处理，PDF 不会上传。",
     "netTcpNote": "端口检测：在 App 内是原生 TCP 握手（与桌面端等价）；在浏览器里预览时退化为可达性探测，只能测 Web 端口。",
-    "noteFile": "安卓没有“任意路径读写”这回事：文件访问要走系统文件选择器（SAF），需要原生桥支持，等原生桥接上后再开放。",
-    "setBridge": "原生能力"
+    "noteFile": "安卓没有「任意路径读写」：文件要先经系统选择器授权（SAF）。需要在 App 内使用。",
+    "setBridge": "原生能力",
+    "fileOpen": "选择文件",
+    "fileReload": "重新读取",
+    "fileSaved": "已保存",
+    "fileNeedApp": "文件访问需要在 App 内使用（浏览器预览下没有系统文件选择器）。",
+    "fileSafNote": "安卓没有「任意路径读写」：文件要先经系统选择器授权，之后才能读写它。授权在本次安装内有效。",
+    "fileEncoding": "实际编码",
+    "fileHasBom": "带 BOM",
+    "fileLossy": "这个文件有无法解码的字节，已用替换字符显示——内容可能不完整。",
+    "fileContent": "文件内容",
+    "fileReadEncoding": "按此编码读取",
+    "fileWriteEncoding": "按此编码保存",
+    "fileWriteBom": "保存时带 BOM",
+    "fileNoChange": "还没有改动。",
+    "fileSave": "保存回原文件"
   }
 }

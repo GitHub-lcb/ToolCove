@@ -224,6 +224,10 @@ interface NativeOps {
     fun tcpCheck(args: JsonValue): Map<String, Any?>
     fun encrypt(plain: String): String
     fun decrypt(cipher: String): String
+    /** 文件读写（手机端走 SAF）；为 null 时相关命令报"本平台不支持"。 */
+    fun files(): FileAccess? = null
+    /** 弹系统文件选择器并等待结果（返回空串表示用户取消/超时）。 */
+    fun pickFile(mimeType: String): String = ""
 }
 
 /**
@@ -244,6 +248,11 @@ class Bridge(private val native: NativeOps) {
                 "network_tcp_check" -> JsonValue.of(native.tcpCheck(args)).toJson()
                 "encrypt_text" -> JsonValue.of(mapOf("cipher" to native.encrypt(args.str("plain")))).toJson()
                 "decrypt_text" -> JsonValue.of(mapOf("plain" to native.decrypt(args.str("cipher")))).toJson()
+                // ---- 文件（手机端走 SAF：path 是 content:// URI，与桌面端"字符串路径"同形）----
+                "file_pick" -> JsonValue.of(mapOf("uri" to native.pickFile(args.str("mimeType", "*/*")))).toJson()
+                "file_tool_read_text" -> readText(args)
+                "file_tool_write_text" -> writeText(args)
+                "file_tool_inspect" -> inspect(args)
                 else -> error("unsupported", "手机端尚未实现该命令：$command")
             }
         } catch (e: Exception) {
@@ -251,6 +260,61 @@ class Bridge(private val native: NativeOps) {
             // 比"桥抛异常→WebView 收到一句 unclear 的报错"好排查得多。
             error("native_error", e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    /** 文件读写需要 FileAccess；没有就明确说"本平台不支持"，而不是抛 NullPointerException。 */
+    private fun files(): FileAccess = native.files() ?: throw IllegalStateException("当前平台不支持文件访问")
+
+    /**
+     * 读文本：形状与桌面端 file_tool_read_text 完全一致
+     * （path / name / size / text / encoding / hasBom / lossy），前端不必分支。
+     */
+    private fun readText(args: JsonValue): String {
+        val uri = args.str("path")
+        require(uri.isNotEmpty()) { "缺少文件路径" }
+        val bytes = files().readBytes(uri)
+        val decoded = FileCodec.decode(bytes, args.str("encoding", "AUTO"))
+        return JsonValue.of(
+            mapOf(
+                "path" to uri,
+                "name" to FileCodec.displayName(uri),
+                "size" to bytes.size,
+                "text" to decoded.text,
+                "encoding" to decoded.encoding,
+                "hasBom" to decoded.hasBom,
+                // lossy 让界面能提示"内容可能不完整"，而不是让人以为文件本来就是这样
+                "lossy" to decoded.lossy,
+            )
+        ).toJson()
+    }
+
+    private fun writeText(args: JsonValue): String {
+        val uri = args.str("path")
+        require(uri.isNotEmpty()) { "缺少文件路径" }
+        val text = args.str("text")
+        val bytes = FileCodec.encode(text, args.str("encoding", "UTF-8"), args.bool("bom"))
+        files().writeBytes(uri, bytes)
+        // 桌面端写入返回 null；这里返回 null 值（JSON "null"），保持一致
+        return JsonValue.JNull.toJson()
+    }
+
+    private fun inspect(args: JsonValue): String {
+        val access = files()
+        val items = args.arr("paths").map { value ->
+            val uri = value.asStringOrNull() ?: ""
+            val name = FileCodec.displayName(uri)
+            val size = runCatching { access.sizeOf(uri) }.getOrNull()
+            mapOf(
+                "path" to uri,
+                "name" to name,
+                "size" to (size ?: 0L),
+                "isFile" to (size != null),
+                // SAF 的 URI 不代表真实目录（目录要另走 tree picker），如实标注而不是假装
+                "isDirectory" to false,
+                "exists" to (size != null),
+            )
+        }
+        return JsonValue.of(items).toJson()
     }
 
     private fun httpResultMap(result: HttpResult): Map<String, Any?> = mapOf(
