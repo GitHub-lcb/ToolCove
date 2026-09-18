@@ -1125,3 +1125,55 @@ body,
 .m-md p:last-child {
   margin-bottom: 0;
 }
+/* ---------- 工作台概览 ---------- */
+/* KPI 两列网格：393px 宽下两列是能看清标签的上限，再多就要缩字号了 */
+.m-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--m-gap);
+  margin: 0 0 var(--m-gap);
+  padding: 0;
+  list-style: none;
+}
+
+.m-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--m-border);
+  border-radius: 10px;
+  background: var(--m-card);
+}
+
+.m-kpi-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.m-kpi-label {
+  font-size: 0.78rem;
+  color: var(--m-text);
+}
+
+.m-kpi-hint {
+  font-size: 0.68rem;
+  color: var(--m-muted);
+}
+
+/* 迭代进度条：手机上比百分比数字更直观 */
+.m-bar {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--m-soft);
+  overflow: hidden;
+}
+
+.m-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--m-primary);
+  transition: width 0.2s ease;
+}

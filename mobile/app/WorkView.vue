@@ -1,23 +1,26 @@
 <script setup>
-// 工作台（手机端）：迭代列表 → 迭代详情（需求）→ 需求详情（子任务）。
+// 工作台（手机端）：概览 → 迭代列表 → 迭代详情（需求）→ 需求详情（子任务）。
 //
-// 三层导航用应用内状态而不是路由：安卓上没有浏览器地址栏，返回键由 update 后的层级回退处理；
+// 四层导航用应用内状态而不是路由：安卓上没有浏览器地址栏，返回键由 update 后的层级回退处理；
 // 这与桌面端「多窗口 + 自由布局」是**有意的差异**（见 docs/mobile-app-plan.md §5）。
 //
 // 逻辑全部复用共享层：集合增删改走 src/tasks.js，工时/规模走 src/requirementMetrics.js，
 // 汇总与排序在本页纯函数 work.js 里（已单测）。
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { load as loadKind, mutate, onDataChanged } from "../../src/data/repository.js";
 import { addIteration, addRequirement, addSubTask, newIteration, newRequirement, newSubTask, removeIteration, removeRequirement, removeSubTask, updateIteration, updateRequirement, updateSubTask } from "../../src/tasks.js";
 import { ITERATION_STATUSES, filterRequirements, hoursText, iterationSummary, requirementLine, sortIterations } from "./work.js";
+
+// 概览按需加载：它只在第一层用得到，而手机端首屏体积要省（与工具箱同样的做法）
+const WorkOverview = defineAsyncComponent(() => import("./work/WorkOverview.vue"));
 
 const { t } = useI18n();
 
 const iterations = ref([]);
 const loading = ref(true);
 const error = ref("");
-const view = reactive({ level: "list", iterId: "", reqId: "" }); // list | iter | req
+const view = reactive({ level: "overview", iterId: "", reqId: "" }); // overview | list | iter | req
 const reqFilter = ref("active");
 const draft = reactive({ open: false, kind: "", name: "", days: "" });
 const confirmState = reactive({ open: false, kind: "", name: "" });
@@ -30,6 +33,15 @@ const currentRequirement = computed(() => {
 
 const sorted = computed(() => sortIterations(iterations.value));
 const visibleRequirements = computed(() => filterRequirements(currentIteration.value?.items || [], reqFilter.value));
+
+/** 概览与迭代列表之间的分段（概览是默认层，见 view.level 的初始值）。 */
+const section = computed(() => (view.level === "overview" ? "overview" : "iterations"));
+function switchSection(key) {
+  // 切到概览时清掉钻取状态：否则从概览点回迭代会停在上次打开的那条里，像"没反应"
+  view.level = key === "overview" ? "overview" : "list";
+  view.iterId = "";
+  view.reqId = "";
+}
 
 async function load() {
   loading.value = true;
@@ -82,8 +94,19 @@ function goBack() {
     view.iterId = "";
     return true;
   }
+  // 迭代列表 → 概览（概览是最外层，再返回就交给系统退出）
+  if (view.level === "list") {
+    view.level = "overview";
+    return true;
+  }
   return false;
 }
+
+/**
+ * 暴露给 Shell：安卓系统返回键经 popstate 调到这里。
+ * 不暴露的话，在需求/子任务层按返回会直接退出应用（层级回退只能靠界面上的 ‹ 按钮）。
+ */
+defineExpose({ goBack });
 
 function openIteration(iteration) {
   view.level = "iter";
@@ -150,11 +173,20 @@ const toggleSubtaskDone = (subtask) => write((list) => updateSubTask(list, view.
 </script>
 
 <template>
-  <section class="m-work" :data-level="view.level">
+  <section class="m-work" :data-level="view.level" :data-section="section">
     <p v-if="error" class="m-err">{{ error }}</p>
 
+    <!-- 分段：概览 / 迭代（与桌面端 work 模块的两个入口对应） -->
+    <div class="m-chips" data-role="work-sections">
+      <button class="m-chip" :class="{ on: section === 'overview' }" data-nav="overview" @click="switchSection('overview')">{{ t("nav.overview") }}</button>
+      <button class="m-chip" :class="{ on: section === 'iterations' }" data-nav="iterations" @click="switchSection('iterations')">{{ t("nav.iteration") }}</button>
+    </div>
+
+    <!-- 第零层：概览 -->
+    <WorkOverview v-if="view.level === 'overview'" />
+
     <!-- 第一层：迭代列表 -->
-    <template v-if="view.level === 'list'">
+    <template v-else-if="view.level === 'list'">
       <div class="m-tools">
         <h2 class="m-h2">{{ t("nav.iteration") }}</h2>
         <button class="m-add" :title="t('mobile.workAddIteration')" @click="askAdd('iteration')">＋</button>

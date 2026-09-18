@@ -28,7 +28,7 @@ export const capabilities = {
   updater: isDesktop, // 自动更新（手机端由应用商店/手动安装，暂不做）
   autostart: isDesktop, // 开机自启
   tray: isDesktop, // 系统托盘
-  backup: isDesktop, // 数据备份/恢复（zip 落盘）；手机端后续走 SAF 导出
+  backup: true, // 数据备份/恢复：桌面=zip 落盘，手机=JSON 导出 + SAF 选文件恢复（见 mobile/app/backup.js）
   telemetryUpload: isDesktop,
   cloudSync: isDesktop || isMobile, // 云同步：手机端依赖 Kotlin HTTP 桥
   imageStore: true, // 图片附件：浏览器/手机端落 IndexedDB

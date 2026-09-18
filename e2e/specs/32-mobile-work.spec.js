@@ -21,9 +21,18 @@ const ITERATIONS = [
   { id: "i2", title: "已完成的迭代", status: "live", releaseDate: "2026-08-01", items: [] },
 ];
 
+/**
+ * 进入工作台。
+ *
+ * ⚠️ 工作台现在有「概览 / 迭代」两个分段，**默认落在概览**（与桌面端 work 模块的
+ * 默认标签一致）。本文件测的是迭代层的钻取，所以统一先切到「迭代」分段。
+ * 概览本身另有用例（47-mobile-overview）。
+ */
 const goWork = async (page) => {
   await page.locator(".m-tab[data-tab='work']").click();
   await expect(page.locator(".m-work")).toBeVisible();
+  await page.locator('.m-work [data-nav="iterations"]').click();
+  await expect(page.locator(".m-work")).toHaveAttribute("data-level", "list");
 };
 
 test.describe("手机端工作台", () => {

@@ -18,6 +18,7 @@ import { applyLocale } from "../../src/i18n/index.js";
 import { applyBackup, buildBackup, describeBackup, downloadBackup } from "./backup.js";
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
 import { nativeAvailable, pickFile } from "./platform/bridge.js";
+import { capabilities } from "../../src/platform/env.js";
 import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
 
 const { t } = useI18n();
@@ -27,6 +28,43 @@ const BUILD_STAMP_TEXT = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__.r
 
 /** 原生桥是否可用：内容随构建形态而变，所以不能写死"Android · WebView"。 */
 const nativeReady = nativeAvailable();
+
+/**
+ * 能力清单：直接读 env.js 的 capabilities，**不手写第二份**——
+ * 手写的清单迟早与代码不一致，而这里正是用户排查"这个功能怎么不好用"的地方。
+ * 每一项都给出"能用"或"为什么不能用"，而不是只标一个叉。
+ */
+const CAPABILITY_ROWS = [
+  { key: "sqlite", labelKey: "mobile.capSqlite" },
+  { key: "filePicker", labelKey: "mobile.capFilePicker" },
+  { key: "systemProxy", labelKey: "mobile.capHttp" },
+  { key: "secureStore", labelKey: "mobile.capSecure" },
+  { key: "cloudSync", labelKey: "mobile.capSync" },
+  { key: "backup", labelKey: "mobile.capBackup" },
+  { key: "aiRequest", labelKey: "mobile.capAi" },
+  { key: "imageStore", labelKey: "mobile.capImage" },
+  // 下面这些在手机端是**有意的降级**，注明原因
+  { key: "jdbc", labelKey: "mobile.capJdbc" },
+  { key: "rawPrint", labelKey: "mobile.capPrint" },
+  { key: "multiWindow", labelKey: "mobile.capMultiWindow" },
+  { key: "autostart", labelKey: "mobile.capAutostart" },
+  { key: "updater", labelKey: "mobile.capUpdater" },
+  { key: "tray", labelKey: "mobile.capTray" },
+  { key: "localFile", labelKey: "mobile.capLocalFile" },
+  { key: "icmpDiagnostics", labelKey: "mobile.capIcmp" },
+  { key: "git", labelKey: "mobile.capGit" },
+  { key: "telemetryUpload", labelKey: "mobile.capTelemetry" },
+];
+
+const capabilityRows = computed(() =>
+  CAPABILITY_ROWS.map((row) => ({
+    key: row.key,
+    label: t(row.labelKey),
+    on: capabilities[row.key] === true,
+    // 不可用时给出原因（词条按 key 命名，缺了就退回一句通用说明，不会显示成词条键）
+    note: capabilities[row.key] === true ? "" : t(`mobile.capNo_${row.key}`, t("mobile.capNo")),
+  }))
+);
 const platformText = computed(() => (nativeReady ? "Android · WebView · 原生桥" : "WebView（网页形态）"));
 
 const SECTIONS = [
@@ -447,6 +485,21 @@ async function renameDevice(event) {
         <li><b>{{ t("mobile.setBridge") }}</b><span data-role="bridge-status" :data-on="nativeReady">{{ nativeReady ? t("mobile.bridgeOn") : t("mobile.bridgeOff") }}</span></li>
       </ul>
       <p class="m-hint-sm">{{ t("mobile.setStorageNote") }}</p>
+
+      <!-- 能力清单：把"哪些能用、哪些在安卓上降级"直接摆在界面上。
+           为什么要有这一块：降级此前只写在工具备注与文档里，用户遇到"这个功能怎么不好用"
+           时没有一处能查。这里按 env.js 的真实能力矩阵渲染，不手写第二份清单——
+           手写的清单迟早与代码不一致。 -->
+      <div class="m-card">
+        <div class="m-card-head"><b>{{ t("mobile.setCapsTitle") }}</b></div>
+        <p class="m-hint-sm">{{ t("mobile.setCapsNote") }}</p>
+        <ul class="m-stats" data-role="capabilities">
+          <li v-for="cap in capabilityRows" :key="cap.key" :data-cap="cap.key" :data-on="cap.on">
+            <b>{{ cap.label }}</b>
+            <span>{{ cap.on ? t("mobile.capYes") : cap.note }}</span>
+          </li>
+        </ul>
+      </div>
     </template>
 
     <div v-if="section !== 'about'" class="m-actions">

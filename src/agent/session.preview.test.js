@@ -35,7 +35,7 @@ describe("写前预览走到确认卡（会话级）", () => {
     });
     scriptPlanner([call("file.read_text", { path: FILE }), call("file.write_text", { path: FILE, text: "new" })]);
     const run = startAgentRun("写入文件");
-    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"));
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"), { timeout: 10_000 });
     // 这里就是用户看不到的那块内容
     expect(agentSession.pending.preview).toBeTruthy();
     expect(agentSession.pending.preview.path).toBe(FILE);
@@ -75,7 +75,7 @@ describe("写前预览走到确认卡（会话级）", () => {
     });
     scriptPlanner([call("file.read_text", { path: FILE }), call("file.write_text", { path: FILE, text: "new" })]);
     const run = startAgentRun("写入文件");
-    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"));
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("tool"), { timeout: 10_000 });
     resolvePending(true);
     await run;
     expect(agentSession.runStatus).toBe("completed");

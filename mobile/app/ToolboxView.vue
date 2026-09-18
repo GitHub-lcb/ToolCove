@@ -44,6 +44,18 @@ function open(tool) {
   openKey.value = tool.key;
 }
 
+/**
+ * 返回工具列表。**必须暴露给 Shell**：安卓系统返回键要能关掉工具页，
+ * 否则在工具里按返回会直接退出应用（用户最容易骂人的行为）。
+ */
+function goBack() {
+  if (!openKey.value) return false;
+  openKey.value = "";
+  return true;
+}
+
+defineExpose({ goBack });
+
 function close() {
   openKey.value = "";
 }

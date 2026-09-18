@@ -119,4 +119,27 @@ test.describe("手机端设置（备份与恢复）", () => {
     await expect(page.locator('[data-role="backup-error"]')).toHaveCount(0);
     await expect(page.locator('[data-role="backup-notice"]')).toHaveCount(0);
   });
+
+  test("能力清单：可用的标「可用」，降级的给出原因（不是只标一个叉）", async ({ page }) => {
+    await seedData(page, { settings: {} });
+    await page.goto(MOBILE);
+    await page.locator(".m-tab[data-tab='settings']").click();
+    await page.locator('.m-settings [data-nav="about"]').click();
+
+    const list = page.locator('[data-role="capabilities"]');
+    await expect(list).toBeVisible();
+    // 手机端可用的能力
+    for (const key of ["sqlite", "filePicker", "secureStore", "cloudSync", "backup"]) {
+      await expect(list.locator(`[data-cap="${key}"]`)).toHaveAttribute("data-on", "true");
+    }
+    // 有意的降级：必须说明原因，而不是只有"不可用"三个字
+    const jdbc = list.locator('[data-cap="jdbc"]');
+    await expect(jdbc).toHaveAttribute("data-on", "false");
+    await expect(jdbc).toContainText(/JDBC/);
+    const print = list.locator('[data-cap="rawPrint"]');
+    await expect(print).toHaveAttribute("data-on", "false");
+    await expect(print).toContainText(/RAW|prn/);
+    // 词条不能渲染成 key
+    await expect(list).not.toContainText("mobile.cap");
+  });
 });
