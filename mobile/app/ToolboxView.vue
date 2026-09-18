@@ -30,6 +30,7 @@ const VIEWS = {
   diff: defineAsyncComponent(() => import("./tools/DiffToolView.vue")),
   request: defineAsyncComponent(() => import("./tools/RequestToolView.vue")),
   rail: defineAsyncComponent(() => import("./tools/RailToolView.vue")),
+  image: defineAsyncComponent(() => import("./tools/ImageToolView.vue")),
 };
 
 function open(tool) {

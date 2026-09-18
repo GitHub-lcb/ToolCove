@@ -35,7 +35,7 @@ export const TOOLS = Object.freeze([
   { key: "request", group: "network", labelKey: "toolbox.registry.toolRequest", ready: true },
   { key: "network", group: "network", labelKey: "toolbox.registry.toolNetwork", ready: false, note: "mobile.noteNetwork" },
   { key: "file", group: "file", labelKey: "toolbox.registry.toolFile", ready: false },
-  { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: false },
+  { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: true },
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: false },
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: false, note: "mobile.noteLabel" },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },

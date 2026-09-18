@@ -830,3 +830,50 @@ body,
 .m-method {
   flex: 0 0 96px;
 }
+/* ---------- 图片工具 ---------- */
+/* 隐藏原生 file input，用按钮代理点击：样式可控，且各端行为一致 */
+.m-file-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.m-thumb {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-soft);
+  margin-bottom: var(--m-gap);
+}
+
+.m-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: var(--m-gap) 0;
+}
+
+.m-swatch {
+  min-height: 64px;
+  border-radius: 8px;
+  border: 1px solid var(--m-border);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 4px;
+}
+
+/* 色块上的文字用半透明底衬，浅色与深色背景都可读 */
+.m-swatch span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #1f2328;
+}

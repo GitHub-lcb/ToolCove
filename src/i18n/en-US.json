@@ -3038,6 +3038,7 @@
     "diffRows": "Line by line",
     "diffPatch": "Unified patch",
     "reqNoHeaders": "No headers yet. Tap + above to add one.",
-    "reqCorsNote": "Requests go through the WebView fetch for now, so the target site CORS policy applies; once the native HTTP bridge lands this matches the desktop build."
+    "reqCorsNote": "Requests go through the WebView fetch for now, so the target site CORS policy applies; once the native HTTP bridge lands this matches the desktop build.",
+    "imgLocalNote": "Everything is processed on this device; images are never uploaded."
   }
 }
