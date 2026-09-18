@@ -44,16 +44,23 @@ test.describe("手机端工具箱", () => {
     // 迁移进度可见（这是一个「做到哪了」的诚实指标）
     await expect(page.locator('[data-role="tool-progress"]')).toContainText("/");
 
-    // 已迁移的三个可以点
+    // 已迁移的几个可以点
     for (const key of ["json", "convert", "time"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
-    // 未迁移的：按钮禁用 + 有说明
-    const db = page.locator('.m-item[data-tool="db"]');
-    await expect(db).toHaveAttribute("data-ready", "false");
-    await expect(db.locator(".m-item-main")).toBeDisabled();
-    await expect(db).toContainText("迁移中");
-    await expect(db).toContainText("JDBC");
+
+    // 未迁移的：按钮禁用 + 有说明。
+    // ⚠️ 不写死具体是哪个工具——每迁移一个这条就会失效（已经改过三次）。
+    // 改成动态取一个未迁移项来断言规则本身。
+    const pendingKeys = await page.locator('.m-item[data-ready="false"]').evaluateAll((nodes) => nodes.map((n) => n.dataset.tool));
+    expect(pendingKeys.length, "若全部迁移完成，这条用例应改为断言「没有未迁移项」").toBeGreaterThan(0);
+    for (const key of pendingKeys) {
+      const item = page.locator(`.m-item[data-tool="${key}"]`);
+      await expect(item.locator(".m-item-main")).toBeDisabled();
+      // 未迁移必须说明原因，而不是只显示"迁移中"
+      const text = await item.innerText();
+      expect(text.length, `${key} 缺少未迁移说明`).toBeGreaterThan(6);
+    }
   });
 
   test("JSON：格式化 / 压缩 / 转义 / 去转义 / 结构统计", async ({ page }) => {

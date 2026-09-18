@@ -2997,7 +2997,7 @@
     "groupNetwork": "网络与 API",
     "groupFile": "文件与媒体",
     "groupGame": "游戏辅助",
-    "noteDb": "安卓没有 JDBC 驱动：数据库能力改走本地 SQLite，MySQL/PostgreSQL 不做。",
+    "noteDb": "安卓没有 JDBC：只支持 SQLite 文件（MySQL / PostgreSQL / Oracle 需要桌面端）。",
     "noteNetwork": "安卓的 WebView 没有 ICMP 与原始套接字：只保留 TCP 连通性检测，ping/traceroute/DNS 不做。",
     "noteLabel": "安卓没有 Windows 的 RAW 打印队列：保留标签指令生成与预览，真打印只在桌面端。",
     "jsonInputPh": "粘贴 JSON…",
@@ -3077,6 +3077,21 @@
     "fileWriteEncoding": "按此编码保存",
     "fileWriteBom": "保存时带 BOM",
     "fileNoChange": "还没有改动。",
-    "fileSave": "保存回原文件"
+    "fileSave": "保存回原文件",
+    "dbNeedApp": "数据库访问需要在 App 内使用（浏览器预览下没有 SQLite）。",
+    "dbSqliteOnly": "安卓没有 JDBC：这里只支持 SQLite 文件（MySQL / PostgreSQL / Oracle 需要在电脑上用桌面端）。",
+    "dbPickFile": "选择数据库文件",
+    "dbFilePh": "选择文件后自动填入；也可手填应用可访问的路径",
+    "dbConnect": "连接",
+    "dbQuery": "查询",
+    "dbStructure": "表结构",
+    "dbResult": "查询结果",
+    "dbRows": "{n} 行",
+    "dbTruncated": "结果过多，只显示前 {n} 行——请加 LIMIT 或 WHERE 收窄。",
+    "dbNoTables": "这个库里还没有表。",
+    "dbCols": "{n} 列",
+    "dbOpenTable": "查看数据",
+    "dbNeedFile": "请先选择或填写 SQLite 文件。",
+    "dbSqlEmpty": "请输入要执行的 SQL。"
   }
 }

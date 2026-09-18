@@ -228,6 +228,8 @@ interface NativeOps {
     fun files(): FileAccess? = null
     /** 弹系统文件选择器并等待结果（返回空串表示用户取消/超时）。 */
     fun pickFile(mimeType: String): String = ""
+    /** 数据库访问（手机端只有 SQLite）；为 null 时相关命令报"本平台不支持"。 */
+    fun databases(): DatabaseAccess? = null
 }
 
 /**
@@ -253,6 +255,16 @@ class Bridge(private val native: NativeOps) {
                 "file_tool_read_text" -> readText(args)
                 "file_tool_write_text" -> writeText(args)
                 "file_tool_inspect" -> inspect(args)
+                // ---- 数据库（手机端只有 SQLite，形状与桌面端逐字段对齐）----
+                "db_connect" -> JsonValue.of(databases().open(args.obj("opts") ?: args)).toJson()
+                "db_close" -> {
+                    databases().close(args.str("connId"))
+                    JsonValue.JNull.toJson()
+                }
+                "db_query" -> dbQuery(args)
+                "db_tables" -> JsonValue.of(SqlKit.tableRows(databases().tables(args.str("connId")).map { it["name"].toString() })).toJson()
+                "db_columns" -> JsonValue.of(databases().columns(args.str("connId"), args.str("table"))).toJson()
+                "db_test" -> JsonValue.of(mapOf("ok" to true, "durationMs" to databases().test(args.obj("opts") ?: args))).toJson()
                 else -> error("unsupported", "手机端尚未实现该命令：$command")
             }
         } catch (e: Exception) {
@@ -264,6 +276,30 @@ class Bridge(private val native: NativeOps) {
 
     /** 文件读写需要 FileAccess；没有就明确说"本平台不支持"，而不是抛 NullPointerException。 */
     private fun files(): FileAccess = native.files() ?: throw IllegalStateException("当前平台不支持文件访问")
+
+    private fun databases(): DatabaseAccess = native.databases() ?: throw IllegalStateException("当前平台不支持数据库访问")
+
+    /**
+     * 查询/执行 SQL，返回形状与桌面端一致：
+     * { columns, rows, affected, truncated, durationMs }。
+     * rows 是**二维数组**（不是对象数组）——前端按列顺序渲染表格，这一层不能自作主张换形状。
+     */
+    private fun dbQuery(args: JsonValue): String {
+        val connId = args.str("connId")
+        require(connId.isNotEmpty()) { "缺少连接（connId）" }
+        val sql = args.str("sql")
+        require(sql.isNotBlank()) { "SQL 为空" }
+        val outcome = databases().query(connId, sql)
+        return JsonValue.of(
+            mapOf(
+                "columns" to outcome.columns,
+                "rows" to outcome.rows,
+                "affected" to outcome.affected,
+                "truncated" to outcome.truncated,
+                "durationMs" to outcome.durationMs,
+            )
+        ).toJson()
+    }
 
     /**
      * 读文本：形状与桌面端 file_tool_read_text 完全一致

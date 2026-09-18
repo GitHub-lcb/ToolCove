@@ -17,12 +17,15 @@ describe("手机端工具箱目录", () => {
     for (const group of TOOL_GROUPS) expect(toolsOfGroup(group.key).length, `${group.key} 是空的`).toBeGreaterThan(0);
   });
 
-  it("平台独占的能力必须带降级说明（不能只写「迁移中」而不说为什么）", () => {
-    for (const key of ["db", "label"]) {
-      const tool = TOOL_BY_KEY[key];
-      expect(tool.ready).toBe(false);
-      expect(tool.note, `${key} 缺少降级说明`).toBeTruthy();
+  it("未迁移的工具必须带降级说明（不能只写「迁移中」而不说为什么）", () => {
+    // 现在只剩标签打印未迁移（需要复用桌面端 Rust 侧的排版引擎）
+    const pending = TOOLS.filter((tool) => !tool.ready);
+    expect(pending.length, "如果全都迁移完了，这条用例应改为断言「没有未迁移项」").toBeGreaterThan(0);
+    for (const tool of pending) {
+      expect(tool.note, `${tool.key} 未迁移却没有说明`).toBeTruthy();
     }
+    expect(TOOL_BY_KEY.label.ready).toBe(false);
+    expect(TOOL_BY_KEY.label.note).toBeTruthy();
   });
 
   it("部分降级的工具（已可用但能力受限）也要带说明", () => {

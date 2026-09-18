@@ -1,6 +1,7 @@
 package com.githublcb.toolcove
 
 import android.content.Context
+import com.githublcb.toolcove.bridge.DatabaseAccess
 import com.githublcb.toolcove.bridge.FileAccess
 import com.githublcb.toolcove.bridge.HttpNative
 import com.githublcb.toolcove.bridge.JsonValue
@@ -26,6 +27,7 @@ class AndroidNative(
     private val http = HttpNative()
     private val keystore = KeystoreNative(http = http)
     private val files: FileAccess = SafFileAccess(context)
+    private val databases: DatabaseAccess = SqliteAccess(context)
     private val picker = PickerQueue()
 
     override fun httpRequest(args: JsonValue) = http.httpRequest(args)
@@ -33,6 +35,7 @@ class AndroidNative(
     override fun encrypt(plain: String) = keystore.encrypt(plain)
     override fun decrypt(cipher: String) = keystore.decrypt(cipher)
     override fun files(): FileAccess = files
+    override fun databases(): DatabaseAccess = databases
 
     /**
      * 弹选择器并等待用户操作。

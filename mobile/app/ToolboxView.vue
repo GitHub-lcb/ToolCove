@@ -34,6 +34,7 @@ const VIEWS = {
   pdf: defineAsyncComponent(() => import("./tools/PdfToolView.vue")),
   network: defineAsyncComponent(() => import("./tools/NetworkToolView.vue")),
   file: defineAsyncComponent(() => import("./tools/FileToolView.vue")),
+  db: defineAsyncComponent(() => import("./tools/DbToolView.vue")),
 };
 
 function open(tool) {

@@ -986,3 +986,54 @@ body,
   border-color: var(--m-danger);
   color: var(--m-danger);
 }
+
+/* ---------- 数据库：结果表格 ---------- */
+/* 手机上表格必须横向滚动而不是折行：折行会让列对不齐，比滚动更难读 */
+.m-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.m-table {
+  border-collapse: collapse;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.m-table th,
+.m-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--m-border);
+  border-right: 1px solid var(--m-border);
+  text-align: left;
+}
+
+.m-table th {
+  position: sticky;
+  top: 0;
+  background: var(--m-soft);
+  font-weight: 600;
+}
+
+.m-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* NULL 与空串必须能一眼区分：数据里这两者含义完全不同 */
+.m-null {
+  color: var(--m-muted);
+  font-style: italic;
+}
+
+.m-pk {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+  font-size: 0.65rem;
+  font-weight: 600;
+}

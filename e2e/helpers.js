@@ -79,9 +79,9 @@ export async function seedWithAI(page, extra = {}) {
  *   pick：file_pick 返回的 URI；null 表示模拟"用户取消"
  *   failPick：让 file_pick 报错（模拟没有 Activity 可用）
  */
-export async function seedMobileBridge(page, { files = {}, pick = null, failPick = false } = {}) {
+export async function seedMobileBridge(page, { files = {}, pick = null, failPick = false, db = null } = {}) {
   await page.addInitScript(
-    ([entries, pickUri, pickFails]) => {
+    ([entries, pickUri, pickFails, dbFixture]) => {
       const store = new Map();
       for (const [uri, value] of entries) {
         // 用 Latin-1 还原字节：这样 UTF-8/GBK 的字节序列在页面里保持一致
@@ -127,11 +127,60 @@ export async function seedMobileBridge(page, { files = {}, pick = null, failPick
               (args.paths || []).map((path) => ({ path, name: String(path).split("/").pop() || "", size: store.get(path)?.length || 0, isFile: store.has(path), isDirectory: false, exists: store.has(path) }))
             );
           }
+          // ---- 数据库：内存 SQLite 替身（形状与桌面端逐字段一致）----
+          // 只支持 fixture 里预置的几条语句：E2E 验的是**前端渲染与命令接线**，
+          // 真正的 SQL 执行由 Kotlin 侧的 SqliteAccess 负责（另有 JVM 单测覆盖分类与整形）。
+          if (cmd === "db_connect") {
+            if (!dbFixture) return err("当前平台不支持数据库访问");
+            const file = String(args?.opts?.file || "");
+            if (!file) return err("请选择或填写 SQLite 文件");
+            if (dbFixture.failConnect) return err("无法打开数据库文件（文件不存在或不可读）");
+            window.__E2E_DB__ = { connId: "sqlite-e2e", file };
+            return ok("sqlite-e2e");
+          }
+          if (cmd === "db_close") {
+            window.__E2E_DB__ = null;
+            return "null";
+          }
+          if (cmd === "db_tables") {
+            if (!window.__E2E_DB__) return err("连接已断开，请重新连接");
+            return ok((dbFixture?.tables || []).map((name) => ({ name, type: "table" })));
+          }
+          if (cmd === "db_columns") {
+            if (!window.__E2E_DB__) return err("连接已断开，请重新连接");
+            return ok(dbFixture?.columns?.[args.table] || []);
+          }
+          if (cmd === "db_query") {
+            if (!window.__E2E_DB__) return err("连接已断开，请重新连接");
+            const sql = String(args?.sql || "");
+            if (!sql.trim()) return err("SQL 为空");
+            const canned = (dbFixture?.queries || {})[sql];
+            if (canned) return ok(canned);
+            // 默认回放一个两列三行的结果，便于断言表格渲染
+            return ok({
+              columns: [
+                { name: "id", type: "INTEGER", pk: true },
+                { name: "name", type: "TEXT", pk: false },
+              ],
+              rows: [
+                [1, "alice"],
+                [2, null],
+                [3, "carol"],
+              ],
+              affected: -1,
+              truncated: false,
+              durationMs: 4,
+            });
+          }
+          if (cmd === "db_test") {
+            if (!dbFixture) return err("当前平台不支持数据库访问");
+            return ok({ ok: true, durationMs: 6 });
+          }
           return err(`E2E 桥未实现该命令：${cmd}`);
         },
       };
     },
-    [Object.entries(files), pick, failPick]
+    [Object.entries(files), pick, failPick, db]
   );
 }
 

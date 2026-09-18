@@ -2997,7 +2997,7 @@
     "groupNetwork": "Network & API",
     "groupFile": "Files & media",
     "groupGame": "Game helpers",
-    "noteDb": "Android has no JDBC drivers: database support moves to local SQLite; MySQL/PostgreSQL are out of scope.",
+    "noteDb": "Android has no JDBC: SQLite files only (MySQL / PostgreSQL / Oracle need the desktop build).",
     "noteNetwork": "Android WebView has no ICMP or raw sockets: only TCP reachability checks remain; ping/traceroute/DNS are out of scope.",
     "noteLabel": "Android has no Windows RAW print queue: label command generation and preview stay, real printing is desktop only.",
     "jsonInputPh": "Paste JSON…",
@@ -3077,6 +3077,21 @@
     "fileWriteEncoding": "Save as",
     "fileWriteBom": "Write BOM",
     "fileNoChange": "No changes yet.",
-    "fileSave": "Save back to file"
+    "fileSave": "Save back to file",
+    "dbNeedApp": "Database access requires the app (browser previews have no SQLite).",
+    "dbSqliteOnly": "Android has no JDBC: only SQLite files are supported here (MySQL / PostgreSQL / Oracle need the desktop build).",
+    "dbPickFile": "Choose a database file",
+    "dbFilePh": "Filled in after choosing a file; you can also type an app-accessible path",
+    "dbConnect": "Connect",
+    "dbQuery": "Query",
+    "dbStructure": "Schema",
+    "dbResult": "Result",
+    "dbRows": "{n} rows",
+    "dbTruncated": "Too many rows — showing the first {n}. Add LIMIT or WHERE to narrow it down.",
+    "dbNoTables": "This database has no tables yet.",
+    "dbCols": "{n} columns",
+    "dbOpenTable": "View data",
+    "dbNeedFile": "Choose or enter a SQLite file first.",
+    "dbSqlEmpty": "Enter the SQL to run."
   }
 }

@@ -222,7 +222,7 @@ test.describe("手机端工具箱（请求 / 铁路大亨）", () => {
     await expect(tool.locator('[data-role="cursor"]')).toContainText("始发");
   });
 
-  test("迁移进度到 8/14，且请求与铁路大亨已可用", async ({ page }) => {
+  test("迁移进度：请求与铁路大亨已可用，进度与页面条目数一致", async ({ page }) => {
     await seedData(page, { settings: {} });
     await page.goto(MOBILE);
     await goToolbox(page);
@@ -230,10 +230,9 @@ test.describe("手机端工具箱（请求 / 铁路大亨）", () => {
     for (const key of ["request", "rail"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
-    // 仍未迁移的：数据库（安卓无 JDBC）
-    await expect(page.locator('.m-item[data-tool="db"]')).toHaveAttribute("data-ready", "false");
+    // 只断言形态与一致性，不写死数字也不写死"哪个工具未迁移"
+    // （这两样都随每批推进而变，写死会让用例不断失效——已经改过三次）
     const text = await page.locator('[data-role="tool-progress"]').innerText();
-    // 同样只断言形态与一致性，不写死数字（数字随每批工具推进而变）
     const ready = await page.locator('.m-item[data-ready="true"]').count();
     expect(Number(text.match(/(\d+)\s*\//)[1])).toBe(ready);
   });
