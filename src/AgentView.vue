@@ -121,6 +121,8 @@ const noticeText = (item) => {
 };
 // 写前预览：确认卡上的 diff 摘要（长文件只显示改动附近，见 agent/preview.js）
 const pendingPreview = computed(() => describePreview(agentSession.pending?.preview));
+/** 时间线里的确认行：回答是文本（ask_user）还是布尔（工具批准）。 */
+const isTextAnswer = (answer) => typeof answer === "string" && answer.length > 0;
 const attemptText = (a) => (ERROR_KEY[a.code] ? t(ERROR_KEY[a.code]) : a.error || "");
 // 审计行说明「为什么问了 / 为什么没问」——这是从 DSH 的 approval 审计对学到的：
 // 只写「允许/拒绝」回答不了「这次为什么需要人点头」。
@@ -556,7 +558,10 @@ const runLabel = (rec) => t(runMeta(rec).key);
                 <Icon :name="item.answer ? 'check' : 'x'" :size="14" />
                 <code v-if="item.tool" class="tl-name">{{ item.tool }}</code>
                 <span class="tl-text">{{ item.tool ? t("agent.stepConfirm") : item.question }}</span>
-                <b :class="item.answer ? 'ok' : 'no'">{{ item.answer ? t("agent.confirmAllow") : t("agent.confirmDeny") }}</b>
+                <!-- 提问的回答是文本：原来这里一律渲染成「允许」，等于把用户填的路径丢掉，
+                     历史里看不出自己答了什么（用户实测反馈的同一条链）。 -->
+                <b v-if="isTextAnswer(item.answer)" class="ok ans-text" :title="item.answer">{{ t("agent.answered", { text: item.answer }) }}</b>
+                <b v-else :class="item.answer ? 'ok' : 'no'">{{ item.answer ? t("agent.confirmAllow") : t("agent.confirmDeny") }}</b>
               </article>
 
               <article v-else-if="item.kind === 'approval'" class="tl-row tl-approval">
@@ -859,6 +864,8 @@ const runLabel = (rec) => t(runMeta(rec).key);
 .tl-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); border-radius: var(--r-sm); border: 1px solid var(--card-border); background: var(--card); }
 .tl-confirm { color: var(--text-weak); }
 .tl-confirm .ok { margin-left: auto; color: var(--success-deep); font-size: var(--fs-sm); }
+/* 文本回答可能很长（路径、SQL）：单行截断 + title 看全文，不把时间线撑开 */
+.tl-confirm .ans-text { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .tl-confirm .no { margin-left: auto; color: var(--danger-deep); font-size: var(--fs-sm); }
 .tl-notice { color: var(--warn-deep); background: var(--amber-soft); border-color: var(--amber-border); }
 /* 审计行：与确认行同款右对齐结论，但来源是事件流而非卡片 */

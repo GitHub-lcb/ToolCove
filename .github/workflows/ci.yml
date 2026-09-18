@@ -1,4 +1,4 @@
-# 持续集成：前端单测（vitest）+ 前端构建 + Rust 编译检查（cargo check/test）
+# 持续集成：前端单测（vitest）+ E2E（Playwright）+ 前端构建 + Rust 编译检查（cargo check/test）
 # Rust 侧依赖 Windows 原生能力（托盘等），cargo 步骤跑在 windows-latest
 name: CI
 
@@ -22,6 +22,28 @@ jobs:
       - run: npm run build
       # 双端产物都要能构建：桌面包（base=/）与静态站点（base=./）
       - run: npm run build:web
+
+  # E2E：跑在 web 构建产物上（纯静态站点，不需要 Tauri）。
+  # 覆盖单测测不出来的视图层行为：写前预览的 diff、提问卡的文本回答、拒绝写入不产生写操作。
+  # 用系统 Chrome（playwright.config.js 里的 channel=chrome），ubuntu runner 自带，无需下载内核。
+  e2e:
+    name: E2E（web 构建 + Playwright）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright test
+      # 失败时把报告带出来，省得只能看日志猜
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   rust-check:
     name: Rust 编译检查

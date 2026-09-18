@@ -85,6 +85,13 @@ describe("写入门禁", () => {
 });
 
 describe("file.inspect 只证明存在性，不授权覆写", () => {
+  it("inspect 报「不存在」→ 允许创建（模型照提示做完 inspect 就该能写）", () => {
+    const gate = createObservationGate();
+    gate.observeSuccess("file.inspect", { paths: ["C:/tmp/new.txt"] }, [{ path: "C:/tmp/new.txt", exists: false }]);
+    expect(gate.statusOf("C:/tmp/new.txt")).toBe("absent");
+    expect(gate.check("file.write_text", { path: "C:/tmp/new.txt" })).toBeNull();
+  });
+
   it("inspect 成功 → 状态 present，但写入仍然被拒", () => {
     const g = gate();
     // file.inspect 的参数形状是 paths（数组），不是 path——见下面那条专门的回归
@@ -119,8 +126,7 @@ describe("file.inspect 只证明存在性，不授权覆写", () => {
     expect(g.check("file.write_text", { path: "C:/tmp/a.txt" })).toBeNull();
   });
 
-  it("inspect 结果里没点名该路径 → 不登记（形状不符时不猜）", () => {
-    const g = gate();
+  it("inspect 结果里没点名该路径 → 不登记（形状不符时不猜）", () => {    const g = gate();
     g.observeSuccess("file.inspect", { paths: ["C:/tmp/a.txt"] }, [{ path: "C:/other/b.txt" }]);
     expect(g.statusOf("C:/tmp/a.txt")).toBe(OBSERVATION_STATUS.UNKNOWN);
   });
@@ -164,6 +170,19 @@ describe("findInspectEvidence", () => {
     const cyclic = { path: "b" };
     cyclic.self = cyclic;
     expect(findInspectEvidence(cyclic, "a")).toBeUndefined();
+  });
+
+  // 三态：true 存在 / false 确定不存在 / undefined 没有证据。
+  // 这条是 E2E 抓到的真实缺陷：原先只看「有没有点名这个路径」，把 exists:false 也当成存在，
+  // 于是按门禁提示做完 inspect 之后仍被拒，还回了句「该文件已存在」——新建文件走不通。
+  it("明确说不存在时返回 false（而不是当成存在）", () => {
+    expect(findInspectEvidence([{ path: "a", exists: false }], "a")).toBe(false);
+    expect(findInspectEvidence({ paths: [{ path: "a", exists: false }] }, "a")).toBe(false);
+    expect(findInspectEvidence([{ path: "a", found: false }], "a")).toBe(false);
+    // 字段缺失时不能猜：返回 undefined（保守不放行）
+    expect(findInspectEvidence([{ path: "a" }], "a")).toBe(true);
+    // 存在证据优先于缺失证据（同一棵树里两者都有时，宁可保守）
+    expect(findInspectEvidence([{ path: "a", exists: true }, { path: "a", exists: false }], "a")).toBe(true);
   });
 });
 

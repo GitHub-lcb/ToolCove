@@ -2736,6 +2736,7 @@
     "answerSend": "Send answer",
     "answerSkip": "Skip and stop",
     "answerEmpty": "Write an answer before sending",
+    "answered": "Answered: {text}",
     "capSpills": "Spilled results", "capSpillsDesc": "Large results saved to disk take space (max 30 items / 7 days, pruned automatically). This clears the index and blanks the bodies right away.", "spillClear": "Clear spilled results", "spillCleared": "Cleared {n} spilled result(s) (~{chars} chars)", "spillClearEmpty": "There were no spilled results", "capManual": "Manual tools",
     "capManualDesc": "These tools are made for manual use — click to open one in its own window",
     "capSkills": "Skills",

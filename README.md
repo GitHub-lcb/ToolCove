@@ -101,10 +101,17 @@ Requires Node.js ≥ 20 and Rust (MSVC toolchain) for the desktop shell.
 npm install
 npm run tauri dev     # run the desktop app with hot reload
 npm run test          # unit tests (vitest)
+npm run test:e2e      # end-to-end (Playwright against the web build; needs Chrome)
 npm run build         # frontend build (desktop bundle)
 npm run build:web     # static web build
 cd src-tauri && cargo check   # Rust checks
 ```
+
+E2E runs on the static web build and covers what unit tests cannot: the write-preview diff on the
+approval card, the question card taking a **text** answer, and a denied write producing no write at
+all. It uses the system Chrome (no browser download) and stubs the desktop IPC boundary so the
+desktop-only file tools are exercised too — see `e2e/helpers.js` for why that is trustworthy.
+Set `E2E_CHANNEL=chromium` to run on Playwright's own browser instead.
 
 ### Release
 

@@ -156,6 +156,22 @@ Tool Adapters
   现在拆成两条路径：工具确认 `confirm` → 布尔；提问 `askUser` → **文本**
   （`session.answerPending` + 提问卡输入框）。空白回答视为「没回答」（保留卡片请用户补内容），
   `null / false / 纯空白` 才取消整个目标；文本上限 4000 字符并进 `confirmation` 事件与历史。
+- **E2E（Playwright，web 构建）**（2026-09-20）：`npm run test:e2e`，8 条用例覆盖单测测不出来的**视图层行为**：
+  写前预览的 diff 行与底色、提问卡的文本回答、拒绝写入不产生任何写操作、四模块导航不白屏。
+  两个关键做法：
+  - **桌面 IPC 替身**（`e2e/helpers.js` 的 `seedDesktopIpc`）：把 `window.__TAURI_INTERNALS__` 换成一个
+    桥接到 Node 的替身，于是 web 构建以「桌面形态」运行，`desktopOnly` 的 `file.*` 工具才会出现在注册表里
+    ——写前预览与读后写门禁正挂在这些工具上。替身必须同时接管三件事，缺一个都测不成：
+    AI（桌面端走 `ai_chat` IPC，不是 `/chat/completions`，不接管就是「AI 返回内容为空」）、
+    存储（`load_data`/`save_data` 桌面端落 Rust 文件存储，必须接回 IndexedDB，否则「AI 未配置」跳设置页）、
+    事件（`plugin:event|listen` 要返回唯一回调 id，恒返回同一个 id 会让页面崩）。
+  - **AI 动作队列**：`/chat/completions` 的应答按预排动作顺序返回，被测的是应用而不是模型的智力。
+    队列必须在 `exposeFunction` **之前**就绪——Playwright 的回调是首次调用时绑定闭包的。
+- **E2E 抓到的真实缺陷（已修）**：`file.inspect` 回 `{ exists: false }` 时，门禁的 `findInspectEvidence`
+  只看「有没有点名这个路径」，把它当成「存在」——于是模型照门禁提示做完 inspect 仍被拒，
+  还回了句自相矛盾的「该文件已存在」，**新建文件这条路当时根本走不通**。
+  现在该函数返回三态（true 存在 / false 确定不存在 / undefined 没有证据），配合 `observeSuccess`
+  登记为 `absent`；`observation.test.js` 增 2 条回归。
 - 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
 - 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；

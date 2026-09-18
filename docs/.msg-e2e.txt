@@ -1,0 +1,37 @@
+test(e2e): Playwright 基建（web 构建 + 桌面 IPC 替身），并修掉它抓到的两个真实缺陷
+
+背景：这批改动只能靠人工验证——写前预览要截图确认、提问卡要人手点、技能库还没验过。
+目标是把这几条固化成能跑的用例，并且不为了测试给生产代码加分支。
+
+E2E 基建
+- playwright.config.js：跑在 npm run build:web 的产物上（纯静态站点，不需要 Tauri），
+  用系统 Chrome（channel=chrome）而不是下载内核；E2E_CHANNEL=chromium 可切回自带内核。
+- e2e/server.mjs：零依赖静态服务器（只提供服务、不引第三方）；未知路径回落 index.html。
+- e2e/helpers.js：数据播种（IndexedDB，键与 platform/kv.js 一致）+ AI 动作队列 + 桌面 IPC 替身。
+- 8 条用例：四模块导航不白屏/不漏词条键、构建指纹、写前预览（三态：改单行 / 新建 / 拒绝）、
+  提问卡的文本回答与跳过、拒绝写入不产生任何写操作。
+- CI 新增 e2e job；npm run test:e2e / test:e2e:ui；.gitignore 挡掉 test-results 与 playwright-report。
+
+桌面 IPC 替身（为什么可信、以及三个必须同时接管的点）
+- 做法：把 window.__TAURI_INTERNALS__ 换成桥接到 Node 的替身。应用自己的 platform/invoke.js 仍在做
+  真实判断与分发（isDesktop 为真 → 直通 tauriCore.invoke），@tauri-apps/api 的 invoke 只是转发到
+  __TAURI_INTERNALS__.invoke —— 替换的正是**真实 IPC 边界**，测的是生产代码路径，零测试专用分支。
+- 为什么需要：file.* 标了 desktopOnly，浏览器端会被从注册表剔除，而写前预览与读后写门禁正挂在
+  这些工具上。不注入替身就永远测不到。
+- 三个坑（都是实测踩出来的，注释里也写了）：
+  1) AI：桌面端走 ai_chat IPC，不经过 /chat/completions —— 不接管就是「AI 返回内容为空或格式无法识别」；
+  2) 存储：load_data/save_data 桌面端落 Rust 文件存储，必须接回 IndexedDB，否则「AI 未配置」并跳设置页；
+  3) 事件：plugin:event|listen 必须返回唯一回调 id（真实实现是全局回调表），恒返回同一个 id 会让页面崩。
+- 另：AI 队列要在 exposeFunction **之前**就绪（Playwright 回调是首次调用时绑定闭包的），
+  且假端点不能用 127.0.0.1:9 这类端口（Chrome 受限端口，ERR_UNSAFE_PORT）。
+
+修掉 E2E 抓到的缺陷
+1) 新建文件走不通（observation.js）：file.inspect 回 { exists: false } 时，findInspectEvidence 只看
+   「有没有点名这个路径」，把它当成「存在」——模型照门禁提示做完 inspect 仍被拒，还回了句自相矛盾的
+   「该文件已存在，但本次运行只查看过它的元信息」。现在该函数返回三态
+   （true 存在 / false 确定不存在 / undefined 没有证据），observeSuccess 据此登记 absent。
+2) 提问的回答在时间线上显示成「允许」（AgentView.vue）：确认行只认布尔，把用户填的路径丢掉了，
+   历史里看不出自己答了什么——与上一轮修的 ask_user 是同一类问题。现在文本回答显示为
+   「已回答：<文本>」（单行截断 + title 看全文）。
+
+验证：单测 93 文件 / 1332 用例全绿；E2E 8 条全绿；npm run build 与 build:web 通过。

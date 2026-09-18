@@ -17,6 +17,11 @@ release-out
 tmp
 tmp-deploy
 tmp-debug
+# Playwright（E2E）的产物：失败截图/trace 与 HTML 报告，都是本机排查用，不入库
+test-results
+playwright-report
+blob-report
+playwright/.cache
 # 根目录下随手起的临时排查脚本 / 输出：它们**不该**进仓库，而 `git add -A` 会顺手扫进去
 # （已经犯过三次）。只匹配 `/tmp-*` 前缀，不写 `tmp*`——那会把仓库里的 tmp/ 目录一起挡掉。
 /tmp-*

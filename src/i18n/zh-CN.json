@@ -2736,6 +2736,7 @@
     "answerSend": "发送回答",
     "answerSkip": "跳过并结束",
     "answerEmpty": "先填写回答内容再发送",
+    "answered": "已回答：{text}",
     "capSpills": "溢出结果区", "capSpillsDesc": "大结果落盘后的正文会占磁盘（最多 30 份 / 保留 7 天，超限自动清理）；这里可以立刻清空索引并清掉正文。", "spillClear": "清空溢出结果区", "spillCleared": "已清掉 {n} 条溢出结果（约 {chars} 字符）", "spillClearEmpty": "溢出结果区本来就是空的", "capManual": "手动工具箱",
     "capManualDesc": "这些工具适合手动操作，点击即可在独立窗口打开",
     "capSkills": "技能库",

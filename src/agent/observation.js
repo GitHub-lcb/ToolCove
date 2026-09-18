@@ -71,28 +71,39 @@ function namesPath(candidate, path) {
 }
 
 /**
- * 在 inspect 的结果里找该路径的证据；找到返回 true，找不到返回 undefined（= 没有证据）。
+ * 在 inspect 的结果里找该路径的证据。
+ *
+ * 返回值是三态（**不是布尔**）：true = 有证据存在、false = 有证据不存在、undefined = 没有证据。
+ * 早先这里只返回「找到了这个路径」，于是 inspect 回 `{ exists: false }` 也被当成「存在」——
+ * 模型照门禁提示调了 inspect（提示原文就是「请先调用 file.inspect 证明其不存在」），
+ * 结果仍被判为已存在并被拒，还回了句自相矛盾的「该文件已存在」。也就是说新建文件这条路
+ * 当时是走不通的（E2E 抓到的真实缺陷）。
  *
  * 返回形状未知（可能是数组、也可能包在 paths / files.list 这类嵌套对象里），所以整棵树
  * 广度优先遍历：每个对象都按候选字段名比对一次，同时继续往下走。**不能只遍历数组层的项**
- * ——那样 { paths: [...] } 这种包装永远找不到（inspect 成功却登记不上，写入一直被拒）。
- * seen 挡住循环引用；比对失败只是保守地不放行，不会误放行。
+ * ——那样 { paths: [...] } 这种包装永远找不到。seen 挡住循环引用；
+ * 比对失败只是保守地不放行（返回 undefined），不会误放行。
  */
 export function findInspectEvidence(result, path) {
   const target = normalizePath(path);
   if (!target) return undefined;
+  // 只有明确说「不存在」的字段值才算缺失证据；字段缺失或形状不认识时保持「没有证据」
+  const saysAbsent = (candidate) =>
+    candidate.exists === false || candidate.exist === false || candidate.found === false || candidate.isFile === false;
   const queue = [result];
   const seen = new Set();
+  let absent = false;
   while (queue.length) {
     const current = queue.shift();
     if (current == null || typeof current !== "object" || seen.has(current)) continue;
     seen.add(current);
-    // 数组本身不是候选（namesPath 只认普通对象），但它的项要继续往下走；
-    // 普通对象既可能是候选、也可能只是包装层，两件事都做。
-    if (namesPath(current, target)) return true;
+    if (namesPath(current, target)) {
+      if (saysAbsent(current)) absent = true;
+      else return true;
+    }
     for (const item of Array.isArray(current) ? current : Object.values(current)) queue.push(item);
   }
-  return undefined;
+  return absent ? false : undefined;
 }
 
 /** 路径比较：大小写不敏感，容忍分隔符差异（Windows 上 C:\a\b 与 c:/a/b 是同一个文件）。 */
@@ -151,8 +162,10 @@ export function createObservationGate(options = {}) {
       if (!paths.length) return false;
       return paths.reduce((any, path) => {
         if (toolName === "file.inspect") {
-          // inspect 成功且返回里点名了该路径 → 存在性证据。返回形状不符时不猜。
-          if (findInspectEvidence(result, path)) return rememberStatus(path, OBSERVATION_STATUS.PRESENT) || any;
+          // inspect 点名了该路径 → 存在性证据。三态：true 存在 / false 确定不存在 / undefined 不猜。
+          const evidence = findInspectEvidence(result, path);
+          if (evidence === true) return rememberStatus(path, OBSERVATION_STATUS.PRESENT) || any;
+          if (evidence === false) return rememberStatus(path, OBSERVATION_STATUS.ABSENT) || any;
           return any;
         }
         // read_text / preview_write：读到内容 → 既开门禁，也证明存在
