@@ -179,7 +179,12 @@ Tool Adapters
   放在 mount 之前会被算进首屏字节，用 requestIdleCallback 从 0 等空闲也一样（启动那一刻就可能空闲）。
   顺带修掉一个真实缺陷：`initLocale` 原来用 `window.__TAURI_INTERNALS__` 把关读设置，
   于是浏览器端从来不读语言偏好；现在两条路都走平台层。
-- 界面：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
+- **技能库端到端**（`e2e/specs/23-skills.spec.js`，2026-09-20）：技能此前只有引擎与整形层的单测，
+  界面上「按钮点了会怎样、开关真的会改变注入内容」一直是人工待验项。现在覆盖全链路：
+  跑成功 → 点「沉淀为技能」→ 技能库出现该条 → 下次同类目标进 prompt（**从桩收到的请求里读**，
+  而不是看界面文案）→ 停用后不再注入 → 删除后回到空态；另加一条「只有 ask_user、没有工具调用的运行
+  不出现沉淀入口」。
+- **界面**：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
 - 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
   `AGENT_TOOL_NAMES` 在 `tools.js` 汇总（停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，

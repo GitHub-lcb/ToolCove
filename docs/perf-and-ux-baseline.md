@@ -10,8 +10,8 @@
 | 指标 | 优化前 | 现在 | 说明 |
 |---|---|---|---|
 | 入口 chunk | 552 KB（gzip 194） | **438 KB（gzip 154）** | 两份语言包原本都在入口里 |
-| 启动阶段脚本总量 | 989 KB | **875 KB** | 含首屏期间动态加载的 chunk |
-| FCP | 1308 ms | **732 ms** | 同机同页面，噪声较大但方向一致 |
+| 启动阶段脚本总量 | 989 KB | **532 KB** | 含首屏期间动态加载的 chunk；工具实现懒加载后进一步下降 |
+| FCP | 1308 ms | **588–732 ms** | 同机同页面，噪声较大但方向一致 |
 | CLS | 0 | **0** | 布局稳定 |
 | 长任务最长 | 107 ms | **< 100 ms** | 无 >50ms 的卡顿级任务 |
 
@@ -30,7 +30,24 @@
   把 luxon(175KB)、js-yaml(58KB)、hash-wasm(55KB) 等拖进启动阶段。
   要修得把「工具元数据」与「execute 实现」拆开（元数据供 `AGENT_TOOL_NAMES` 与能力面板同步使用），
   属于中等重构，收益约 300 KB + 少 4 个请求。
-- **语言包字典本身还是格式化的**：压成一行可再省约 43 KB（原始 274 → 231 KB）。
+
+### 已做（2026-09-20 第二批）
+
+- **工具实现懒加载**：新增 `agent/catalog.js`（纯元数据、零依赖）与 `agent/executors.js`（只有 execute），
+  `tools.js` 改为装配层——`listAgentTools` / `AGENT_TOOL_NAMES` 同步只读目录，`buildAgentRegistry` 才动态
+  import 实现。启动阶段交付脚本 **875 KB → 532 KB**，入口里已搜不到 luxon / js-yaml 特征串。
+  「目录 ↔ 实现」一致性由 `catalog.test.js` 强制（键集合与 risk/desktopOnly/previewBefore/confirm 等标记同源）。
+- **踩过的坑（留着提醒）**：`const cfg = await readSyncConfig()`、`const e = await getEngine()` 这类
+  「赋值后没再被引用」的语句**不能当死代码删**——它们有副作用（刷新引擎配置快照、初始化传输层）。
+  删掉后「创建/加入同步集合」会报 `Failed to parse URL from /v1/pair`，被 `realServer.test.js` 当场抓住。
+  同理：rail-hud 的 `ACTION_EXPORT/IMPORT` 由 `dom.test.js` 的契约测试守着，pdfDecrypt 的 `outputBuffer`
+  只被「写后读」使用——这三处都已加显式豁免与注释。
+
+### 试过但**无效**（记录以免重复尝试）
+
+- **把 i18n 字典源码压成一行**：源码确实从 274 KB 降到 231 KB，但**产物体积一字未变**
+  （入口 437.6 KB 前后完全一致）。原因是 Vite/Rollup 打包 JSON 时本来就会解析后内联成压缩形态，
+  源码里的格式化空白进不了产物。此后判断「字典成本」应以**产物**为准，别再看源文件大小。
 
 ## 二、UI/UX：对比度与键盘可达
 
