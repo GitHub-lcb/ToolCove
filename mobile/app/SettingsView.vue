@@ -1,0 +1,369 @@
+<script setup>
+// 设置（手机端）：AI 模型 / 云同步 / 系统设置 / 关于。
+//
+// 这一页是「App 能不能真正用起来」的关键——没有它，装到手机上连 AI 都没地方配。
+//
+// 沿用桌面端的两条关键语义：
+//  1) **快照合并保存**：表单只渲染 ai/ui，保存时以磁盘上的完整快照为基底合并
+//     （mergeSettingsSnapshot），否则 sync/telemetry 等未渲染分组会被整段覆盖掉；
+//  2) **apiKey 落盘加密**：读出来要 decryptValue（浏览器/手机端是明文往返，桌面端走 DPAPI/Keystore），
+//     存进去要 encryptValue——两端共用同一份 secure.js。
+import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { AI_PRESETS, testAI } from "../../src/ai.js";
+import { mergeSettingsSnapshot } from "../../src/settingsConfig.js";
+import { decryptValue, encryptValue } from "../../src/secure.js";
+import { invoke } from "../../src/platform/invoke.js";
+import { applyLocale } from "../../src/i18n/index.js";
+import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
+import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
+
+const { t } = useI18n();
+
+/** 构建戳：由 Vite 的 define 注入（桌面端也用它显示版本），手机端拿来核对"手机上装的是哪一版"。 */
+const BUILD_STAMP_TEXT = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__.replace("T", " ").replace("Z", "") : "dev";
+
+const SECTIONS = [
+  { key: "ai", labelKey: "settings.navAi" },
+  { key: "sync", labelKey: "settings.navSync" },
+  { key: "general", labelKey: "settings.navGeneral" },
+  { key: "about", labelKey: "mobile.setAbout" },
+];
+
+const section = ref("ai");
+const form = ref(emptySettings());
+const loadError = ref("");
+const errors = ref({});
+const saving = ref(false);
+const testing = ref(false);
+const testResult = ref("");
+const notice = ref("");
+const rawSnapshot = ref({});
+const syncCfg = ref(null);
+const syncBusy = ref(false);
+const syncError = ref("");
+const join = ref({ collectionId: "", code: "", password: "" });
+const devices = ref([]);
+
+const currentPreset = computed(() => matchPreset(form.value.ai.baseUrl, AI_PRESETS));
+const syncStatusText = computed(() => t(syncStatusKey(syncCfg.value?.status)));
+
+async function load() {
+  loadError.value = "";
+  try {
+    const s = await invoke("load_data", { key: "settings" });
+    // load_data 对缺失文件返回 []，只接受真正的对象作为快照基底
+    const snapshot = s && typeof s === "object" && !Array.isArray(s) ? s : {};
+    rawSnapshot.value = snapshot;
+    form.value = formFromSettings(snapshot, { decryptedKey: await decryptValue(snapshot.ai?.apiKey || "") });
+  } catch (e) {
+    // 读失败就禁止保存：宁可不让改，也不能把用户原配置覆盖成空
+    loadError.value = e?.message || String(e);
+  }
+}
+
+async function refreshSync() {
+  try {
+    syncCfg.value = await getSyncSnapshot();
+    if (syncCfg.value?.enabled) devices.value = (await listDevices()) || [];
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  }
+}
+
+onMounted(async () => {
+  await load();
+  await refreshSync();
+});
+
+function applyPreset(preset) {
+  form.value = {
+    ...form.value,
+    ai: {
+      ...form.value.ai,
+      baseUrl: preset.baseUrl,
+      model: form.value.ai.model || preset.model,
+      apiKey: form.value.ai.apiKey || preset.apiKey || "",
+      enabled: true,
+    },
+  };
+  errors.value = {};
+}
+
+async function save() {
+  if (loadError.value) return;
+  const check = validateSettings(form.value);
+  errors.value = check.errors;
+  if (!check.ok) return;
+
+  saving.value = true;
+  notice.value = "";
+  try {
+    // 以磁盘上的完整快照为基底合并：只覆盖表单渲染的 ai/ui，其余分组原样保留
+    const payload = mergeSettingsSnapshot(JSON.parse(JSON.stringify(rawSnapshot.value || {})), {
+      ai: {
+        ...form.value.ai,
+        baseUrl: normalizeBaseUrl(form.value.ai.baseUrl),
+        apiKey: await encryptValue(form.value.ai.apiKey),
+      },
+      ui: form.value.ui,
+    });
+    await invoke("save_data", { key: "settings", data: payload });
+    rawSnapshot.value = payload;
+    // 语言即时生效（字典是按需加载的，要先 await 取回字典再切，避免闪一堆词条 key）
+    await applyLocale(form.value.ui.locale);
+    notice.value = t("settings.saved");
+  } catch (e) {
+    notice.value = t("settings.saveFailed", { err: e?.message || String(e) });
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function runTest() {
+  testing.value = true;
+  testResult.value = "";
+  try {
+    const reply = await testAI({
+      baseUrl: normalizeBaseUrl(form.value.ai.baseUrl),
+      apiKey: form.value.ai.apiKey,
+      model: form.value.ai.model,
+      temperature: form.value.ai.temperature,
+    });
+    testResult.value = t("settings.aiTestOk", { reply: String(reply).slice(0, 80) });
+  } catch (e) {
+    testResult.value = t("settings.aiTestFail", { err: e?.message || String(e) });
+  } finally {
+    testing.value = false;
+  }
+}
+
+// ---------- 云同步 ----------
+async function toggleSync() {
+  syncBusy.value = true;
+  syncError.value = "";
+  try {
+    await setSyncEnabled(!syncCfg.value?.enabled);
+    await refreshSync();
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function createCollection() {
+  syncBusy.value = true;
+  syncError.value = "";
+  try {
+    await createSyncCollection(syncCfg.value?.serverUrl || "", join.value.password);
+    await refreshSync();
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function joinCollection() {
+  syncBusy.value = true;
+  syncError.value = "";
+  try {
+    await joinSyncCollectionFull(syncCfg.value?.serverUrl || "", join.value.collectionId, join.value.code, join.value.password);
+    await refreshSync();
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function syncNow() {
+  syncBusy.value = true;
+  syncError.value = "";
+  try {
+    await syncNowManual();
+    await refreshSync();
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function renameDevice(event) {
+  try {
+    await setSyncDeviceName(event?.target?.value || "");
+  } catch (e) {
+    syncError.value = e?.message || String(e);
+  }
+}
+</script>
+
+<template>
+  <section class="m-settings" :data-section="section">
+    <div class="m-chips">
+      <button v-for="item in SECTIONS" :key="item.key" class="m-chip" :class="{ on: section === item.key }" :data-nav="item.key" @click="section = item.key">
+        {{ t(item.labelKey) }}
+      </button>
+    </div>
+
+    <p v-if="loadError" class="m-err" data-role="load-error">{{ t("settings.loadFailed", { err: loadError }) }}</p>
+    <p v-if="notice" class="m-ok" data-role="notice">{{ notice }}</p>
+
+    <!-- AI -->
+    <template v-if="section === 'ai'">
+      <div class="m-chips">
+        <button class="m-chip" :class="{ on: form.ai.enabled }" data-role="ai-enable" @click="form.ai.enabled = !form.ai.enabled">
+          {{ t("settings.aiEnable") }}
+        </button>
+      </div>
+
+      <p class="m-hint-sm">{{ t("settings.aiDesc") }}</p>
+
+      <div class="m-chips" data-role="presets">
+        <button
+          v-for="preset in AI_PRESETS"
+          :key="preset.key"
+          class="m-chip"
+          :class="{ on: currentPreset?.key === preset.key }"
+          :data-preset="preset.key"
+          @click="applyPreset(preset)"
+        >
+          {{ t(preset.labelKey) }}
+        </button>
+      </div>
+
+      <label class="m-field">
+        <span>{{ t("settings.aiBaseUrl") }}</span>
+        <input v-model="form.ai.baseUrl" spellcheck="false" inputmode="url" data-role="base-url" placeholder="https://api.deepseek.com/v1" />
+        <span v-if="errors.baseUrl" class="m-field-err" data-role="err-base">{{ t(errors.baseUrl) }}</span>
+      </label>
+
+      <label class="m-field">
+        <span>{{ t("settings.aiKey") }}</span>
+        <input v-model="form.ai.apiKey" type="password" spellcheck="false" data-role="api-key" />
+        <span v-if="errors.apiKey" class="m-field-err" data-role="err-key">{{ t(errors.apiKey) }}</span>
+      </label>
+
+      <label class="m-field">
+        <span>{{ t("settings.aiModel") }}</span>
+        <input v-model="form.ai.model" spellcheck="false" data-role="model" placeholder="deepseek-chat" />
+        <span v-if="errors.model" class="m-field-err" data-role="err-model">{{ t(errors.model) }}</span>
+      </label>
+
+      <label class="m-field">
+        <span>{{ t("settings.aiTemp", { value: form.ai.temperature }) }}</span>
+        <input v-model.number="form.ai.temperature" type="range" min="0" max="2" step="0.1" data-role="temperature" />
+      </label>
+
+      <label class="m-field">
+        <span>{{ t("settings.aiReason") }}</span>
+        <select v-model="form.ai.reasoningEffort" data-role="reasoning">
+          <option v-for="value in REASONING_EFFORTS" :key="value" :value="value">
+            {{ value === "" ? t("settings.aiReasonNone") : value }}
+          </option>
+        </select>
+      </label>
+
+      <div class="m-actions">
+        <button class="m-btn primary" :disabled="testing" data-role="test" @click="runTest">
+          {{ testing ? t("settings.aiTesting") : t("settings.aiTest") }}
+        </button>
+      </div>
+      <p v-if="testResult" class="m-hint-sm" data-role="test-result">{{ testResult }}</p>
+    </template>
+
+    <!-- 云同步 -->
+    <template v-else-if="section === 'sync'">
+      <div class="m-card">
+        <div class="m-card-head">
+          <b>{{ t("sync.title") }}</b>
+          <span class="m-zone" data-role="sync-status">{{ syncStatusText }}</span>
+        </div>
+        <p class="m-hint-sm">{{ t("sync.desc") }}</p>
+        <div class="m-chips">
+          <button class="m-chip" :class="{ on: syncCfg?.enabled }" :disabled="syncBusy" data-role="sync-toggle" @click="toggleSync">
+            {{ t("sync.enable") }}
+          </button>
+        </div>
+        <label class="m-field">
+          <span>{{ t("sync.serverUrl") }}</span>
+          <input :value="syncCfg?.serverUrl || ''" spellcheck="false" inputmode="url" readonly data-role="sync-server" />
+        </label>
+        <label class="m-field">
+          <span>{{ t("mobile.setDeviceName") }}</span>
+          <input :value="syncCfg?.deviceName || ''" spellcheck="false" data-role="sync-device" @change="renameDevice" />
+        </label>
+        <div class="m-actions">
+          <button class="m-btn" :disabled="syncBusy || !syncCfg?.enabled" data-role="sync-now" @click="syncNow">{{ t("sync.syncNowBtn") }}</button>
+          <button class="m-btn" :disabled="syncBusy" data-role="sync-create" @click="createCollection">{{ t("sync.createBtn") }}</button>
+        </div>
+      </div>
+
+      <div class="m-card">
+        <div class="m-card-head"><b>{{ t("sync.joinBtn") }}</b></div>
+        <label class="m-field">
+          <span>{{ t("sync.or") }}</span>
+          <input v-model="join.collectionId" spellcheck="false" :placeholder="t('sync.joinIdPh')" data-role="join-id" />
+        </label>
+        <label class="m-field">
+          <span>{{ t("sync.joinCodePh") }}</span>
+          <input v-model="join.code" spellcheck="false" data-role="join-code" />
+        </label>
+        <label class="m-field">
+          <span>{{ t("sync.syncPasswordPh") }}</span>
+          <input v-model="join.password" type="password" spellcheck="false" data-role="join-password" />
+        </label>
+        <div class="m-actions">
+          <button class="m-btn primary" :disabled="syncBusy" data-role="join-btn" @click="joinCollection">{{ t("sync.joinBtn") }}</button>
+        </div>
+      </div>
+
+      <div v-if="devices.length" class="m-card">
+        <div class="m-card-head"><b>{{ t("sync.devicesTitle") }}</b></div>
+        <ul class="m-stats" data-role="sync-devices">
+          <li v-for="device in devices" :key="device.tokenHash || device.tokenTail || device.name">
+            <b>{{ device.name || device.tokenTail || "—" }}</b>
+            <span>{{ device.self ? t("sync.selfTag") : t("sync.tokenTailCol") }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <p v-if="syncError" class="m-err" data-role="sync-error">{{ syncError }}</p>
+    </template>
+
+    <!-- 系统设置 -->
+    <template v-else-if="section === 'general'">
+      <label class="m-field">
+        <span>{{ t("mobile.setLocale") }}</span>
+        <select v-model="form.ui.locale" data-role="locale">
+          <option value="system">{{ t("mobile.setLocaleSystem") }}</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="en-US">English</option>
+        </select>
+      </label>
+      <label class="m-field">
+        <span>{{ t("mobile.setDensity") }}</span>
+        <select v-model="form.ui.density" data-role="density">
+          <option value="compact">{{ t("mobile.setDensityCompact") }}</option>
+          <option value="comfort">{{ t("mobile.setDensityComfort") }}</option>
+        </select>
+      </label>
+      <p class="m-hint-sm">{{ t("mobile.setDensityNote") }}</p>
+    </template>
+
+    <!-- 关于 -->
+    <template v-else>
+      <ul class="m-stats" data-role="about">
+        <li><b>{{ t("mobile.setVersion") }}</b><span data-role="build-stamp">{{ BUILD_STAMP_TEXT }}</span></li>
+        <li><b>{{ t("mobile.setPlatform") }}</b><span>Android · WebView</span></li>
+      </ul>
+      <p class="m-hint-sm">{{ t("mobile.setStorageNote") }}</p>
+    </template>
+
+    <div v-if="section !== 'about'" class="m-actions">
+      <button class="m-btn primary" :disabled="saving || !!loadError" data-role="save" @click="save">{{ t("common.confirm") }}</button>
+    </div>
+  </section>
+</template>

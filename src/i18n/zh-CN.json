@@ -3039,6 +3039,17 @@
     "diffPatch": "统一补丁",
     "reqNoHeaders": "还没有请求头。需要时点右上角 ＋ 添加。",
     "reqCorsNote": "当前经由 WebView 直接请求，受目标站点的跨域（CORS）策略限制；接上原生 HTTP 桥后与桌面端等价。",
-    "imgLocalNote": "全部在本机处理，图片不会上传。"
+    "imgLocalNote": "全部在本机处理，图片不会上传。",
+    "setAbout": "关于",
+    "setDeviceName": "设备名称",
+    "setLocale": "界面语言",
+    "setLocaleSystem": "跟随系统",
+    "setDensity": "信息密度",
+    "setDensityCompact": "紧凑",
+    "setDensityComfort": "宽松",
+    "setDensityNote": "手机上默认「紧凑」；改成「宽松」会放大行高与间距，适合单手操作或大屏。",
+    "setVersion": "构建",
+    "setPlatform": "运行环境",
+    "setStorageNote": "数据存在本机（安卓应用私有存储）；云同步开启后才会离开设备，且服务端只见密文。"
   }
 }

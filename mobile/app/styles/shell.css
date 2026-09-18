@@ -877,3 +877,24 @@ body,
   background: rgba(255, 255, 255, 0.75);
   color: #1f2328;
 }
+/* ---------- 设置页 ---------- */
+.m-settings .m-chips {
+  flex-wrap: wrap;
+}
+
+/* 字段级错误：紧贴在输入框下方，用红色文字 + 左移小标记，不只靠颜色 */
+.m-field-err {
+  margin-top: 4px;
+  color: var(--m-danger);
+  font-size: 0.78rem;
+}
+
+.m-field-err::before {
+  content: "! ";
+  font-weight: 700;
+}
+
+/* 设置页的卡片间距比工具页更松：这一页是"读"为主 */
+.m-settings .m-card + .m-card {
+  margin-top: var(--m-gap);
+}

@@ -218,7 +218,13 @@ function stateOf(page) {
   return PAGE_STATE.get(page);
 }
 
-async function readKv(page, key) {
+/**
+ * 读 IndexedDB 里的一个键（供用例断言"真的落盘了"）。
+ * 注意要点：必须处理 onupgradeneeded（库里还没有 kv 仓储时要先建），
+ * 且 get 要包 try/catch——库还没建立时 transaction 会直接抛，
+ * 漏了这两点会表现为 evaluate 挂到超时（已经踩过一次）。
+ */
+export async function readKv(page, key) {
   return page.evaluate(
     (k) =>
       new Promise((resolve) => {

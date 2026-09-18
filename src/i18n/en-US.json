@@ -3039,6 +3039,17 @@
     "diffPatch": "Unified patch",
     "reqNoHeaders": "No headers yet. Tap + above to add one.",
     "reqCorsNote": "Requests go through the WebView fetch for now, so the target site CORS policy applies; once the native HTTP bridge lands this matches the desktop build.",
-    "imgLocalNote": "Everything is processed on this device; images are never uploaded."
+    "imgLocalNote": "Everything is processed on this device; images are never uploaded.",
+    "setAbout": "About",
+    "setDeviceName": "Device name",
+    "setLocale": "Language",
+    "setLocaleSystem": "Follow system",
+    "setDensity": "Density",
+    "setDensityCompact": "Compact",
+    "setDensityComfort": "Comfortable",
+    "setDensityNote": "Compact is the phone default; Comfortable increases line height and spacing for one-handed or large-screen use.",
+    "setVersion": "Build",
+    "setPlatform": "Runtime",
+    "setStorageNote": "Data stays on this device (the app's private storage). It only leaves the device when cloud sync is on, and the server only ever sees ciphertext."
   }
 }

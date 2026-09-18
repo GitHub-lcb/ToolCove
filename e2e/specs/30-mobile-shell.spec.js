@@ -31,8 +31,9 @@ test.describe("手机端地基（移动视口）", () => {
   test("浏览器里没有原生桥：如实显示为网页形态，而不是假装有", async ({ page }) => {
     await seedData(page, { snippets: [], problems: [] });
     await page.goto(MOBILE);
-    // 切到未迁移的模块才能看到桥状态（记录页不展示它）
-    await page.locator(".m-tab[data-tab='settings']").click();
+    // 桥状态只在「未迁移」的占位页上展示（Agent 是最后一个占位页；
+    // 设置页现在是真实页面，不再有那一行——这条用例因此改到 Agent）
+    await page.locator(".m-tab[data-tab='agent']").click();
     const bridge = page.locator(".m-bridge");
     await expect(bridge).toHaveAttribute("data-on", "false");
     // 文案要解释「为什么没有」以及此时的降级行为，而不是一句失败
