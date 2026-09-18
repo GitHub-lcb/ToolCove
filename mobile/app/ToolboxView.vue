@@ -36,6 +36,7 @@ const VIEWS = {
   file: defineAsyncComponent(() => import("./tools/FileToolView.vue")),
   db: defineAsyncComponent(() => import("./tools/DbToolView.vue")),
   label: defineAsyncComponent(() => import("./tools/LabelToolView.vue")),
+  chat: defineAsyncComponent(() => import("./tools/ChatToolView.vue")),
 };
 
 function open(tool) {

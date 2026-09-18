@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TOOLS, TOOL_BY_KEY, TOOL_GROUPS, progressOf, toolsOfGroup } from "./toolbox.js";
 
@@ -18,12 +20,28 @@ describe("手机端工具箱目录", () => {
   });
 
   it("工具箱已全部迁移完成，没有未迁移项", () => {
-    // 这条用例原本是「未迁移的必须带降级说明」，随着 14 个工具逐个迁移，它按自己的提示
+    // 这条用例原本是「未迁移的必须带降级说明」，随着工具逐个迁移，它按自己的提示
     // 变成了现在这条：**断言全部可用**。这样"迁移完成"是一个被测试守住的事实，
     // 而不是靠人记得。
     const pending = TOOLS.filter((tool) => !tool.ready);
     expect(pending.map((tool) => tool.key), "还有未迁移的工具").toEqual([]);
     expect(progressOf().ready).toBe(TOOLS.length);
+  });
+
+  it("工具清单与桌面端一一对应（防漏：少一个工具就是功能没对齐）", () => {
+    // 为什么要读桌面端的注册表：手机端目录是手写的，**漏掉一个工具不会有任何报错**——
+    // 界面上只是少一个入口。实际发生过：15 个工具里漏了「AI 对话」，
+    // 而我当时按自己目录里的条数报成了"14/14 满格"。这条断言就是为了不再发生。
+    const desktop = readFileSync(resolve(process.cwd(), "src/toolboxTools.js"), "utf8");
+    const desktopKeys = [...desktop.matchAll(/key:\s*"([a-z]+)",\s*\n?\s*labelKey:\s*"toolbox\.registry\.tool/g)].map((m) => m[1]);
+    expect(desktopKeys.length, "桌面端注册表没解析出来，正则要跟着改").toBeGreaterThan(10);
+
+    const mobileKeys = TOOLS.map((tool) => tool.key);
+    const missing = desktopKeys.filter((key) => !mobileKeys.includes(key));
+    expect(missing, `手机端缺少工具：${missing.join(", ")}`).toEqual([]);
+    // 反过来也不该多出桌面端没有的工具（那说明名字写错了）
+    const extra = mobileKeys.filter((key) => !desktopKeys.includes(key));
+    expect(extra, `手机端多出工具：${extra.join(", ")}`).toEqual([]);
   });
 
   it("已迁移但能力受限的工具仍要带说明（可用 ≠ 和桌面一样）", () => {

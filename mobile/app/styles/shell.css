@@ -1053,3 +1053,75 @@ body,
   background: #ffffff;
   image-rendering: pixelated;
 }
+
+/* ---------- AI 对话 ---------- */
+.m-chat {
+  max-height: 46vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0;
+  margin-bottom: var(--m-gap);
+}
+
+.m-msg {
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--m-card);
+}
+
+/* 用户消息靠右、AI 靠左：手机上这个视觉区分比头像更省地方 */
+.m-msg[data-role="user"] {
+  border-color: var(--m-primary);
+  background: var(--m-primary-soft);
+  margin-left: 12%;
+}
+
+.m-msg[data-role="assistant"] {
+  margin-right: 6%;
+}
+
+.m-msg-role {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.7rem;
+  color: var(--m-muted);
+}
+
+.m-msg-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Markdown 渲染区：字号略小、行高放宽，长回复更好读 */
+.m-md {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.m-md pre {
+  overflow-x: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--m-soft);
+  font-size: 0.78rem;
+}
+
+.m-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.m-md p {
+  margin: 0 0 8px;
+}
+
+.m-md p:last-child {
+  margin-bottom: 0;
+}

@@ -3108,6 +3108,8 @@
     "labelExport": "导出 .prn",
     "labelExported": "已导出 label.prn",
     "labelEngineFail": "排版引擎加载失败：{err}",
-    "labelNoPrint": "安卓没有 Windows 的 RAW 打印队列：这里生成 TSPL 指令与预览，导出 .prn 后交给支持 TSPL 的打印工具发送。排版与桌面端是同一份引擎，所以预览所见即打印所得。"
+    "labelNoPrint": "安卓没有 Windows 的 RAW 打印队列：这里生成 TSPL 指令与预览，导出 .prn 后交给支持 TSPL 的打印工具发送。排版与桌面端是同一份引擎，所以预览所见即打印所得。",
+    "chatLocalNote": "对话内容只发给你配置的 AI 接口，本机不留明文副本（会话存在应用私有存储里）。",
+    "chatStopped": "已停止（保留已收到的内容）"
   }
 }

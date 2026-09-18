@@ -14,6 +14,7 @@ export const TOOL_GROUPS = Object.freeze([
   { key: "development", labelKey: "toolbox.registry.groupDevelopment" },
   { key: "network", labelKey: "toolbox.registry.groupNetwork" },
   { key: "file", labelKey: "toolbox.registry.groupFile" },
+  { key: "ai", labelKey: "toolbox.registry.groupAi" },
   { key: "game", labelKey: "toolbox.registry.groupGame" },
 ]);
 
@@ -38,6 +39,7 @@ export const TOOLS = Object.freeze([
   { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: true },
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: true },
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: true, note: "mobile.noteLabel" },
+  { key: "chat", group: "ai", labelKey: "toolbox.registry.toolChat", ready: true },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
 ]);
 

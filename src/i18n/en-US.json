@@ -3108,6 +3108,8 @@
     "labelExport": "Export .prn",
     "labelExported": "Exported label.prn",
     "labelEngineFail": "Layout engine failed to load: {err}",
-    "labelNoPrint": "Android has no Windows RAW print queue: this generates the TSPL commands and preview, and you send the exported .prn with a TSPL-capable print tool. Layout uses the same engine as desktop, so what you see is what gets printed."
+    "labelNoPrint": "Android has no Windows RAW print queue: this generates the TSPL commands and preview, and you send the exported .prn with a TSPL-capable print tool. Layout uses the same engine as desktop, so what you see is what gets printed.",
+    "chatLocalNote": "Messages go only to the AI endpoint you configured; no plaintext copy is kept on this device (sessions live in app-private storage).",
+    "chatStopped": "Stopped (kept what was received)"
   }
 }
