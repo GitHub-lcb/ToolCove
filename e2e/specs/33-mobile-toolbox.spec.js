@@ -49,17 +49,15 @@ test.describe("手机端工具箱", () => {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
 
-    // 未迁移的：按钮禁用 + 有说明。
-    // ⚠️ 不写死具体是哪个工具——每迁移一个这条就会失效（已经改过三次）。
-    // 改成动态取一个未迁移项来断言规则本身。
-    const pendingKeys = await page.locator('.m-item[data-ready="false"]').evaluateAll((nodes) => nodes.map((n) => n.dataset.tool));
-    expect(pendingKeys.length, "若全部迁移完成，这条用例应改为断言「没有未迁移项」").toBeGreaterThan(0);
-    for (const key of pendingKeys) {
+    // 现在 14 个工具**全部迁移完成**，所以"未迁移的禁用"这条规则没有实例可断言了。
+    // 改为断言完成状态本身 + 「能力受限的仍带说明」（可用 ≠ 和桌面一样）——
+    // 后者才是这条用例真正要守的东西，而且不会随进度失效。
+    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
+    for (const key of ["network", "file", "db", "label"]) {
       const item = page.locator(`.m-item[data-tool="${key}"]`);
-      await expect(item.locator(".m-item-main")).toBeDisabled();
-      // 未迁移必须说明原因，而不是只显示"迁移中"
+      await expect(item).toHaveAttribute("data-ready", "true");
       const text = await item.innerText();
-      expect(text.length, `${key} 缺少未迁移说明`).toBeGreaterThan(6);
+      expect(text.length, `${key} 缺少能力差异说明`).toBeGreaterThan(6);
     }
   });
 

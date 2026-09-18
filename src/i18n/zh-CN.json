@@ -2999,7 +2999,7 @@
     "groupGame": "游戏辅助",
     "noteDb": "安卓没有 JDBC：只支持 SQLite 文件（MySQL / PostgreSQL / Oracle 需要桌面端）。",
     "noteNetwork": "安卓的 WebView 没有 ICMP 与原始套接字：只保留 TCP 连通性检测，ping/traceroute/DNS 不做。",
-    "noteLabel": "安卓没有 Windows 的 RAW 打印队列：保留标签指令生成与预览，真打印只在桌面端。",
+    "noteLabel": "安卓没有 Windows 的 RAW 打印队列：可排版、预览并导出 .prn，真打印需交给支持 TSPL 的工具。需要在 App 内使用。",
     "jsonInputPh": "粘贴 JSON…",
     "convertInputPh": "粘贴要转换的内容…",
     "convertEncode": "编码 →",
@@ -3092,6 +3092,22 @@
     "dbCols": "{n} 列",
     "dbOpenTable": "查看数据",
     "dbNeedFile": "请先选择或填写 SQLite 文件。",
-    "dbSqlEmpty": "请输入要执行的 SQL。"
+    "dbSqlEmpty": "请输入要执行的 SQL。",
+    "labelPreview": "预览",
+    "labelText": "标签内容",
+    "labelFont": "字体",
+    "labelCopies": "份数",
+    "labelBarcode": "条码内容（留空不打印）",
+    "labelQr": "二维码内容（留空不打印）",
+    "labelWidth": "宽度（mm）",
+    "labelHeight": "高度（mm）",
+    "labelMediaGap": "间隙纸",
+    "labelMediaBlack": "黑标纸",
+    "labelMediaContinuous": "连续纸",
+    "labelShowSource": "查看 TSPL 指令",
+    "labelExport": "导出 .prn",
+    "labelExported": "已导出 label.prn",
+    "labelEngineFail": "排版引擎加载失败：{err}",
+    "labelNoPrint": "安卓没有 Windows 的 RAW 打印队列：这里生成 TSPL 指令与预览，导出 .prn 后交给支持 TSPL 的打印工具发送。排版与桌面端是同一份引擎，所以预览所见即打印所得。"
   }
 }

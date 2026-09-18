@@ -54,6 +54,18 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # 标签排版引擎的 wasm：手机端与桌面端共用同一份 Rust 实现，产物不入库（编译结果），
+      # 所以发版时必须在这里构建。build-apk.mjs 也会自己跑一遍（幂等），这里先跑是为了
+      # 让下面那一步"引擎自检"能单独失败、错误更清楚。
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: crates/label-core
+      - name: 构建并自检排版引擎（wasm）
+        run: npm run build:label-wasm
+
       # Gradle 用 runner 自带的（ubuntu-latest 预装）；不下载项目自带的 .toolchain（1.5GB，
       # 而且 setup-toolchain.mjs 是给 Windows 写的：sdkmanager.bat / commandlinetools-win）。
       - name: 确认 Android SDK 可用

@@ -760,7 +760,8 @@ impl Issue {
         }
     }
 
-    fn info(code: &'static str, params: serde_json::Value) -> Self {
+    /// 构造一条 info 级提示（命令层的 printer_issue 也要用，故公开）。
+    pub fn info(code: &'static str, params: serde_json::Value) -> Self {
         Self {
             level: "info",
             code,
@@ -849,7 +850,8 @@ pub fn check(label: &LabelSpec, job: &JobSpec, layout: &Layout) -> Vec<Issue> {
 const EOL: &str = "\r\n";
 
 /// 格式化毫米值：50.0 → "50"，2.5 → "2.5"。
-fn fmt_mm(v: f32) -> String {
+/// 指令文本的格式化工具（命令层的测试也用它验证输出形态）。
+pub fn fmt_mm(v: f32) -> String {
     if v.fract().abs() < f32::EPSILON {
         format!("{}", v as i64)
     } else {
@@ -858,7 +860,8 @@ fn fmt_mm(v: f32) -> String {
 }
 
 /// TSPL 字符串转义：反斜杠是转义符，双引号是结束符。
-fn escape(s: &str) -> String {
+/// 指令文本的格式化工具（命令层的测试也用它验证输出形态）。
+pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {

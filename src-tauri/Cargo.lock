@@ -2475,6 +2475,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "label-core"
+version = "0.1.0"
+dependencies = [
+ "barcoders",
+ "encoding_rs",
+ "qrcode",
+ "serde",
+ "serde_json",
+ "unicode-width",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5755,6 +5767,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hmac 0.12.1",
+ "label-core",
  "local-ip-address",
  "md-5",
  "mysql",

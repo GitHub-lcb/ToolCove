@@ -37,7 +37,7 @@ export const TOOLS = Object.freeze([
   { key: "file", group: "file", labelKey: "toolbox.registry.toolFile", ready: true, note: "mobile.noteFile" },
   { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: true },
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: true },
-  { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: false, note: "mobile.noteLabel" },
+  { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: true, note: "mobile.noteLabel" },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
 ]);
 

@@ -17,15 +17,23 @@ describe("手机端工具箱目录", () => {
     for (const group of TOOL_GROUPS) expect(toolsOfGroup(group.key).length, `${group.key} 是空的`).toBeGreaterThan(0);
   });
 
-  it("未迁移的工具必须带降级说明（不能只写「迁移中」而不说为什么）", () => {
-    // 现在只剩标签打印未迁移（需要复用桌面端 Rust 侧的排版引擎）
+  it("工具箱已全部迁移完成，没有未迁移项", () => {
+    // 这条用例原本是「未迁移的必须带降级说明」，随着 14 个工具逐个迁移，它按自己的提示
+    // 变成了现在这条：**断言全部可用**。这样"迁移完成"是一个被测试守住的事实，
+    // 而不是靠人记得。
     const pending = TOOLS.filter((tool) => !tool.ready);
-    expect(pending.length, "如果全都迁移完了，这条用例应改为断言「没有未迁移项」").toBeGreaterThan(0);
-    for (const tool of pending) {
-      expect(tool.note, `${tool.key} 未迁移却没有说明`).toBeTruthy();
+    expect(pending.map((tool) => tool.key), "还有未迁移的工具").toEqual([]);
+    expect(progressOf().ready).toBe(TOOLS.length);
+  });
+
+  it("已迁移但能力受限的工具仍要带说明（可用 ≠ 和桌面一样）", () => {
+    // 网络（TCP 降级）、文件（SAF 语义）、数据库（只有 SQLite）、标签（无 RAW 打印队列）
+    // 这四类在手机端都可用，但与桌面端不完全等价，说明必须留着。
+    for (const key of ["network", "file", "db", "label"]) {
+      const tool = TOOL_BY_KEY[key];
+      expect(tool.ready, `${key} 应已可用`).toBe(true);
+      expect(tool.note, `${key} 缺少能力差异说明`).toBeTruthy();
     }
-    expect(TOOL_BY_KEY.label.ready).toBe(false);
-    expect(TOOL_BY_KEY.label.note).toBeTruthy();
   });
 
   it("部分降级的工具（已可用但能力受限）也要带说明", () => {

@@ -2999,7 +2999,7 @@
     "groupGame": "Game helpers",
     "noteDb": "Android has no JDBC: SQLite files only (MySQL / PostgreSQL / Oracle need the desktop build).",
     "noteNetwork": "Android WebView has no ICMP or raw sockets: only TCP reachability checks remain; ping/traceroute/DNS are out of scope.",
-    "noteLabel": "Android has no Windows RAW print queue: label command generation and preview stay, real printing is desktop only.",
+    "noteLabel": "Android has no Windows RAW print queue: layout, preview and .prn export work; sending to a printer needs a TSPL-capable tool. Requires the app.",
     "jsonInputPh": "Paste JSON…",
     "convertInputPh": "Paste the text to convert…",
     "convertEncode": "Encode →",
@@ -3092,6 +3092,22 @@
     "dbCols": "{n} columns",
     "dbOpenTable": "View data",
     "dbNeedFile": "Choose or enter a SQLite file first.",
-    "dbSqlEmpty": "Enter the SQL to run."
+    "dbSqlEmpty": "Enter the SQL to run.",
+    "labelPreview": "Preview",
+    "labelText": "Label text",
+    "labelFont": "Font",
+    "labelCopies": "Copies",
+    "labelBarcode": "Barcode (leave empty to skip)",
+    "labelQr": "QR code (leave empty to skip)",
+    "labelWidth": "Width (mm)",
+    "labelHeight": "Height (mm)",
+    "labelMediaGap": "Gap",
+    "labelMediaBlack": "Black mark",
+    "labelMediaContinuous": "Continuous",
+    "labelShowSource": "Show TSPL commands",
+    "labelExport": "Export .prn",
+    "labelExported": "Exported label.prn",
+    "labelEngineFail": "Layout engine failed to load: {err}",
+    "labelNoPrint": "Android has no Windows RAW print queue: this generates the TSPL commands and preview, and you send the exported .prn with a TSPL-capable print tool. Layout uses the same engine as desktop, so what you see is what gets printed."
   }
 }

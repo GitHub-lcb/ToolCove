@@ -13,6 +13,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# TSPL 排版引擎：纯计算、无平台依赖，桌面端与手机端（编译成 WASM）共用同一份实现。
+# 见 crates/label-core 与 docs/mobile-app-plan.md §6。
+label-core = { path = "../crates/label-core" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

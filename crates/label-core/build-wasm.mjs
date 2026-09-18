@@ -12,7 +12,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const out = join(here, "target", "label-core.wasm");
+const root = join(here, "..", "..");
+// 产物落到手机端的 public/ 下：Vite 会把它原样拷进构建产物（随 APK 一起打包），
+// 前端按需 fetch 加载。放 public 而不是 import 进来，是因为它是运行时加载的二进制资源。
+const out = join(root, "mobile", "public", "label-core.wasm");
 const log = (...a) => console.log("[label-wasm]", ...a);
 
 log("编译 wasm32-unknown-unknown …");

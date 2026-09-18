@@ -44,6 +44,11 @@ const chunks = names.filter((n) => n.startsWith("assets/assets/") && n.endsWith(
 if (chunks.length >= 5) ok(`包含 ${chunks.length} 个前端 chunk（工具按需加载）`);
 else bad(`前端 chunk 只有 ${chunks.length} 个，疑似资源没同步完整`);
 
+// 标签排版引擎的 wasm：缺了它标签工具装上就废（而且是"打开那个工具才暴露"的失败形态）
+const wasm = names.filter((n) => n.startsWith("assets/assets/") && n.endsWith(".wasm"));
+if (wasm.length) ok(`包含排版引擎 ${wasm.map((n) => n.split("/").pop()).join(", ")}`);
+else bad("缺少 label-core.wasm —— 标签工具会加载失败");
+
 // ── 2. 版本号 ───────────────────────────────────────────────────────
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const aapt = join(here, ".toolchain", "android-sdk", "build-tools", "35.0.0", process.platform === "win32" ? "aapt2.exe" : "aapt2");

@@ -1037,3 +1037,19 @@ body,
   font-size: 0.65rem;
   font-weight: 600;
 }
+
+/* ---------- 标签预览 ---------- */
+/* 标签画布：白底 + 细边框，模拟实际标签的样子；宽度按容器自适应（见 paint 的缩放） */
+.m-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  background: var(--m-soft);
+  border-radius: 8px;
+}
+
+.m-canvas-wrap canvas {
+  border: 1px solid var(--m-border);
+  background: #ffffff;
+  image-rendering: pixelated;
+}

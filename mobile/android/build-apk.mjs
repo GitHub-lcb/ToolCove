@@ -66,7 +66,15 @@ log(`工具链（${runner === "system" ? "环境自带" : "项目自带"}）：J
 log(`        Gradle ${gradle || "（用 PATH 上的 gradle）"}`);
 log(`        SDK ${sdk}`);
 
-// ── 2. 前端产物 ─────────────────────────────────────────────────────
+// ── 2. 标签排版引擎（wasm）─────────────────────────────────────────────
+// 必须在 vite build **之前**：wasm 放在 mobile/public/ 下，Vite 会把它拷进产物。
+// 缺了它标签工具会加载失败（而且只有打开那个工具才暴露——所以这里主动检查）。
+const wasm = join(root, "mobile", "public", "label-core.wasm");
+log("构建标签排版引擎（wasm，与桌面端共用同一份 Rust 实现）…");
+execFileSync(process.execPath, [join(root, "crates", "label-core", "build-wasm.mjs")], { stdio: "inherit", cwd: root });
+if (!existsSync(wasm)) throw new Error(`排版引擎产物缺失：${wasm}\n检查 crates/label-core/build-wasm.mjs 的输出路径`);
+
+// ── 3. 前端产物 ─────────────────────────────────────────────────────
 // 必须先于 Gradle：assets 是 app 模块的输入，先构建再编译才不会把旧页面塞进 APK。
 const webDist = join(root, "dist", "mobile", "app");
 log("构建手机端前端（npm run build:mobile 等价的 vite build）…");

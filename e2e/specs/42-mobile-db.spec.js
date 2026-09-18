@@ -220,7 +220,7 @@ test.describe("手机端工具箱（数据库 / SQLite）", () => {
     // 「可用」与「和桌面一样」不是一回事：只支持 SQLite 必须写在列表上
     await expect(db).toContainText(/SQLite|JDBC/);
 
-    // 只剩标签打印未迁移
-    await expect(page.locator('.m-item[data-tool="label"]')).toHaveAttribute("data-ready", "false");
+    // 工具箱现已全部迁移完成（14/14）
+    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
   });
 });

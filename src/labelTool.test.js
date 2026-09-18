@@ -22,14 +22,21 @@ function camel(name) {
   return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
-const rustSource = ["src-tauri/src/label.rs", "src-tauri/src/printer.rs"]
+/**
+ * 契约锚点：TSPL 的**数据模型与枚举**已经搬到 crates/label-core（纯逻辑，桌面端与手机端共用），
+ * 平台相关的部分（打印机列表、打印命令）留在 src-tauri/src/label.rs。
+ *
+ * 所以这里要把两处都读进来：跨语言契约校验的是**字段名与取值**，与文件位置无关——
+ * 搬移不该让契约失效，但读的文件必须跟着搬（否则测试会因为"找不到声明"而假失败）。
+ */
+const rustSource = ["crates/label-core/src/lib.rs", "src-tauri/src/label.rs", "src-tauri/src/printer.rs"]
   .map((rel) => readFileSync(resolve(process.cwd(), rel), "utf8"))
   .join("\n");
 
 /** 从 Rust 源码里取指定声明的主体（花括号配对，嵌套的 struct 变体也能取全）。 */
 function rustBlock(header) {
   const start = rustSource.indexOf(header);
-  if (start < 0) throw new Error(`label.rs 里找不到 ${header}`);
+  if (start < 0) throw new Error(`label-core / label.rs 里找不到 ${header}`);
   const open = rustSource.indexOf("{", start);
   let depth = 0;
   for (let i = open; i < rustSource.length; i += 1) {

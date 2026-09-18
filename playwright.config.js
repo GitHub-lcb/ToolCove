@@ -48,7 +48,9 @@ export default defineConfig({
   webServer: {
     // 先构建静态站点再起静态服务器：E2E 永远跑在真实产物上，避免「源码对、产物旧」。
     // 手机端（mobile/app/dist）也一起构建并挂到 /mobile/ 下，供移动视口用例访问。
-    command: `npm run build:web && npm run build:mobile && node e2e/server.mjs dist`,
+    // 标签引擎的 wasm 要先于 build:mobile（它放在 mobile/public/，由 Vite 拷进产物）；
+    // 跳过它的话标签工具的用例会因为引擎 404 而失败。
+    command: `npm run build:label-wasm && npm run build:web && npm run build:mobile && node e2e/server.mjs dist`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

@@ -18,6 +18,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # 标签排版引擎的 wasm：E2E 的标签用例要真的加载它，APK 构建也要把它打进产物。
+      # 它是编译产物、不入库（见 .gitignore），所以这里必须先装 Rust 目标再构建。
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: crates/label-core
+      # 顺带跑排版引擎的 Rust 单测（29 条）：它是两端共用的实现，坏了要在这里就拦住
+      - run: cargo test --manifest-path crates/label-core/Cargo.toml
+      - run: npm run build:label-wasm
       # 只把 error 当失败：warning 是刻意保留的提示（见 eslint.config.js 的说明），
       # 严重级别已在配置里定好，这里不需要再传 --max-warnings（npm 会把参数当成文件模式）。
       - run: npm run lint
