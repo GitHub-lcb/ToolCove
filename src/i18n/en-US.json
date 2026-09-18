@@ -3060,6 +3060,8 @@
       "invalid": "The extracted skill was invalid and was skipped.",
       "unknown": "This run cannot be turned into a skill right now."
     },
-    "pdfLocalNote": "Everything is processed on this device; PDFs are never uploaded."
+    "pdfLocalNote": "Everything is processed on this device; PDFs are never uploaded.",
+    "netTcpNote": "Port check: on mobile this uses browser reachability probing (web ports only; it cannot tell a closed port apart from a policy block). The desktop build performs a real TCP handshake and is more precise.",
+    "noteFile": "Android has no arbitrary-path file access: it goes through the system picker (SAF), which needs the native bridge. This tool opens once that bridge lands."
   }
 }

@@ -18,15 +18,25 @@ describe("手机端工具箱目录", () => {
   });
 
   it("平台独占的能力必须带降级说明（不能只写「迁移中」而不说为什么）", () => {
-    for (const key of ["db", "network", "label"]) {
+    for (const key of ["db", "label"]) {
       const tool = TOOL_BY_KEY[key];
       expect(tool.ready).toBe(false);
       expect(tool.note, `${key} 缺少降级说明`).toBeTruthy();
     }
   });
 
-  it("已迁移的工具不应该带降级说明", () => {
-    for (const tool of TOOLS.filter((t) => t.ready)) expect(tool.note, `${tool.key} 已可用却有 note`).toBeUndefined();
+  it("部分降级的工具（已可用但能力受限）也要带说明", () => {
+    // 网络诊断就是这种：URL/CIDR/UA 三块完全可用，端口检测是降级实现——
+    // 「可用」与「和桌面一样」不是一回事，note 就是用来交代这个差别的
+    const network = TOOL_BY_KEY.network;
+    expect(network.ready).toBe(true);
+    expect(network.note, "部分降级的能力必须写清差别").toBeTruthy();
+  });
+
+  it("未迁移的工具不该被当成可用", () => {
+    for (const tool of TOOLS.filter((t) => t.ready === false)) {
+      expect(tool.note, `${tool.key} 未迁移却没有说明`).toBeTruthy();
+    }
   });
 
   it("进度按已可用数量计算", () => {
