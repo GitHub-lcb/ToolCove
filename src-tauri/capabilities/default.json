@@ -5,6 +5,7 @@
   "windows": [
     "main",
     "tool-convert",
+    "tool-table",
     "tool-diff",
     "tool-time",
     "tool-json",

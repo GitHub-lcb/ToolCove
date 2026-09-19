@@ -7,7 +7,7 @@ import { i18n } from "./i18n/index.js";
 describe("searchToolboxTools", () => {
   it("可按工具名称和英文名称搜索", () => {
     expect(searchToolboxTools("数据转换").map((tool) => tool.key)).toEqual(["convert"]);
-    expect(searchToolboxTools("JSON").map((tool) => tool.key)).toEqual(["convert", "json", "generator"]);
+    expect(searchToolboxTools("JSON").map((tool) => tool.key)).toEqual(["convert", "table", "json", "generator"]);
   });
 
   it("可按分类和能力描述搜索", () => {
@@ -46,7 +46,7 @@ describe("searchToolboxTools", () => {
     const groups = groupToolboxTools();
     expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
-      ["convert", "diff", "time", "json", "generator"],
+      ["convert", "table", "diff", "time", "json", "generator"],
       ["network", "request"],
       ["file", "image", "pdf", "label"],
       ["crypto", "db"],

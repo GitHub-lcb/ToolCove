@@ -24,6 +24,7 @@ const progress = computed(() => progressOf());
 const VIEWS = {
   json: defineAsyncComponent(() => import("./tools/JsonToolView.vue")),
   convert: defineAsyncComponent(() => import("./tools/ConvertToolView.vue")),
+  table: defineAsyncComponent(() => import("./tools/TableToolView.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeToolView.vue")),
   crypto: defineAsyncComponent(() => import("./tools/CryptoToolView.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorToolView.vue")),

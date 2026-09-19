@@ -6,6 +6,7 @@ import { i18n } from "./i18n/index.js";
 
 export const TOOL_COMPONENTS = {
   convert: defineAsyncComponent(() => import("./tools/ConvertTool.vue")),
+  table: defineAsyncComponent(() => import("./tools/TableTool.vue")),
   diff: defineAsyncComponent(() => import("./tools/TextTool.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeTool.vue")),
   json: defineAsyncComponent(() => import("./tools/JsonTool.vue")),

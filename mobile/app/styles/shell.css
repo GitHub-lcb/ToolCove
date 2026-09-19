@@ -1259,3 +1259,32 @@ body,
 .m-stats li[data-status="fail"] {
   background: var(--m-danger-soft, #fdecea);
 }
+
+/* ---------- 表格工具 ---------- */
+.m-rownum {
+  width: 40px;
+  color: var(--m-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: var(--m-soft);
+  position: sticky;
+  left: 0;
+}
+
+/* 表头可点排序：给个可点的视觉提示 */
+.m-table th[data-sort] {
+  color: var(--m-primary);
+}
+
+.m-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.88rem;
+}
+
+.m-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}

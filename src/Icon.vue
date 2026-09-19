@@ -22,6 +22,13 @@ defineProps({
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.3-4.3" />
     </template>
+    <template v-else-if="name === 'table'">
+      <!-- 表格工具专用：带表头分隔线与列线的网格，与 grid（四个方块）区分开 -->
+      <rect x="3" y="4" width="18" height="16" rx="1" />
+      <path d="M3 9h18" />
+      <path d="M3 14.5h18" />
+      <path d="M9.5 4v16" />
+    </template>
     <template v-else-if="name === 'grid'">
       <rect x="3" y="3" width="7" height="7" rx="1" />
       <rect x="14" y="3" width="7" height="7" rx="1" />

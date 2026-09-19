@@ -146,15 +146,18 @@ test.describe("手机端工具箱（AI 对话）", () => {
     await expect(tool.locator('[data-role="empty"]')).toBeVisible();
   });
 
-  test("工具箱 15/15：与桌面端一一对应（含 AI 分组）", async ({ page }) => {
+  test("工具箱进度与页面条目数一致（不写死数字：加工具不该让这条失效）", async ({ page }) => {
     await seedData(page, { settings: {} });
     await page.goto(MOBILE);
     await goToolbox(page);
 
-    // 15 个工具全在，且都可点
-    await expect(page.locator(".m-item[data-tool]")).toHaveCount(15);
+    // ⚠️ 不写死 "15/15" 这类数字——每加一个工具就要改一次，已经改过两轮。
+    // 改成断言"进度显示的数字 = 页面上真实可点的条目数"，这才是这条用例要守的东西。
+    const total = await page.locator(".m-item[data-tool]").count();
+    const progress = await page.locator('[data-role="tool-progress"]').innerText();
+    expect(total).toBeGreaterThan(10);
+    expect(progress).toContain(`${total}/${total}`);
     await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText("15/15");
     // AI 分组也在（之前整个分组漏掉了）
     await expect(page.locator('.m-item[data-tool="chat"]')).toBeVisible();
   });
