@@ -8,6 +8,7 @@
     "tool-table",
     "tool-markdown",
     "tool-xml",
+    "tool-schema",
     "tool-diff",
     "tool-time",
     "tool-json",

@@ -28,6 +28,7 @@ export const TOOLBOX_TOOLS = [
   { key: "markdown", labelKey: "toolbox.registry.toolMarkdown", icon: "text", category: "data", descKey: "toolbox.registry.toolMarkdownDesc", keywordsKey: "toolbox.registry.kwMarkdown", ready: true },
   { key: "xml", labelKey: "toolbox.registry.toolXml", icon: "braces", category: "data", descKey: "toolbox.registry.toolXmlDesc", keywordsKey: "toolbox.registry.kwXml", ready: true },
   { key: "diff", labelKey: "toolbox.registry.toolDiff", icon: "text", category: "data", descKey: "toolbox.registry.toolDiffDesc", keywordsKey: "toolbox.registry.kwDiff", ready: true },
+  { key: "schema", labelKey: "toolbox.registry.toolSchema", icon: "braces", category: "data", descKey: "toolbox.registry.toolSchemaDesc", keywordsKey: "toolbox.registry.kwSchema", ready: true },
   { key: "time", labelKey: "toolbox.registry.toolTime", icon: "clock", category: "data", descKey: "toolbox.registry.toolTimeDesc", keywordsKey: "toolbox.registry.kwTime", ready: true },
   {
     key: "json",

@@ -27,6 +27,7 @@ const VIEWS = {
   table: defineAsyncComponent(() => import("./tools/TableToolView.vue")),
   markdown: defineAsyncComponent(() => import("./tools/MarkdownToolView.vue")),
   xml: defineAsyncComponent(() => import("./tools/XmlToolView.vue")),
+  schema: defineAsyncComponent(() => import("./tools/SchemaToolView.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeToolView.vue")),
   crypto: defineAsyncComponent(() => import("./tools/CryptoToolView.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorToolView.vue")),

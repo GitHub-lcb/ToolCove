@@ -9,6 +9,7 @@ export const TOOL_COMPONENTS = {
   table: defineAsyncComponent(() => import("./tools/TableTool.vue")),
   markdown: defineAsyncComponent(() => import("./tools/MarkdownTool.vue")),
   xml: defineAsyncComponent(() => import("./tools/XmlTool.vue")),
+  schema: defineAsyncComponent(() => import("./tools/SchemaTool.vue")),
   diff: defineAsyncComponent(() => import("./tools/TextTool.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeTool.vue")),
   json: defineAsyncComponent(() => import("./tools/JsonTool.vue")),
