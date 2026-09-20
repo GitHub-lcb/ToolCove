@@ -195,6 +195,67 @@ describe("createAIPlanner 的修复提示", () => {
   });
 });
 
+describe("createAIPlanner 的技能匹配来源", () => {
+  const skill = {
+    id: "s1",
+    name: "导出 CSV",
+    description: "读取 order.json 导出 csv",
+    instructions: "目标：读取 order.json 导出 csv\n用到的工具：file.read_text",
+    keywords: ["csv"],
+    toolNames: ["file.read_text"],
+    createdAt: 1,
+  };
+  const GOAL = "读取 order.json 导出 csv";
+  /** 造一份「模型选中第一条技能」的 TypeSafe 响应。 */
+  const suggest = (transport) => async (body) => {
+    const keys = Object.keys(body.questions.pick.criteria).filter((k) => k !== "none of these fit");
+    return {
+      answers: {
+        pick: { type: "choice", choice: keys[0], confidence: 0.9, probabilities: { [keys[0]]: 0.9 } },
+        "gate::acts_on_data": { type: "noul", noul: 0.9 },
+        "gate::follows_recorded_procedure": { type: "noul", noul: 0.9 },
+        "gate::prose_suffices": { type: "noul", noul: 0.1 },
+      },
+    };
+  };
+
+  it("注入的传输层结果进 prompt", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest());
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("一次运行只问一次 TypeSafe：按步数重复提问会把成本与延迟乘以步数", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest());
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    await planner({ input: GOAL, history: [], tools: [] });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it("没配传输层时退回关键词匹配（未开启 TypeSafe 的默认路径）", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ skills: [skill] });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("传输层报错时仍然出 prompt（兜底不静默丢技能）", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(async () => {
+      throw new Error("HTTP 429：rate limited");
+    });
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+});
+
 describe("runAIAgent 端到端修复", () => {
   it("模型先回非 JSON，再回合法动作：运行成功且时间线留修复事件", async () => {
     aiComplete

@@ -3,12 +3,46 @@ import {
   normalizeHiddenModules,
   normalizeTelemetry,
   normalizeSync,
+  normalizeTypeSafe,
   mergeSettingsSnapshot,
   normalizeAgent,
   AGENT_CONFIRM_POLICIES,
   AGENT_MAX_STEPS_HARD_CAP,
   AGENT_MAX_RETRIES,
 } from "./settingsConfig.js";
+
+describe("normalizeTypeSafe（旧数据兼容）", () => {
+  it("缺字段/非对象 → 默认关闭、地址留空（留空即用官方端点）", () => {
+    const empty = { enabled: false, baseUrl: "", apiKey: "", model: "" };
+    expect(normalizeTypeSafe(undefined)).toEqual(empty);
+    expect(normalizeTypeSafe(null)).toEqual(empty);
+    expect(normalizeTypeSafe({})).toEqual(empty);
+    expect(normalizeTypeSafe("x")).toEqual(empty);
+  });
+
+  it("enabled 只认真正的 true（字符串 \"true\" 不算，避免手改 JSON 时意外开启）", () => {
+    expect(normalizeTypeSafe({ enabled: true }).enabled).toBe(true);
+    expect(normalizeTypeSafe({ enabled: "true" }).enabled).toBe(false);
+    expect(normalizeTypeSafe({ enabled: 1 }).enabled).toBe(false);
+  });
+
+  it("baseUrl 只接受 http(s)，非法协议清空而不是原样透传", () => {
+    expect(normalizeTypeSafe({ baseUrl: "https://proxy.example.com/v1" }).baseUrl).toBe("https://proxy.example.com/v1");
+    expect(normalizeTypeSafe({ baseUrl: "  http://localhost:8080/v1  " }).baseUrl).toBe("http://localhost:8080/v1");
+    expect(normalizeTypeSafe({ baseUrl: "ftp://a.com" }).baseUrl).toBe("");
+    expect(normalizeTypeSafe({ baseUrl: "javascript:alert(1)" }).baseUrl).toBe("");
+  });
+
+  it("超长字段被截断（设置是用户可改的 JSON，永不信任）", () => {
+    expect(normalizeTypeSafe({ baseUrl: `https://a.com/${"x".repeat(900)}` }).baseUrl).toHaveLength(512);
+    expect(normalizeTypeSafe({ apiKey: "k".repeat(2000) }).apiKey).toHaveLength(1024);
+    expect(normalizeTypeSafe({ model: "m".repeat(200) }).model).toHaveLength(64);
+  });
+
+  it("非字符串字段归一为空串", () => {
+    expect(normalizeTypeSafe({ apiKey: 12345, model: { a: 1 } })).toMatchObject({ apiKey: "", model: "" });
+  });
+});
 
 describe("normalizeHiddenModules", () => {
   const ALL = ["toolbox", "snippet", "problem"];

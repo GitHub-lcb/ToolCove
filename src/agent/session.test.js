@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // session.js 只用到 ai.js 的 aiComplete（经 index.js 的默认 planner）与 isAIConfigured；
 // mock 掉整个模块，既避开真实 IPC，也让规划脚本可控。
 vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
+// TypeSafe 传输层解析：单测里不碰真实设置与 IPC，直接控制「配好了 / 没配」两种结果
+vi.mock("../typesafe.js", () => ({ resolveTypeSafeTransport: vi.fn(async () => null) }));
 
 import { aiComplete } from "../ai.js";
+import { resolveTypeSafeTransport } from "../typesafe.js";
 import { buildAgentRegistry } from "./tools.js";
 import { canResume } from "./runStore.js";
 import { foldTimeline } from "./timeline.js";
@@ -46,8 +49,67 @@ describe("initAgentSession", () => {
   });
 });
 
-describe("运行前门禁", () => {
-  it("空目标不启动，也不调用模型", async () => {
+describe("TypeSafe 语义匹配接线", () => {
+  const skill = {
+    id: "s1",
+    name: "导出 CSV",
+    description: "读取 order.json 导出 csv",
+    instructions: "目标：读取 order.json 导出 csv\n用到的工具：file.read_text",
+    keywords: ["csv"],
+    toolNames: ["file.read_text"],
+    createdAt: 1,
+  };
+  const GOAL = "读取 order.json 导出 csv";
+  /** 「模型选中第一条技能」的 TypeSafe 响应。 */
+  const suggestOnce = () =>
+    vi.fn(async (body) => {
+      const keys = Object.keys(body.questions.pick.criteria).filter((k) => k !== "none of these fit");
+      return {
+        answers: {
+          pick: { type: "choice", choice: keys[0], confidence: 0.9, probabilities: { [keys[0]]: 0.9 } },
+          "gate::acts_on_data": { type: "noul", noul: 0.9 },
+          "gate::follows_recorded_procedure": { type: "noul", noul: 0.9 },
+          "gate::prose_suffices": { type: "noul", noul: 0.1 },
+        },
+      };
+    });
+
+  it("配好 TypeSafe 时，传输层一路带到规划器且一次运行只问一次", async () => {
+    const transport = suggestOnce();
+    resolveTypeSafeTransport.mockResolvedValue(transport);
+    agentSession.skills = [skill];
+    scriptPlanner([final("好了")]);
+
+    await startAgentRun(GOAL);
+
+    expect(transport).toHaveBeenCalledTimes(1);
+    // 语义匹配的结果确实进了 prompt，而不是只走到一半
+    expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("没配 TypeSafe 时退回关键词匹配，运行不受影响", async () => {
+    resolveTypeSafeTransport.mockResolvedValue(null);
+    agentSession.skills = [skill];
+    scriptPlanner([final("好了")]);
+
+    await startAgentRun(GOAL);
+
+    expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("解析传输层失败不拦住运行（可选增强不该让 Agent 起不来）", async () => {
+    resolveTypeSafeTransport.mockRejectedValue(new Error("settings 读不到"));
+    agentSession.skills = [skill];
+    scriptPlanner([final("好了")]);
+
+    await startAgentRun(GOAL);
+
+    expect(agentSession.status).not.toBe("failed");
+    expect(aiComplete).toHaveBeenCalled();
+  });
+});
+
+describe("运行前门禁", () => {  it("空目标不启动，也不调用模型", async () => {
     expect(await startAgentRun("   ")).toBe(false);
     expect(aiComplete).not.toHaveBeenCalled();
     expect(agentSession.status).toBe("idle");

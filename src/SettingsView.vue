@@ -10,6 +10,7 @@ import { relaunch } from "./platform/shell.js";
 import { openUrl } from "./platform/shell.js";
 import Icon from "./Icon.vue";
 import { testAI, AI_PRESETS } from "./ai.js";
+import { testTypeSafe } from "./typesafe.js";
 import { checkForUpdate } from "./updater.js";
 import { encryptValue, decryptValue } from "./secure.js";
 import { ACCENT_PRESETS, saveAccentKey, loadAccentKey } from "./accentTheme.js";
@@ -65,7 +66,9 @@ function toggleNavModule(key, visible) {
 const saving = ref(false);
 const dirty = ref(false);
 const testingAI = ref(false);
+const testingTypeSafe = ref(false);
 const showKey = ref(false);
+const showTypeSafeKey = ref(false);
 const fieldErr = ref({});
 const form = ref(newSettings());
 const settingsLoadError = ref("");
@@ -233,6 +236,12 @@ function validate() {
     if (!(form.value.ai.apiKey || "").trim()) err.aiKey = t("settings.errAiKey");
     if (!(form.value.ai.model || "").trim()) err.aiModel = t("settings.errAiModel");
   }
+  if (form.value.typesafe.enabled) {
+    // 地址留空是合法的（用官方端点），只有填了却不合法才拦
+    const base = (form.value.typesafe.baseUrl || "").trim();
+    if (base && !/^https?:\/\//.test(base)) err.typesafeBase = t("settings.errTypeSafeBase");
+    if (!(form.value.typesafe.apiKey || "").trim()) err.typesafeKey = t("settings.errTypeSafeKey");
+  }
   if (!NAV_MODULE_OPTIONS.some((m) => !form.value.ui.hiddenModules.includes(m.key)))
     err.navModules = t("settings.errNavModules");
   return err;
@@ -241,6 +250,7 @@ function validate() {
 function newSettings() {
   return {
     ai: { baseUrl: "", apiKey: "", model: "", temperature: 0.7, reasoningEffort: "", enabled: false },
+    typesafe: { baseUrl: "", apiKey: "", model: "", enabled: false },
     ui: { density: "compact", hiddenModules: [], locale: "system" },
   };
 }
@@ -267,6 +277,12 @@ async function loadSettings() {
         density: s.ui?.density === "comfort" ? "comfort" : "compact",
         hiddenModules: normalizeHiddenModules(NAV_MODULE_OPTIONS.map((m) => m.key), s.ui?.hiddenModules),
         locale: LOCALE_PREFS.includes(s.ui?.locale) ? s.ui.locale : "system",
+      },
+      typesafe: {
+        baseUrl: s.typesafe?.baseUrl || "",
+        apiKey: await decryptValue(s.typesafe?.apiKey || ""),
+        model: s.typesafe?.model || "",
+        enabled: !!s.typesafe?.enabled,
       },
     };
   } catch (e) {
@@ -307,6 +323,7 @@ async function save() {
     // 在独立副本里加密，失败时不污染表单中的明文草稿。
     const formCopy = cloneJsonData(form.value);
     formCopy.ai.apiKey = await encryptValue(formCopy.ai.apiKey);
+    formCopy.typesafe.apiKey = await encryptValue(formCopy.typesafe.apiKey);
     // 重读磁盘作为合并基底：本页的云同步与遥测开关是即改即存、不经表单的，
     // 进页面时缓存的快照此时已过期，直接写会抹掉用户刚开启的配置。
     let base = rawSnapshot;
@@ -358,6 +375,26 @@ async function testAIConn() {
     props.showToast(t("settings.aiTestFail", { err: e && e.message ? e.message : e }));
   } finally {
     testingAI.value = false;
+  }
+}
+
+// 测试 TypeSafe：发一个最小探针请求，把模型名与概率显示出来。
+// 与「测试 AI」分开是因为两者端点形状不同（System One vs Chat Completions），
+// 复用同一个按钮只会让人以为是同一个服务。
+async function testTypeSafeConn() {
+  testingTypeSafe.value = true;
+  try {
+    const cfg = {
+      baseUrl: (form.value.typesafe.baseUrl || "").trim().replace(/\/$/, ""),
+      apiKey: (form.value.typesafe.apiKey || "").trim(),
+      model: (form.value.typesafe.model || "").trim(),
+    };
+    const { model, noul } = await testTypeSafe(cfg);
+    props.showToast(t("settings.typesafeTestOk", { model, noul: noul.toFixed(2) }));
+  } catch (e) {
+    props.showToast(t("settings.typesafeTestFail", { err: e && e.message ? e.message : e }));
+  } finally {
+    testingTypeSafe.value = false;
   }
 }
 
@@ -534,6 +571,49 @@ async function restoreNow() {
 
           <div class="sect-foot">
             <button class="btn-ghost sm" :disabled="testingAI" @click="testAIConn"><Icon name="sparkles" :size="14" /> {{ testingAI ? t("settings.aiTesting") : t("settings.aiTest") }}</button>
+          </div>
+        </div>
+        <!-- ============ TypeSafe 语义判断（可选增强，未启用/失败自动退回关键词匹配） ============ -->
+        <div v-show="section === 'ai'" class="sect">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="sparkles" :size="15" class="sect-ico" /> {{ t("settings.typesafeTitle") }}</span>
+            <label class="switch">
+              <input type="checkbox" v-model="form.typesafe.enabled" />
+              <span class="track"></span>
+              <span>{{ t("settings.typesafeEnable") }}</span>
+            </label>
+          </div>
+          <p class="sect-desc">{{ t("settings.typesafeDesc") }}</p>
+
+          <label class="field" :class="{ err: fieldErr.typesafeBase }">
+            <span>{{ t("settings.typesafeBaseUrl") }}</span>
+            <input v-model="form.typesafe.baseUrl" :placeholder="t('settings.typesafeBaseUrlPh')" />
+            <span v-if="fieldErr.typesafeBase" class="field-err">{{ fieldErr.typesafeBase }}</span>
+          </label>
+
+          <label class="field">
+            <span>{{ t("settings.typesafeModel") }}</span>
+            <input v-model="form.typesafe.model" :placeholder="t('settings.typesafeModelPh')" />
+          </label>
+
+          <label class="field" :class="{ err: fieldErr.typesafeKey }">
+            <span>{{ t("settings.typesafeKey") }}</span>
+            <div class="token-row">
+              <input
+                :type="showTypeSafeKey ? 'text' : 'password'"
+                v-model="form.typesafe.apiKey"
+                :placeholder="t('settings.typesafeKeyPh')"
+                autocomplete="off"
+              />
+              <button type="button" class="btn-ghost sm" @click="showTypeSafeKey = !showTypeSafeKey">
+                <Icon :name="showTypeSafeKey ? 'x' : 'open'" :size="14" /> {{ showTypeSafeKey ? t("settings.hide") : t("settings.show") }}
+              </button>
+            </div>
+            <span v-if="fieldErr.typesafeKey" class="field-err">{{ fieldErr.typesafeKey }}</span>
+          </label>
+
+          <div class="sect-foot">
+            <button class="btn-ghost sm" :disabled="testingTypeSafe" @click="testTypeSafeConn"><Icon name="sparkles" :size="14" /> {{ testingTypeSafe ? t("settings.typesafeTesting") : t("settings.typesafeTest") }}</button>
           </div>
         </div>
         <!-- ============ 云同步（端到端加密，免费内置） ============ -->

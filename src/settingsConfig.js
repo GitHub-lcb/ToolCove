@@ -35,6 +35,23 @@ export function normalizeSync(raw) {
   };
 }
 
+// TypeSafe（System One）配置归一（旧数据/缺字段补默认）。
+// 这是**可选增强**，所以默认关闭：现有用户升级后行为一字不变，语义匹配必须显式开启。
+// baseUrl 留空即用官方端点（用户只需要粘一个 key）；非法协议清空而不是原样透传。
+export function normalizeTypeSafe(raw) {
+  const c = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  let baseUrl = typeof c.baseUrl === "string" ? c.baseUrl.trim() : "";
+  if (baseUrl && !/^https?:\/\//.test(baseUrl)) baseUrl = "";
+  if (baseUrl.length > 512) baseUrl = baseUrl.slice(0, 512);
+  const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  return {
+    enabled: c.enabled === true,
+    baseUrl,
+    apiKey: str(c.apiKey, 1024),
+    model: str(c.model, 64),
+  };
+}
+
 // 侧边栏模块展示/隐藏：只保留当前存在的模块 key，去重且保持顺序
 export function normalizeHiddenModules(allKeys, hidden) {
   const keys = Array.isArray(allKeys) ? allKeys.filter((k) => typeof k === "string") : [];

@@ -76,7 +76,8 @@ pub fn build_headers(
 }
 
 /// 自有 UA（网关据此识别调用方）：ToolCove/<版本>
-fn client_user_agent(app: &tauri::AppHandle) -> String {
+/// pub(crate)：TypeSafe 代理（typesafe.rs）复用同一 UA，两个上游看到的调用方一致。
+pub(crate) fn client_user_agent(app: &tauri::AppHandle) -> String {
     format!("ToolCove/{}", app.package_info().version)
 }
 

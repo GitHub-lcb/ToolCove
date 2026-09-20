@@ -8,6 +8,7 @@ mod printer;
 mod secure;
 mod storage;
 mod telemetry;
+mod typesafe;
 
 use tauri::Emitter;
 use tauri::Manager;
@@ -174,6 +175,8 @@ pub fn run() {
             // AI 对话
             ai::ai_chat,
             ai::ai_chat_stream,
+            // TypeSafe（System One）评估：技能语义匹配等结构化判断
+            typesafe::typesafe_eval,
             // 可选遥测上报（端点默认空 = 不发送）
             telemetry::telemetry_submit,
             // 加密安全存储
