@@ -6,6 +6,7 @@
     "main",
     "tool-convert",
     "tool-table",
+    "tool-markdown",
     "tool-diff",
     "tool-time",
     "tool-json",
