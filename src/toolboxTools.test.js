@@ -7,7 +7,8 @@ import { i18n } from "./i18n/index.js";
 describe("searchToolboxTools", () => {
   it("可按工具名称和英文名称搜索", () => {
     expect(searchToolboxTools("数据转换").map((tool) => tool.key)).toEqual(["convert"]);
-    expect(searchToolboxTools("JSON").map((tool) => tool.key)).toEqual(["convert", "table", "json", "generator"]);
+    // XML 工具的关键词含「转 JSON」，所以搜 JSON 也会命中它——这是合理的（它确实做 XML→JSON）
+    expect(searchToolboxTools("JSON").map((tool) => tool.key)).toEqual(["convert", "table", "xml", "json", "generator"]);
   });
 
   it("可按分类和能力描述搜索", () => {
@@ -46,7 +47,7 @@ describe("searchToolboxTools", () => {
     const groups = groupToolboxTools();
     expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
-      ["convert", "table", "markdown", "diff", "time", "json", "generator"],
+      ["convert", "table", "markdown", "xml", "diff", "time", "json", "generator"],
       ["network", "request"],
       ["file", "image", "pdf", "label"],
       ["crypto", "db"],

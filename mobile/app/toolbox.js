@@ -27,6 +27,7 @@ export const TOOL_GROUPS = Object.freeze([
  */
 export const TOOLS = Object.freeze([
   { key: "json", group: "data", labelKey: "toolbox.registry.toolJson", ready: true },
+  { key: "xml", group: "data", labelKey: "toolbox.registry.toolXml", ready: true },
   { key: "markdown", group: "data", labelKey: "toolbox.registry.toolMarkdown", ready: true },
   { key: "table", group: "data", labelKey: "toolbox.registry.toolTable", ready: true },
   { key: "convert", group: "data", labelKey: "toolbox.registry.toolConvert", ready: true },

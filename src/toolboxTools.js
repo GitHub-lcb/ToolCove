@@ -26,6 +26,7 @@ export const TOOLBOX_TOOLS = [
   { key: "convert", labelKey: "toolbox.registry.toolConvert", icon: "repeat", category: "data", descKey: "toolbox.registry.toolConvertDesc", keywordsKey: "toolbox.registry.kwConvert", ready: true },
   { key: "table", labelKey: "toolbox.registry.toolTable", icon: "table", category: "data", descKey: "toolbox.registry.toolTableDesc", keywordsKey: "toolbox.registry.kwTable", ready: true },
   { key: "markdown", labelKey: "toolbox.registry.toolMarkdown", icon: "text", category: "data", descKey: "toolbox.registry.toolMarkdownDesc", keywordsKey: "toolbox.registry.kwMarkdown", ready: true },
+  { key: "xml", labelKey: "toolbox.registry.toolXml", icon: "braces", category: "data", descKey: "toolbox.registry.toolXmlDesc", keywordsKey: "toolbox.registry.kwXml", ready: true },
   { key: "diff", labelKey: "toolbox.registry.toolDiff", icon: "text", category: "data", descKey: "toolbox.registry.toolDiffDesc", keywordsKey: "toolbox.registry.kwDiff", ready: true },
   { key: "time", labelKey: "toolbox.registry.toolTime", icon: "clock", category: "data", descKey: "toolbox.registry.toolTimeDesc", keywordsKey: "toolbox.registry.kwTime", ready: true },
   {
