@@ -122,6 +122,11 @@ export function groupToolboxTools(tools = TOOLBOX_TOOLS, groups = TOOLBOX_GROUPS
     .filter((group) => group.tools.length > 0);
 }
 
+/** 工具的关键词列表（当前语言）：注册表存的是字典键，直读字典才能拿到数组。 */
+export function toolKeywords(tool) {
+  return tool && tool.keywordsKey ? readDictArray(tool.keywordsKey) : [];
+}
+
 export function searchToolboxTools(query, tools = TOOLBOX_TOOLS, groups = TOOLBOX_GROUPS) {
   const keyword = String(query ?? "").trim().toLowerCase();
   if (!keyword) return [];

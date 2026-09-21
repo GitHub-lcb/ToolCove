@@ -11,6 +11,7 @@ import { foldTimeline, payloadText, COLLAPSE_AT } from "./agent/timeline.js";
 import { describePreview, rowKind, rowText } from "./agent/preview.js";
 import { canResume, sanitizeRun } from "./agent/runStore.js";
 import { visibleToolboxTools, findToolboxTool } from "./toolboxTools.js";
+import { askConfirm } from "./confirm.js";
 import { openToolWindow, isTauriEnv } from "./toolWindow.js";
 import { track } from "./telemetry.js";
 import {
@@ -112,11 +113,46 @@ const errorText = computed(() => {
   const key = ERROR_KEY[agentSession.errorCode];
   return key ? t(key) : agentSession.error || "";
 });
+// 语义匹配退回关键词的原因：能说清是哪一条，用户才知道该去设置里改什么。
+const SKILL_REASON_KEY = {
+  "not-configured": "agent.skillReasonNotConfigured",
+  "low-confidence": "agent.skillReasonLowConfidence",
+};
+const skillMatchText = (item) => {
+  const skills = item.matched?.length ? item.matched.join("、") : t("agent.skillNone");
+  if (item.matcher === "keyword") {
+    // 传输层错误带原文：429 与「key 无效」的处理动作完全不同，折叠成一句就没了
+    const reason =
+      item.reason === "transport-error" && item.error
+        ? item.error
+        : t(SKILL_REASON_KEY[item.reason] || "agent.skillReasonUnknown");
+    return t("agent.noticeSkillFallback", { reason, skills });
+  }
+  const confidence = Number.isFinite(item.confidence) ? item.confidence.toFixed(2) : "?";
+  const key = item.tier === "high" ? "agent.noticeSkillSemantic" : "agent.noticeSkillSemanticMarked";
+  // 同一次请求还回了歧义预判：达门槛就在同一行里说一句，不另开一行刷屏
+  const suffix = item.clarify?.hint ? t("agent.skillClarifySuffix") : "";
+  return `${t(key, { skills, confidence, ms: item.latencyMs || 0 })}${suffix}`;
+};
+// 核验三项的名字：时间线要说「哪一项没把握」，而不是只丢一个分数。
+const VERIFY_CHECK_KEY = {
+  executed: "agent.verifyCheckExecuted",
+  grounded: "agent.verifyCheckGrounded",
+  complete: "agent.verifyCheckComplete",
+};
+const verifyText = (item) => {
+  const weakest = Number.isFinite(item.weakest) ? item.weakest.toFixed(2) : "?";
+  if (item.code === "verify_ok") return t("agent.noticeVerifyOk", { weakest });
+  const items = (item.reviewOf || []).map((key) => t(VERIFY_CHECK_KEY[key] || "agent.verifyCheckUnknown")).join("、");
+  return t("agent.noticeVerifyReview", { items, weakest });
+};
 const noticeText = (item) => {
-  // 需要参数的两类：结果被裁剪（省略了多少）、完整结果落盘（key 是什么）。
+  // 需要参数的几类：结果被裁剪（省略了多少）、完整结果落盘（key 是什么）、语义匹配判定。
   // 模型侧看的是引擎原文，人看的是词条——两边都要能说清「这一步为什么信息变少了」。
   if (item.code === "tool_clip") return t("agent.noticeToolClip", { omitted: item.omittedChars || 0, original: item.originalChars || 0 });
   if (item.code === "tool_spill") return t("agent.noticeToolSpill", { key: item.text || "", chars: item.chars || 0 });
+  if (item.code === "skill_match") return skillMatchText(item);
+  if (item.code === "verify_ok" || item.code === "verify_review") return verifyText(item);
   return NOTICE_KEY[item.code] ? t(NOTICE_KEY[item.code]) : item.text || t("agent.statusFailed");
 };
 // 写前预览：确认卡上的 diff 摘要（长文件只显示改动附近，见 agent/preview.js）
@@ -293,7 +329,18 @@ const skillsOpen = ref(false);
 
 async function onPromoteRun(runId) {
   try {
-    const result = await promoteRunToSkill(runId);
+    let result = await promoteRunToSkill(runId);
+    // 语义说「这条大概是一次性的」——不替用户拍板，问一句再沉淀（技能库也可能是他自己想留的路径）
+    if (!result.ok && result.reason === "not_reusable") {
+      const go = await askConfirm({
+        title: t("agent.skillReusableTitle"),
+        message: t("agent.skillReusableMsg", { weakest: Number.isFinite(result.weakest) ? result.weakest.toFixed(2) : "?" }),
+        okText: t("agent.skillReusableOk"),
+        danger: false,
+      });
+      if (!go) return;
+      result = await promoteRunToSkill(runId, { force: true });
+    }
     if (!result.ok) {
       props.showToast(t("agent.skillNotSkillable"));
       return;

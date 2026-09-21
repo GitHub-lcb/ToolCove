@@ -20,7 +20,7 @@ import { askConfirm } from "./confirm.js";
 import { flushToolbox } from "./toolboxStore.js";
 import { flushSecureToolbox } from "./secureToolbox.js";
 import { cloneJsonData } from "./jsonData.js";
-import { normalizeHiddenModules, mergeSettingsSnapshot } from "./settingsConfig.js";
+import { normalizeHiddenModules, mergeSettingsSnapshot, normalizeTypeSafe } from "./settingsConfig.js";
 import { NAV_MODULES } from "./navConfig.js";
 import { applyLocale } from "./i18n/index.js";
 import pkg from "../package.json";
@@ -250,7 +250,9 @@ function validate() {
 function newSettings() {
   return {
     ai: { baseUrl: "", apiKey: "", model: "", temperature: 0.7, reasoningEffort: "", enabled: false },
-    typesafe: { baseUrl: "", apiKey: "", model: "", enabled: false },
+    // 归一后的**完整形状**：保存是整组替换，表单里没有的字段会被写没，
+    // 所以高级旋钮（bodyChars/stateBudget/置信度分档）即使不给渲染也要带上原值。
+    typesafe: normalizeTypeSafe({}),
     ui: { density: "compact", hiddenModules: [], locale: "system" },
   };
 }
@@ -264,6 +266,9 @@ async function loadSettings() {
     const s = (await invoke("load_data", { key: "settings" })) || {};
     // load_data 对缺失文件返回 []，只接受真正的对象作为合并基底
     rawSnapshot = s && typeof s === "object" && !Array.isArray(s) ? s : {};
+    // TypeSafe 的高级旋钮只在这两处渲染其中几项，但表单必须持有**全部**归一后的值：
+    // 保存时整组替换，漏带一项就会把用户在 settings.json 里手调过的高级值抹掉。
+    const typesafeCfg = normalizeTypeSafe(s.typesafe);
     form.value = {
       ai: {
         baseUrl: s.ai?.baseUrl || "",
@@ -278,12 +283,7 @@ async function loadSettings() {
         hiddenModules: normalizeHiddenModules(NAV_MODULE_OPTIONS.map((m) => m.key), s.ui?.hiddenModules),
         locale: LOCALE_PREFS.includes(s.ui?.locale) ? s.ui.locale : "system",
       },
-      typesafe: {
-        baseUrl: s.typesafe?.baseUrl || "",
-        apiKey: await decryptValue(s.typesafe?.apiKey || ""),
-        model: s.typesafe?.model || "",
-        enabled: !!s.typesafe?.enabled,
-      },
+      typesafe: { ...typesafeCfg, apiKey: await decryptValue(typesafeCfg.apiKey) },
     };
   } catch (e) {
     form.value = newSettings();
@@ -388,6 +388,9 @@ async function testTypeSafeConn() {
       baseUrl: (form.value.typesafe.baseUrl || "").trim().replace(/\/$/, ""),
       apiKey: (form.value.typesafe.apiKey || "").trim(),
       model: (form.value.typesafe.model || "").trim(),
+      // 带上未保存的超时值：测试连接的作用就是验「这样配下去行不行」，
+      // 用旧默认值去验一个改了超时的配置，测出来的结论对不上实际运行。
+      timeoutMs: normalizeTypeSafe({ timeoutMs: form.value.typesafe.timeoutMs }).timeoutMs,
     };
     const { model, noul } = await testTypeSafe(cfg);
     props.showToast(t("settings.typesafeTestOk", { model, noul: noul.toFixed(2) }));
@@ -595,6 +598,27 @@ async function restoreNow() {
             <span>{{ t("settings.typesafeModel") }}</span>
             <input v-model="form.typesafe.model" :placeholder="t('settings.typesafeModelPh')" />
           </label>
+
+          <label class="field">
+            <span>{{ t("settings.typesafeTimeout") }}</span>
+            <input type="number" min="1000" max="30000" step="500" v-model="form.typesafe.timeoutMs" :placeholder="t('settings.typesafeTimeoutPh')" />
+          </label>
+
+          <p class="sect-desc">{{ t("settings.typesafeTuningDesc") }}</p>
+          <div class="field-row">
+            <label class="field">
+              <span>{{ t("settings.typesafeGate") }}</span>
+              <input type="number" min="0" max="1" step="0.05" v-model="form.typesafe.gate" placeholder="0.3" />
+            </label>
+            <label class="field">
+              <span>{{ t("settings.typesafeFloor") }}</span>
+              <input type="number" min="0" max="1" step="0.05" v-model="form.typesafe.floor" placeholder="0.15" />
+            </label>
+            <label class="field">
+              <span>{{ t("settings.typesafeLimit") }}</span>
+              <input type="number" min="1" max="10" step="1" v-model="form.typesafe.limit" placeholder="3" />
+            </label>
+          </div>
 
           <label class="field" :class="{ err: fieldErr.typesafeKey }">
             <span>{{ t("settings.typesafeKey") }}</span>
@@ -922,6 +946,8 @@ async function restoreNow() {
 .preset-chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); font-weight: 600; }
 
 .field { display: block; margin-bottom: 14px; }
+/* 并排的短数值旋钮（gate/floor/limit）：三个等宽，标签在上，与 .field 的纵向排布同一套间距 */
+.field-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .field > span { display: block; font-size: var(--fs-md); color: var(--muted); margin-bottom: 7px; font-weight: 600; }
 .field.err > span { color: var(--danger-deep); }
 .field.err input, .field.err .select { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }

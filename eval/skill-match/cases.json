@@ -1,0 +1,30 @@
+{
+  "_comment": "技能匹配标注集：goal → 该带上的技能（expect 为空数组即 expectNone）。刻意写成与技能名称/关键词不共享字面的说法——那正是关键词匹配做不到、要看语义的部分。",
+  "cases": [
+    { "id": "c01", "goal": "订单文件里金额重复的那几条挑出来，另存一份表格文件", "expect": ["r-csv-export"], "note": "「CSV」换成「表格文件」，关键词零重合" },
+    { "id": "c02", "goal": "把 json 里同一笔钱出现多次的记录拉出来，我要能直接用 Excel 打开", "expect": ["r-csv-export"], "note": "Excel 打开 = 导出表格" },
+    { "id": "c03", "goal": "这份 csv 里有几行是空的，还有日期格式乱七八糟的，帮我弄整齐", "expect": ["r-csv-clean"], "note": "清洗，没说「清洗」这个词" },
+    { "id": "c04", "goal": "表格文件表头重复出现了，日期一列有的 2026/1/5 有的 2026-01-05", "expect": ["r-csv-clean"], "note": "同上，纯描述症状" },
+    { "id": "c05", "goal": "接口返回挤成一行看眼晕，排好版放回文件里", "expect": ["r-json-format"], "note": "格式化换说法「排好版」" },
+    { "id": "c06", "goal": "resp.json 现在全在一行，缩进弄出来方便 review", "expect": ["r-json-format"], "note": "与 c05 同一技能的不同表述" },
+    { "id": "c07", "goal": "这批样本数据字段对不对，有没有缺字段或者类型串了的记录", "expect": ["r-json-schema"], "note": "推断+校验的口语说法" },
+    { "id": "c08", "goal": "根据 sample.json 定一份字段约束，然后过一遍哪些记录不合规", "expect": ["r-json-schema"] },
+    { "id": "c09", "goal": "粘贴板里一大串 iVBOR 开头的文本，变成能看的图片", "expect": ["r-base64-image"], "note": "不提 base64，靠前缀认" },
+    { "id": "c10", "goal": "把这段编码后的图片数据还原成 png 存到本地", "expect": ["r-base64-image"] },
+    { "id": "c11", "goal": "回调参数要带一个防篡改的校验值，密钥在环境变量里", "expect": ["r-sign-url"], "note": "HMAC 签名换说法「防篡改校验值」" },
+    { "id": "c12", "goal": "给这串查询串算个摘要签出去，对方要能验", "expect": ["r-sign-url"] },
+    { "id": "c13", "goal": "线上库看下最近一周每天卖了多少钱，别改数据", "expect": ["r-pg-orders"], "note": "PostgreSQL 换成「线上库」" },
+    { "id": "c14", "goal": "统计 orders 表过去七天的日成交额，只读", "expect": ["r-pg-orders"] },
+    { "id": "c15", "goal": "本地那个日志库里昨天报了多少次 error，按级别列一下", "expect": ["r-sqlite-log"], "note": "SQLite 换成「本地那个日志库」" },
+    { "id": "c16", "goal": "两份 yaml 配置到底改了哪些地方，给我一份清单", "expect": ["r-diff-config"] },
+    { "id": "c17", "goal": "对比 pre 和 prod 的配置文件，我要知道差异点", "expect": ["r-diff-config"] },
+    { "id": "c18", "goal": "这批 10 位数字是秒级时刻，换成东八区的日期时间，把跨天的挑出来", "expect": ["r-ts-audit"] },
+    { "id": "c19", "goal": "几个服务的健康检查地址轮一遍，把耗时和返回码记下来", "expect": ["r-api-probe"], "note": "探活换说法" },
+    { "id": "c20", "goal": "svc.internal 连不上，看下解析到哪个 IP、中间哪一跳断了", "expect": ["r-dns-trace"] },
+    { "id": "c21", "goal": "下载的安装包跟官方给的摘要对不对得上，别是被改过", "expect": ["r-hash-verify"] },
+    { "id": "c22", "goal": "把这个 yaml 配置变成一模一样的 json 版本", "expect": ["r-yaml-migrate"] },
+    { "id": "c23", "goal": "解释一下什么是索引失效，我该什么时候建索引", "expect": [], "expectNone": true, "note": "纯咨询，不该带任何操作路径" },
+    { "id": "c24", "goal": "帮我把这段合同文案润色得更正式一些", "expect": [], "expectNone": true, "note": "与工具链无关的写作请求" },
+    { "id": "c25", "goal": "读 order.json 导出 csv", "expect": ["r-csv-export"], "note": "字面重合的对照组：关键词匹配也该命中" }
+  ]
+}

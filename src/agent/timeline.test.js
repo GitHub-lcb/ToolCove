@@ -146,3 +146,44 @@ describe("文本裁剪", () => {
     expect(COLLAPSE_AT).toBeLessThan(DISPLAY_CLIP);
   });
 });
+
+describe("语义匹配与核验两类事件进时间线", () => {
+  it("skill_match 成为一行通知，带上形状/把握/耗时", () => {
+    const [item] = foldTimeline([
+      { type: "skill_match", matcher: "typesafe", shape: "rerank", tier: "high", confidence: 0.82, latencyMs: 640, matched: ["导出 CSV"], ts: 1 },
+    ]);
+    expect(item).toMatchObject({ kind: "notice", code: "skill_match", matcher: "typesafe", confidence: 0.82, latencyMs: 640 });
+    expect(item.matched).toEqual(["导出 CSV"]);
+  });
+
+  it("退回关键词时也留一行，带上原因", () => {
+    const [item] = foldTimeline([{ type: "skill_match", matcher: "keyword", reason: "transport-error", error: "HTTP 429", matched: [], ts: 1 }]);
+    expect(item).toMatchObject({ code: "skill_match", matcher: "keyword", reason: "transport-error", error: "HTTP 429" });
+  });
+
+  it("压根没有候选技能时不占一行（那是常态，不该刷屏）", () => {
+    expect(foldTimeline([{ type: "skill_match", matcher: "none", reason: "no-candidates", ts: 1 }])).toEqual([]);
+  });
+
+  it("verify 通过/存疑各自成一行，并点名存疑的是哪几项", () => {
+    const rows = foldTimeline([
+      { type: "verify", verified: true, needsReview: false, scores: { executed: 0.9 }, weakest: 0.9, ts: 1 },
+      { type: "verify", verified: true, needsReview: true, scores: { grounded: 0.2 }, weakest: 0.2, reviewOf: ["grounded"], ts: 2 },
+    ]);
+    expect(rows.map((r) => r.code)).toEqual(["verify_ok", "verify_review"]);
+    expect(rows[1].reviewOf).toEqual(["grounded"]);
+    expect(rows[1].weakest).toBeCloseTo(0.2);
+  });
+
+  it("没核成（未配置/失败）不进时间线", () => {
+    expect(foldTimeline([{ type: "verify", verified: false, reason: "not-configured", ts: 1 }])).toEqual([]);
+  });
+
+  it("畸形事件里的 matched/reviewOf 不是数组时降级成空列表而不是崩", () => {
+    const [row] = foldTimeline([{ type: "skill_match", matcher: "typesafe", matched: "导出 CSV", ts: 1 }]);
+    expect(row.matched).toEqual([]);
+    const [verify] = foldTimeline([{ type: "verify", verified: true, reviewOf: null, scores: null, ts: 1 }]);
+    expect(verify.reviewOf).toEqual([]);
+    expect(verify.scores).toEqual({});
+  });
+});

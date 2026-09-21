@@ -1,6 +1,7 @@
 /** 工具白名单与受控执行循环。 */
 import { createApprovalPolicy } from "./approval.js";
 import { GUARDED_TOOLS, OBSERVE_TOOLS, createObservationGate } from "./observation.js";
+import { verifyOutcome } from "./verify.js";
 import {
   EVENT_PAYLOAD_LIMIT,
   budgetEvent,
@@ -15,6 +16,8 @@ import {
 // 这个重试的是模型请求本身（限流、5xx、网络）。工具结果里的模型输出格式问题由 index.js 的
 // repair 次数（MAX_REPAIR_ATTEMPTS）负责，两者互不替代。
 const MAX_MODEL_ATTEMPTS = 3;
+/** 时间线事件不带 usage：token 计量走 onUsage 通道，塞进事件只会让每行变长。 */
+const stripUsage = ({ usage, ...rest }) => rest;
 // 值得退避重试的模型调用错误码；AUTH / 配置类错误重试无意义。
 const RETRYABLE_MODEL_CODES = Object.freeze(["RATE_LIMIT", "SERVER", "TIMEOUT", "TRANSPORT"]);
 const MODEL_RETRY_BASE_MS = 500;
@@ -278,8 +281,20 @@ export async function runAgent(input, options = {}) {
       if (!action || typeof action !== 'object') throw Error('模型未返回有效动作');
       if (action.type === 'final') {
         if (typeof action.answer !== 'string' || !action.answer.trim()) throw Error('模型未返回最终答案');
-        await emit({ type: 'final', answer: action.answer.slice(0, maxOutput) });
-        return { status: 'completed', answer: action.answer.slice(0, maxOutput), history };
+        const answer = action.answer.slice(0, maxOutput);
+        await emit({ type: 'final', answer });
+        // 结果核验：runtime 只能证明「协议对」，证明不了「结论有出处」。
+        // 这一步只标注疑点、不改答案也不拦运行——自动改结论比标出「需要人看」更危险。
+        const verify = await verifyOutcome({
+          goal: input,
+          answer,
+          history,
+          transport: options.typesafeTransport,
+          threshold: options.verifyThreshold,
+        });
+        // 只有真核成了才留一行：未配置/纯问答的运行每次都报「没核验」只会稀释时间线。
+        if (verify.verified) await emit({ type: 'verify', ...stripUsage(verify) });
+        return { status: 'completed', answer, history, ...(verify.verified ? { verify } : {}) };
       }
       if (action.type === 'ask_user') {
         if (typeof action.question !== 'string' || !action.question.trim()) throw Error('模型未提供问题');

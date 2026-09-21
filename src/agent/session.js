@@ -15,6 +15,7 @@ import { runAIAgent } from "./index.js";
 import { resolveTypeSafeTransport } from "../typesafe.js";
 import { spillStore } from "./spillStoreInstance.js";
 import { extractSkill } from "./skills.js";
+import { assessSkillWorth } from "./skillWorth.js";
 import { loadSkills, removeSkill, saveSkills, upsertSkill } from "./skillStore.js";
 import { invoke } from "../platform/invoke.js";
 import { buildTextDiff } from "../textDiff.js";
@@ -219,7 +220,7 @@ async function launch(input, resumeRun) {
 
   // 注册表与技能库都在**运行开始前**才准备：工具实现层是动态加载的（首屏不带 luxon/js-yaml 等），
   // 技能库读取失败不该拦住运行。
-  const [registry, skills, typesafeTransport] = await Promise.all([
+  const [registry, skills, typesafe] = await Promise.all([
     buildAgentRegistry(agentSession.cfg),
     agentSession.skills?.length ? Promise.resolve(agentSession.skills) : loadSkills().catch(() => []),
     // TypeSafe 语义匹配是**可选增强**：没配就是 null，规划器据此退回关键词匹配。
@@ -230,7 +231,13 @@ async function launch(input, resumeRun) {
   // 技能：命中者的正文进 prompt（目录不进）。设置里关掉的技能在这里就被排除，
   // 不会出现「关掉了却还在悄悄生效」。
   agentSession.skills = skills;
-  const skillOptions = { skills, disabledSkills: agentSession.cfg?.disabledSkills || [], typesafeTransport };
+  const skillOptions = {
+    skills,
+    disabledSkills: agentSession.cfg?.disabledSkills || [],
+    typesafeTransport: typesafe?.transport || null,
+    // 旋钮与传输层同源：都来自这一次配置读取，避免「新配置发旧请求」
+    typesafeTuning: typesafe?.tuning || {},
+  };
   // 逐次批准策略：存活期就是本次运行。批准只对「这一次调用」有效（同工具同参数折叠为一次）。
   const approvalPolicy = createApprovalPolicy({ mode: runOptions.requireConfirmation });
   let run = null;
@@ -341,13 +348,33 @@ export function discardRun(id) {
 /**
  * 把一次成功的运行沉淀成技能（技能库的入口）。
  * 返回 { ok, skill?, updated?, reason? }——reason 交给 UI 映射 i18n，UI 不猜引擎为什么拒绝。
+ *
+ * 两道门槛，各管各的：
+ *  - 结构门槛 extractSkill（代码判定）：运行成功、用过工具、正文不太短
+ *  - 复用性门槛 assessSkillWorth（语义判定）：这条流程将来还有用吗
+ * 后者只**建议**：判否时返回 not_reusable 让界面问一句「仍要沉淀吗」，
+ * 而不是替用户决定——一次性的运行里也可能藏着用户自己想留的操作路径。
+ * 没配 TypeSafe 时第二道完全跳过，行为与之前一字不差。
  */
-export async function promoteRunToSkill(runId) {
+// 每次沉淀都重新解析一次配置：这是用户主动点的低频动作，多一次 IPC 无所谓；
+// 而缓存住「当时没配」会让用户之后在设置里开启 TypeSafe 也永不生效（踩过一次的坑）。
+async function worthGateTransport() {
+  const resolved = await resolveTypeSafeTransport().catch(() => null);
+  return resolved?.transport || null;
+}
+
+export async function promoteRunToSkill(runId, options = {}) {
   const id = String(runId || agentSession.currentRunId || "");
   const run = agentSession.runs.find((r) => r.id === id);
   if (!run) return { ok: false, reason: "run_not_found" };
   const draft = extractSkill(run);
   if (!draft) return { ok: false, reason: "run_not_skillable" };
+  if (!options.force) {
+    const verdict = await assessSkillWorth({ run: { ...run, answer: run.answer || agentSession.answer }, transport: await worthGateTransport() });
+    if (verdict.assessed && !verdict.reusable) {
+      return { ok: false, reason: "not_reusable", weakest: verdict.weakest, low: verdict.low };
+    }
+  }
   const result = upsertSkill(agentSession.skills, draft);
   if (!result) return { ok: false, reason: "invalid" };
   agentSession.skills = result.list;

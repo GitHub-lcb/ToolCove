@@ -5,13 +5,19 @@
 import { describe, expect, it } from "vitest";
 import {
   DELIMITERS,
+  MAP_MIN_SCORE,
+  MAP_NO_TARGET,
   MAX_ROWS,
+  buildHeaderMapRequest,
   dedupeKeys,
   dedupeRows,
   detectDelimiter,
   filterRows,
   parseDelimited,
+  parseHeaderMapResponse,
+  parseTargetFields,
   removeEmptyRows,
+  renameHeaders,
   selectColumns,
   sortRows,
   stats,
@@ -391,5 +397,107 @@ describe("过滤", () => {
 
   it("表头不参与过滤", () => {
     expect(filterRows(rows, { columnIndex: 0, op: "contains", value: "name" })[0]).toEqual(["name", "city"]);
+  });
+});
+
+// ———— 表头语义映射（Jev 的 Choice 逐列一问）————
+// 断言口径：只验**请求形状与解析规则**，模型答得准不准不在单测里（那要靠真实端点跑）。
+describe("表头语义映射", () => {
+  const headers = ["客户联系", "下单金额(RMB)", "uid", "备注"];
+  const body = [
+    ["13800001111", "12.50", "u-9", "先发货"],
+    ["zhang@example.com", "1,200", "u-10", ""],
+    ["", "0.00", "u-11", "同上"],
+  ];
+  const targets = ["email", "amount", "user_id"];
+
+  it("目标字段清单：多种分隔符都认，去空去重限量", () => {
+    expect(parseTargetFields("email, amount；user_id\nemail | ")).toEqual(["email", "amount", "user_id"]);
+    expect(parseTargetFields("a,b;c", 2)).toEqual(["a", "b"]);
+    expect(parseTargetFields("   ")).toEqual([]);
+  });
+
+  it("每列一问，选项键是 t0/t1… 而不是字段原文", () => {
+    const built = buildHeaderMapRequest({ headers, rows: body, targets });
+    const question = built.body.questions["map::0"];
+    expect(question.type).toBe("choice");
+    expect(Object.keys(question.criteria)).toEqual(["t0", "t1", "t2", MAP_NO_TARGET]);
+    expect(question.criteria.t0).toContain("email");
+    // 出口必须有：Choice 概率总和恒为 1，没有「都不对应」就必然硬选一个
+    expect(question.criteria[MAP_NO_TARGET]).toBeTruthy();
+    expect(question.instructions).toContain("state.columns[0]");
+  });
+
+  it("样本进 state：判断「这列是什么」靠的是值，不是列名", () => {
+    const built = buildHeaderMapRequest({ headers, rows: body, targets });
+    expect(built.body.state.columns[0].samples).toEqual(["13800001111", "zhang@example.com"]);
+    expect(built.body.state.columns[0].header).toBe("客户联系");
+    // 第三行与表头同名的值不算样本
+    expect(built.body.state.columns[3].samples).toEqual(["先发货", "同上"]);
+  });
+
+  it("没表头或没目标字段就不发请求", () => {
+    expect(buildHeaderMapRequest({ headers: [], rows: body, targets })).toBe(null);
+    expect(buildHeaderMapRequest({ headers, rows: body, targets: [] })).toBe(null);
+    expect(buildHeaderMapRequest()).toBe(null);
+  });
+
+  it("列数与目标数都有上限（超了分批，而不是把 token 顶穿）", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `列${i}`);
+    const built = buildHeaderMapRequest({ headers: many, rows: [], targets });
+    expect(built.columns).toHaveLength(24);
+    expect(Object.keys(built.body.questions)).toHaveLength(24);
+    const wide = Array.from({ length: 30 }, (_, i) => `f${i}`);
+    expect(buildHeaderMapRequest({ headers, rows: body, targets: wide }).targets).toHaveLength(16);
+  });
+
+  const choiceAnswer = (map) => ({
+    answers: Object.fromEntries(
+      Object.entries(map).map(([index, [choice, score]]) => [
+        `map::${index}`,
+        { type: "choice", choice, probabilities: { [choice]: score } },
+      ])
+    ),
+  });
+
+  it("解析成 { index, from, to, score }，只采纳明确对上的列", () => {
+    const built = buildHeaderMapRequest({ headers, rows: body, targets });
+    const map = parseHeaderMapResponse(built, choiceAnswer({ 0: ["t0", 0.93], 2: ["t2", 0.8] }));
+    expect(map).toEqual([
+      { index: 0, from: "客户联系", to: "email", score: 0.93 },
+      { index: 2, from: "uid", to: "user_id", score: 0.8 },
+    ]);
+  });
+
+  it("「都不对应」、低于下限、没答、答了未知键——一律不改", () => {
+    const built = buildHeaderMapRequest({ headers, rows: body, targets });
+    expect(parseHeaderMapResponse(built, choiceAnswer({ 0: [MAP_NO_TARGET, 0.6], 1: ["t1", MAP_MIN_SCORE - 0.1], 3: ["t9", 0.99] }))).toEqual([]);
+    expect(parseHeaderMapResponse(built, { answers: {} })).toEqual([]);
+    expect(parseHeaderMapResponse(built, null)).toEqual([]);
+    // 概率缺失只算 0：没有证据就不改名
+    expect(parseHeaderMapResponse(built, { answers: { "map::0": { type: "choice", choice: "t0" } } })).toEqual([]);
+  });
+
+  it("改成同一个目标名的两列会被去重，否则导出 JSON 会丢列", () => {
+    const built = buildHeaderMapRequest({ headers, rows: body, targets });
+    const map = parseHeaderMapResponse(built, choiceAnswer({ 0: ["t0", 0.95], 3: ["t0", 0.9] }));
+    expect(map).toHaveLength(2);
+    expect(dedupeKeys(renameHeaders([headers, ...body], map)[0])).toEqual(renameHeaders([headers, ...body], map)[0]);
+  });
+
+  it("renameHeaders 只动表头行，数据一字不变", () => {
+    const rows = [headers, ...body];
+    const next = renameHeaders(rows, [{ index: 1, to: "amount" }, { index: 99, to: "ghost" }]);
+    expect(next[0]).toEqual(["客户联系", "amount", "uid", "备注"]);
+    expect(next.slice(1)).toEqual(body);
+    expect(rows[0]).toEqual(headers); // 原数组不被改
+  });
+
+  it("没有表头的数据不做映射", () => {
+    expect(renameHeaders(body, [{ index: 0, to: "x" }], { header: false })).toEqual(body);
+  });
+
+  it("默认下限是个真实门槛（0.5），不是随手写的小数", () => {
+    expect(MAP_MIN_SCORE).toBeGreaterThanOrEqual(0.4);
   });
 });

@@ -13,7 +13,7 @@ import {
 
 describe("normalizeTypeSafe（旧数据兼容）", () => {
   it("缺字段/非对象 → 默认关闭、地址留空（留空即用官方端点）", () => {
-    const empty = { enabled: false, baseUrl: "", apiKey: "", model: "" };
+    const empty = { enabled: false, baseUrl: "", apiKey: "", model: "", timeoutMs: 8000, clarify: true };
     expect(normalizeTypeSafe(undefined)).toEqual(empty);
     expect(normalizeTypeSafe(null)).toEqual(empty);
     expect(normalizeTypeSafe({})).toEqual(empty);
@@ -41,6 +41,51 @@ describe("normalizeTypeSafe（旧数据兼容）", () => {
 
   it("非字符串字段归一为空串", () => {
     expect(normalizeTypeSafe({ apiKey: 12345, model: { a: 1 } })).toMatchObject({ apiKey: "", model: "" });
+  });
+
+  it("匹配旋钮只认显式覆盖：没配的字段留 undefined，让模块默认值继续做主", () => {
+    const cfg = normalizeTypeSafe({ gate: 0.5, floor: 0.2 });
+    expect(cfg.gate).toBe(0.5);
+    expect(cfg.floor).toBe(0.2);
+    // limit / 置信度分档 / 正文预算都没配 → 不能凭空补一个数字，否则调默认值会分裂
+    expect("limit" in cfg).toBe(true);
+    expect(cfg.limit).toBeUndefined();
+    expect(cfg.confidenceLow).toBeUndefined();
+  });
+
+  it("旋钮的坏值一律退回「未配置」而不是将错就错", () => {
+    const bad = normalizeTypeSafe({ gate: 7, floor: -1, limit: 0, confidenceHigh: "abc", bodyChars: null, stateBudget: NaN });
+    expect(bad.gate).toBeUndefined();
+    expect(bad.floor).toBeUndefined();
+    expect(bad.limit).toBeUndefined();
+    expect(bad.confidenceHigh).toBeUndefined();
+    expect(bad.bodyChars).toBeUndefined();
+    expect(bad.stateBudget).toBeUndefined();
+  });
+
+  it("空串与 null 不等于 0（0 对 gate 是合法值，混淆会让清空格子变成改配置）", () => {
+    expect(normalizeTypeSafe({ gate: "" }).gate).toBeUndefined();
+    expect(normalizeTypeSafe({ gate: null }).gate).toBeUndefined();
+    expect(normalizeTypeSafe({ gate: 0 }).gate).toBe(0);
+  });
+
+  it("歧义预判默认开，只认显式 false（它复用运行前那一次请求，不额外加延迟）", () => {
+    expect(normalizeTypeSafe({}).clarify).toBe(true);
+    expect(normalizeTypeSafe({ clarify: false }).clarify).toBe(false);
+    expect(normalizeTypeSafe({ clarify: true }).clarify).toBe(true);
+    expect(normalizeTypeSafe({ clarify: "false" }).clarify).toBe(false);
+    expect(normalizeTypeSafe({ clarifyAt: 0.9 }).clarifyAt).toBe(0.9);
+    expect(normalizeTypeSafe({ clarifyAt: 2 }).clarifyAt).toBeUndefined();
+  });
+
+  it("超时缺省用 8000，越界夹进 1000–30000（与 Rust 侧同一套夹取规则）", () => {
+    // 0 在最坏情况下等于「不限超时」，所以它只能被抬到下限而不是当成未配置
+    expect(normalizeTypeSafe({ timeoutMs: 0 }).timeoutMs).toBe(1000);
+    expect(normalizeTypeSafe({ timeoutMs: 300 }).timeoutMs).toBe(1000);
+    expect(normalizeTypeSafe({ timeoutMs: 999999 }).timeoutMs).toBe(30000);
+    expect(normalizeTypeSafe({ timeoutMs: 12000 }).timeoutMs).toBe(12000);
+    expect(normalizeTypeSafe({ timeoutMs: "4500" }).timeoutMs).toBe(4500);
+    expect(normalizeTypeSafe({ timeoutMs: "abc" }).timeoutMs).toBe(8000);
   });
 });
 

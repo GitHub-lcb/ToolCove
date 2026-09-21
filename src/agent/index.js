@@ -4,6 +4,7 @@ import { buildAgentRegistry } from "./tools.js";
 import { createRun, appendStep, canResume, addUsage } from "./runStore.js";
 import { historyPromptText } from "./history.js";
 import { skillsPromptSection } from "./skills.js";
+import { clarifyPromptLine } from "./clarify.js";
 import { suggestSkills } from "./skillSuggest.js";
 
 // 模型响应修复预算：解析失败时把错误原文回灌给模型自我修正，最多这么多次，之后按失败收尾。
@@ -50,6 +51,9 @@ function buildPrompt(input, history, tools, repairs, options = {}) {
   // 命中来源可能是 TypeSafe 的语义判断，也可能是关键词兜底，这里只认结果（见 skillSuggest.js）。
   const skillSection = skillsPromptSection(options.matches);
   if (skillSection) lines.push(skillSection);
+  // 歧义预判（clarify.js）：只给方向、不给措辞——怎么问要贴着用户自己的说法，那是语言模型的判断。
+  // 达门槛才会非空，所以这里不再叠一层条件；没开 TypeSafe 时它永远是空串。
+  if (options.clarifyLine) lines.push(options.clarifyLine);
   // 早期步骤折叠成摘要而不是直接丢弃：长任务里模型反复重试同一件事，
   // 往往就是因为第 3 步的失败原因已经被 slice(-8) 丢掉了（见 history.js）。
   lines.push(`历史：${historyPromptText(history, options.historyOptions || {})}`);
@@ -69,24 +73,38 @@ export function createAIPlanner(options = {}) {
     disabledSkills: Array.isArray(options.disabledSkills) ? options.disabledSkills : [],
     historyOptions: { keepTail: options.keepTail, summaryBudget: options.summaryBudget },
   };
+  // TypeSafe 的旋钮来自配置（settings.typesafe），没配就用 skillSuggest.js 里的默认值。
+  const tuning = options.typesafeTuning && typeof options.typesafeTuning === "object" ? options.typesafeTuning : {};
+  // 歧义预判与技能匹配共用运行前的那一次请求；结论落在提示里（见 clarify.js）。
+  const withClarify = tuning.clarify !== false;
+  let clarifyLine = "";
   // 技能匹配一次运行只算一次：目标与技能库在一次运行里都是常量，而规划器每一步都会被调用。
   // 关键词匹配是纯函数，重复算无所谓；TypeSafe 却是一次网络请求——按步数重复提问会把成本与
   // 延迟直接乘以步数（maxSteps 硬上限 50），换来的还是同一个答案。
   let matchesPromise = null;
   const matchesFor = (input) => {
-    if (!plannerOptions.skills) return Promise.resolve([]);
+    if (!plannerOptions.skills && !withClarify) return Promise.resolve([]);
     if (!matchesPromise) {
-      matchesPromise = suggestSkills(plannerOptions.skills, input, {
+      matchesPromise = suggestSkills(plannerOptions.skills || [], input, {
         disabled: plannerOptions.disabledSkills,
         // 未配置（或显式关闭）时是 null，suggestSkills 据此退回关键词匹配
         transport: options.typesafeTransport,
+        clarify: withClarify,
+        ...tuning,
+        // 匹配判定进时间线：语义匹配走没走了、什么形状、置信度多少、花了多久、为什么退回——
+        // 这些原先全是静默的，出问题只能靠猜。刻意走调用方的 onEvent 而不是 runtime 的持久化
+        // 通道：它是运行诊断，不该混进可恢复的步骤流（resume/sanitize 都按工具步骤的形状写的）。
+        onResult: (info) => {
+          if (info && info.clarify && info.clarify.hint) clarifyLine = clarifyPromptLine(info.clarify);
+          options.onEvent?.({ type: "skill_match", ...info });
+        },
       });
     }
     return matchesPromise;
   };
   return async ({ input, history, tools, repairs = [] }) => {
     const matches = await matchesFor(input);
-    const prompt = buildPrompt(input, history, tools, repairs, { ...plannerOptions, matches });
+    const prompt = buildPrompt(input, history, tools, repairs, { ...plannerOptions, matches, clarifyLine });
     const callOptions = typeof options.onUsage === "function" ? { ...modelOptions, onUsage: options.onUsage } : modelOptions;
     return parseAction(await aiComplete(prompt, callOptions));
   };

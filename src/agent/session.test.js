@@ -17,6 +17,7 @@ import {
   clearTimeline,
   discardRun,
   initAgentSession,
+  promoteRunToSkill,
   resolvePending,
   startAgentRun,
   stopAgentRun,
@@ -60,23 +61,33 @@ describe("TypeSafe 语义匹配接线", () => {
     createdAt: 1,
   };
   const GOAL = "读取 order.json 导出 csv";
-  /** 「模型选中第一条技能」的 TypeSafe 响应。 */
-  const suggestOnce = () =>
+  /** 「模型选中第一条技能」的 TypeSafe 响应：按请求的实际形状作答，不跟着默认形状改动。 */
+  const suggestOnce = ({ score = 0.9, gate = 0.9 } = {}) =>
     vi.fn(async (body) => {
-      const keys = Object.keys(body.questions.pick.criteria).filter((k) => k !== "none of these fit");
-      return {
-        answers: {
-          pick: { type: "choice", choice: keys[0], confidence: 0.9, probabilities: { [keys[0]]: 0.9 } },
-          "gate::acts_on_data": { type: "noul", noul: 0.9 },
-          "gate::follows_recorded_procedure": { type: "noul", noul: 0.9 },
-          "gate::prose_suffices": { type: "noul", noul: 0.1 },
-        },
+      const answers = {
+        "gate::acts_on_data": { type: "noul", noul: gate },
+        "gate::follows_recorded_procedure": { type: "noul", noul: gate },
+        "gate::prose_suffices": { type: "noul", noul: 1 - gate },
       };
+      const ids = Object.keys(body.questions).filter((id) => !id.startsWith("gate::"));
+      if (body.questions.pick) {
+        answers.pick = {
+          type: "choice",
+          choice: ids[0],
+          confidence: 0.9,
+          probabilities: Object.fromEntries(ids.map((id, i) => [id, i === 0 ? score : 0.02])),
+        };
+      } else {
+        ids.forEach((id, i) => {
+          answers[id] = { type: "noul", noul: i === 0 ? score : 0.02 };
+        });
+      }
+      return { answers };
     });
 
   it("配好 TypeSafe 时，传输层一路带到规划器且一次运行只问一次", async () => {
     const transport = suggestOnce();
-    resolveTypeSafeTransport.mockResolvedValue(transport);
+    resolveTypeSafeTransport.mockResolvedValue({ transport, tuning: { gate: 0.5 } });
     agentSession.skills = [skill];
     scriptPlanner([final("好了")]);
 
@@ -85,6 +96,23 @@ describe("TypeSafe 语义匹配接线", () => {
     expect(transport).toHaveBeenCalledTimes(1);
     // 语义匹配的结果确实进了 prompt，而不是只走到一半
     expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+    // 配置里的旋钮确实传到了请求侧（不然设置页的调优项是摆设）：gate 0.5 时 0.9 的响应仍该命中
+    const info = agentSession.steps.find((s) => s.type === "skill_match");
+    expect(info).toMatchObject({ matcher: "typesafe", tier: "high", confidence: 0.9 });
+    expect(info.matched).toEqual(["导出 CSV"]);
+  });
+
+  it("旋钮与传输层同源：配置里的 gate 真的决定了带不带", async () => {
+    // 同一份响应：默认 gate 0.3 会带上技能，配成 0.5 就不带。
+    // 只有把 tuning 传到请求侧才会出现这个差别，所以这条用例同时在验接线。
+    resolveTypeSafeTransport.mockResolvedValue({ transport: suggestOnce({ gate: 0.4 }), tuning: { gate: 0.5 } });
+    agentSession.skills = [skill];
+    scriptPlanner([final("好了")]);
+
+    await startAgentRun(GOAL);
+
+    expect(aiComplete.mock.calls[0][0]).not.toContain("【技能】");
+    expect(agentSession.steps.find((s) => s.type === "skill_match")).toMatchObject({ matcher: "typesafe", matched: [] });
   });
 
   it("没配 TypeSafe 时退回关键词匹配，运行不受影响", async () => {
@@ -95,6 +123,11 @@ describe("TypeSafe 语义匹配接线", () => {
     await startAgentRun(GOAL);
 
     expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+    // 退回也要有交代：否则「配了没生效」与「压根没配」在界面上长得一样
+    expect(agentSession.steps.find((s) => s.type === "skill_match")).toMatchObject({
+      matcher: "keyword",
+      reason: "not-configured",
+    });
   });
 
   it("解析传输层失败不拦住运行（可选增强不该让 Agent 起不来）", async () => {
@@ -135,8 +168,9 @@ describe("一次完整运行", () => {
     expect(agentSession.currentRunId).toBe(agentSession.runs[0].id);
 
     const types = agentSession.steps.map((s) => s.type);
-    // 策略放行的调用也有一条 approval_decided（by=policy），审计不留空白
-    expect(types).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
+    // 策略放行的调用也有一条 approval_decided（by=policy），审计不留空白。
+    // skill_match 是运行诊断（语义匹配走没走、为什么退回），排在工具步骤之前，单独看它的用例。
+    expect(types.filter((x) => x !== "skill_match")).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
   });
 
   it("时间线上的 args 与 result 也脱敏，不只脱敏持久化副本", async () => {
@@ -439,5 +473,81 @@ describe("历史", () => {
     clearTimeline();
     expect(agentSession.steps).toEqual([]);
     expect(agentSession.answer).toBe("");
+  });
+});
+
+describe("沉淀准入（语义判断复用性）", () => {
+  const goodRun = {
+    id: "run-w",
+    status: "success",
+    input: "读取 order.json 找出重复字段并导出 csv",
+    answer: "已完成：找到 2 个重复字段",
+    finishedAt: Date.now(),
+    history: [
+      { action: call("file.read_text", { path: "order.json" }), result: { text: "[]" } },
+      { action: call("json.parse", { text: "[]" }), result: { rows: 2 } },
+    ],
+  };
+  const worthAnswer = (values) =>
+    vi.fn(async (body) => ({
+      answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: values[id.includes("transferable") ? "transferable" : "reusable"] }])),
+    }));
+  const seedRun = () => {
+    agentSession.runs = [goodRun];
+    agentSession.skills = [];
+  };
+
+  it("语义说不可复用 → 不沉淀，并把原因与最低把握带回去", async () => {
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue({ transport: worthAnswer({ reusable: 0.9, transferable: 0.15 }), tuning: {} });
+    const result = await promoteRunToSkill("run-w");
+    expect(result).toMatchObject({ ok: false, reason: "not_reusable" });
+    expect(result.weakest).toBeCloseTo(0.15);
+    expect(result.low).toEqual(["transferable"]);
+    expect(agentSession.skills).toEqual([]);
+  });
+
+  it("同一 runId 带 force 再沉淀：尊重用户自己的判断", async () => {
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue({ transport: worthAnswer({ reusable: 0.1, transferable: 0.1 }), tuning: {} });
+    expect((await promoteRunToSkill("run-w")).ok).toBe(false);
+    const forced = await promoteRunToSkill("run-w", { force: true });
+    expect(forced.ok).toBe(true);
+    expect(agentSession.skills).toHaveLength(1);
+  });
+
+  it("判为可复用时直接沉淀", async () => {
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue({ transport: worthAnswer({ reusable: 0.88, transferable: 0.7 }), tuning: {} });
+    expect(await promoteRunToSkill("run-w")).toMatchObject({ ok: true });
+    expect(agentSession.skills).toHaveLength(1);
+  });
+
+  it("没配 TypeSafe 时行为与之前一字不差（不因增强而拦人）", async () => {
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue(null);
+    expect(await promoteRunToSkill("run-w")).toMatchObject({ ok: true });
+  });
+
+  it("端点失败 / 模型没答都放行：可选增强不能变成沉淀的障碍", async () => {
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue({
+      transport: async () => {
+        throw new Error("HTTP 429：限流");
+      },
+    });
+    expect(await promoteRunToSkill("run-w")).toMatchObject({ ok: true });
+
+    seedRun();
+    resolveTypeSafeTransport.mockResolvedValue({ transport: async () => ({ answers: {} }) });
+    expect(await promoteRunToSkill("run-w")).toMatchObject({ ok: true });
+  });
+
+  it("结构门槛先拦住：没有工具调用的运行轮不到语义判断", async () => {
+    agentSession.runs = [{ ...goodRun, history: [] }];
+    const transport = worthAnswer({ reusable: 0.9, transferable: 0.9 });
+    resolveTypeSafeTransport.mockResolvedValue({ transport });
+    expect(await promoteRunToSkill(goodRun.id)).toMatchObject({ ok: false, reason: "run_not_skillable" });
+    expect(transport).not.toHaveBeenCalled();
   });
 });

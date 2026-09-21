@@ -301,3 +301,131 @@ export function filterRows(rows, { columnIndex = 0, op = "contains", value = "",
   };
   return [...head, ...body.filter(match)];
 }
+
+// ———— 表头语义映射（TypeSafe Jev，可选增强）————
+//
+// 要解决的问题：导出的报表表头是人写的（「客户联系」「下单金额(RMB)」「uid」），要把它对齐到
+// 目标字段名（email / amount / user_id）才能入库或对接。这是**字面规则做不到**的判断：
+// 正则能认出邮箱的*值*，认不出「这整列装的是邮箱」——值可能是空的、混淆过的、或格式各异的。
+// 而让通用大模型来改表头又是杀鸡用牛刀：慢、贵、输出还不可控。Jev 的 Choice 正好是这一格的形状：
+// 每列一问，答案只能是目标字段之一或「无对应」，回来的是带概率的类型化结果。
+//
+// 与 tableTool 其余部分一样是纯函数：不 import Vue/Tauri/网络，手机端也能复用。
+// 传输层由视图注入（见 src/typesafe.js）。
+
+/** 「这一列没有对应的目标字段」这个出口。目标键一律是 t<数字>，不会与之撞名。 */
+export const MAP_NO_TARGET = "no matching target field";
+/** 一次最多问几列（再多就该分批：请求体会把 token 顶起来，而收益递减）。 */
+export const MAP_MAX_COLUMNS = 24;
+/** 一次最多给几个目标字段。 */
+export const MAP_MAX_TARGETS = 16;
+/** 每列取几行样本：判断「这列是什么」看三五行就够，取多了只是贵。 */
+const MAP_SAMPLES = 3;
+/** 单个样本的字符上限（单元格可能是整段 JSON，截断即可）。 */
+const MAP_SAMPLE_CHARS = 60;
+/** 映射概率低于它就不采纳：猜错列名比不改名更难被发现。 */
+export const MAP_MIN_SCORE = 0.5;
+
+/** 压成一行并去首尾空白：表头与样本都要原样给模型，但不能带换行（会打乱问句结构）。 */
+const oneLine = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+
+/**
+ * 解析用户输入的目标字段清单：逗号/分号/顿号/换行都能分隔，去空去重并限量。
+ * 允许这么松是因为这串东西通常是从别处粘贴过来的，让用户改写法是本末倒置。
+ */
+export function parseTargetFields(text, limit = MAP_MAX_TARGETS) {
+  const parts = String(text ?? "").split(/[,;，；、\n\r\t|]+/).map(oneLine).filter(Boolean);
+  return [...new Set(parts)].slice(0, limit);
+}
+
+/**
+ * 组装一次表头映射请求。返回 null 表示「没什么可问的」：没表头、没目标字段。
+ * 选项键用 t0/t1… 而不是目标字段原文：字段名可能重复、含空格或 CJK，
+ * 当 map 的键会在 criteria 里互相覆盖，而且模型读到 ASCII 短键更稳。
+ */
+export function buildHeaderMapRequest({ headers, rows, targets, model } = {}) {
+  const names = (Array.isArray(headers) ? headers : []).map(oneLine);
+  const list = (Array.isArray(targets) ? targets : []).map(oneLine).filter(Boolean).slice(0, MAP_MAX_TARGETS);
+  const body = Array.isArray(rows) ? rows : [];
+  if (!names.length || !list.length) return null;
+  const columns = names.slice(0, MAP_MAX_COLUMNS).map((header, index) => {
+    const samples = [];
+    for (const row of body) {
+      const value = oneLine(row?.[index]);
+      if (!value || value === header) continue;
+      samples.push(value.length > MAP_SAMPLE_CHARS ? `${value.slice(0, MAP_SAMPLE_CHARS - 1)}…` : value);
+      if (samples.length >= MAP_SAMPLES) break;
+    }
+    return { index, header, samples };
+  });
+  const criteria = {};
+  list.forEach((target, index) => {
+    criteria[`t${index}`] = `Target field: ${target}`;
+  });
+  criteria[MAP_NO_TARGET] = "None of the target fields matches this column.";
+  const questions = {};
+  for (const column of columns) {
+    questions[`map::${column.index}`] = {
+      type: "choice",
+      instructions:
+        `Which single target field does the column described by \`state.columns[${column.index}]\` hold? ` +
+        `Judge by that column's actual values (\`state.columns[${column.index}].samples\`), not by how similar ` +
+        `the words sound. Pick "${MAP_NO_TARGET}" when no target field fits.`,
+      criteria,
+    };
+  }
+  return {
+    body: {
+      model: oneLine(model) || "jev-latest",
+      state: { targets: list, columns },
+      questions,
+    },
+    columns,
+    targets: list,
+  };
+}
+
+/**
+ * 翻译成 { index, from, to, score } 列表：只保留**明确对上**的列。
+ * 没有的答案、不认识的目标键、低于下限的概率一律不采纳——改名是看得见的产出，
+ * 猜错一处就得回头查，比不改更糟。
+ */
+export function parseHeaderMapResponse(built, response, options = {}) {
+  const answers = response && response.answers;
+  if (!built || !answers || typeof answers !== "object") return [];
+  const floor = Number.isFinite(options.floor) ? options.floor : MAP_MIN_SCORE;
+  const out = [];
+  for (const column of built.columns) {
+    const answer = answers[`map::${column.index}`];
+    if (!answer || typeof answer !== "object") continue;
+    const probabilities = answer.probabilities;
+    const choice = oneLine(answer.choice);
+    if (!choice || choice === MAP_NO_TARGET) continue;
+    const raw = Number(probabilities?.[choice]);
+    const score = Number.isFinite(raw) ? raw : 0;
+    const to = /^t\d+$/.test(choice) ? built.targets[Number(choice.slice(1))] : undefined;
+    if (!to || score < floor) continue;
+    if (to === column.header) continue;
+    out.push({ index: column.index, from: column.header, to, score });
+  }
+  return out;
+}
+
+/**
+ * 按映射结果改表头（只动第一行，数据一字不动）。
+ * 改完过一遍 dedupeKeys：两列被映射成同一个目标名是常见情况，留下重名会让导出 JSON 丢列。
+ */
+export function renameHeaders(rows, map, { header = true } = {}) {
+  const list = rows || [];
+  if (!header || !list.length) return list;
+  const next = [...(list[0] || [])];
+  for (const item of Array.isArray(map) ? map : []) {
+    const index = Number(item?.index);
+    const to = oneLine(item?.to);
+    if (!Number.isInteger(index) || index < 0 || !to) continue;
+    // 只改确实存在的表头格：越界写会造出稀疏数组，导出时变成一串 undefined
+    if (index >= next.length) continue;
+    next[index] = to;
+  }
+  return [dedupeKeys(next), ...list.slice(1)];
+}

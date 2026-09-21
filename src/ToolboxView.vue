@@ -10,7 +10,9 @@ import ToolErrorPanel from "./ToolErrorPanel.vue";
 import { loadToolbox, saveToolbox, saveToolboxNow, flushToolbox } from "./toolboxStore.js";
 import { createJsonHandoffQueue, JSON_HANDOFF_EVENT } from "./tools/jsonHandoff.js";
 import { prepareJsonHandoff } from "./tools/jsonWorkspace.js";
-import { groupToolboxTools, searchToolboxTools, visibleToolboxTools } from "./toolboxTools.js";
+import { groupToolboxTools, searchToolboxTools, toolKeywords, visibleToolboxTools } from "./toolboxTools.js";
+import { isSemanticWorthy, suggestTools } from "./toolboxSemantic.js";
+import { resolveTypeSafeTransport } from "./typesafe.js";
 import { buildToolboxQuickList, normalizeExpandedGroups, toggleExpandedGroup } from "./toolboxViewState.js";
 import { getToolComponent } from "./toolComponents.js";
 import { track } from "./telemetry.js";
@@ -39,6 +41,74 @@ const filteredTools = computed(() => {
   return keyword ? searchToolboxTools(keyword, TOOLS) : TOOLS;
 });
 const GROUPS = computed(() => groupToolboxTools(filteredTools.value));
+
+// —— 自然语言找工具（TypeSafe 语义，可选增强）——
+// 字面检索是子串包含：「把订单表另存成能直接用 Excel 打开的文件」与任何工具字段都没有共同子串，
+// 于是它落在空结果页上。这里把那一步补上，而且**只在字面检索空手而归时**才问模型：
+// 有字面命中还去发一次网络请求，慢的是用户、贵的是 token，准度却未必更高。
+const SEMANTIC_DEBOUNCE_MS = 400;
+const semanticHits = ref([]);
+const semanticBusy = ref(false);
+const semanticNote = ref("");
+// 同一句话只问一次：中文输入法逐字上屏、用户来回改词都不该重复打端点
+let semanticCache = new Map();
+let semanticTimer = null;
+let semanticToken = null;
+let semanticTransport = null;
+
+// 注册表存的是关键词字典键，语义请求要的是当前语言的词表（见 toolboxTools.toolKeywords）
+const SEMANTIC_TOOLS = computed(() =>
+  TOOLS.map((tool) => ({ ...tool, keywords: toolKeywords(tool).map((word) => String(word ?? "")) }))
+);
+
+async function runSemanticSearch(text) {
+  if (semanticCache.has(text)) {
+    semanticHits.value = semanticCache.get(text);
+    semanticNote.value = "";
+    return;
+  }
+  semanticBusy.value = true;
+  const token = {};
+  semanticToken = token;
+  if (!semanticTransport) {
+    // 未配置/显式关闭都是 null，据此安静地什么都不做（本功能没有字面兜底，字面检索已经跑过了）
+    semanticTransport = await resolveTypeSafeTransport().catch(() => null);
+  }
+  const hits = await suggestTools(SEMANTIC_TOOLS.value, text, {
+    transport: semanticTransport?.transport || null,
+    ...(semanticTransport?.tuning || {}),
+    limit: 3,
+    translate: (key) => t(key),
+    onResult: (info) => {
+      // 不推荐时留一句原因：否则「配了没生效」和「压根没配」在界面上完全一样
+      if (info.matcher === "none" && info.reason && info.reason !== "not-configured") semanticNote.value = info.reason;
+    },
+  });
+  if (semanticToken !== token) return; // 期间用户又改了词，这次结果作废
+  semanticBusy.value = false;
+  if (semanticCache.size > 40) semanticCache = new Map();
+  semanticCache.set(text, hits);
+  semanticHits.value = hits;
+}
+
+// 不推荐时的那句原因：「没配」不必说（本来就没这个功能），但「配了却失败」必须看得见
+const SEMANTIC_NOTE_KEY = {
+  "transport-error": "toolbox.gallery.semanticNoteError",
+  "low-confidence": "toolbox.gallery.semanticNoteUnsure",
+};
+const semanticNoteText = computed(() => {
+  const key = SEMANTIC_NOTE_KEY[semanticNote.value];
+  return key ? t(key) : "";
+});
+
+watch(query, (value) => {
+  const text = String(value ?? "").trim();
+  semanticHits.value = [];
+  semanticNote.value = "";
+  if (semanticTimer) clearTimeout(semanticTimer);
+  if (!hasSearch.value || filteredTools.value.length || !isSemanticWorthy(text)) return;
+  semanticTimer = setTimeout(() => runSemanticSearch(text), SEMANTIC_DEBOUNCE_MS);
+});
 
 const activeTool = ref(""); // "" = 画廊首页
 const recent = ref([]); // [{ key, ts }]
@@ -255,10 +325,34 @@ function openInJson(text) {
       <div class="home">
         <div class="home-main">
           <div v-if="hasSearch && !filteredTools.length" class="search-empty">
-            <span class="empty-ico"><Icon name="search" :size="26" /></span>
-            <b>{{ t("toolbox.gallery.searchEmptyTitle") }}</b>
-            <span>{{ t("toolbox.gallery.searchEmptyHint") }}</span>
-            <button class="btn-outline" type="button" @click="query = ''">{{ t("toolbox.gallery.searchClear") }}</button>
+            <template v-if="semanticHits.length">
+              <b class="semantic-title">{{ t("toolbox.gallery.semanticTitle") }}</b>
+              <div class="semantic-list">
+                <button
+                  v-for="hit in semanticHits"
+                  :key="hit.tool.key"
+                  class="quick-item semantic-item"
+                  :title="t(hit.tool.descKey)"
+                  @click="openTool(hit.tool)"
+                >
+                  <span class="quick-tile"><Icon :name="hit.tool.icon" :size="19" /></span>
+                  <span class="quick-info">
+                    <b>{{ t(hit.tool.labelKey) }}</b>
+                    <small>{{ t(hit.tool.descKey) }}</small>
+                  </span>
+                  <!-- 概率原样给出：这是模型的把握，不是匹配度百分比，藏起来反而误导 -->
+                  <span class="semantic-score">{{ hit.score.toFixed(2) }}</span>
+                </button>
+              </div>
+              <span class="semantic-hint">{{ t("toolbox.gallery.semanticHint") }}</span>
+            </template>
+            <template v-else>
+              <span class="empty-ico"><Icon name="search" :size="26" /></span>
+              <b>{{ t("toolbox.gallery.searchEmptyTitle") }}</b>
+              <span>{{ semanticBusy ? t("toolbox.gallery.semanticBusy") : t("toolbox.gallery.searchEmptyHint") }}</span>
+              <span v-if="semanticNoteText" class="semantic-note">{{ semanticNoteText }}</span>
+              <button class="btn-outline" type="button" @click="query = ''">{{ t("toolbox.gallery.searchClear") }}</button>
+            </template>
           </div>
           <div v-else class="tool-groups">
             <section v-for="group in GROUPS" :key="group.key" class="tool-group">
@@ -445,6 +539,14 @@ function openInJson(text) {
 .search-empty .empty-ico { margin-bottom: var(--sp-2); }
 .search-empty b { color: var(--text); font-size: var(--fs-lg); }
 .search-empty .btn-outline { margin-top: var(--sp-2); }
+/* 语义推荐：字面检索空手而归时的「按说法找到」。整块左对齐并撑满，
+   否则继承自 .search-empty 的居中列会把可点的工具卡压成一串窄条。 */
+.semantic-list { width: 100%; display: grid; gap: var(--sp-2); margin-top: var(--sp-3); }
+.semantic-item { width: 100%; }
+.semantic-item:hover { border-color: var(--accent); }
+.semantic-score { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
+.semantic-hint { font-size: var(--fs-xs); }
+.semantic-note { font-size: var(--fs-xs); color: var(--muted); }
 
 /* 右侧栏 */
 .home-side { display: flex; flex-direction: column; gap: 14px; }

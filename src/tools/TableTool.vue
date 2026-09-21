@@ -14,11 +14,15 @@ import { saveToolbox, loadToolbox } from "../toolboxStore.js";
 import {
   DELIMITERS,
   MAX_ROWS,
+  buildHeaderMapRequest,
   dedupeRows,
   detectDelimiter,
   filterRows,
   parseDelimited,
+  parseHeaderMapResponse,
+  parseTargetFields,
   removeEmptyRows,
+  renameHeaders,
   selectColumns,
   sortRows,
   stats,
@@ -27,6 +31,7 @@ import {
   toMarkdown,
   toSqlInsert,
 } from "../tableTool.js";
+import { resolveTypeSafeTransport } from "../typesafe.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -73,6 +78,7 @@ const table = computed(() => {
     else if (op.kind === "removeEmpty") rows = removeEmptyRows(rows, { header: hasHeader.value });
     else if (op.kind === "selectColumns") rows = selectColumns(rows, op.indexes);
     else if (op.kind === "filter") rows = filterRows(rows, { ...op, header: hasHeader.value });
+    else if (op.kind === "rename") rows = renameHeaders(rows, op.map, { header: hasHeader.value });
   }
   return rows;
 });
@@ -150,6 +156,72 @@ const filterForm = ref({ columnIndex: 0, op: "contains", value: "" });
 function applyFilter() {
   addOperation({ ...filterForm.value, kind: "filter" });
   filterOpen.value = false;
+}
+
+/**
+ * 表头语义映射：把「客户联系」这类人写的表头对齐到目标字段名。
+ *
+ * 为什么交给 Jev 而不是正则：正则能认出某个*值*像邮箱，认不出「这一列装的是邮箱」——
+ * 列可能大面积为空、被脱敏成 ***、或格式不统一。而改名是看得见的产出，所以门槛给到 0.5，
+ * 猜错比不改更难被发现（见 tableTool.js 的 MAP_MIN_SCORE）。
+ * 与工具箱搜索同一套约定：未配置就安静不动，失败只说一句，不阻塞本地清洗。
+ */
+const mapOpen = ref(false);
+const mapTargets = ref("");
+const mapBusy = ref(false);
+const mapNote = ref("");
+const mapProposals = ref([]);
+let mapTransport = null;
+
+function openMapPanel() {
+  mapOpen.value = !mapOpen.value;
+  mapNote.value = "";
+}
+
+async function runHeaderMap() {
+  mapNote.value = "";
+  mapProposals.value = [];
+  if (!hasHeader.value) {
+    mapNote.value = t("toolbox.table.mapNeedHeader");
+    return;
+  }
+  const targets = parseTargetFields(mapTargets.value);
+  if (!targets.length) {
+    mapNote.value = t("toolbox.table.mapNeedTargets");
+    return;
+  }
+  if (!mapTransport) {
+    // 配置只读一次；null 表示没启用 TypeSafe —— 这时本功能不发声，其他清洗操作照常用
+    mapTransport = await resolveTypeSafeTransport().catch(() => null);
+  }
+  if (!mapTransport?.transport) {
+    mapNote.value = t("toolbox.table.mapNoTypeSafe");
+    return;
+  }
+  const built = buildHeaderMapRequest({ headers: header.value, rows: body.value, targets });
+  if (!built) {
+    mapNote.value = t("toolbox.table.mapNeedTargets");
+    return;
+  }
+  mapBusy.value = true;
+  try {
+    const response = await mapTransport.transport(built.body);
+    mapProposals.value = parseHeaderMapResponse(built, response, mapTransport.tuning || {});
+    if (!mapProposals.value.length) mapNote.value = t("toolbox.table.mapNone");
+  } catch (e) {
+    mapNote.value = t("toolbox.table.mapFailed", { err: e?.message || String(e) });
+  } finally {
+    mapBusy.value = false;
+  }
+}
+
+/** 应用改名：进操作栈而不是直接改数据，这样「重置」还能撤回来。 */
+function applyHeaderMap() {
+  if (!mapProposals.value.length) return;
+  addOperation({ kind: "rename", map: mapProposals.value.map(({ index, to }) => ({ index, to })) });
+  mapOpen.value = false;
+  mapProposals.value = [];
+  props.showToast(t("toolbox.table.mapApplied"));
 }
 
 async function copyExport() {
@@ -280,9 +352,34 @@ const shownError = computed(() => parsed.value.parseError || error.value);
         <button class="tt-btn" data-role="remove-empty" @click="addOperation({ kind: 'removeEmpty' })">{{ t("toolbox.table.opRemoveEmpty") }}</button>
         <button class="tt-btn" data-role="pick-columns" @click="openColumnPick">{{ t("toolbox.table.opColumns") }}</button>
         <button class="tt-btn" data-role="open-filter" @click="filterOpen = !filterOpen">{{ t("toolbox.table.opFilter") }}</button>
+        <button v-if="hasHeader" class="tt-btn" data-role="open-map" @click="openMapPanel">{{ t("toolbox.table.opMap") }}</button>
         <button v-if="operations.length" class="tt-btn" data-role="reset-ops" @click="resetOperations">
           {{ t("toolbox.table.opReset", { n: operations.length }) }}
         </button>
+      </div>
+
+      <!-- 表头语义映射面板：目标字段 → 每列一个 Choice，采纳后才改名 -->
+      <div v-if="mapOpen" class="tt-panel" data-role="map-panel">
+        <p class="tt-hint">{{ t("toolbox.table.mapDesc") }}</p>
+        <input v-model="mapTargets" class="tt-input" data-role="map-targets" :placeholder="t('toolbox.table.mapTargetsPh')" />
+        <div class="tt-toolbar">
+          <button class="tt-btn primary" data-role="map-run" :disabled="mapBusy" @click="runHeaderMap">
+            {{ mapBusy ? t("toolbox.table.mapBusy") : t("toolbox.table.mapRun") }}
+          </button>
+          <button v-if="mapProposals.length" class="tt-btn" data-role="map-apply" @click="applyHeaderMap">
+            {{ t("toolbox.table.mapApply", { n: mapProposals.length }) }}
+          </button>
+        </div>
+        <ul v-if="mapProposals.length" class="tt-map-list" data-role="map-list">
+          <li v-for="item in mapProposals" :key="item.index" class="tt-map-row">
+            <b data-role="map-from">{{ item.from || t("toolbox.table.colN", { n: item.index + 1 }) }}</b>
+            <span class="tt-map-arrow">→</span>
+            <b class="tt-map-to">{{ item.to }}</b>
+            <!-- 概率原样给：这是模型的把握，不是已验证的正确性 -->
+            <span class="tt-map-score">{{ item.score.toFixed(2) }}</span>
+          </li>
+        </ul>
+        <p v-if="mapNote" class="tt-hint" data-role="map-note">{{ mapNote }}</p>
       </div>
 
       <!-- 过滤面板 -->
@@ -530,6 +627,31 @@ const shownError = computed(() => parsed.value.parseError || error.value);
   margin-left: 4px;
   color: var(--primary);
   font-size: 0.7rem;
+}
+
+/* 表头映射的建议列表：一列一行，「原表头 → 目标字段 + 把握」。
+   刻意用等宽数字并右对齐把握值，方便一眼扫出哪几条概率低、值得自己核。 */
+.tt-map-list {
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.tt-map-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.tt-map-to {
+  color: var(--primary);
+}
+.tt-map-score {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 行号列：固定宽度、右对齐，便于定位 */

@@ -13,6 +13,14 @@ export const E2E_AI_BASE = "http://127.0.0.1:4321/e2e-ai/v1";
 export const E2E_AI_KEY = "e2e-key";
 export const E2E_AI_MODEL = "e2e-model";
 
+/** TypeSafe（System One）端点的假基址：与 E2E_AI_BASE 同一约定，桩没生效时本地立刻失败而不是出网。 */
+export const E2E_TYPESAFE_BASE = "http://127.0.0.1:4321/e2e-typesafe/v1";
+
+/** 打开语义匹配的配置（enabled 必须显式 true，默认关闭是产品行为，桩不该绕过它）。 */
+export const TYPESAFE_SETTINGS = {
+  typesafe: { baseUrl: E2E_TYPESAFE_BASE, apiKey: "e2e-ts-key", model: "", enabled: true },
+};
+
 /** 应用配置里的 AI 段落（browser 端 apiKey 是明文往返，见 platform/invoke.js）。 */
 export const AI_SETTINGS = {
   ai: { baseUrl: E2E_AI_BASE, apiKey: E2E_AI_KEY, model: E2E_AI_MODEL, temperature: 0.7, enabled: true },
@@ -331,7 +339,7 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
 // E2E 内部共享状态：挂在 page 对象上。桌面形态下请求由 Node 侧应答，队列必须在 Node 侧。
 const PAGE_STATE = new WeakMap();
 function stateOf(page) {
-  if (!PAGE_STATE.has(page)) PAGE_STATE.set(page, { queue: [], calls: [], status: 200, delayMs: 0 });
+  if (!PAGE_STATE.has(page)) PAGE_STATE.set(page, { queue: [], calls: [], typesafeCalls: [], status: 200, delayMs: 0 });
   return PAGE_STATE.get(page);
 }
 
@@ -438,6 +446,57 @@ export async function mockAI(page, { responses = [], status = 200, delayMs = 0 }
 export async function aiCalls(page) {
   return stateOf(page).calls;
 }
+
+/**
+ * 桩定 TypeSafe（System One）端点。
+ *
+ * 为什么单独一个桩：语义匹配的用例必须能控制模型的回答，否则只能测到「未配置」这条路径；
+ * 而它的请求形状与 chat/completions 完全不同（POST /systemone，体是 {state, questions}），
+ * 复用 mockAI 只会让两个端点互相冒充。
+ * 浏览器形态下应用直连该端点（无 Rust 代理），所以这里与 mockAI 同一手法用 route 拦。
+ *
+ * @param {object} options
+ * @param {any|((body:any)=>any)} options.answer 固定响应，或按请求体算响应的函数
+ * @param {number} options.status 非 200 时让请求失败（测降级路径）
+ * @param {boolean} options.fail 直接抛网络错误（测超时/断网那一类失败）
+ */
+export async function mockTypeSafe(page, { answer = null, status = 200, fail = false } = {}) {
+  const state = stateOf(page);
+  state.typesafeCalls = [];
+  state.typesafeStatus = status;
+  state.typesafeFail = fail;
+  state.typesafeAnswer = answer;
+  await page.route("**/systemone", async (route) => {
+    const body = route.request().postDataJSON?.() || {};
+    state.typesafeCalls.push(body);
+    if (state.typesafeFail) {
+      await route.abort("failed");
+      return;
+    }
+    if (state.typesafeStatus && state.typesafeStatus !== 200) {
+      await route.fulfill({
+        status: state.typesafeStatus,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { message: "e2e-typesafe-down" } }),
+      });
+      return;
+    }
+    const payload = typeof state.typesafeAnswer === "function" ? state.typesafeAnswer(body) : state.typesafeAnswer;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(payload || { answers: {} }),
+    });
+  });
+}
+
+/** 桩收到的 System One 请求（断言 candidates、state 内容、问句形状）。 */
+export async function typeSafeCalls(page) {
+  return stateOf(page).typesafeCalls || [];
+}
+
+/** 把逐条 Noul 的问句 id 还原成工具/技能键。 */
+export const applicableKey = (id) => (String(id).startsWith("applicable::") ? String(id).slice("applicable::".length) : String(id));
 
 export const toolCall = (tool, args, id = "c1") => ({ type: "tool_call", id, tool, args });
 export const final = (answer) => ({ type: "final", answer });

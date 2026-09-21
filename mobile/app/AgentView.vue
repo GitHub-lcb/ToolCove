@@ -111,14 +111,26 @@ async function copyRun(run) {
  * 沉淀为技能。
  * ⚠️ promoteRunToSkill 用**返回值**表达拒绝（{ ok:false, reason }），不抛异常——
  * 不检查返回值就会「点了没反应」（踩过一次）。reason 交给 UI 映射文案，UI 不猜引擎为什么拒绝。
+ *
+ * 语义判「这条大概是一次性的」时不弹模态：手机端**再点一次同一条**就等于「仍要沉淀」。
+ * 少一个弹窗，而想取消的人只需不再点。
  */
+let reusableOverride = "";
 async function promote(runId) {
   error.value = "";
   notice.value = "";
   try {
-    const result = await promoteRunToSkill(runId);
+    const id = String(runId || "");
+    const force = reusableOverride === id && id !== "";
+    reusableOverride = "";
+    const result = await promoteRunToSkill(runId, { force });
     if (result?.ok) {
       notice.value = t("agent.skillSaved", { name: result.skill?.name || "" });
+      return;
+    }
+    if (result?.reason === "not_reusable") {
+      reusableOverride = id;
+      notice.value = t("mobile.skillReason.not_reusable");
       return;
     }
     notice.value = t(`mobile.skillReason.${result?.reason || "unknown"}`, { defaultValue: t("agent.skillNotSkillable") });

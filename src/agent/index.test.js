@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
 
 import { aiComplete } from "../ai.js";
+import { CLARIFY_NOTHING } from "./clarify.js";
 import { MAX_REPAIR_ATTEMPTS, createAIPlanner, createRepairingPlanner, parseAction, runAIAgent } from "./index.js";
 import { createToolRegistry } from "./runtime.js";
 
@@ -196,27 +197,42 @@ describe("createAIPlanner 的修复提示", () => {
 });
 
 describe("createAIPlanner 的技能匹配来源", () => {
+  // 名称/关键词与 GOAL 刻意零字面重合：这样「prompt 里有技能」只可能来自语义匹配，
+  // 关键词兜底（scoreSkill < 3）永远带不进它。否则用例看着绿，实际测的是兜底路径。
   const skill = {
     id: "s1",
-    name: "导出 CSV",
-    description: "读取 order.json 导出 csv",
+    name: "那条老路子",
+    description: "按上次的顺序来一遍",
     instructions: "目标：读取 order.json 导出 csv\n用到的工具：file.read_text",
-    keywords: ["csv"],
+    keywords: ["zzz"],
     toolNames: ["file.read_text"],
     createdAt: 1,
   };
   const GOAL = "读取 order.json 导出 csv";
-  /** 造一份「模型选中第一条技能」的 TypeSafe 响应。 */
-  const suggest = (transport) => async (body) => {
-    const keys = Object.keys(body.questions.pick.criteria).filter((k) => k !== "none of these fit");
-    return {
-      answers: {
-        pick: { type: "choice", choice: keys[0], confidence: 0.9, probabilities: { [keys[0]]: 0.9 } },
-        "gate::acts_on_data": { type: "noul", noul: 0.9 },
-        "gate::follows_recorded_procedure": { type: "noul", noul: 0.9 },
-        "gate::prose_suffices": { type: "noul", noul: 0.1 },
-      },
+  /**
+   * 造一份「模型选中第一条技能」的响应：按请求的**实际形状**作答。
+   * P1 之后默认是 rerank（每条一个 applicable:: Noul），写死读 pick.criteria 会静默抛错，
+   * 被 suggestSkills 的 catch 吞掉后退回关键词匹配——用例照样绿，但语义路径已经没在测了。
+   */
+  const suggest = ({ ambiguous, blocker } = {}) => async (body) => {
+    const ids = Object.keys(body.questions).filter((id) => !id.startsWith("gate::") && !id.startsWith("clarify::"));
+    const answers = {
+      "gate::acts_on_data": { type: "noul", noul: 0.9 },
+      "gate::follows_recorded_procedure": { type: "noul", noul: 0.9 },
+      "gate::prose_suffices": { type: "noul", noul: 0.1 },
     };
+    if (body.questions.pick) {
+      answers.pick = { type: "choice", choice: ids[0], confidence: 0.9, probabilities: { [ids[0]]: 0.9 } };
+    } else {
+      ids.forEach((id) => {
+        answers[id] = { type: "noul", noul: 0.9 };
+      });
+    }
+    if (ambiguous !== undefined) {
+      answers["clarify::ambiguous"] = { type: "noul", noul: ambiguous };
+      answers["clarify::blocker"] = { type: "choice", choice: blocker };
+    }
+    return { answers };
   };
 
   it("注入的传输层结果进 prompt", async () => {
@@ -226,6 +242,13 @@ describe("createAIPlanner 的技能匹配来源", () => {
     await planner({ input: GOAL, history: [], tools: [] });
     expect(transport).toHaveBeenCalledTimes(1);
     expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("默认就跑语义路径：关键词匹配单独跑时这条技能进不来", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ skills: [skill] });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(aiComplete.mock.calls[0][0]).not.toContain("【技能】");
   });
 
   it("一次运行只问一次 TypeSafe：按步数重复提问会把成本与延迟乘以步数", async () => {
@@ -238,9 +261,13 @@ describe("createAIPlanner 的技能匹配来源", () => {
     expect(transport).toHaveBeenCalledTimes(1);
   });
 
+  // 与 GOAL 字面重合的技能：专给「退回关键词」那两条用例用。
+  // 语义专用的 skill 故意不可字面命中，两者分开才能各测各的路径。
+  const kwSkill = { ...skill, id: "s2", name: "导出 CSV", description: "读取 order.json 导出 csv", keywords: ["csv", "order.json"] };
+
   it("没配传输层时退回关键词匹配（未开启 TypeSafe 的默认路径）", async () => {
     aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
-    const planner = createAIPlanner({ skills: [skill] });
+    const planner = createAIPlanner({ skills: [kwSkill] });
     await planner({ input: GOAL, history: [], tools: [] });
     expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
   });
@@ -250,9 +277,50 @@ describe("createAIPlanner 的技能匹配来源", () => {
     const transport = vi.fn(async () => {
       throw new Error("HTTP 429：rate limited");
     });
-    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    const planner = createAIPlanner({ skills: [kwSkill], typesafeTransport: transport });
     await planner({ input: GOAL, history: [], tools: [] });
     expect(aiComplete.mock.calls[0][0]).toContain("【技能】");
+  });
+
+  it("歧义达门槛时提示里加一句「先问清再动手」", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest({ ambiguous: 0.95, blocker: "output format" }));
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).toContain("ask_user");
+    expect(prompt).toContain("不要替用户假设");
+    expect(prompt).toContain("output format");
+    // 仍然只问一次：歧义预判复用同一份请求，不该多一个往返
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it("歧义没达门槛时提示里不加话（被无端反问比猜错更赶人）", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest({ ambiguous: 0.3, blocker: CLARIFY_NOTHING }));
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(aiComplete.mock.calls[0][0]).not.toContain("不要替用户假设");
+  });
+
+  it("配置里关掉 clarify 后，请求里不再带歧义问句", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest());
+    const planner = createAIPlanner({ skills: [skill], typesafeTransport: transport, typesafeTuning: { clarify: false } });
+    await planner({ input: GOAL, history: [], tools: [] });
+    const body = transport.mock.calls[0][0];
+    expect(Object.keys(body.questions).some((id) => id.startsWith("clarify::"))).toBe(false);
+  });
+
+  it("技能库为空但开了歧义预判：仍然问一次，且不塞技能", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const transport = vi.fn(suggest({ ambiguous: 0.92, blocker: "time range" }));
+    const planner = createAIPlanner({ skills: [], typesafeTransport: transport });
+    await planner({ input: GOAL, history: [], tools: [] });
+    expect(transport).toHaveBeenCalledTimes(1);
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).not.toContain("【技能】");
+    expect(prompt).toContain("time range");
   });
 });
 

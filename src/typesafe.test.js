@@ -80,7 +80,10 @@ describe("resolveTypeSafeTransport", () => {
 
   it("显式注入的传输层优先（测试与自定义代理用）", async () => {
     const injected = vi.fn();
-    expect(await resolveTypeSafeTransport({ typesafeTransport: injected })).toBe(injected);
+    const resolved = await resolveTypeSafeTransport({ typesafeTransport: injected });
+    expect(resolved.transport).toBe(injected);
+    // 注入的传输层不带本地配置，所以旋钮一律留给模块默认值——不能凭空造一份
+    expect(resolved.tuning).toEqual({});
   });
 
   it("显式关闭时不走网络，即使配置齐全", async () => {
@@ -95,14 +98,17 @@ describe("resolveTypeSafeTransport", () => {
     expect(await resolveTypeSafeTransport()).toBe(null);
   });
 
-  it("配置齐全时给出打到该配置的传输层", async () => {
-    withSettings({ apiKey: "sk-abc", enabled: true, baseUrl: "https://proxy.example.com/v1" });
-    const transport = await resolveTypeSafeTransport();
-    expect(typeof transport).toBe("function");
+  it("配置齐全时给出打到该配置的传输层与旋钮", async () => {
+    withSettings({ apiKey: "sk-abc", enabled: true, baseUrl: "https://proxy.example.com/v1", gate: 0.5, timeoutMs: 5000 });
+    const resolved = await resolveTypeSafeTransport();
+    expect(typeof resolved.transport).toBe("function");
+    // clarify 默认开（它复用同一次请求），所以 tuning 里总是带一个布尔值
+    expect(resolved.tuning).toEqual({ gate: 0.5, clarify: true });
     invoke.mockImplementation(async (command) => (command === "typesafe_eval" ? { answers: { ok: 1 } } : {}));
-    await expect(transport(body)).resolves.toEqual({ answers: { ok: 1 } });
+    await expect(resolved.transport(body)).resolves.toEqual({ answers: { ok: 1 } });
     const call = invoke.mock.calls.find((c) => c[0] === "typesafe_eval");
-    expect(call[1]).toMatchObject({ baseUrl: "https://proxy.example.com/v1", apiKey: "sk-abc", body });
+    expect(call[1]).toMatchObject({ baseUrl: "https://proxy.example.com/v1", apiKey: "sk-abc", timeoutMs: 5000 });
+    expect(call[1].body).toEqual(body);
   });
 });
 
@@ -127,6 +133,17 @@ describe("testTypeSafe（设置页「测试连接」）", () => {
     answering({ answers: { probe: { noul: 1 } } });
     await testTypeSafe({ ...cfg, model: "jev-1.12" });
     expect(invoke.mock.calls.find((c) => c[0] === "typesafe_eval")[1].body.model).toBe("jev-1.12");
+  });
+
+  it("配置里的模型名对**所有**调用生效，不只是测试连接", async () => {
+    // 曾经的缺口：body.model 由调用方给（永远是 jev-latest），设置里改了模型只有「测试连接」认它。
+    withSettings({ apiKey: "sk-abc", enabled: true, model: "jev-1.13" });
+    const resolved = await resolveTypeSafeTransport();
+    await resolved.transport({ model: "jev-latest", state: { goal: "x" }, questions: {} });
+    const sent = invoke.mock.calls.find((c) => c[0] === "typesafe_eval")[1].body;
+    expect(sent.model).toBe("jev-1.13");
+    // 其余字段原样透传：这是传输层，不做语义加工
+    expect(sent.state).toEqual({ goal: "x" });
   });
 
   it("响应形状不对时明确报错，而不是显示一个假的成功", async () => {

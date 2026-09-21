@@ -19,6 +19,44 @@ describe("agent runtime", () => {
     expect(events.map((e) => e.type)).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
   });
 
+  it("核验通过后追加一条 verify 事件，并随结果带出去", async () => {
+    const registry = createToolRegistry([
+      { name: "math.add", description: "add", risk: "transform", inputSchema: {}, execute: () => 5 },
+    ]);
+    const actions = [{ type: "tool_call", id: "1", tool: "math.add", args: { a: 2, b: 3 } }, { type: "final", answer: "结果是 5" }];
+    const events = [];
+    const transport = async (body) => ({
+      answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: 0.9 }])),
+    });
+    const result = await runAgent("calculate", { registry, planner: async () => actions.shift(), onEvent: (e) => events.push(e), typesafeTransport: transport });
+    const verify = events.find((e) => e.type === "verify");
+    expect(verify).toMatchObject({ verified: true, needsReview: false });
+    // usage 不进时间线事件（计量走 onUsage 通道）
+    expect(verify.usage).toBeUndefined();
+    expect(result.verify.weakest).toBeCloseTo(0.9);
+  });
+
+  it("核验发现疑点时标 needsReview，但不改答案也不改状态", async () => {
+    const registry = createToolRegistry([{ name: "math.add", description: "add", risk: "transform", inputSchema: {}, execute: () => 0 }]);
+    const actions = [{ type: "tool_call", id: "1", tool: "math.add", args: {} }, { type: "final", answer: "找到了 12 条" }];
+    const events = [];
+    const transport = async (body) => ({
+      answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: id.includes("grounded") ? 0.1 : 0.9 }])),
+    });
+    const result = await runAgent("算一下", { registry, planner: async () => actions.shift(), onEvent: (e) => events.push(e), typesafeTransport: transport });
+    expect(result.status).toBe("completed");
+    expect(result.answer).toBe("找到了 12 条");
+    expect(events.find((e) => e.type === "verify")).toMatchObject({ needsReview: true, reviewOf: ["grounded"] });
+  });
+
+  it("没配 TypeSafe 时不留 verify 行（未启用不是每次都该报的异常）", async () => {
+    const registry = createToolRegistry([{ name: "math.add", description: "add", risk: "transform", inputSchema: {}, execute: () => 5 }]);
+    const actions = [{ type: "tool_call", id: "1", tool: "math.add", args: {} }, { type: "final", answer: "5" }];
+    const events = [];
+    await runAgent("x", { registry, planner: async () => actions.shift(), onEvent: (e) => events.push(e) });
+    expect(events.map((e) => e.type)).toEqual(["approval_decided", "tool_start", "tool_result", "final"]);
+  });
+
   it("pauses for confirmation before risky tools", async () => {
     const registry = createToolRegistry([{ name: "file.write", description: "write", risk: "write", inputSchema: {}, execute: () => "ok" }]);
     const result = await runAgent("write", { registry, planner: async () => ({ type: "tool_call", tool: "file.write", args: {} }), confirm: async () => false });

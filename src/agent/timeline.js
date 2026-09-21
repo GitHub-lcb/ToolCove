@@ -169,6 +169,42 @@ export function foldTimeline(events = []) {
       case "model_repair":
         out.push({ kind: "notice", code: "model_repair", text: raw.error || "", attempt: raw.attempt || 0, ts });
         break;
+      // 语义匹配的判定结果：走了哪条路、置信度多少、花了多久、为什么退回。
+      // 与 model_retry 同一动机——看不见的降级等于没有降级。
+      // 「压根没有候选技能」不占一行：那是常态，报出来只会稀释时间线。
+      case "skill_match": {
+        if (raw.matcher === "none") break;
+        out.push({
+          kind: "notice",
+          code: "skill_match",
+          matcher: raw.matcher || "",
+          reason: raw.reason || "",
+          error: raw.error || "",
+          tier: raw.tier || "",
+          confidence: Number.isFinite(Number(raw.confidence)) ? Number(raw.confidence) : null,
+          latencyMs: Number(raw.latencyMs) || 0,
+          // 歧义预判与技能匹配共用一次请求，结论也共用这一行
+          clarify: raw.clarify && typeof raw.clarify === "object" ? raw.clarify : null,
+          matched: Array.isArray(raw.matched) ? raw.matched.filter((name) => typeof name === "string" && name) : [],
+          ts,
+        });
+        break;
+      }
+      // 「说已完成」之后的核验结论：三项把握与是否需要人工复核。
+      // 没核成（未配置/失败）也占一行吗？不占——那会让人以为每次运行都该有核验。
+      case "verify": {
+        if (!raw.verified) break;
+        out.push({
+          kind: "notice",
+          code: raw.needsReview ? "verify_review" : "verify_ok",
+          scores: raw.scores && typeof raw.scores === "object" ? raw.scores : {},
+          reviewOf: Array.isArray(raw.reviewOf) ? raw.reviewOf : [],
+          weakest: Number.isFinite(Number(raw.weakest)) ? Number(raw.weakest) : null,
+          text: "",
+          ts,
+        });
+        break;
+      }
       default:
         break; // checkpoint(planning/waiting) 与未知类型不占时间线一行
     }

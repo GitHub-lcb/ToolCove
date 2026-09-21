@@ -1,0 +1,128 @@
+{
+  "_comment": "技能库夹具：每条是一次「成功运行」，由生产代码 extractSkill 现算成技能——不手写正文，评测的就是真实入库形状。",
+  "runs": [
+    {
+      "id": "r-csv-export",
+      "input": "读取 order.json，找出 amount 重复的记录并导出成 CSV 文件",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "order.json" } }, "result": { "text": "[...]" } },
+        { "action": { "type": "tool_call", "tool": "json.parse", "args": { "text": "[...]" } }, "result": { "rows": 128 } },
+        { "action": { "type": "tool_call", "tool": "data.query", "args": { "rows": [], "filter": "amount", "group": "amount" } }, "result": { "rows": 6 } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "dup.csv", "text": "id,amount" } }, "result": { "bytes": 84 } }
+      ]
+    },
+    {
+      "id": "r-csv-clean",
+      "input": "清洗 orders.csv：去掉空行与重复表头，日期列统一成 YYYY-MM-DD 再存回",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "orders.csv" } }, "result": { "text": "..." } },
+        { "action": { "type": "tool_call", "tool": "data.query", "args": { "rows": [], "distinct": true, "format": "date" } }, "result": { "rows": 340 } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "orders.clean.csv" } }, "result": { "bytes": 19022 } }
+      ]
+    },
+    {
+      "id": "r-json-format",
+      "input": "把压缩成一行的响应报文格式化并写回文件",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "resp.json" } }, "result": { "text": "{\"a\":1}" } },
+        { "action": { "type": "tool_call", "tool": "json.format", "args": { "text": "{\"a\":1}", "indent": 2 } }, "result": { "text": "{\n  \"a\": 1\n}" } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "resp.pretty.json" } }, "result": { "bytes": 12 } }
+      ]
+    },
+    {
+      "id": "r-json-schema",
+      "input": "从 sample.json 推断结构，生成字段校验规则并报告哪些记录不合格",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "sample.json" } }, "result": { "text": "[{...}]" } },
+        { "action": { "type": "tool_call", "tool": "json.parse", "args": { "text": "[{...}]" } }, "result": { "rows": 50 } },
+        { "action": { "type": "tool_call", "tool": "data.query", "args": { "rows": [], "schema": true } }, "result": { "fields": 9 } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "report.txt" } }, "result": { "bytes": 740 } }
+      ]
+    },
+    {
+      "id": "r-base64-image",
+      "input": "把这串 base64 图片数据解码保存成 png 文件",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "base64.decode", "args": { "text": "iVBORw0..." } }, "result": { "bytes": 20480 } },
+        { "action": { "type": "tool_call", "tool": "file.write", "args": { "path": "logo.png", "binary": true } }, "result": { "bytes": 20480 } },
+        { "action": { "type": "tool_call", "tool": "image.plan", "args": { "path": "logo.png" } }, "result": { "width": 128, "height": 128 } }
+      ]
+    },
+    {
+      "id": "r-sign-url",
+      "input": "给回调地址的查询参数做 HMAC 签名，再整体 URL 编码",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "crypto.hmac", "args": { "algo": "sha256", "key": "***", "data": "a=1&b=2" } }, "result": { "hex": "9f3a..." } },
+        { "action": { "type": "tool_call", "tool": "base64.encode", "args": { "text": "9f3a..." } }, "result": { "text": "nTq+" } }
+      ]
+    },
+    {
+      "id": "r-pg-orders",
+      "input": "只读查询 PostgreSQL 的 orders 表，统计最近 7 天每天的成交额",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "db.query_readonly", "args": { "driver": "postgres", "sql": "select dt, sum(amount) from orders group by dt" } }, "result": { "rows": 7 } },
+        { "action": { "type": "tool_call", "tool": "time.timestamp", "args": { "value": "now", "format": "date" } }, "result": { "text": "2026-09-21" } }
+      ]
+    },
+    {
+      "id": "r-sqlite-log",
+      "input": "查 SQLite 的 app_log 表，按 level 聚合昨天的错误条数",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "db.query_readonly", "args": { "driver": "sqlite", "sql": "select level, count(*) from app_log group by level" } }, "result": { "rows": 3 } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "err.txt" } }, "result": { "bytes": 96 } }
+      ]
+    },
+    {
+      "id": "r-diff-config",
+      "input": "对比 app.yaml 与 app.prod.yaml 的差异，输出改动清单",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "app.yaml" } }, "result": { "text": "..." } },
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "app.prod.yaml" } }, "result": { "text": "..." } },
+        { "action": { "type": "tool_call", "tool": "text.diff", "args": { "left": "...", "right": "..." } }, "result": { "hunks": 4 } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "diff.txt" } }, "result": { "bytes": 512 } }
+      ]
+    },
+    {
+      "id": "r-ts-audit",
+      "input": "这批 Unix 时间戳转成北京时间，标出跨日的记录",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "time.timestamp", "args": { "value": "1760000000", "timezone": "Asia/Shanghai" } }, "result": { "text": "2025-10-09 08:13" } },
+        { "action": { "type": "tool_call", "tool": "data.query", "args": { "rows": [], "filter": "cross_day" } }, "result": { "rows": 12 } }
+      ]
+    },
+    {
+      "id": "r-api-probe",
+      "input": "连续探这几个接口是否可达，记录状态码与响应耗时",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "http.request", "args": { "method": "GET", "url": "https://example.com/api/health" } }, "result": { "status": 200, "ms": 132 } },
+        { "action": { "type": "tool_call", "tool": "network.tcp_check", "args": { "host": "example.com", "port": 443 } }, "result": { "open": true } }
+      ]
+    },
+    {
+      "id": "r-dns-trace",
+      "input": "内网服务打不通，查域名解析与中间链路在哪一跳断的",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "network.dns", "args": { "host": "svc.internal" } }, "result": { "address": "10.0.3.7" } },
+        { "action": { "type": "tool_call", "tool": "network.ping", "args": { "host": "10.0.3.7" } }, "result": { "loss": 100 } },
+        { "action": { "type": "tool_call", "tool": "network.trace", "args": { "host": "10.0.3.7" } }, "result": { "hops": 4 } }
+      ]
+    },
+    {
+      "id": "r-hash-verify",
+      "input": "核对下载包 sha256 与厂商公布的摘要是否一致",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.inspect", "args": { "path": "setup.iso" } }, "result": { "size": 734003200 } },
+        { "action": { "type": "tool_call", "tool": "crypto.hash", "args": { "algo": "sha256", "path": "setup.iso" } }, "result": { "hex": "ab12..." } }
+      ]
+    },
+    {
+      "id": "r-yaml-migrate",
+      "input": "把 config.yaml 转成同结构的 JSON 并覆盖旧文件",
+      "history": [
+        { "action": { "type": "tool_call", "tool": "file.read_text", "args": { "path": "config.yaml" } }, "result": { "text": "a: 1" } },
+        { "action": { "type": "tool_call", "tool": "yaml.to_json", "args": { "text": "a: 1" } }, "result": { "text": "{\"a\":1}" } },
+        { "action": { "type": "tool_call", "tool": "file.write_text", "args": { "path": "config.json" } }, "result": { "bytes": 7 } }
+      ]
+    }
+  ]
+}

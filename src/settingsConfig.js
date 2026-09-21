@@ -38,17 +38,58 @@ export function normalizeSync(raw) {
 // TypeSafe（System One）配置归一（旧数据/缺字段补默认）。
 // 这是**可选增强**，所以默认关闭：现有用户升级后行为一字不变，语义匹配必须显式开启。
 // baseUrl 留空即用官方端点（用户只需要粘一个 key）；非法协议清空而不是原样透传。
+//
+// 匹配旋钮（gate/floor/limit/置信度分档/正文预算）刻意归一成 **undefined 而不是默认值**：
+// 默认值只有一个真相源，就是 skillSuggest.js 里的那几个常量。这里补一遍默认，
+// 将来调默认值就会出现「新库用新默认、老配置里的数字还是老默认」的分裂。
+export const TYPESAFE_DEFAULT_TIMEOUT_MS = 8000;
+const TYPESAFE_TIMEOUT_RANGE = [1000, 30000];
+
+/** 可选覆盖值：只认落在区间内的有限数，其余（含空串与 null）留 undefined 交给模块默认值。 */
+function optionalNumber(raw, min, max) {
+  if (typeof raw !== "number" && typeof raw !== "string") return undefined;
+  if (typeof raw === "string" && raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < min || value > max) return undefined;
+  return value;
+}
+
+/**
+ * 必带数值：坏值用默认，越界**夹取**而不是退回默认。
+ * 超时是安全边界而不是偏好值：填 300 的人想要的是「快点失败」，给他默认 8000 恰好是反的；
+ * 填 999999 的人想要「别催」，夹到 30000 仍比回到默认更贴近他的意图。
+ * Rust 侧的 timeout_ms 也是夹取，两端必须同一套规则。
+ */
+function clampedNumber(raw, min, max, fallback) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(value, min), max);
+}
+
 export function normalizeTypeSafe(raw) {
   const c = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   let baseUrl = typeof c.baseUrl === "string" ? c.baseUrl.trim() : "";
   if (baseUrl && !/^https?:\/\//.test(baseUrl)) baseUrl = "";
   if (baseUrl.length > 512) baseUrl = baseUrl.slice(0, 512);
   const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  const [tMin, tMax] = TYPESAFE_TIMEOUT_RANGE;
   return {
     enabled: c.enabled === true,
     baseUrl,
     apiKey: str(c.apiKey, 1024),
     model: str(c.model, 64),
+    timeoutMs: clampedNumber(c.timeoutMs, tMin, tMax, TYPESAFE_DEFAULT_TIMEOUT_MS),
+    gate: optionalNumber(c.gate, 0, 1),
+    floor: optionalNumber(c.floor, 0, 1),
+    limit: optionalNumber(c.limit, 1, 10),
+    candidates: optionalNumber(c.candidates, 1, 50),
+    // 歧义预判默认开：它复用运行前的那一次请求，不额外增加延迟；只认显式 false
+    clarify: c.clarify === undefined ? true : c.clarify === true,
+    clarifyAt: optionalNumber(c.clarifyAt, 0, 1),
+    confidenceLow: optionalNumber(c.confidenceLow, 0, 1),
+    confidenceHigh: optionalNumber(c.confidenceHigh, 0, 1),
+    bodyChars: optionalNumber(c.bodyChars, 40, 4000),
+    stateBudget: optionalNumber(c.stateBudget, 500, 200000),
   };
 }
 
