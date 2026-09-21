@@ -3,6 +3,10 @@
 # 与桌面端发版的关系：
 #   · 两条独立的发版线：`v*` 触发桌面端（release.yml），`apk-v*` 触发手机端（本文件）。
 #     标签前缀必须区分——上一代手机端就踩过「前缀写错、APK 顶掉桌面版 Release」的事故。
+#   · 但**前缀不同并不足够**：GitHub 的 `releases/latest` 是一个可被抢走的标记，
+#     而桌面端的更新端点正是 `releases/latest/download/latest.json`。所以本文件的
+#     `gh release create` 必须带 `--latest=false`，末尾还有一步显式验指针。改这两处中的
+#     任何一处，后果都是"所有 Windows 用户静默收不到更新"，且手机端一切正常、CI 全绿。
 #   · 版本号也独立：手机端用 package.json 的 mobileVersion，与桌面 version 各走各的。
 #
 # 一次性前置配置：
@@ -154,5 +158,63 @@ jobs:
           gh release create "$tag" \
             mobile/android/out/toolcove-release.apk \
             --title "ToolCove Android $tag" \
+            --latest=false \
             --notes-file "$RUNNER_TEMP/notes.md" \
             || gh release upload "$tag" mobile/android/out/toolcove-release.apk --clobber
+
+      # ⚠️ 这一步是**线上更新链路的护栏**，删掉它会让所有 Windows 用户静默收不到更新。
+      #
+      # 桌面端 updater 读的端点是 `releases/latest/download/latest.json`（见 tauri.conf.json），
+      # 而 `releases/latest` 是仓库上的一个**显式标记**：`gh release create` 对非 draft、
+      # 非 prerelease 的 Release 默认就把这个标记抢过去（--latest 默认 true）。
+      # 一旦 APK 的 Release 成为 latest，那条 URL 就 404 —— 而且上面那句 `--latest=false`
+      # 一旦被谁改掉，故障是**静默**的：CI 全绿、手机端正常、只有桌面用户装不上新版本。
+      # 所以这里不只设 flag，还要在发完之后**验一次指针还在桌面 Release 上**。
+      - name: 确认没有抢走桌面端的更新源
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          echo "releases/latest = $latest"
+          case "$latest" in
+            v[0-9]*) echo "✓ 仍指向桌面版 $latest" ;;
+            *) echo "::error::releases/latest 被手机端 Release（$latest）抢走了，桌面端更新源会 404"; exit 1 ;;
+          esac
+          code=$(curl -s -o /dev/null -w "%{http_code}" -L \
+            "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json")
+          echo "latest.json HTTP $code"
+          [ "$code" = "200" ] || { echo "::error::桌面更新端点取不到（HTTP $code）"; exit 1; }
+
+      # 安卓自动更新的通道：App 只读一个**固定 URL** 的小清单，不查 releases 列表。
+      # 为什么这样设计：
+      #  - 不占 `releases/latest`（那是桌面的），安卓有自己的 `apk-latest` 通道
+      #  - 不用 GitHub REST 列 Release：未认证是 60 次/小时/IP，用户一多就限流；
+      #    而 Release 资产是 CDN 静态文件，没有这个问题
+      #  - 带 sha256：App 端下载完必须校验再装，否则"资产被替换/中间人"等于任意代码执行
+      - name: 发布安卓更新清单（apk-latest 通道）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [ -z "$tag" ] || [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            tag="apk-v$(node -p "require('./package.json').mobileVersion")"
+          fi
+          apk=mobile/android/out/toolcove-release.apk
+          version=$(node -p "require('./package.json').mobileVersion")
+          sha=$(sha256sum "$apk" | cut -d' ' -f1)
+          size=$(stat -c%s "$apk")
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/toolcove-release.apk"
+          node -e '
+            const [version, url, sha256, size, out] = process.argv.slice(1);
+            const parts = version.split(".").map((n) => parseInt(n, 10) || 0);
+            while (parts.length < 3) parts.push(0);
+            // versionCode 的编码规则必须与 app/build.gradle 一致：安卓靠它拒绝"装更旧的包"
+            require("node:fs").writeFileSync(out, JSON.stringify({
+              version, versionCode: parts[0] * 10000 + parts[1] * 100 + parts[2],
+              url, sha256, size: Number(size), channel: "apk-latest",
+            }, null, 2) + "\n");
+          ' "$version" "$url" "$sha" "$size" "$RUNNER_TEMP/apk.json"
+          cat "$RUNNER_TEMP/apk.json"
+          gh release create apk-latest --title "ToolCove Android update channel" \
+            --prerelease --latest=false --notes "自动更新通道指针，不是发版记录。装 APK 请到 apk-v* 的 Release。" || true
+          gh release upload apk-latest "$RUNNER_TEMP/apk.json" --clobber

@@ -83,8 +83,12 @@ async function uploadAsset(releaseId, filePath) {
 }
 
 async function publishRelease(releaseId) {
-  const r = await gh("PATCH", `${API}/releases/${releaseId}`, { body: JSON.stringify({ draft: false }) });
-  console.log(`Release 已发布：${r.html_url}`);
+  // make_latest 必须显式要：桌面 updater 读的端点是 releases/latest/download/latest.json，
+  // 而这个标记是**可被别的 Release（比如手机端的 APK Release）抢走**的显式指针。
+  // 不写它，一旦发版顺序里有个 Release 把标记带走，所有 Windows 用户就静默收不到更新。
+  const r = await gh("PATCH", `${API}/releases/${releaseId}`, { body: JSON.stringify({ draft: false, make_latest: true }) });
+  console.log(`Release 已发布：${r.html_url}${r.latest_release ? "（已是 latest，更新端点指向本次）" : ""}`);
+  if (!r.latest_release) console.warn("⚠ 本次 Release 没有拿到 releases/latest 标记，桌面端更新端点会指向别的版本，请检查！");
   return r;
 }
 
