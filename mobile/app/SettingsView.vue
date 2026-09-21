@@ -18,6 +18,7 @@ import { applyLocale } from "../../src/i18n/index.js";
 import { applyBackup, buildBackup, describeBackup, downloadBackup } from "./backup.js";
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
 import { nativeAvailable, pickFile } from "./platform/bridge.js";
+import { currentVersion, decideUpdate, downloadApk, fetchManifest, installApk } from "./platform/update.js";
 import { capabilities } from "../../src/platform/env.js";
 import { formatReport, runOne, runSelfTest } from "./selfTest.js";
 import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
@@ -159,6 +160,66 @@ const devices = ref([]);
 
 const currentPreset = computed(() => matchPreset(form.value.ai.baseUrl, AI_PRESETS));
 const syncStatusText = computed(() => t(syncStatusKey(syncCfg.value?.status)));
+
+// ---------- 检查更新（安卓） ----------
+// 状态机只有四个值，全部来自 update.js 的 decideUpdate——界面不自己判版本，
+// 否则"什么时候算有新版"会出现第二套口径。
+const appVer = ref({ versionName: "", code: 0, canInstall: false, supported: false });
+const updateBusy = ref(false);
+const updateState = ref("");
+const updateTarget = ref("");
+const updateMessage = ref("");
+let updateManifest = null;
+
+async function checkUpdate() {
+  updateBusy.value = true;
+  updateMessage.value = "";
+  try {
+    // 当前版本要一起取：浏览器形态没有包概念，这时如实显示"未知"而不是报"已是最新"
+    appVer.value = await currentVersion();
+    updateManifest = await fetchManifest();
+    const verdict = decideUpdate(updateManifest, appVer.value);
+    updateState.value = verdict.state;
+    updateTarget.value = verdict.target || "";
+    updateMessage.value = t(`mobile.setUpdate_${verdict.state}`, {
+      version: verdict.target || "",
+      defaultValue: "",
+    });
+  } catch (e) {
+    updateState.value = "failed";
+    updateMessage.value = t("mobile.setUpdate_failed", { err: e?.message || String(e) });
+  } finally {
+    updateBusy.value = false;
+  }
+}
+
+/** 下载并校验（原生侧兜域名白名单与 SHA-256），成功后拉起系统安装页。 */
+async function downloadAndInstall() {
+  if (!updateManifest) return;
+  updateBusy.value = true;
+  updateMessage.value = "";
+  try {
+    const file = await downloadApk(updateManifest);
+    const result = await installApk(file?.path);
+    if (result?.ok) {
+      updateState.value = "installing";
+      updateMessage.value = t("mobile.setUpdate_installing");
+    } else if (result?.reason === "need_unknown_sources") {
+      // 系统还没授权"安装未知应用"：这次点击的产物是授权页，说清楚下一步做什么
+      updateState.value = "need_permission";
+      updateMessage.value = t("mobile.setUpdate_need_permission");
+    } else {
+      updateState.value = "failed";
+      updateMessage.value = t("mobile.setUpdate_failed", { err: result?.reason || "" });
+    }
+  } catch (e) {
+    updateState.value = "failed";
+    updateMessage.value = t("mobile.setUpdate_failed", { err: e?.message || String(e) });
+  } finally {
+    updateBusy.value = false;
+  }
+}
+
 
 async function load() {
   loadError.value = "";
@@ -553,6 +614,30 @@ async function renameDevice(event) {
         <li><b>{{ t("mobile.setBridge") }}</b><span data-role="bridge-status" :data-on="nativeReady">{{ nativeReady ? t("mobile.bridgeOn") : t("mobile.bridgeOff") }}</span></li>
       </ul>
       <p class="m-hint-sm">{{ t("mobile.setStorageNote") }}</p>
+
+      <!-- 检查更新：安卓没有 Tauri updater，这条链是自己搭的（读固定清单 → 下包 → 校验 → 拉安装页）。
+           刻意放在「关于」里而不是弹窗：用户是"想知道有没有新版"时才来这里，而不是被打扰。 -->
+      <div class="m-card" data-role="update-card">
+        <div class="m-card-head"><b>{{ t("mobile.setUpdateTitle") }}</b></div>
+        <p class="m-hint-sm">{{ t("mobile.setUpdateNote") }}</p>
+        <p class="m-hint-sm" data-role="update-current">
+          {{ t("mobile.setUpdateCurrent", { version: appVer.versionName || t("mobile.setUpdateUnknown") }) }}
+        </p>
+        <button class="m-btn primary" :disabled="updateBusy" data-role="update-check" @click="checkUpdate">
+          {{ updateBusy ? t("mobile.setUpdateChecking") : t("mobile.setUpdateBtn") }}
+        </button>
+        <!-- 有新版时才给"下载并安装"：没新包却给按钮，点了只会让人以为坏了 -->
+        <button
+          v-if="updateState === 'available'"
+          class="m-btn"
+          :disabled="updateBusy"
+          data-role="update-install"
+          @click="downloadAndInstall"
+        >
+          {{ updateBusy ? t("mobile.setUpdateDownloading") : t("mobile.setUpdateInstall", { version: updateTarget }) }}
+        </button>
+        <p v-if="updateMessage" class="m-hint-sm" :class="{ 'm-ok': updateState === 'uptodate', 'm-err': updateState === 'invalid' || updateState === 'failed' }" data-role="update-result">{{ updateMessage }}</p>
+      </div>
 
       <!-- 能力清单：把"哪些能用、哪些在安卓上降级"直接摆在界面上。
            为什么要有这一块：降级此前只写在工具备注与文档里，用户遇到"这个功能怎么不好用"

@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   全屏应用，不是悬浮窗：没有 SYSTEM_ALERT_WINDOW / FOREGROUND_SERVICE / POST_NOTIFICATIONS。
-  只声明 INTERNET —— 本地 loopback 服务需要它（127.0.0.1 的 socket 同样受该权限管辖），
-  AI 请求与云同步也走它。
+  INTERNET：本地 loopback 服务需要它（127.0.0.1 的 socket 同样受该权限管辖），AI 请求、云同步与取更新清单也走它。
+  REQUEST_INSTALL_PACKAGES：只服务"App 内检查更新 → 拉起系统安装页"。
+    不声明它就没有 content:// 安装流程，用户只能自己到浏览器下载再装。
+    未授权时应用会跳系统设置页引导授权（见 UpdateNative），而不是静默失败。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -29,5 +32,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 只读暴露缓存里的安装包给系统安装器（自己实现，不引 androidx FileProvider）。
+             authority 必须与 UpdateNative.AUTHORITY 一致；exported=true 是安装器要能访问，
+             但它只能读到 apk 子目录下的文件（ApkProvider 里做了路径约束）。 -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.githublcb.toolcove.apk"
+            android:exported="true"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

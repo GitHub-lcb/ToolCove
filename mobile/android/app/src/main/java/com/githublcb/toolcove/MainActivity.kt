@@ -71,22 +71,15 @@ class MainActivity : Activity() {
         // encrypt_text / decrypt_text / file_pick / file_tool_read_text …），
         // 所以 src/ 里的 repository、sync、ai 一行都不用改。
         // 只暴露两个成员（isMobile 与 invoke），且只服务本地页面——多一个成员就多一个攻击面。
-        val ops = AndroidNative(applicationContext) { mime ->
-            // 必须回到 UI 线程启动 Activity（JS 桥线程不是 UI 线程）
-            var launched = false
-            runOnUiThread {
-                launched = runCatching {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = mime
-                        // 拿持久读权限：选完之后还要能继续读，而不是当次会话有效
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                    }
-                    startActivityForResult(intent, pickFileRequest)
-                }.isSuccess
-            }
-            launched
-        }
+        // 三个"要弹系统界面"的动作都以回调形式注入原生能力层：桥的工作线程不是 UI 线程，
+        // startActivity 必须回 UI 线程执行；返回 false 表示当前没有可用的 Activity（如已销毁）。
+        // 写成具名参数而不是尾随 lambda：Kotlin 只允许一个尾随 lambda，三个只能具名。
+        val ops = AndroidNative(
+            context = applicationContext,
+            launchPicker = { mime -> onUi { startActivityForResult(documentIntent(mime), pickFileRequest) } },
+            launchInstall = { uri -> onUi { startActivity(installIntent(uri)) } },
+            launchUnknownSources = { onUi { startActivity(unknownSourcesIntent()) } },
+        )
         native = ops
         view.addJavascriptInterface(ToolCoveBridge(Bridge(ops)), "ToolCove")
 
@@ -101,6 +94,35 @@ class MainActivity : Activity() {
         android.util.Log.i("ToolCove", "serving at $base")
         view.loadUrl("$base/index.html")
     }
+
+    /** 在 UI 线程发起一个系统界面，返回是否成功（桥的工作线程不能直接 startActivity）。 */
+    private fun onUi(block: () -> Unit): Boolean {
+        var launched = false
+        runOnUiThread { launched = runCatching(block).isSuccess }
+        return launched
+    }
+
+    /** 文件选择器：拿持久读/写权限，否则选完离开本次会话就再也读不到那个文件。 */
+    private fun documentIntent(mimeType: String) = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = mimeType.ifBlank { "*/*" }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+    }
+
+    /**
+     * 系统安装页。授权 URI 只对这一次调用有效（不 grant 持久权限）：
+     * 安装包是本 App 自己下的临时文件，给久了等于留一条长期可读的口子。
+     */
+    private fun installIntent(uri: Uri) = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    /** 用户还没授过"安装未知应用"时，把他送到该 App 的授权设置页——而不是点了安装没反应。 */
+    private fun unknownSourcesIntent() = Intent(
+        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+        Uri.parse("package:$packageName"),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     /** 本地服务起不来时给出可读原因（端口被占、assets 缺失等），而不是白屏。 */
     private fun showStartupError(error: Exception) {

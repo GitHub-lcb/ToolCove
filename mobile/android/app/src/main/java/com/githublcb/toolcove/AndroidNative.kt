@@ -1,6 +1,7 @@
 package com.githublcb.toolcove
 
 import android.content.Context
+import android.net.Uri
 import com.githublcb.toolcove.bridge.DatabaseAccess
 import com.githublcb.toolcove.bridge.FileAccess
 import com.githublcb.toolcove.bridge.HttpNative
@@ -22,6 +23,10 @@ class AndroidNative(
     context: Context,
     /** 由 Activity 提供：拉起系统选择器。返回 false 表示当前没有可用的 Activity（如已销毁）。 */
     private val launchPicker: (mimeType: String) -> Boolean,
+    /** 由 Activity 提供：拉起系统安装页（content:// 授权 URI）。 */
+    launchInstall: (Uri) -> Boolean,
+    /** 由 Activity 提供：跳到「安装未知应用」授权设置页。 */
+    launchUnknownSources: () -> Boolean,
 ) : NativeOps {
 
     private val http = HttpNative()
@@ -29,6 +34,7 @@ class AndroidNative(
     private val files: FileAccess = SafFileAccess(context)
     private val databases: DatabaseAccess = SqliteAccess(context)
     private val picker = PickerQueue()
+    private val updates = UpdateNative(context, launchInstall, launchUnknownSources)
 
     override fun httpRequest(args: JsonValue) = http.httpRequest(args)
     override fun tcpCheck(args: JsonValue) = http.tcpCheck(args)
@@ -36,6 +42,9 @@ class AndroidNative(
     override fun decrypt(cipher: String) = keystore.decrypt(cipher)
     override fun files(): FileAccess = files
     override fun databases(): DatabaseAccess = databases
+    override fun appInfo() = updates.appInfo()
+    override fun downloadApk(url: String, sha256: String) = updates.downloadApk(url, sha256)
+    override fun installApk(path: String) = updates.installApk(path)
 
     /**
      * 弹选择器并等待用户操作。

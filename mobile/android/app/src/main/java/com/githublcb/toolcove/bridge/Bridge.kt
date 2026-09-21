@@ -230,6 +230,12 @@ interface NativeOps {
     fun pickFile(mimeType: String): String = ""
     /** 数据库访问（手机端只有 SQLite）；为 null 时相关命令报"本平台不支持"。 */
     fun databases(): DatabaseAccess? = null
+    /** 当前安装包信息（版本号等）；null 表示本平台没有"包"的概念（浏览器/JVM 测试）。 */
+    fun appInfo(): Map<String, Any?>? = null
+    /** 下载安装包并校验，返回落盘路径；null 表示不支持。 */
+    fun downloadApk(url: String, sha256: String): Map<String, Any?>? = null
+    /** 拉起系统安装页；null 表示不支持。 */
+    fun installApk(path: String): Map<String, Any?>? = null
 }
 
 /**
@@ -265,6 +271,11 @@ class Bridge(private val native: NativeOps) {
                 "db_tables" -> JsonValue.of(SqlKit.tableRows(databases().tables(args.str("connId")).map { it["name"].toString() })).toJson()
                 "db_columns" -> JsonValue.of(databases().columns(args.str("connId"), args.str("table"))).toJson()
                 "db_test" -> JsonValue.of(mapOf("ok" to true, "durationMs" to databases().test(args.obj("opts") ?: args))).toJson()
+                // ---- 自动更新（安卓专有：桌面端走 Tauri updater，两边不共用命令）----
+                // 清单由前端经 http_request 读，这里只做"下包 / 校验 / 拉起安装"
+                "app_version" -> JsonValue.of(native.appInfo() ?: mapOf("versionName" to "", "versionCode" to 0)).toJson()
+                "update_download" -> JsonValue.of(unsupported(native.downloadApk(args.str("url"), args.str("sha256")))).toJson()
+                "update_install" -> JsonValue.of(unsupported(native.installApk(args.str("path")))).toJson()
                 else -> error("unsupported", "手机端尚未实现该命令：$command")
             }
         } catch (e: Exception) {
@@ -278,6 +289,9 @@ class Bridge(private val native: NativeOps) {
     private fun files(): FileAccess = native.files() ?: throw IllegalStateException("当前平台不支持文件访问")
 
     private fun databases(): DatabaseAccess = native.databases() ?: throw IllegalStateException("当前平台不支持数据库访问")
+
+    /** 自动更新能力在浏览器形态与 JVM 桩里不存在：明说"不支持"，而不是把 null 序列化出去。 */
+    private fun <T> unsupported(value: T?): T = value ?: throw IllegalStateException("当前平台不支持自动更新")
 
     /**
      * 查询/执行 SQL，返回形状与桌面端一致：
