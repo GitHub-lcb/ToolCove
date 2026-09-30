@@ -5,5 +5,8 @@
 // 会让「只想用一下 spill 清空」的视图把整套工具实现也拖进首屏。放这里零依赖。
 // 测试注入 globalThis.__tcSpillStore 即可替换成内存实现。
 import { createSpillStore } from './spillStore.js';
+import { sanitizeRun } from './runStore.js';
 
-export const spillStore = globalThis.__tcSpillStore || createSpillStore();
+// 必须传 sanitize：spill 落的是工具原始输出（磁盘上、也在每日备份里），
+// 而 createSpillStore 的默认实现是恒等函数——不传就等于承诺脱敏却没做。
+export const spillStore = globalThis.__tcSpillStore || createSpillStore({ sanitize: sanitizeRun });

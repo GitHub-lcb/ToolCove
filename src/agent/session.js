@@ -48,7 +48,10 @@ export const agentSession = reactive(INITIAL());
 // 非响应式的运行内部状态：停止标志不进 UI，registry 也不需要触发渲染
 let stopFlag = false;
 
-const persistRuns = () => saveToolbox(RUNS_KEY, cloneJsonData(agentSession.runs));
+// 落盘前整体脱敏：appendStep 只洗了 steps，history 与 spill 正文原样写进 agentRuns.json
+// （还会被每日自动备份带走），界面时间线看着是 [REDACTED]，磁盘上却是明文。
+const persistedRuns = () => sanitizeRun(cloneJsonData(agentSession.runs));
+const persistRuns = () => saveToolbox(RUNS_KEY, persistedRuns());
 
 // 本地事件：不进 runtime，只进时间线。code 交给视图映射 i18n 键，text 是无键时的兜底原文。
 function pushNotice(code, text = "") {
@@ -289,7 +292,7 @@ async function launch(input, resumeRun) {
     agentSession.status = "idle";
     stopFlag = false;
     // 立即冲刷历史，避免运行刚结束就关窗丢记录
-    await saveToolboxNow(RUNS_KEY, cloneJsonData(agentSession.runs));
+    await saveToolboxNow(RUNS_KEY, persistedRuns());
   }
   return true;
 }
