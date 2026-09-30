@@ -52,10 +52,16 @@ const timeline = computed(() =>
 );
 const busy = computed(() => agentSession.status !== "idle");
 const toolMeta = computed(() => new Map(listAgentTools(agentSession.cfg).map((x) => [x.name, x])));
-// registry 只建一次：逐行调 canResume 会为 30 行历史重建 30 次 14 个工具定义
+// registry 只建一次：逐行调 canResume 会为 30 行历史重建 30 次 14 个工具定义。
+// 它必须是 await 出来的真 registry——buildAgentRegistry 是 async（工具实现层按需加载），
+// 直接把 Promise 交给 canResume 会在每次渲染历史列表时抛 "registry.get is not a function"。
+// 注意：建 registry 会把整套工具实现层拉进来，所以只在真要画历史列表时才建（见下面 railTab 的 watch）。
+const agentRegistry = ref(null);
 const resumeMap = computed(() => {
-  const registry = buildAgentRegistry(agentSession.cfg);
+  const registry = agentRegistry.value;
   const map = new Map();
+  // registry 未就绪时一律按「不可续跑」处理：按钮先灰后亮，比先亮后灭更少误导
+  if (!registry) return map;
   for (const rec of agentSession.runs) map.set(rec.id, !!rec.input && canResume(rec, registry));
   return map;
 });
@@ -186,6 +192,23 @@ const capGroups = computed(() =>
 const capEnabledCount = computed(() => capTools.value.filter((x) => x.enabled).length);
 const manualTools = visibleToolboxTools();
 const railTab = ref("caps");
+
+// registry 只在切到「最近任务」时建：buildAgentRegistry 会动态拉整套工具实现层
+// （executors + luxon/js-yaml 等，实测约 400KB），放在首屏就把工具箱的懒加载抵消掉了。
+watch(
+  [() => agentSession.cfg, railTab],
+  async ([cfg, tab]) => {
+    if (tab !== "history") return;
+    if (!cfg) {
+      agentRegistry.value = null;
+      return;
+    }
+    const registry = await buildAgentRegistry(cfg);
+    // 等待期间 cfg 又换过、或已经切走这个 tab，就不必再落这个结果
+    if (cfg === agentSession.cfg && railTab.value === "history") agentRegistry.value = registry;
+  },
+  { immediate: true }
+);
 
 // 首启引导卡：纯本机 UI 状态而非用户数据，所以走 localStorage（先例：themeMode）
 const HINT_KEY = "tc.agent.hint";
