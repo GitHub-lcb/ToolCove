@@ -274,7 +274,6 @@
     "restoreDone": "恢复完成：{summary}，正在重启…",
     "restoreFailed": "恢复失败，当前数据未更改：{err}",
     "updateTitle": "版本更新",
-    "buildStampTip": "当前前端的构建时间；若界面没出现预期的新功能，先核对这里是否已经更新",
     "updateVer": "当前 v{version}",
     "updateDesc": "从 GitHub Releases 检查新版本，发现新版后一键下载安装并自动重启，本地数据不受影响。应用启动时也会自动检查一次。",
     "updateBtn": "检查更新",

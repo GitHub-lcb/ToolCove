@@ -165,18 +165,33 @@ onUnmounted(() => unlistenResize && unlistenResize());
 let toastTimer = null;
 let toastAction = null;
 let toastExpire = null;
+const toastWaiting = [];
+const TOAST_QUEUE_MAX = 5;
+
 function showToast(msg, opts = {}) {
+  // 撤销窗口还开着时，后来的提示一律排队。旧实现让新提示直接顶掉旧的，代价是
+  // 撤销按钮无声消失、且旧提示的 onExpire 当场执行（问题/速记用它物理删附件图片）——
+  // 用户既来不及撤销，也不会意识到文件已经没了。
   if (toastExpire) {
-    const f = toastExpire;
-    toastExpire = null;
-    f();
+    if (toastWaiting.length < TOAST_QUEUE_MAX) toastWaiting.push({ msg, opts });
+    return;
   }
+  displayToast(msg, opts);
+}
+
+function displayToast(msg, opts) {
   toast.value = { text: msg, actionLabel: opts.actionLabel || "" };
   toastAction = opts.onAction || null;
   toastExpire = opts.onExpire || null;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(dismissToast, opts.duration || (opts.actionLabel ? 5000 : 2200));
 }
+
+function nextQueuedToast() {
+  const next = toastWaiting.shift();
+  if (next) displayToast(next.msg, next.opts);
+}
+
 function dismissToast() {
   toast.value = null;
   toastAction = null;
@@ -185,6 +200,7 @@ function dismissToast() {
     toastExpire = null;
     f();
   }
+  nextQueuedToast();
 }
 function onToastAction() {
   clearTimeout(toastTimer);
@@ -193,6 +209,7 @@ function onToastAction() {
   toastExpire = null;
   toast.value = null;
   if (f) f();
+  nextQueuedToast();
 }
 
 // ------- 全局右键菜单 -------

@@ -47,14 +47,15 @@ test("四个导航模块都能切换并渲染出内容", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("设置页显示构建指纹（用于判断运行的是哪次构建）", async ({ page }) => {
+test("设置页侧栏显示版本号", async ({ page }) => {
   await seedData(page, {});
   await page.goto("/");
   await page.getByTitle(/设置/).first().click().catch(async () => {
     await page.getByText("设置", { exact: true }).first().click();
   });
-  await expect(page.locator(".ver-stamp")).toBeVisible();
-  const stamp = await page.locator(".ver-stamp").innerText();
-  // web 构建注入了构建时间；开发态是 dev
-  expect(stamp).toMatch(/\d{4}-\d{2}-\d{2}|dev/);
+  const ver = page.locator(".sv-foot .ver-tag");
+  await expect(ver).toBeVisible();
+  await expect(ver).toHaveText(/^v\d+\.\d+\.\d+/);
+  // 构建时间曾经显示在这里用于排查「界面没变」，现已按需求撤掉：不该再以任何形态出现
+  await expect(page.locator(".sv-foot")).not.toContainText(/\d{4}-\d{2}-\d{2}/);
 });

@@ -145,18 +145,24 @@ const results = computed(() => {
 
 const grouped = computed(() => {
   const m = {};
-  let flat = 0;
   for (const r of results.value) {
-    (m[r.group] = m[r.group] || []).push({ ...r, idx: flat++ });
+    (m[r.group] = m[r.group] || []).push(r);
   }
-  return Object.keys(GROUPS)
+  const list = Object.keys(GROUPS)
     .filter((g) => m[g])
     .map((g) => ({ key: g, ...GROUPS[g], items: m[g] }));
+  // idx 必须按**屏幕顺序**编号：分组渲染会把源序重排，用源序编号时 ↑↓ 会在各组之间乱跳。
+  let flat = 0;
+  for (const g of list) g.items = g.items.map((r) => ({ ...r, idx: flat++ }));
+  return list;
 });
+
+/** 与屏幕同序的扁平列表（键盘导航的唯一下标口径） */
+const orderedResults = computed(() => grouped.value.flatMap((g) => g.items));
 
 // ------- 键盘导航：↑↓ 移动高亮、Enter 打开（桌面应用预期） -------
 const activeIdx = ref(0);
-const flatCount = computed(() => results.value.length);
+const flatCount = computed(() => orderedResults.value.length);
 watch(q, () => (activeIdx.value = 0));
 watch(open, (v) => {
   if (!v) activeIdx.value = 0;
@@ -171,7 +177,7 @@ function onKeyNav(e) {
     activeIdx.value = Math.max(0, activeIdx.value - 1);
     scrollActive();
   } else if (e.key === "Enter") {
-    const r = results.value[activeIdx.value];
+    const r = orderedResults.value[activeIdx.value];
     if (r) {
       e.preventDefault();
       pick(r);

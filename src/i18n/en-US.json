@@ -274,7 +274,6 @@
     "restoreDone": "Restore done: {summary}, restarting…",
     "restoreFailed": "Restore failed, current data unchanged: {err}",
     "updateTitle": "Updates",
-    "buildStampTip": "Build time of the frontend you are running; check this first when a new feature does not show up",
     "updateVer": "Current v{version}",
     "updateDesc": "Check for new versions from GitHub Releases. One-click download, install and restart; local data is not affected. Also checked automatically on launch.",
     "updateBtn": "Check for updates",
