@@ -23,7 +23,8 @@
     "tool-db",
     "tool-chat",
     "tool-label",
-    "tool-rail"
+    "tool-rail",
+    "tool-interview"
   ],
   "permissions": [
     "core:default",

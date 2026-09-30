@@ -25,6 +25,7 @@ export const TOOL_COMPONENTS = {
   chat: defineAsyncComponent(() => import("./tools/AiChatTool.vue")),
   label: defineAsyncComponent(() => import("./tools/LabelTool.vue")),
   rail: defineAsyncComponent(() => import("./tools/RailTycoonTool.vue")),
+  interview: defineAsyncComponent(() => import("./tools/InterviewTool.vue")),
 };
 
 export function getToolComponent(key) {

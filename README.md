@@ -15,17 +15,18 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   plans, calls tools (including file, database, and network tools on the desktop build), shows
   every step live, and asks for confirmation before risky writes. Bring your own OpenAI-compatible
   endpoint; a run log is kept so an interrupted task can be resumed.
-- **Toolbox** — 15 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
+- **Toolbox** — 20 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
   keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
 
   | Group | Tools |
   |-------|-------|
-  | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (diff / regex / replace / line ops / naming / stats), Time & schedule (timestamp / timezone / Cron), Structured data (JSON / YAML validate-format-tree-convert), Data generation (UUID / ULID / NanoID / mock / templates) |
+  | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (regex / replace / line ops / naming / stats), Diff (line & word diff, merge view), Table converter (CSV/TSV ↔ JSON / Markdown / SQL INSERT, clean & reshape), Markdown (outline / TOC / lint / format / HTML preview), Structured data (JSON / YAML validate-format-tree-convert), XML (validate / format / XML↔JSON / XPath), JSON Schema (infer / validate / sample / explain structure), Time & schedule (timestamp / timezone / Cron), Data generation (UUID / ULID / NanoID / mock / templates) |
   | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments) |
   | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export) |
   | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
   | AI | AI chat (multi-session, image input, prompt presets) |
   | Game helpers | Rail Tycoon route solver (Lord of the Mysteries homestead trade run: enumerates every valid stop layout from the "next 3 stops" hints, locks the next stop and advises which card to take) |
+  | Arcade | Interview prep (offline question banks for four interview tracks — backend/Java, algorithms, system design and frontend — where the model answer starts collapsed so you answer first, then rate yourself honestly; your rating drives a spaced-review queue, and every question credits the high-star open-source repository it draws on. 311 built-in questions across 75 topics under a controlled vocabulary, keyword/topic/difficulty/mastery filters, mock-interview sets drawn evenly from all four tracks, a Markdown/JSON importer, and `npm run bank:fetch` — a build script that scrapes any GitHub repository into an importable bank) |
 
   Network diagnostics, file processing, the database manager and label printing need native capabilities
   and are available in the desktop build only; everything else — including the PDF toolkit, which runs in
@@ -209,8 +210,9 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
 
 - **Agent 工作台**：默认首屏。用自然语言描述目标，Agent 规划并调用工具（桌面端含文件、数据库、
   网络等能力），过程实时可见，写入类操作先确认后执行；支持中断续跑与运行记录。
-- **工具箱**：15 个内置工具——数据转换、文本处理、时间调度、结构化数据、数据生成、网络诊断、
-  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话、铁路大亨站点推断，每个工具独立窗口，即开即用。
+- **工具箱**：20 个内置工具——数据转换、文本处理、文本对比、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
+  JSON Schema、时间调度、数据生成、网络诊断、
+  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
   其中网络诊断、文件处理、数据库管理、标签打印依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
@@ -223,6 +225,34 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   提示当作约束，穷举全部合法排列后标出能被唯一确定的站点，并按推断结果给策略卡建议；
   提供「驾驶舱」HUD 版面（巨型下一站结论 + 当前站一键录入）与「完整版面」全表，窗口可置顶，
   配合游戏的无边框窗口模式就能浮在画面上；全程纯本地计算，不联网、不注入、不读取游戏进程。
+  面试刷题（内置题库）面向四个方向：**后端 / Java 八股、算法与数据结构、系统设计、前端 / 浏览器**，
+  共 311 道题，每个方向再按**受控主题词表**分组（后端 29 个主题 135 题、算法 17 个主题 78 题、
+  系统设计 14 个主题 43 题、前端 15 个主题 55 题，合计 75 个主题）：后端覆盖 Java 基础、泛型、
+  异常、IO 与 NIO、Java 新特性、JVM、GC、类加载、线上排查、并发、JMM、锁、线程池、虚拟线程、
+  集合、并发容器、Stream 与函数式、MySQL、索引与优化、事务与锁、分库分表、Elasticsearch、
+  Redis、Spring、Spring Cloud、MyBatis、消息队列、分布式、网络。
+  主题词表写在 `interviewBankParts.js` 里并由测试断言——同一概念起两个名字会让主题下拉出现重复
+  选项，这条规则把它挡在提交前。刷题的闭环是「先自己答一遍」：**题解默认折起来**，
+  展开后才给题解、三条「答到这三点才算过」的自评要点、面试官会追问的下一句，
+  以及这道题对应的**高 star 开源出处**（JavaGuide、CS-Notes、advanced-java、hello-algo、
+  leetcode-master、system-design-primer、tech-interview-handbook 等，按仓库内路径深链，
+  可点开继续读）。自评只有四档（不会 / 模糊 / 会了 / 很熟），掌握度与下次复习时间由自评推出来：
+  答对把间隔按 12 小时 → 3 天 → 7 天 → 15 天 → 30 天拉长，答错打回 3 小时后再来；
+  连对两次才算「已掌握」，三连对毕业、不再占用复习队列。另有按四个方向等额抽题并打乱的
+  **模拟面试**（自评后自动进入下一题），以及 **Markdown / JSON 题库导入**——
+  把任意仓库的题解直接粘进来即可参与搜索与复习，解析失败会逐条说明原因而不是静默吞掉。
+  检索支持关键词（题干 / 考点 / 标签 / 题解全文）、方向、主题、难度与掌握度叠加筛选。
+  题库、检索、进度与导入解析都是纯前端模块（`interviewBank.js` / `interviewProgress.js` /
+  `interviewImport.js`），**完全离线**、不调用 AI，桌面 / 浏览器 / 安卓三端可刷。
+  题库按方向与子领域拆成多个文件（`interviewBankBackendJvm.js`、`interviewBankAlgoA.js`……），
+  `interviewBankParts.js` 是唯一的装配点，新增一个分片只需在那里加一行。
+  想再灌更多题有两条路：`npm run bank:fetch`（`scripts/build-interview-bank.mjs`）
+  从 GitHub 批量抓取并生成可导入的 JSON，或自己按 Markdown 写好后从界面导入。
+  抓取脚本默认把产物写到 `tmp/`（已 gitignore）——**这些仓库的许可证各不相同，不少中文高 star
+  仓库没有 LICENSE 文件**，入库或随应用分发前请先确认对应仓库的授权与署名要求（脚本头部有完整说明）。
+  另外要如实说明：这些仓库大多是**成篇的讲解文章而不是题库**，按标题切块能收上来的「像问题的块」
+  远少于文章数（实测 hello-algo「排序」一章 13 个文件只收出 2 道），所以它更适合当
+  「把长文按知识点切片」的工具，而不是一键生成题库。
 - **手机端**：安卓 App 正在重做，目标是**功能对齐桌面端**——架构、分期与无法对齐的平台能力
   （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。
   旧的手机端实现（铁路大亨悬浮面板）已整体移除；铁路大亨的求解逻辑仍在

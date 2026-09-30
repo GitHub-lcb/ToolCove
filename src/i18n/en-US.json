@@ -2560,6 +2560,120 @@
       "mobileBatteryHint": "Aggressive battery savers can kill the panel: whitelist this app for autostart / background running and set its battery policy to unrestricted.",
       "mobileNotifHint": "If notification permission is denied the foreground-service notification won't appear in the shade (the service still runs), but it stays visible — and stoppable — under the system's running-apps view."
     },
+    "interview": {
+      "title": "Interview Prep",
+      "subtitle": "Four offline question banks — answers start collapsed, so answer it yourself first",
+      "statMastered": "mastered",
+      "statDue": "{n} due for review",
+      "tab": {
+        "bank": "Bank",
+        "review": "Review",
+        "session": "Mock interview",
+        "manage": "Import & settings"
+      },
+      "status": {
+        "all": "All",
+        "todo": "Not mastered",
+        "done": "Mastered",
+        "starred": "Starred"
+      },
+      "difficulty": {
+        "1": "Basic",
+        "2": "Advanced",
+        "3": "Deep water"
+      },
+      "allCategories": "All tracks",
+      "allTopics": "All topics",
+      "allDifficulty": "All levels",
+      "searchPlaceholder": "Search questions, points, tags or answers…",
+      "resultCount": "{n} questions",
+      "empty": {
+        "listEmpty": "Nothing matches these filters — try loosening them",
+        "reviewEmpty": "Nothing due today. Questions you have practised come back here when they mature.",
+        "sessionEmpty": "No answerable questions left in this set",
+        "sessionIdle": "No mock interview running — start one on the right"
+      },
+      "mastery": "Mastery",
+      "star": "Star",
+      "starred": "Starred",
+      "starTip": "Starred questions can be filtered on their own",
+      "copy": "Copy question and answer",
+      "copied": "Copied",
+      "showAnswer": "Show answer",
+      "hideAnswer": "Hide answer",
+      "revealTip": "Answer it yourself first, then compare",
+      "lastReview": "reviewed {n} times",
+      "pointsTitle": "A passing answer covers all three",
+      "followTitle": "Follow-up",
+      "sourcesTitle": "Where this comes from",
+      "sourcesNote": "The built-in answers are written for this tool; the sources are the authoritative open-source references for the same topic, so you can go deeper. Star counts were read at authoring time.",
+      "sourcesExternal": "External source · unregistered repo, credited only",
+      "sourcesNone": "No external source for this one — likely something you imported",
+      "rateTitle": "Did you get it?",
+      "rateHint": "Your rating sets mastery and the next review date: getting it right stretches the interval, missing it brings it back tomorrow.",
+      "rating": {
+        "again": "Missed it",
+        "fuzzy": "Fuzzy",
+        "good": "Got it",
+        "easy": "Solid"
+      },
+      "noteTitle": "My notes",
+      "notePlaceholder": "Your own wording, the traps you hit, what an interviewer pushed on…",
+      "back": "Back to list",
+      "importedTag": "Imported",
+      "saveFailed": "Could not write your progress to local storage",
+      "progressReset": "Progress cleared",
+      "session": {
+        "setupTitle": "Start a mock interview",
+        "setupNote": "The same number of questions is drawn from each track and then shuffled — a real interview touches every track instead of asking ten algorithms in a row.",
+        "perCategory": "Questions per track",
+        "total": "{n} questions in this set",
+        "start": "Start",
+        "progress": "Question {done} of {total}",
+        "skip": "Skip",
+        "quit": "End this set",
+        "answerTip": "Say it out loud first, then read the answer",
+        "autoNext": "Rating moves you straight to the next question",
+        "doneTitle": "That set is done",
+        "doneNote": "{n} questions in total. Anything you rated Missed it or Fuzzy is back in the review queue and will return in a day or two.",
+        "again": "Another set"
+      },
+      "import": {
+        "title": "Import a question bank",
+        "note": "Markdown and JSON both work. For Markdown use `## Question` plus the body, or `**Question**`, or `Q: Question`. A `> 方向: backend`, `> 主题: JVM`, `> 难度: 2` header sets defaults for the whole file, and `[难度:3]` on a heading overrides it. You can paste a whole repository's solutions straight in.",
+        "category": "Default track",
+        "categoryFromFile": "Read from the file header (> 方向:)",
+        "topic": "Default topic",
+        "topicPlaceholder": "Empty files under “Imported”",
+        "placeholder": "Paste a Markdown or JSON question bank here…",
+        "run": "Parse and import",
+        "exportBank": "Copy the whole bank",
+        "clear": "Remove the {n} imported questions",
+        "customCount": "{n} imported questions — they join the built-in bank in search and review",
+        "ok": "Imported {n} questions",
+        "cleared": "Imported questions removed",
+        "error": {
+          "empty": "Nothing to import — paste a question bank first",
+          "badJson": "Could not parse the JSON: {detail}",
+          "badShape": "Unrecognised JSON shape — expected an array, or an object with a questions / items array",
+          "noQuestion": "No questions found. Markdown needs a `## Question` heading, or a `**Question**` / `Q: Question` line.",
+          "noCategory": "No track given: add `> 方向: backend` to the file header (backend / algo / system / frontend), or pick a default track above."
+        }
+      },
+      "about": {
+        "title": "Bank and progress",
+        "note": "The bank is fully offline and progress stays on this machine. Sources are the authoritative open-source references for the same topic, labelled with their star counts; the built-in answers are written for this tool rather than copied from those repositories.",
+        "questions": "questions",
+        "exportProgress": "Copy my progress",
+        "resetProgress": "Clear progress"
+      },
+      "category": {
+        "backend": "Backend / Java",
+        "algo": "Algorithms & data structures",
+        "system": "System design",
+        "frontend": "Frontend / browser"
+      }
+    },
     "registry": {
       "groupData": "Data & Text",
       "groupDataDesc": "Conversion, text, time, structured data & generation",
@@ -2573,6 +2687,8 @@
       "groupAiDesc": "AI-powered chat & generation tools",
       "groupGame": "Game Helpers",
       "groupGameDesc": "In-game reasoning and route-planning helpers",
+      "groupArcade": "Interview prep",
+      "groupArcadeDesc": "Offline question banks and self-testing: backend, algorithms, system design and frontend, every source credited",
       "toolConvert": "Data Conversion",
       "toolConvertDesc": "Base64, URL, Unicode, Hex, JWT & JSON escaping",
       "toolDiff": "Text Processing",
@@ -2604,6 +2720,23 @@
       "toolLabel": "Label printing",
       "toolLabelDesc": "TSPL label layout and printing with a live 203dpi preview, barcodes/QR codes and .prn export",
       "toolRail": "Rail Tycoon Route Solver",
+      "toolInterview": "Interview Prep",
+      "toolInterviewDesc": "Four offline question banks: answer first, then read the model answer, rate yourself, review on a schedule, and import any repository's solutions",
+      "kwInterview": [
+        "interview",
+        "interview prep",
+        "leetcode",
+        "algorithms",
+        "system design",
+        "frontend",
+        "backend",
+        "java",
+        "flashcards",
+        "spaced repetition",
+        "question bank",
+        "mock interview",
+        "interview questions"
+      ],
       "toolRailDesc": "Lord of the Mysteries homestead trade run: enumerate every valid stop layout from the \"next 3 stops\" hints to lock the next stop and pick cards",
       "kwConvert": [
         "data processing",

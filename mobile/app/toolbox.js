@@ -16,6 +16,7 @@ export const TOOL_GROUPS = Object.freeze([
   { key: "file", labelKey: "toolbox.registry.groupFile" },
   { key: "ai", labelKey: "toolbox.registry.groupAi" },
   { key: "game", labelKey: "toolbox.registry.groupGame" },
+  { key: "arcade", labelKey: "toolbox.registry.groupArcade" },
 ]);
 
 /**
@@ -46,6 +47,7 @@ export const TOOLS = Object.freeze([
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: true, note: "mobile.noteLabel" },
   { key: "chat", group: "ai", labelKey: "toolbox.registry.toolChat", ready: true },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
+  { key: "interview", group: "arcade", labelKey: "toolbox.registry.toolInterview", ready: true },
 ]);
 
 export const TOOL_BY_KEY = Object.freeze(Object.fromEntries(TOOLS.map((tool) => [tool.key, tool])));

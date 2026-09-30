@@ -34,6 +34,7 @@ const VIEWS = {
   diff: defineAsyncComponent(() => import("./tools/DiffToolView.vue")),
   request: defineAsyncComponent(() => import("./tools/RequestToolView.vue")),
   rail: defineAsyncComponent(() => import("./tools/RailToolView.vue")),
+  interview: defineAsyncComponent(() => import("./tools/InterviewToolView.vue")),
   image: defineAsyncComponent(() => import("./tools/ImageToolView.vue")),
   pdf: defineAsyncComponent(() => import("./tools/PdfToolView.vue")),
   network: defineAsyncComponent(() => import("./tools/NetworkToolView.vue")),

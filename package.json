@@ -25,7 +25,9 @@
     "release": "node scripts/release.js",
     "test:android": "node mobile/android/test-bridge.mjs",
     "verify:apk": "node mobile/android/verify-apk.mjs",
-    "build:label-wasm": "node crates/label-core/build-wasm.mjs"
+    "build:label-wasm": "node crates/label-core/build-wasm.mjs",
+    "//bank:fetch": "从 GitHub 批量拉题，生成可导入的题库 JSON。产物默认落 tmp/（已 gitignore）——这些仓库的许可证各不相同，入库或随应用分发前请先确认（脚本头部有说明）。",
+    "bank:fetch": "node scripts/build-interview-bank.mjs"
   },
   "dependencies": {
     "@jspawn/qpdf-wasm": "^0.0.2",

@@ -2560,6 +2560,120 @@
       "mobileBatteryHint": "各家系统的省电策略可能杀掉悬浮窗：请把本应用加入「自启动 / 后台运行」白名单，并把省电策略设为「无限制」。",
       "mobileNotifHint": "通知权限被拒绝时，前台服务的常驻通知不会出现在通知栏（服务仍在运行），但系统「正在运行的应用」里仍能看到并能停掉它。"
     },
+    "interview": {
+      "title": "面试刷题",
+      "subtitle": "四个方向的离线题库，答案默认折起来——先自己答一遍再看",
+      "statMastered": "已掌握",
+      "statDue": "{n} 道待复习",
+      "tab": {
+        "bank": "题库",
+        "review": "复习",
+        "session": "模拟面试",
+        "manage": "导入与设置"
+      },
+      "status": {
+        "all": "全部",
+        "todo": "未掌握",
+        "done": "已掌握",
+        "starred": "收藏"
+      },
+      "difficulty": {
+        "1": "基础",
+        "2": "进阶",
+        "3": "深水区"
+      },
+      "allCategories": "全部方向",
+      "allTopics": "全部主题",
+      "allDifficulty": "全部难度",
+      "searchPlaceholder": "搜题干、考点、标签或题解…",
+      "resultCount": "{n} 道题",
+      "empty": {
+        "listEmpty": "没有符合条件的题，换个筛选条件试试",
+        "reviewEmpty": "今天没有该复习的题。刷过的题到期后会回到这里。",
+        "sessionEmpty": "这套题里已经没有可答的题了",
+        "sessionIdle": "还没开始模拟面试，去右边开一套"
+      },
+      "mastery": "掌握度",
+      "star": "收藏",
+      "starred": "已收藏",
+      "starTip": "收藏的题可以在「收藏」筛选里单独看",
+      "copy": "复制题目与题解",
+      "copied": "已复制",
+      "showAnswer": "看题解",
+      "hideAnswer": "收起题解",
+      "revealTip": "建议先自己答一遍，再看题解对照",
+      "lastReview": "已复习 {n} 次",
+      "pointsTitle": "答到这三点才算过",
+      "followTitle": "追问",
+      "sourcesTitle": "题目与题解出处",
+      "sourcesNote": "内置题解为原创整理，出处是同一考点的权威开源资料，点开可继续深入（star 数为采集时实测值）。",
+      "sourcesExternal": "外部来源 · 未登记仓库，仅署名",
+      "sourcesNone": "这道题没有外部出处（可能是你自己导入的）",
+      "rateTitle": "这题你会了吗",
+      "rateHint": "自评决定掌握度与下次复习时间：答对会拉长间隔，答错回到一天后再来。",
+      "rating": {
+        "again": "不会",
+        "fuzzy": "模糊",
+        "good": "会了",
+        "easy": "很熟"
+      },
+      "noteTitle": "我的笔记",
+      "notePlaceholder": "记下自己的答法、踩过的坑、面试时被追问的点…",
+      "back": "返回列表",
+      "importedTag": "导入",
+      "saveFailed": "刷题进度没能写进本地存档",
+      "progressReset": "进度已清空",
+      "session": {
+        "setupTitle": "开一套模拟面试",
+        "setupNote": "四个方向各抽同样多的题，抽完打乱顺序——真实面试也是每个方向都问几道，不会让你连答十道算法。",
+        "perCategory": "每个方向抽几道",
+        "total": "这套共 {n} 道题",
+        "start": "开始",
+        "progress": "第 {done} / {total} 道",
+        "skip": "跳过",
+        "quit": "结束这套",
+        "answerTip": "先自己说一遍，再看题解",
+        "autoNext": "自评后自动进入下一题",
+        "doneTitle": "这套答完了",
+        "doneNote": "共 {n} 道题。答「不会」或「模糊」的题已经回到复习队列，过一两天会再来找你。",
+        "again": "再来一套"
+      },
+      "import": {
+        "title": "导入题库",
+        "note": "支持 Markdown 与 JSON。Markdown 用 `## 题目` + 正文，或 `**题目**`、`Q: 题目`；文件头部写 `> 方向: backend`、`> 主题: JVM`、`> 难度: 2` 可以给整份文件定默认值，单题用 `[难度:3]` 覆盖。也可以把任意仓库的题解直接粘进来。",
+        "category": "默认方向",
+        "categoryFromFile": "从文件头读（> 方向:）",
+        "topic": "默认主题",
+        "topicPlaceholder": "留空则归到「导入」",
+        "placeholder": "把 Markdown 或 JSON 题库粘贴到这里…",
+        "run": "解析并导入",
+        "exportBank": "复制整个题库",
+        "clear": "清空导入的 {n} 道题",
+        "customCount": "已导入 {n} 道题，与内置题库一起参与搜索与复习",
+        "ok": "导入 {n} 道题",
+        "cleared": "导入的题目已清空",
+        "error": {
+          "empty": "内容是空的，先粘贴题库再点导入",
+          "badJson": "JSON 解析失败：{detail}",
+          "badShape": "JSON 结构不认识——需要数组，或带 questions / items 数组的对象",
+          "noQuestion": "没解析出任何题目。Markdown 需要 `## 题目` 这样的二级标题或 `**题目**` / `Q: 题目` 形式。",
+          "noCategory": "没写方向：在文件头部加 `> 方向: backend`（可选 backend / algo / system / frontend），或在上方选一个默认方向。"
+        }
+      },
+      "about": {
+        "title": "题库与进度",
+        "note": "题库完全离线，进度存在本机。出处是同一考点的权威开源资料，按 star 数标注权威度；内置题解为原创整理，不是仓库原文的复制。",
+        "questions": "道题",
+        "exportProgress": "复制刷题进度",
+        "resetProgress": "清空进度"
+      },
+      "category": {
+        "backend": "后端 / Java",
+        "algo": "算法与数据结构",
+        "system": "系统设计",
+        "frontend": "前端 / 浏览器"
+      }
+    },
     "registry": {
       "groupData": "数据与文本",
       "groupDataDesc": "转换、文本、时间、结构化与数据生成",
@@ -2573,6 +2687,8 @@
       "groupAiDesc": "AI 驱动的对话与生成工具",
       "groupGame": "游戏辅助",
       "groupGameDesc": "游戏内的推理与路线规划小工具",
+      "groupArcade": "面试刷题",
+      "groupArcadeDesc": "离线题库与自测：后端八股、算法、系统设计、前端，题目与题解标注开源出处",
       "toolConvert": "数据转换",
       "toolConvertDesc": "Base64、URL、Unicode、Hex、JWT 与 JSON 转义",
       "toolDiff": "文本处理",
@@ -2604,6 +2720,23 @@
       "toolLabel": "标签打印",
       "toolLabelDesc": "TSPL 指令排版打印，实时预览 203dpi 标签与条码二维码，可导出 .prn",
       "toolRail": "铁路大亨站点推断",
+      "toolInterview": "面试刷题",
+      "toolInterviewDesc": "四个方向的离线题库：先自己答再看题解，自评掌握度并按间隔复习，可导入任意仓库的题解",
+      "kwInterview": [
+        "面试",
+        "刷题",
+        "八股",
+        "题库",
+        "Java",
+        "算法",
+        "LeetCode",
+        "系统设计",
+        "前端",
+        "复习",
+        "背题",
+        "interview",
+        "题库导入"
+      ],
       "toolRailDesc": "《诡秘之主》家园列车贸易：按「未来 3 站」提示穷举全部合法排列，锁定下一站与策略卡",
       "kwConvert": [
         "数据处理",

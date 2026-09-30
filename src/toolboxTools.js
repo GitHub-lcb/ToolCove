@@ -20,7 +20,8 @@ export const TOOLBOX_GROUPS = [
   { key: "development", labelKey: "toolbox.registry.groupDevelopment", icon: "wrench", descKey: "toolbox.registry.groupDevelopmentDesc" },
   { key: "ai", labelKey: "toolbox.registry.groupAi", icon: "sparkles", descKey: "toolbox.registry.groupAiDesc" },
   { key: "game", labelKey: "toolbox.registry.groupGame", icon: "train", descKey: "toolbox.registry.groupGameDesc" },
-];
+  // arcade 与 game 不合并：game 组是给**别人的游戏**做推理的辅助器，arcade 组自带玩法。
+  { key: "arcade", labelKey: "toolbox.registry.groupArcade", icon: "target", descKey: "toolbox.registry.groupArcadeDesc" },];
 
 export const TOOLBOX_TOOLS = [
   { key: "convert", labelKey: "toolbox.registry.toolConvert", icon: "repeat", category: "data", descKey: "toolbox.registry.toolConvertDesc", keywordsKey: "toolbox.registry.kwConvert", ready: true },
@@ -105,6 +106,17 @@ export const TOOLBOX_TOOLS = [
     // 再窄（<620）路线行折两行、录入与提醒改竖排，由 .rail-tool 整体滚动——仍可用，但不是默认体验。
     // 版面预算见 RailTycoonTool.vue 的版面骨架注释。
     window: { width: 760, height: 340, minWidth: 560, minHeight: 250 },
+  },
+  {
+    key: "interview",
+    labelKey: "toolbox.registry.toolInterview",
+    icon: "book-open",
+    category: "arcade",
+    descKey: "toolbox.registry.toolInterviewDesc",
+    keywordsKey: "toolbox.registry.kwInterview",
+    ready: true,
+    // 题库、检索、进度与导入解析全是纯前端模块（interviewBank/Progress/Import.js），
+    // 浏览器端与手机端照常可刷，所以不标 desktopOnly——通勤路上刷两题正是它的目标场景。
   },
 ];
 

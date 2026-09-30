@@ -43,9 +43,9 @@ describe("searchToolboxTools", () => {
     expect(new Set(TOOLBOX_TOOLS.map((tool) => tool.key)).size).toBe(TOOLBOX_TOOLS.length);
   });
 
-  it("按六个明确大类分组，每个工具只出现一次", () => {
+  it("按七个明确大类分组，每个工具只出现一次", () => {
     const groups = groupToolboxTools();
-    expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助"]);
+    expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助", "面试刷题"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
       ["network", "request", "downloader"],
@@ -53,11 +53,12 @@ describe("searchToolboxTools", () => {
       ["crypto", "db"],
       ["chat"],
       ["rail"],
+      ["interview"],
     ]);
     const groupedKeys = groups.flatMap((group) => group.tools.map((tool) => tool.key));
     expect(groupedKeys).toHaveLength(TOOLBOX_TOOLS.length);
     expect(new Set(groupedKeys).size).toBe(TOOLBOX_TOOLS.length);
-    expect(TOOLBOX_GROUPS).toHaveLength(6);
+    expect(TOOLBOX_GROUPS).toHaveLength(7);
   });
 
   it("可按 AI 对话的关键词搜索", () => {
@@ -84,6 +85,16 @@ describe("searchToolboxTools", () => {
 
   it("站点推断是纯前端工具，浏览器端也可见", () => {
     expect(TOOLBOX_TOOLS.find((tool) => tool.key === "rail")?.desktopOnly).toBeFalsy();
+  });
+
+  it("可按面试刷题的关键词搜索", () => {
+    for (const keyword of ["面试", "刷题", "八股", "题库", "LeetCode", "系统设计", "复习"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("interview");
+    }
+  });
+
+  it("面试刷题是纯前端工具，浏览器端也可见", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "interview")?.desktopOnly).toBeFalsy();
   });
 });
 
