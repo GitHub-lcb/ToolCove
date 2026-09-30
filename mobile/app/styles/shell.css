@@ -1288,3 +1288,149 @@ body,
   width: 18px;
   height: 18px;
 }
+
+/* ============ 请求的一生（工具内专用） ============ */
+/* 槽位竖排成一列：手机上「管线」的方向就是滚动方向，从上到下即请求的走向。 */
+.m-pipe-slot {
+  padding: 10px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+  margin-bottom: var(--m-gap);
+}
+
+.m-pipe-slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.m-pipe-readout {
+  color: var(--m-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.m-pipe-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 76px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--m-soft);
+}
+
+.m-pipe-bar {
+  flex: 1;
+  min-width: 5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--m-primary);
+  position: relative;
+}
+
+.m-pipe-bar.over {
+  background: var(--m-danger);
+}
+
+.m-pipe-bar.event::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: var(--m-ok);
+}
+
+.m-pipe-cause {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+.m-pipe-lesson {
+  margin: 8px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+  line-height: 1.65;
+}
+
+/* 槽位里的卡名很长，横向滚出去就看不见第二张了——这里让它换行。 */
+.m-pipe-slot .m-chips {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
+/* 关卡地图：一行一关，星与规模放在副行——chip 的胶囊圆角撑不住这么长的标签。 */
+.m-map .m-group-title {
+  margin: 8px 0 4px;
+}
+
+.m-item.current .m-item-title {
+  color: var(--m-primary);
+  font-weight: 600;
+}
+
+.m-item[disabled],
+.m-item button[disabled] {
+  opacity: .5;
+}
+
+/* 预算条与图鉴：预算是这游戏的取舍来源，必须一直看得见。 */
+.m-pipe-budget {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--m-muted);
+}
+
+.m-pipe-budget b {
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-pipe-budget.over b {
+  color: var(--m-danger);
+}
+
+.m-pipe-slot.flagged {
+  border-color: var(--m-primary);
+}
+
+.m-pipe-ttl {
+  margin-top: 6px;
+}
+
+.m-pipe-stars {
+  margin-left: 6px;
+  letter-spacing: 1px;
+}
+
+.m-pipe-codex {
+  padding: 10px;
+  border-left: 3px solid var(--m-primary);
+  border-radius: 0 8px 8px 0;
+  background: var(--m-soft);
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  line-height: 1.65;
+}
+
+.m-pipe-codex p {
+  margin: 4px 0 0;
+  color: var(--m-muted);
+}
+
+.m-pipe-codex.locked {
+  border-left-color: var(--m-border);
+  opacity: .6;
+}
