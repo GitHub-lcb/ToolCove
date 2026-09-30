@@ -3,17 +3,9 @@ import vue from "@vitejs/plugin-vue";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// 构建指纹：注入到前端，用于回答「我现在打开的到底是哪一次构建」。
-// 起因是一次真实排查——改了确认卡却没在界面上看到，无法判断是代码没生效还是实例是旧的。
-const BUILD_STAMP = new Date().toISOString().replace(/\.\d+Z$/, "Z");
-
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
   plugins: [vue()],
-
-  define: {
-    __BUILD_STAMP__: JSON.stringify(BUILD_STAMP),
-  },
 
   // 静态站点（npm run build:web --mode web）：相对 base 让 dist/ 可部署到任意子路径
   // （GitHub Pages 项目页 / 自建目录）；桌面构建保持根路径不变。
@@ -35,16 +27,24 @@ export default defineConfig(async ({ mode }) => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. 端口分工（三条路径互不打架）：
+  //    - `npm run dev`（浏览器）→ 1420，被占用时**自动往后滑**（1421、1422…），
+  //      滑档是 Vite 默认行为，前提是不开 strictPort；
+  //    - `npm run tauri dev` → 走 `dev:tauri`，钉死 1421 且 --strictPort。
+  //      钉死是因为 tauri.conf.json 的 build.devUrl 是静态地址，端口一滑桌面窗口就会
+  //      去加载一个没人听的地址（表现为白屏，且线索完全不显眼）；选 1421 而不是 1420，
+  //      是为了让「浏览器 dev 已经占着 1420」时桌面 dev 照样能起；
+  //    - 真机调试（TAURI_DEV_HOST）→ HMR websocket 单独用 1422，必须与上面的服务端口不同，
+  //      否则手机连的是同一个 socket，热更新静默失效。
   server: {
     port: 1420,
-    strictPort: true,
+    strictPort: false,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 1422,
         }
       : undefined,
     watch: {

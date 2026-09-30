@@ -18,6 +18,12 @@ npm run build          # frontend production build
 cd src-tauri && cargo test   # Rust tests
 ```
 
+`npm run dev` and `npm run dev:mobile` slide to the next free port when 1420 / 1430 are taken, so
+several dev servers can run side by side. `npm run tauri dev` deliberately does **not** slide: it
+pins 1421 (matching `build.devUrl` in `tauri.conf.json`, a static address) via `vite --strictPort`,
+so a busy port fails loudly instead of opening a window against a dead address. 1421 rather than
+1420 lets the desktop app run next to an already-open browser dev server; real-device HMR uses 1422.
+
 All logic that can be pure JS lives in plain modules under `src/` and is covered by vitest.
 Components (`src/*.vue`, `src/tools/*.vue`) stay thin; when a behavior is non-trivial, put it in
 a testable module instead of a component.

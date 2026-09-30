@@ -7,6 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "//dev:tauri": "tauri dev 专用：钉在 1421（与 tauri.conf.json 的 devUrl 必须一致），且 --strictPort——被占用时直接报错，而不是换个端口让桌面窗口白屏。1421 而不是 1420 是为了让「浏览器 dev 跑在 1420」和「桌面 dev」能同时开。npm run dev 仍允许往后滑档。",
+    "dev:tauri": "vite --port 1421 --strictPort",
     "build": "vite build",
     "build:web": "vite build --mode web",
     "preview": "vite preview",

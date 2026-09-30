@@ -43,7 +43,10 @@ export default defineConfig({
     target: "es2020",
   },
   server: {
+    // 1430 被占用时自动往后滑（与根 vite.config.js 的浏览器 dev 同一策略）。
+    // 这个 dev 只有浏览器预览会连它：APK 走的是「Kotlin 起本地服务 + 加载打包进 assets 的产物」，
+    // 不依赖这里的端口，所以滑档不会让真机连不上。
     port: 1430,
-    strictPort: true,
+    strictPort: false,
   },
 });
