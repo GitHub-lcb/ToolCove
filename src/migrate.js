@@ -53,8 +53,7 @@ export function migrateProblemsV1(problems) {
 
 // 发布单：旧结构 pools[] → items[]（kind=pool），并移除旧字段
 export function migrateReleasesV1(releases) {
-  if (!Array.isArray(releases)) return releases;
-  releases.forEach((r) => {
+  const convert = (r) => {
     if (!Array.isArray(r.items)) {
       r.items = (r.pools || []).map((p) => ({
         id: crypto.randomUUID(),
@@ -66,7 +65,18 @@ export function migrateReleasesV1(releases) {
       }));
       delete r.pools;
     }
-  });
+  };
+  // 真实存储是 { active, archived } 对象（见 data/repository.js 的 releases 规格）；
+  // 数组分支留给仍按旧结构存放的数据与单测。
+  if (Array.isArray(releases)) {
+    releases.forEach(convert);
+    return releases;
+  }
+  if (releases && typeof releases === "object") {
+    for (const list of [releases.active, releases.archived]) {
+      if (Array.isArray(list)) list.forEach(convert);
+    }
+  }
   return releases;
 }
 
@@ -148,7 +158,8 @@ const MIGRATIONS = [
   async () => {
     await migrateKey("iterations", migrateIterationsV1);
     await migrateKey("problems", migrateProblemsV1);
-    await migrateKey("releases", migrateReleasesV1);
+    // 物理键是 release-pools（不是 "releases"），形状是对象——两处都对不上时这条迁移等于没跑
+    await migrateObjectKey("release-pools", migrateReleasesV1);
   },
   // v1 → v2：待确认问题支持截图附件，补 images 数组
   async () => {
@@ -205,6 +216,15 @@ async function loadKey(key, fallback) {
 async function migrateKey(key, transform) {
   const data = await loadKey(key, []);
   if (!Array.isArray(data)) return;
+  transform(data);
+  await invoke("save_data", { key, data });
+}
+
+// 同上，但对象形状的数据（如发布单 { active, archived }）。
+// 落盘条件仍是「结构确实是对象」——缺文件时不凭空写一个空对象进去。
+async function migrateObjectKey(key, transform) {
+  const data = await loadKey(key, null);
+  if (!data || Array.isArray(data) || typeof data !== "object") return;
   transform(data);
   await invoke("save_data", { key, data });
 }

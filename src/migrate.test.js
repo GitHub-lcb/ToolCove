@@ -241,3 +241,56 @@ describe("migrateLegacyProjectToPools", () => {
     expect(out).toEqual([null, null]);
   });
 });
+
+describe("migrateReleasesV1（真实存储形状）", () => {
+  it("对象形状 { active, archived } 里的旧 pools 也转成 items", () => {
+    const value = {
+      active: [{ id: "r1", pools: [{ name: "建表脚本", note: "备注", done: false }] }],
+      archived: [{ id: "r2", pools: [{ name: "配置项" }] }],
+    };
+    migrateReleasesV1(value);
+    expect(value.active[0].items).toMatchObject([{ kind: "pool", name: "建表脚本", note: "备注", done: false }]);
+    expect(value.archived[0].items[0].name).toBe("配置项");
+    expect("pools" in value.active[0]).toBe(false);
+  });
+
+  it("幂等：再跑一次不重复造 items", () => {
+    const value = { active: [{ id: "r1", pools: [{ name: "A" }] }], archived: [] };
+    migrateReleasesV1(value);
+    const once = JSON.stringify(value);
+    migrateReleasesV1(value);
+    expect(JSON.stringify(value)).toBe(once);
+  });
+});
+
+describe("v0→v1 这步命中的是真实物理键", () => {
+  it("runMigrations 读写 release-pools，不再往不存在的 releases 键上空跑", async () => {
+    // 旧实现键名写 "releases"（真实键是 release-pools）、又只接受数组（真实形状是对象），
+    // 两处都对不上：老发布单的 pools[] 永远搬不成 items[]，还会凭空写出一个空 releases.json。
+    const { vi, expect: ex } = await import("vitest");
+    const store = new Map([
+      ["release-pools", { active: [{ id: "r1", name: "v1.0", pools: [{ name: "建表", note: "", done: false }] }], archived: [] }],
+    ]);
+    const saved = [];
+    vi.doMock("./platform/invoke.js", () => ({
+      invoke: async (cmd, args = {}) => {
+        if (cmd === "load_data") return store.has(args.key) ? JSON.parse(JSON.stringify(store.get(args.key))) : undefined;
+        if (cmd === "save_data") {
+          store.set(args.key, args.data);
+          saved.push(args.key);
+          return undefined;
+        }
+        throw new Error("unknown command " + cmd);
+      },
+    }));
+    vi.resetModules();
+    const { runMigrations, SCHEMA_VERSION: ver } = await import("./migrate.js");
+    const result = await runMigrations();
+    vi.doUnmock("./platform/invoke.js");
+
+    expect(result.to).toBe(ver);
+    ex(saved).not.toContain("releases");
+    expect(store.get("release-pools").active[0].items).toMatchObject([{ kind: "pool", name: "建表" }]);
+    expect("pools" in store.get("release-pools").active[0]).toBe(false);
+  });
+});
