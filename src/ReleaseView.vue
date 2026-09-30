@@ -3,8 +3,9 @@
 // 总览卡（KPI 大数字 + 可点击状态格 + 分段脉搏条）一眼看清发布健康度，点状态格即过滤列表；
 // 每个 Pool 行内展示本地发布记录状态（pool.lastRelease 推导，纯本地数据，无云端依赖）；
 // 点击发布按钮打开 PoolPublish 弹窗：按 打包→上传→发布→验证 逐项记录发布时间。
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import { invoke } from "./platform/invoke.js";
+import { mergeRecords, mutate, onDataChanged } from "./data/repository.js";
 import Icon from "./Icon.vue";
 import PoolPublish from "./PoolPublish.vue";
 import PoolStatus from "./PoolStatus.vue";
@@ -35,16 +36,41 @@ const editingId = ref("");
 const editForm = ref({ name: "" });
 const archOpen = ref(false);
 
+// 上次读盘见过的 id（分列表记）：区分「用户在这页删掉的行」与「别人读盘后新增的行」
+const seenIds = { active: new Set(), archived: new Set(), pools: new Set() };
+const idsOf = (list) => new Set((list || []).map((r) => r && r.id));
+
+/** 按 id 合并两份列表：别人的新增留下、我们删掉的丢掉、同 id 比 updatedAt。 */
+function mergeList(bucket, freshList, ourList) {
+  const keep = idsOf(ourList);
+  const merged = mergeRecords(freshList, ourList).filter((r) => keep.has(r?.id) || !seenIds[bucket].has(r?.id));
+  seenIds[bucket] = idsOf(merged);
+  return merged;
+}
+
 async function loadLocal() {
   try {
     const raw = (await invoke("load_data", { key: "release-pools" })) || {};
     localActive.value = Array.isArray(raw.active) ? raw.active : [];
     localArchived.value = Array.isArray(raw.archived) ? raw.archived : [];
+    seenIds.active = idsOf(localActive.value);
+    seenIds.archived = idsOf(localArchived.value);
   } catch { /* 读取失败按空处理，不阻断工作台 */ }
 }
+// 整表裸写会抹掉这段时间里别的写入者（Agent 的 data.*、另一台设备）新增的行，
+// 所以走数据层：读磁盘最新 → 带修订号写回（CAS）→ 按 id 合并。
 async function saveLocal() {
   try {
-    await invoke("save_data", { key: "release-pools", data: { active: localActive.value, archived: localArchived.value } });
+    const next = await mutate(
+      "releases",
+      (fresh) => ({
+        active: mergeList("active", fresh.active, localActive.value),
+        archived: mergeList("archived", fresh.archived, localArchived.value),
+      }),
+      { source: "view" }
+    );
+    localActive.value = next.active || [];
+    localArchived.value = next.archived || [];
     return true;
   } catch (e) {
     props.showToast("保存失败：" + e);
@@ -185,14 +211,23 @@ async function load() {
   }
   try {
     pools.value = (await invoke("load_data", { key: "pools" })) || [];
+    seenIds.pools = idsOf(pools.value);
   } catch (e) {
     props.showToast("加载 Pool 失败：" + e);
   }
   await loadLocal(); // 临时 Pool 一并刷新（工具栏「刷新列表」预期刷新全部数据源）
 }
+let offDataChanged = null;
 onMounted(async () => {
   await load(); // 含领域 / Pool / 临时 Pool 三个数据源
+  // 别的写入者（Agent、同步落盘）改过就把页面快照刷新，避免拿旧数据整表写回
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (source === "view") return;
+    if (kind !== "releases" && kind !== "pools" && kind !== "domains") return;
+    await load();
+  });
 });
+onUnmounted(() => offDataChanged?.());
 
 // ------- 状态元信息（徽章 / 统计格 / 脉搏条共用的单一事实源） -------
 const STATUS_LIST = [
@@ -343,7 +378,7 @@ async function onPublishSaved() {
     return;
   }
   try {
-    await invoke("save_data", { key: "pools", data: pools.value });
+    pools.value = await mutate("pools", (fresh) => mergeList("pools", fresh, pools.value), { source: "view" });
   } catch (e) {
     props.showToast("保存失败：" + e);
   }

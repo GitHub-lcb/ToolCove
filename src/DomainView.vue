@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { invoke } from "./platform/invoke.js";
 import { capabilities } from "./platform/env.js";
+import { mergeRecords, mutate, onDataChanged } from "./data/repository.js";
 import { open } from "./platform/dialog.js";
 import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
@@ -53,36 +54,61 @@ const publishPool = ref(null); // 正在发布的 Pool（非空时弹发布弹�
 const badgeOf = (p) => releaseBadge(p); // 角标按本地发布记录（lastRelease）推导
 
 // ------- 加载 / 保存 -------
+// 上次读盘见过的 id（按 key 分开记）：用来区分「用户在这页删掉的行」和
+// 「别人在我们读盘之后新增的行」——前者要丢掉，后者要留下。
+const seenIds = { domains: new Set(), pools: new Set() };
+
+function idsOf(list) {
+  return new Set((list || []).map((r) => r && r.id));
+}
+
 async function load() {
   try {
     domains.value = (await invoke("load_data", { key: "domains" })) || [];
+    seenIds.domains = idsOf(domains.value);
   } catch (e) {
     props.showToast("加载领域失败：" + e);
   }
   try {
     pools.value = (await invoke("load_data", { key: "pools" })) || [];
+    seenIds.pools = idsOf(pools.value);
   } catch (e) {
     props.showToast("加载 Pool 失败：" + e);
   }
 }
-async function persistDomains() {
+
+// 整表裸写会把这段时间里别人（Agent 的 data.*、另一台设备同步下来）新增的行抹掉，
+// 所以改走数据层：读磁盘最新 → 带修订号写回（CAS）→ 按 id 合并而非覆盖。
+// 只合并还不够：合并会把用户在这页删掉的行从磁盘快照里复活，所以按 seenIds 丢掉真删除。
+async function persistTable(kind, listRef) {
   try {
-    await invoke("save_data", { key: "domains", data: domains.value });
+    listRef.value = await mutate(
+      kind,
+      (fresh) => {
+        const keep = idsOf(listRef.value);
+        return mergeRecords(fresh, listRef.value).filter((r) => keep.has(r?.id) || !seenIds[kind].has(r?.id));
+      },
+      { source: "view" }
+    );
+    seenIds[kind] = idsOf(listRef.value);
   } catch (e) {
     props.showToast("保存失败：" + e);
   }
 }
-async function persistPools() {
-  try {
-    await invoke("save_data", { key: "pools", data: pools.value });
-  } catch (e) {
-    props.showToast("保存失败：" + e);
-  }
-}
+const persistDomains = () => persistTable("domains", domains);
+const persistPools = () => persistTable("pools", pools);
+let offDataChanged = null;
 onMounted(async () => {
   await load();
   tryJump();
+  // 别的写入者改了领域/Pool 时重新读盘，页面里留着的旧快照才不会写脏
+  offDataChanged = onDataChanged(async ({ kind, source }) => {
+    if (source === "view") return;
+    if (kind !== "domains" && kind !== "pools") return;
+    await load();
+  });
 });
+onUnmounted(() => offDataChanged?.());
 // 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（表单较长，防误触丢输入）
 function onEsc(e) {
   if (e.key !== "Escape") return;
