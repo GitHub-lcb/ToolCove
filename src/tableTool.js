@@ -145,7 +145,7 @@ export function toJson(rows, { header = true, indent = 2 } = {}) {
   const list = rows || [];
   if (!header) return JSON.stringify(list, null, indent);
   if (!list.length) return "[]";
-  const keys = dedupeKeys(list[0]);
+  const keys = headerOf(list);
   const body = list.slice(1).map((row) => {
     const item = {};
     keys.forEach((key, index) => {
@@ -154,6 +154,29 @@ export function toJson(rows, { header = true, indent = 2 } = {}) {
     return item;
   });
   return JSON.stringify(body, null, indent);
+}
+
+/**
+ * 有效表头：行长超过表头时按位置补 `col{n}` 占位。
+ *
+ * 只按第一行的宽度取值会把多出来的单元格**静默丢掉**，而 SQL 出口又把它们全写上——
+ * 于是同一份数据两条出口结果不一致，还产出「N 列 M 值」的非法 INSERT。
+ */
+function headerOf(list) {
+  const width = Math.max(0, ...list.map((row) => (row || []).length));
+  const head = list[0] || [];
+  return dedupeKeys(Array.from({ length: width }, (_, index) => head[index] ?? ""));
+}
+
+/**
+ * 标识符消毒：去掉能跳出反引号的字符（反引号与换行），其余原样保留。
+ *
+ * 早先这里是「不合法就整名换成 t」——`my-orders`、`db.users` 这类常见写法会被
+ * 静默改名，用户拿到的 SQL 表名跟自己填的不一样还看不出来。
+ */
+function safeIdentifier(raw, fallback) {
+  const cleaned = String(raw ?? "").replace(/[`\r\n]/g, "").trim();
+  return cleaned || fallback;
 }
 
 /** 表头去重：空列名给 `col1` 这样的占位，重名加序号。 */
@@ -188,21 +211,28 @@ export function toMarkdown(rows) {
  * 转 SQL INSERT。
  *
  * 值一律按字符串转义后加引号（不做类型推断）——推断成数字会把 `007` 变成 `7`、
- * 把空串变成 NULL，那是**静默改数据**。表名与列名做标识符校验。
+ * 把空串变成 NULL，那是**静默改数据**。表名与列名做标识符消毒（见 safeIdentifier）。
+ * 带表头时每个元组补齐到列数，避免「N 列 M 值」这种数据库直接拒收的语句。
  */
 export function toSqlInsert(rows, { table = "t", header = true, batchSize = 100 } = {}) {
   const list = rows || [];
   if (!list.length) return "";
-  const name = /^[A-Za-z_][A-Za-z0-9_]*$/.test(table) ? table : "t";
-  const columns = header ? dedupeKeys(list[0]) : [];
+  const name = safeIdentifier(table, "t");
+  const columns = header ? headerOf(list) : [];
   const body = header ? list.slice(1) : list;
+  const size = Number(batchSize) > 0 ? Math.trunc(Number(batchSize)) : 1; // 0 会让 i += batchSize 原地不动
   const quote = (value) => `'${String(value ?? "").replaceAll("'", "''")}'`;
-  const columnSql = columns.length ? ` (${columns.map((c) => `\`${c}\``).join(", ")})` : "";
+  const columnSql = columns.length ? ` (${columns.map((c) => `\`${safeIdentifier(c, "col")}\``).join(", ")})` : "";
 
   const statements = [];
-  for (let i = 0; i < body.length; i += batchSize) {
-    const chunk = body.slice(i, i + batchSize);
-    const values = chunk.map((row) => `(${row.map(quote).join(", ")})`).join(",\n  ");
+  for (let i = 0; i < body.length; i += size) {
+    const chunk = body.slice(i, i + size);
+    const values = chunk
+      .map((row) => {
+        const cells = columns.length && row.length < columns.length ? [...row, ...Array(columns.length - row.length).fill("")] : row;
+        return `(${cells.map(quote).join(", ")})`;
+      })
+      .join(",\n  ");
     statements.push(`INSERT INTO \`${name}\`${columnSql} VALUES\n  ${values};`);
   }
   return statements.join("\n\n");

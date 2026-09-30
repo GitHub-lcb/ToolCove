@@ -257,10 +257,13 @@ describe("转 SQL INSERT", () => {
     expect(sql).not.toContain("NULL");
   });
 
-  it("非法表名被替换成安全值（表名无法参数化）", () => {
+  it("表名里的危险字符不会跳出反引号（标识符无法参数化，只能消毒）", () => {
     const sql = toSqlInsert([["a"], ["1"]], { table: "users; DROP TABLE x", header: false });
-    expect(sql).toContain("INSERT INTO `t`");
-    expect(sql).not.toContain("DROP TABLE");
+    // 关键安全性质：整串被反引号包住、且内部反引号已被清掉 → 拼不出第二条语句。
+    // 语义则原样保留：不再因为「不像合法标识符」就偷偷换成 `t`（那是静默改数据）。
+    expect(sql).toContain("INSERT INTO `users; DROP TABLE x`");
+    expect(sql).not.toContain("``");
+    expect(toSqlInsert([["a"], ["1"]], { table: "a`\n b", header: false })).toContain("INSERT INTO `a b`");
   });
 
   it("分批插入（避免单条语句过长）", () => {
@@ -499,5 +502,37 @@ describe("表头语义映射", () => {
 
   it("默认下限是个真实门槛（0.5），不是随手写的小数", () => {
     expect(MAP_MIN_SCORE).toBeGreaterThanOrEqual(0.4);
+  });
+});
+
+describe("行列不齐的数据：两条出口必须一致", () => {
+  const ragged = () => parseDelimited("id,name,extra\n1,bob,xxx,yyy\n2,amy,zzz", ",").rows;
+  const oneCol = () => parseDelimited("id\n1", ",").rows;
+
+  it("JSON 不静默丢列，SQL 也不产出「N 列 M 值」", () => {
+    // 回归：旧 toJson 只按表头长度取值（第 4 格消失），而 toSqlInsert 把整行都写上
+    const json = JSON.parse(toJson(ragged()));
+    expect(json[0]).toEqual({ id: "1", name: "bob", extra: "xxx", col4: "yyy" });
+    expect(json[1]).toEqual({ id: "2", name: "amy", extra: "zzz", col4: "" });
+    const sql = toSqlInsert(ragged());
+    expect(sql).toContain("(`id`, `name`, `extra`, `col4`)");
+    expect(sql).toContain("('2', 'amy', 'zzz', '')");
+  });
+
+  it("表名原样保留（只做消毒，不静默改名）", () => {
+    expect(toSqlInsert(oneCol(), { table: "my-orders" })).toContain("INSERT INTO `my-orders`");
+    expect(toSqlInsert(oneCol(), { table: "db.users" })).toContain("INSERT INTO `db.users`");
+    // 能跳出反引号的字符清掉；空白名回落成 t
+    expect(toSqlInsert(oneCol(), { table: "a`b" })).toContain("INSERT INTO `ab`");
+    expect(toSqlInsert(oneCol(), { table: "a`\nb" })).toContain("INSERT INTO `ab`");
+    expect(toSqlInsert(oneCol(), { table: "  " })).toContain("INSERT INTO `t`");
+  });
+
+  it("batchSize=0 不把自己的进程撑爆", () => {
+    const rows = parseDelimited("id\n0\n1\n2\n3\n4", ",").rows;
+    const started = Date.now();
+    const sql = toSqlInsert(rows, { table: "t", batchSize: 0 });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(sql.match(/INSERT INTO/g)).toHaveLength(5); // 退化成一批一行，而不是无限循环
   });
 });
