@@ -268,7 +268,9 @@ export function serializeXml(children, { indent = 2, level = 0 } = {}) {
       // 否则 XML 声明与根元素之间会多出一个空行（实测踩过）。
       // 非空白的文本节点当然要保留——它可能是混合内容的一部分。
       if (node.value.trim() === "") continue;
-      out.push(node.value);
+      // 解析期已把实体还原成字符，序列化回去必须再转义一次——
+      // 漏掉就把 `a &amp; b` 输出成 `a & b`，产出非良构 XML（下次解析直接报错）。
+      out.push(encodeEntities(node.value));
       continue;
     }
     if (node.type === "comment") {

@@ -383,3 +383,23 @@ describe("统计", () => {
     expect(statsXml("<r><a><![CDATA[12345]]></a></r>").textLength).toBe(5);
   });
 });
+
+describe("序列化回写要保住实体（压缩/混合内容路径）", () => {
+  const SRC = "<root><a>tom &amp; jerry &lt;b&gt;</a></root>";
+
+  it("minify 不丢转义", () => {
+    expect(minifyXml(SRC)).toBe("<root><a>tom &amp; jerry &lt;b&gt;</a></root>");
+  });
+
+  it("混合内容（文本与子元素并存）也转义", () => {
+    const mixed = "<p>a &amp; b <b>x</b> &lt;c&gt;</p>";
+    expect(minifyXml(mixed)).toBe("<p>a &amp; b <b>x</b> &lt;c&gt;</p>");
+    expect(validateXml(minifyXml(mixed))).toEqual([]); // 返回值是错误清单
+  });
+
+  it("压缩结果仍可被再次解析（往返自洽）", () => {
+    const once = minifyXml(SRC);
+    expect(minifyXml(once)).toBe(once);
+    expect(xmlToJson(once)).toEqual({ root: { a: "tom & jerry <b>" } });
+  });
+});
