@@ -101,3 +101,17 @@ describe("JWT parse", () => {
     expect(() => parseJwt("bm90LWpzb24.e30.sig")).toThrow("Header");
   });
 });
+
+describe("Unicode 转义往返自洽", () => {
+  it("反斜杠编码成 \\\\，解码后回到原串", () => {
+    // 回归：编码端放过 ASCII 反斜杠，解码端却认 \b \t \n —— C:\temp 会解出退格符
+    for (const src of ["C:\\build\\temp", "a\\nb", "\\u4e2d", "中文 \\ 与 \"引号\""]) {
+      expect(decodeUnicode(encodeUnicode(src)), src).toBe(src);
+    }
+  });
+
+  it("非 ASCII 仍转 \\uXXXX，中文往返不变", () => {
+    expect(encodeUnicode("中文")).toBe("\\u4e2d\\u6587");
+    expect(decodeUnicode("\\u4e2d\\u6587")).toBe("中文");
+  });
+});

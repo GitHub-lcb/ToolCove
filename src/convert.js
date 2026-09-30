@@ -62,6 +62,8 @@ export function decodeUrl(input) {
 
 export function encodeUnicode(input) {
   return Array.from(String(input ?? ""), (char) => {
+    // 反斜杠要转义成 \\：解码端认 \b \t \n 这些短转义，原样留着就不再是往返（C:\temp 会变出退格符）
+    if (char === "\\") return "\\\\";
     if (/^[\x00-\x7f]$/.test(char)) return char;
     let result = "";
     for (let i = 0; i < char.length; i += 1) {

@@ -111,3 +111,16 @@ describe("getTextStats", () => {
     expect(getTextStats("")).toMatchObject({ characters: 0, lines: 0, bytes: 0 });
   });
 });
+
+describe("字面替换不展开 $ 模式", () => {
+  it("替换值里的 $& / $$ 按原文写入", () => {
+    // 回归：非正则分支用 source.replace(target, value)，value 里的 $& 会被展开成命中文
+    expect(replaceText("a-b", "-", "[$&]", { regex: false })).toBe("a[$&]b");
+    expect(replaceText("a-b", "-", "$$", { regex: false })).toBe("a$$b");
+    expect(replaceText("a-b-c", "-", "$&x", { regex: false, replaceAll: true })).toBe("a$&xb$&xc");
+  });
+
+  it("正则模式仍按 $1 反向引用展开（这条是有意为之，不能被一起改掉）", () => {
+    expect(replaceText("2026-09-22", "(\\d{4})-(\\d{2})-(\\d{2})", "$3/$2/$1", { regex: true })).toBe("22/09/2026");
+  });
+});

@@ -75,7 +75,8 @@ export function replaceText(text, find, replacement, options = {}) {
   if (!target) return source;
   const value = String(replacement ?? "");
   if (!options.regex) {
-    return options.replaceAll ? source.split(target).join(value) : source.replace(target, value);
+    // 字面替换：必须用函数形式，否则 String#replace 会把替换值里的 $&/$1/$$ 当模式展开
+    return options.replaceAll ? source.split(target).join(value) : source.replace(target, () => value);
   }
   let flags = "";
   if (options.replaceAll) flags += "g";
