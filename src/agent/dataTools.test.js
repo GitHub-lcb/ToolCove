@@ -24,7 +24,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return undefined;
     }
     if (cmd === "save_data_versioned") {
-      if (revision(current(args.key)) !== String(args.expected_revision)) throw new Error("数据已被其他页面或后台任务更新");
+      if (revision(current(args.key)) !== String(args.expectedRevision)) throw new Error("数据已被其他页面或后台任务更新");
       store.set(args.key, args.data);
       return revision(args.data);
     }

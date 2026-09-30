@@ -32,7 +32,7 @@ export function createSyncEngine(deps) {
     masterKeyProvider,     // async () => masterKeyB64（DPAPI 解密后）
     // eslint-disable-next-line no-unused-vars -- 这个参数名必须留在解构里：currentSources 会读 deps.recordSources
     recordSources,         // [{ key:'snippets'|'problems', get: ()=>Array, apply: (ops)=>Array（新列表）, setAll: (records)=>void }]
-    getTombstones,         // () => {id: updatedAt}
+    getTombstones,         // () => {id: updatedAt} | Promise<{id: updatedAt}>（墓碑要先从磁盘加载才能剪枝）
     setTombstones,         // (map) => void（持久化由调用方保证）
     deviceId,              // 本机设备 ID（settings 持久化）
     callbacks = {},        // { onStatus(status, info), onOmit(recordIds), onError(msgKey) }
@@ -165,17 +165,28 @@ export function createSyncEngine(deps) {
     const recordSources = currentSources();
     const cfg = getConfig();
     const masterKey = await masterKeyProvider();
-    const tomb = pruneTombstones(getTombstones(), Date.now(), TOMBSTONE_TTL_MS);
+    const now = Date.now();
+    const tomb = pruneTombstones(await getTombstones(), now, TOMBSTONE_TTL_MS);
     setTombstones(tomb);
+    // 水位不得高于本机时钟：某台设备时钟超前时，它那条「未来时间戳」的记录被拉回本机再推出去，
+    // 旧实现会把水位抬到未来——此后本机所有编辑都 ≤ 水位，云同步静默停摆（只有重新配对才能恢复）。
+    const watermark = Math.min(cfg.lastPushedAt || 0, now);
     const pushItems = [];
     for (const src of recordSources) {
       const records = src.get() || [];
-      for (const p of collectPushes(records, cfg.lastPushedAt || 0, [])) {
+      const picked = new Set();
+      for (const p of collectPushes(records, watermark, [])) {
+        picked.add(p.record?.id);
         pushItems.push({ ...p, kind: src.key });
+      }
+      // 本次会话改过的记录无条件补上：水位夹到 now 后，同一毫秒里的编辑可能刚好落在「不大于水位」
+      for (const r of records) {
+        if (!r || picked.has(r.id) || !dirty.has(r.id)) continue;
+        pushItems.push({ record: r, updatedAt: Number(r.updatedAt) || 0, kind: src.key });
       }
     }
     for (const t of Object.entries(tomb)) {
-      if (Number(t[1]) > (cfg.lastPushedAt || 0)) pushItems.push({ tombstone: true, id: t[0], updatedAt: Number(t[1]) || 0 });
+      if (Number(t[1]) > watermark) pushItems.push({ tombstone: true, id: t[0], updatedAt: Number(t[1]) || 0 });
     }
     if (pushItems.length === 0) return 0;
 
@@ -199,7 +210,10 @@ export function createSyncEngine(deps) {
     }
     if (payloads.length === 0) return 0;
 
-    let maxPushed = cfg.lastPushedAt || 0;
+    let maxPushed = watermark;
+    // 只有服务端接受的那部分才能推进水位：被拒的记录（尤其是 stale）如果照样算「已推上去」，
+    // 这台机器这次的编辑就永久丢了，而界面上还显示同步成功。
+    const accepted = (one, rejectedMap) => !rejectedMap.has(one.id);
     for (let i = 0; i < payloads.length; i += BATCH_SIZE) {
       const chunk = payloads.slice(i, i + BATCH_SIZE);
       const bytes = new TextEncoder().encode(JSON.stringify(chunk)).length;
@@ -208,23 +222,33 @@ export function createSyncEngine(deps) {
         for (const one of chunk) {
           const res = await api("PUT", "/v1/items", { items: [one] });
           if (res.status !== 200) throw new Error("sync.errPush");
-          maxPushed = Math.max(maxPushed, Number(one.updatedAt) || 0);
+          const single = rejectedOf(res);
+          if (accepted(one, single)) maxPushed = Math.max(maxPushed, Number(one.updatedAt) || 0);
         }
         continue;
       }
       const res = await api("PUT", "/v1/items", { items: chunk });
       if (res.status !== 200) throw new Error("sync.errPush");
-      const j = res.json || {};
-      if (Array.isArray(j.rejected) && j.rejected.length) {
-        for (const rej of j.rejected) {
-          if (rej && rej.reason === "item-too-large" && rej.id) omitted.add(rej.id);
-        }
+      const rejectedMap = rejectedOf(res);
+      for (const one of chunk) {
+        if (accepted(one, rejectedMap)) maxPushed = Math.max(maxPushed, Number(one.updatedAt) || 0);
       }
-      for (const one of chunk) maxPushed = Math.max(maxPushed, Number(one.updatedAt) || 0);
     }
-    await saveConfig({ lastPushedAt: maxPushed });
+    await saveConfig({ lastPushedAt: Math.min(maxPushed, now) });
     if (omitted.size) callbacks.onOmit && callbacks.onOmit([...omitted]);
     return payloads.length;
+  }
+
+  /** 解析 PUT /v1/items 的拒绝清单：id（混淆后的）-> reason。 */
+  function rejectedOf(res) {
+    const map = new Map();
+    const rejected = Array.isArray(res.json && res.json.rejected) ? res.json.rejected : [];
+    for (const rej of rejected) {
+      if (!rej || !rej.id) continue;
+      map.set(rej.id, rej.reason || "");
+      if (rej.reason === "item-too-large") omitted.add(rej.id);
+    }
+    return map;
   }
 
   function sanitizeForSync(record) {
@@ -260,7 +284,7 @@ export function createSyncEngine(deps) {
           }
         }
       }
-      for (const tid of Object.keys(getTombstones() || {})) {
+      for (const tid of Object.keys((await getTombstones()) || {})) {
         idMap.set(await obfuscateId(masterKey, tid), tid);
       }
       const decrypted = [];

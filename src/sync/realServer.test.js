@@ -33,7 +33,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "save_data_versioned") {
       const current = d.store.has(args.key) ? d.store.get(args.key) : [];
-      if (hv.revisionOf(current) !== String(args.expected_revision ?? "")) {
+      if (hv.revisionOf(current) !== String(args.expectedRevision ?? "")) {
         throw new Error("数据已被其他页面或后台任务更新，本次保存已拒绝；请重新进入页面后再修改");
       }
       d.store.set(args.key, hv.clone(args.data));

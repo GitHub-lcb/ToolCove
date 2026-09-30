@@ -56,13 +56,17 @@ class Store {
     if (!doc) return Promise.resolve();
     const tmp = this.file(cid) + ".tmp";
     const final = this.file(cid);
-    this.writes = this.writes.then(() => new Promise((resolve, reject) => {
+    const write = this.writes.then(() => new Promise((resolve, reject) => {
       fs.writeFile(tmp, JSON.stringify(doc), (err) => {
         if (err) return reject(err);
         fs.rename(tmp, final, (err2) => (err2 ? reject(err2) : resolve()));
       });
     }));
-    return this.writes;
+    // 排队用的链必须把这次失败吃掉：否则一次 ENOSPC/权限错误之后 this.writes 永久处于
+    // rejected 状态，后续每次 persist 都从失败的 Promise 派生 → 服务再也写不进磁盘，
+    // 而调用方拿到的错误也会被前一次的错误顶替。返回值仍带真实错误，交给上层照常报错。
+    this.writes = write.catch(() => {});
+    return write;
   }
   /** 服务重启后缓存未加载的集合：遍历目录补齐（token 鉴权需跨集合查） */
   ensureAllLoaded() {

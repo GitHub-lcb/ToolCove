@@ -34,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "save_data_versioned") {
       const current = d.store.has(args.key) ? d.store.get(args.key) : [];
-      if (hv.revisionOf(current) !== String(args.expected_revision ?? "")) {
+      if (hv.revisionOf(current) !== String(args.expectedRevision ?? "")) {
         throw new Error("数据已被其他页面或后台任务更新，本次保存已拒绝；请重新进入页面后再修改");
       }
       d.store.set(args.key, hv.clone(args.data));
@@ -218,5 +218,50 @@ describe("云同步接线（仓库层直连，无视图）", () => {
     expect(b.store.get("snippets")).toEqual([]);
     expect(server.items()).toHaveLength(1);
     expect(server.items()[0].tombstone).toBe(true);
+  });
+
+  it("重启后的首次推送不得清空磁盘上的墓碑", async () => {
+    const server = makeMemServer();
+    const a = newDevice({ id: "devA", token: "tok-A", server });
+
+    await bootDevice(a);
+    const s1 = await a.repository.create("snippets", { title: "要被删的", content: "x" });
+    let engine = await a.sync.getEngine();
+    await vi.advanceTimersByTimeAsync(3500);
+    await settle("s1 上云", () => engine.currentStatus().status === "idle" && server.items().length === 1);
+
+    await bootDevice(a);
+    engine = await a.sync.getEngine();
+    await vi.advanceTimersByTimeAsync(1000);
+    await a.repository.remove("snippets", s1.id);
+    await vi.advanceTimersByTimeAsync(3500);
+    await settle("墓碑已推送", () => engine.currentStatus().status === "idle" && server.items().some((it) => it.tombstone === true));
+    expect(a.store.get("sync-tombstones")).toMatchObject({ [s1.id]: expect.any(Number) });
+
+    // 再重启一次：本次会话没删过任何东西（墓碑缓存是冷的），改一条别的记录触发推送。
+    // 旧实现把「冷缓存 = 没有墓碑」当成事实写回磁盘，等于悄悄清掉了待传播的删除。
+    await bootDevice(a);
+    engine = await a.sync.getEngine();
+    await vi.advanceTimersByTimeAsync(1000);
+    await a.repository.create("snippets", { title: "无关的新记录", content: "y" });
+    await vi.advanceTimersByTimeAsync(3500);
+    await settle("新记录上云", () => engine.currentStatus().status === "idle" && server.items().length === 2);
+    expect(a.store.get("sync-tombstones")).toMatchObject({ [s1.id]: expect.any(Number) });
+  });
+
+  it("关窗前把停在防抖里的墓碑落盘（删完就走不该丢删除）", async () => {
+    const server = makeMemServer();
+    const a = newDevice({ id: "devA", token: "tok-A", server });
+    await bootDevice(a);
+    const s1 = await a.repository.create("snippets", { title: "删掉它", content: "x" });
+    const engine = await a.sync.getEngine();
+    await vi.advanceTimersByTimeAsync(3500);
+    await settle("s1 上云", () => engine.currentStatus().status === "idle" && server.items().length === 1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await a.repository.remove("snippets", s1.id);
+    expect(a.store.get("sync-tombstones") || {}).not.toHaveProperty(s1.id); // 还在 500ms 防抖里
+    a.window.dispatchEvent(new StubCustomEvent("pagehide", {}));
+    expect(a.store.get("sync-tombstones")).toMatchObject({ [s1.id]: expect.any(Number) });
   });
 });

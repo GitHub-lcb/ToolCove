@@ -5,11 +5,24 @@
 // - 本模块不做加解密（engine 先解密信封再调用）。
 
 /** 归一化远端条目（容错缺字段） */
+/**
+ * updatedAt 取值归一：数字毫秒与 ISO 字符串必须可比。
+ *
+ * `Number("2026-09-10T08:00:00.000Z")` 是 NaN → `|| 0` 会把这条记录判成「最旧」，
+ * 于是远端必赢、本机改动永不被推送（tasks.js 写的是 ISO，见 data/repository.js 同名逻辑）。
+ */
+export function stampOf(value) {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : 0;
+}
+
 export function normalizeRemoteItem(raw) {
   const id = raw && typeof raw.id === "string" ? raw.id : "";
   return {
     id,
-    updatedAt: Number(raw && raw.updatedAt) || 0,
+    updatedAt: stampOf(raw && raw.updatedAt),
     data: raw && typeof raw.data === "string" ? raw.data : "",
     tombstone: !!(raw && raw.tombstone),
     seq: Number(raw && raw.seq) || 0,
@@ -58,7 +71,7 @@ export function mergeRemote(localRecords, remoteItems, localDeviceId) {
     const local = byId.get(recordId);
     if (item.tombstone) {
       if (local) {
-        const localTs = Number(local.updatedAt) || 0;
+        const localTs = stampOf(local.updatedAt);
         // 远端墓碑（updatedAt 即墓碑时间）不早于本地版本才删除；更旧则本地为准
         if (lwwCompare(item.updatedAt, "", localTs, localDeviceId) >= 0) {
           byId.delete(recordId);
@@ -67,7 +80,7 @@ export function mergeRemote(localRecords, remoteItems, localDeviceId) {
       }
       continue;
     }
-    const localTs = local ? Number(local.updatedAt) || 0 : -1;
+    const localTs = local ? stampOf(local.updatedAt) : -1;
     const remoteTs = env.ts;
     if (!local) {
       const record = keepLocalImages(env.record, null);
@@ -101,11 +114,12 @@ function keepLocalImages(remoteRecord, localRecord) {
 export function collectPushes(localRecords, lastPushedAt = 0, tombstones = []) {
   const out = [];
   for (const r of localRecords || []) {
-    const ts = Number(r.updatedAt) || 0;
+    const ts = stampOf(r.updatedAt);
     if (ts > lastPushedAt) out.push({ record: r, updatedAt: ts });
   }
   for (const t of tombstones || []) {
-    if (Number(t.updatedAt) > lastPushedAt) out.push({ tombstone: true, id: t.id, updatedAt: Number(t.updatedAt) || 0 });
+    const ts = stampOf(t.updatedAt);
+    if (ts > lastPushedAt) out.push({ tombstone: true, id: t.id, updatedAt: ts });
   }
   return out;
 }

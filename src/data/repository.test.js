@@ -12,6 +12,7 @@ vi.mock("../sync/index.js", () => syncMock);
 const store = new Map();
 const revision = (value) => "r" + (JSON.stringify(value ?? null) ?? "null").length;
 let beforeVersionedSave = null;
+const versionedArgKeys = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd, args = {}) => {
@@ -25,13 +26,14 @@ vi.mock("@tauri-apps/api/core", () => ({
       return undefined;
     }
     if (cmd === "save_data_versioned") {
+      versionedArgKeys.push(Object.keys(args).sort());
       if (beforeVersionedSave) {
         const hook = beforeVersionedSave;
         beforeVersionedSave = null;
         hook();
       }
       const current = store.has(args.key) ? store.get(args.key) : [];
-      if (revision(current) !== String(args.expected_revision)) {
+      if (revision(current) !== String(args.expectedRevision)) {
         throw new Error("数据已被其他页面或后台任务更新，本次保存已拒绝；请重新进入页面后再修改");
       }
       store.set(args.key, args.data);
@@ -71,6 +73,7 @@ beforeEach(() => {
   store.clear();
   listeners.clear();
   beforeVersionedSave = null;
+  versionedArgKeys.length = 0;
   syncMock.markTombstone.mockClear();
   syncMock.clearTombstone.mockClear();
   syncMock.enqueueSync.mockClear();
@@ -119,6 +122,16 @@ describe("repository 读", () => {
 });
 
 describe("repository 写", () => {
+  it("写回原生命令的参数键必须是 camelCase", async () => {
+    // Tauri 命令按 camelCase 取参数（tauri-macros 默认 ArgumentCase::Camel）。
+    // 传 expected_revision 这类蛇形键在浏览器桩上照样通、在桌面端直接 "invalid args" 保存失败，
+    // 所以这条只能靠断言键名守住。
+    const repo = await freshRepo();
+    await repo.create("snippets", { title: "新速记", content: "x" });
+    expect(versionedArgKeys.length).toBeGreaterThan(0);
+    expect(versionedArgKeys.at(-1)).toEqual(["data", "expectedRevision", "key"]);
+  });
+
   it("create 补齐 id/时间戳并落盘；update 刷新 updatedAt 且拒绝改 id/createdAt", async () => {
     const repo = await freshRepo();
     const created = await repo.create("snippets", { title: "新速记", content: "x" });
@@ -152,6 +165,36 @@ describe("repository 写", () => {
     expect(syncMock.clearTombstone).toHaveBeenCalledWith("s1");
     expect(store.get("snippets")[0]).toMatchObject({ id: "s1", title: "旧" });
     expect(restored.updatedAt).toBeGreaterThan(1);
+  });
+
+  it("删除落盘失败时不留墓碑（否则会把没删掉的记录从别的设备上抹掉）", async () => {
+    store.set("snippets", [{ id: "s1", title: "旧", updatedAt: 1 }]);
+    const repo = await freshRepo();
+    const core = await import("@tauri-apps/api/core");
+    const original = core.invoke.getMockImplementation();
+    core.invoke.mockImplementation(async (cmd) => {
+      if (cmd === "load_data_versioned") return { data: store.get("snippets"), revision: "r0" };
+      if (cmd === "save_data_versioned") throw new Error("磁盘只读");
+      throw new Error("unknown command " + cmd);
+    });
+    await expect(repo.remove("snippets", "s1")).rejects.toThrow("磁盘只读");
+    core.invoke.mockImplementation(original);
+    expect(syncMock.markTombstone, "写失败还写墓碑 = 一条谎报的删除会跨端传播").not.toHaveBeenCalled();
+    expect(store.get("snippets")).toHaveLength(1);
+  });
+
+  it("恢复落盘失败时墓碑保持原样（删除仍要能传播）", async () => {
+    const repo = await freshRepo();
+    const core = await import("@tauri-apps/api/core");
+    const original = core.invoke.getMockImplementation();
+    core.invoke.mockImplementation(async (cmd) => {
+      if (cmd === "load_data_versioned") return { data: [], revision: "r0" };
+      if (cmd === "save_data_versioned") throw new Error("磁盘只读");
+      throw new Error("unknown command " + cmd);
+    });
+    await expect(repo.restore("snippets", { id: "s1", title: "旧", updatedAt: 1 })).rejects.toThrow("磁盘只读");
+    core.invoke.mockImplementation(original);
+    expect(syncMock.clearTombstone, "恢复没写成功就清墓碑，这条删除再也传不出去").not.toHaveBeenCalled();
   });
 
   it("非 sync 类 kind 不写墓碑、不入队云同步；sync 类写后入队", async () => {

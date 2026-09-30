@@ -85,7 +85,8 @@ async function readVersioned(key) {
 
 function persistValue(key, data, revision) {
   if (revision === null) return invoke("save_data", { key, data });
-  return invoke("save_data_versioned", { key, data, expected_revision: revision });
+  // 键名必须与 Tauri 命令的取键规则一致：命令参数默认按 camelCase 查找（见 storage.rs save_data_versioned）
+  return invoke("save_data_versioned", { key, data, expectedRevision: revision });
 }
 
 /** 总是读磁盘最新（写路径与云同步推送使用；读工具走 1s 缓存） */
@@ -235,10 +236,9 @@ export async function update(kind, id, patch, options = {}) {
 export async function remove(kind, id, options = {}) {
   const spec = specOf(kind);
   let removed = null;
-  if (spec.sync) {
-    const m = await sync();
-    await m?.markTombstone?.(id, Date.now());
-  }
+  // 顺序很要紧：先把删除落盘，成功了才写墓碑。
+  // 反过来（墓碑在前）时，若落盘失败或记录本就不存在，墓碑会留在那儿——
+  // 下次同步把这条「比记录新」的墓碑推上去，别的设备删了、随后本机也被拉平删掉。
   await mutate(kind, (value) => {
     const arr = arrayKeyOf(spec, value, id);
     const idx = arr.findIndex((r) => r && r.id === id);
@@ -247,6 +247,10 @@ export async function remove(kind, id, options = {}) {
     arr.splice(idx, 1);
     return value;
   }, options);
+  if (spec.sync) {
+    const m = await sync();
+    await m?.markTombstone?.(id, Date.now());
+  }
   return removed;
 }
 
@@ -254,11 +258,9 @@ export async function remove(kind, id, options = {}) {
 export async function restore(kind, record, options = {}) {
   const spec = specOf(kind);
   if (!record || typeof record !== "object" || typeof record.id !== "string" || !record.id) throw new Error("恢复记录缺少 id");
-  if (spec.sync) {
-    const m = await sync();
-    await m?.clearTombstone?.(record.id);
-  }
   const restored = { ...record, updatedAt: Date.now() };
+  // 与 remove 同理：先落盘成功再清墓碑。写失败却先把墓碑清了，这条删除就永远传不出去，
+  // 别的设备留着这条记录，下次同步把它复活回本机。
   await mutate(kind, (value) => {
     const arr = arrayKeyOf(spec, value, record.id);
     const idx = arr.findIndex((r) => r && r.id === record.id);
@@ -266,6 +268,10 @@ export async function restore(kind, record, options = {}) {
     else arr.unshift(restored);
     return value;
   }, options);
+  if (spec.sync) {
+    const m = await sync();
+    await m?.clearTombstone?.(record.id);
+  }
   return restored;
 }
 

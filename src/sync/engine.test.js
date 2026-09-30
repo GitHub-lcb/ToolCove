@@ -167,6 +167,49 @@ describe("engine 推拉闭环（A/B 双设备共享服务器）", () => {
 });
 
 describe("engine 异常路径", () => {
+  it("未来时间戳不得把推送水位抬到本机时钟之上", async () => {
+    const shared = memServer();
+    const a = makeCtx(shared);
+    const pa = await a.engine.joinCollection("col-1", "PAIRCODE1");
+    a.setToken(pa.token);
+
+    // 对端时钟超前几秒：它那条记录拉回本机后带的是一个「未来」的 updatedAt，本机再推上去
+    a.snippets[0].updatedAt = Date.now() + 60_000;
+    a.engine.enqueue(a.snippets);
+    await a.engine.syncNow();
+    expect(a.settings.lastPushedAt, "水位被未来时间戳毒化了：之后本机所有编辑都 ≤ 水位，云同步静默停摆").toBeLessThanOrEqual(Date.now() + 1000);
+
+    // 水位仍在本机时钟之后时，用户的下一次编辑必须照样上云
+    a.snippets.push({ id: "s2", title: "本机新改动", images: [], updatedAt: Date.now() });
+    a.engine.enqueue(a.snippets);
+    await a.engine.syncNow();
+    const items = Object.values(shared.state.collections.get("col-1").items);
+    expect(items.some((it) => it.tombstone === false), "本机编辑没被推送").toBe(true);
+  });
+
+  it("服务端拒绝（stale）的条目不得推进水位", async () => {
+    const shared = memServer();
+    const b = makeCtx(shared);
+    const pb = await b.engine.joinCollection("col-1", "PAIRCODE1");
+    b.setToken(pb.token);
+    b.snippets[0].id = "x1";
+    b.snippets[0].updatedAt = 9000; // B 先写了一个更新的版本
+    b.engine.enqueue(b.snippets);
+    await b.engine.syncNow();
+
+    const a = makeCtx(shared);
+    const pa = await a.engine.joinCollection("col-1", "PAIRCODE1");
+    a.setToken(pa.token);
+    a.snippets[0] = { id: "x1", title: "A 的旧改动", images: [], updatedAt: 8000 };
+    a.snippets.push({ id: "s1", title: "A 的新改动", images: [], updatedAt: 5000 });
+    a.engine.enqueue(a.snippets);
+    await a.engine.syncNow();
+
+    // x1 被判 stale（服务端已有 9000），只有 s1 真的上去了：水位只能是 5000。
+    // 旧实现取「本批最大值」，会把被拒的 8000 也算成已推送 → A 这次的改动静默丢掉还提示同步成功。
+    expect(a.settings.lastPushedAt).toBe(5000);
+  });
+
   it("401 → revoked，本地保留，且 error 不得覆盖", async () => {
     const ctx = makeCtx();
     ctx.setToken("bad-token");

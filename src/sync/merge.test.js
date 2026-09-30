@@ -91,6 +91,20 @@ describe("collectPushes / pruneTombstones", () => {
     expect(pushes.map((p) => p.record ? p.record.id : p.id)).toEqual(["b", "d"]);
   });
 
+  it("ISO 时间戳与毫秒数字可比（tasks.js 写的是 ISO）", () => {
+    // Number("2026-09-10T08:00:00.000Z") = NaN → 旧实现一律 || 0，这条记录会被判成最旧：
+    // 远端必赢（本机改动被覆盖）、而且永远进不了推送清单。
+    const iso = new Date(1500).toISOString();
+    const pushes = collectPushes([{ id: "iso", updatedAt: iso }, { id: "old", updatedAt: 900 }], 1000, []);
+    expect(pushes.map((p) => p.record.id)).toEqual(["iso"]);
+    expect(pushes[0].updatedAt).toBe(1500);
+
+    const merged = mergeRemote([{ id: "iso", updatedAt: iso, title: "本机" }], [
+      { id: "x", updatedAt: 1400, envelope: { deviceId: "B", ts: 1400, record: { id: "iso", updatedAt: 1400, title: "远端" } } },
+    ], "A");
+    expect(merged.records.find((r) => r.id === "iso").title, "ISO 记录被更旧的远端版本覆盖了").toBe("本机");
+  });
+
   it("墓碑 30 天过期清理", () => {
     const now = Date.now();
     const fresh = pruneTombstones({ a: now - 1000, b: now - 40 * 24 * 3600 * 1000 }, now);

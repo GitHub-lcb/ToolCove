@@ -53,10 +53,10 @@ export const browserHandlers = {
     return { data, revision: contentRevision(data) };
   },
 
-  async save_data_versioned({ key, data, expected_revision }) {
+  async save_data_versioned({ key, data, expectedRevision }) {
     const plain = plainValue(data);
     const current = await kvGet(key);
-    if (contentRevision(current === undefined ? [] : current) !== String(expected_revision ?? "")) {
+    if (contentRevision(current === undefined ? [] : current) !== String(expectedRevision ?? "")) {
       throw new Error("数据已被其他页面或后台任务更新，本次保存已拒绝；请重新进入页面后再修改");
     }
     await kvSet(key, plain);

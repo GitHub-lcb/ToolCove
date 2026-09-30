@@ -48,11 +48,11 @@ describe("browserHandlers 存储语义", () => {
     expect(data).toEqual([{ id: "a" }]);
     expect(revision).toBeTruthy();
 
-    await browserHandlers.save_data_versioned({ key: "platform-ver", data: [{ id: "a" }, { id: "b" }], expected_revision: revision });
+    await browserHandlers.save_data_versioned({ key: "platform-ver", data: [{ id: "a" }, { id: "b" }], expectedRevision: revision });
     await expect(browserHandlers.load_data({ key: "platform-ver" })).resolves.toEqual([{ id: "a" }, { id: "b" }]);
 
     await expect(
-      browserHandlers.save_data_versioned({ key: "platform-ver", data: [], expected_revision: revision })
+      browserHandlers.save_data_versioned({ key: "platform-ver", data: [], expectedRevision: revision })
     ).rejects.toThrow(/已被其他页面/);
   });
 
@@ -60,7 +60,7 @@ describe("browserHandlers 存储语义", () => {
     const { data, revision } = await browserHandlers.load_data_versioned({ key: "platform-ver-missing" });
     expect(data).toEqual([]);
     await expect(
-      browserHandlers.save_data_versioned({ key: "platform-ver-missing", data: [1], expected_revision: revision })
+      browserHandlers.save_data_versioned({ key: "platform-ver-missing", data: [1], expectedRevision: revision })
     ).resolves.toBeTruthy();
   });
 
@@ -74,7 +74,7 @@ describe("browserHandlers 存储语义", () => {
     expect(stored).toEqual([{ id: "a", nested: { k: 1 } }]);
 
     const { revision } = await browserHandlers.load_data_versioned({ key: "platform-plain" });
-    await browserHandlers.save_data_versioned({ key: "platform-plain", data: reactiveish, expected_revision: revision });
+    await browserHandlers.save_data_versioned({ key: "platform-plain", data: reactiveish, expectedRevision: revision });
     const after = await browserHandlers.load_data({ key: "platform-plain" });
     expect(() => structuredClone(after)).not.toThrow();
   });

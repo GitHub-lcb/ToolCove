@@ -86,12 +86,29 @@ async function loadTombstones() {
 }
 
 let tombSaveTimer = null;
+function writeTombstones() {
+  if (!isDesktop() || !tombCache.map) return;
+  invoke("save_data", { key: TOMBSTONE_KEY, data: tombCache.map }).catch(() => {});
+}
+/** 关窗前把停在防抖里的墓碑落盘：删完就关窗，墓碑丢了删除就不再跨端传播 */
+export function flushTombstones() {
+  if (!tombSaveTimer) return;
+  clearTimeout(tombSaveTimer);
+  tombSaveTimer = null;
+  writeTombstones();
+}
+let tombFlushWatched = false;
 function saveTombstones(map) {
   if (!isDesktop()) return;
   if (tombSaveTimer) clearTimeout(tombSaveTimer);
   tombSaveTimer = setTimeout(() => {
-    invoke("save_data", { key: TOMBSTONE_KEY, data: map }).catch(() => {});
+    tombSaveTimer = null;
+    writeTombstones();
   }, 500);
+  if (!tombFlushWatched && typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    tombFlushWatched = true;
+    window.addEventListener("pagehide", flushTombstones);
+  }
 }
 
 function emitStatus(status, info) {
@@ -105,7 +122,7 @@ async function transport(req) {
     url: req.url,
     headers: req.headers || [],
     body: req.body || "",
-    timeout_ms: 60000,
+    timeoutMs: 60000, // 键名必须 camelCase：Tauri 命令按 camelCase 取参，写 timeout_ms 会被静默忽略回落 30s
   });
   let json = null;
   try {
@@ -158,7 +175,9 @@ async function buildEngine() {
     deviceId: (await readSyncConfig()).deviceId || null,
     sourceProvider: sourceList,
     refreshSources: () => refreshSources(),
-    getTombstones: () => tombCache.map || {},
+    // 必须走 loadTombstones：直接读 tombCache.map 在"重启后还没删过任何东西"时是 null，
+    // 引擎随后把剪枝结果写回去，等于把磁盘上的墓碑清空——删除不再跨端传播，已删记录还会复活。
+    getTombstones: () => loadTombstones(),
     setTombstones: (m) => saveTombstones(m),
     callbacks: {
       onStatus: (status, info) => emitStatus(status, info),
