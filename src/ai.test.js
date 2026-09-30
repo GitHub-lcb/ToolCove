@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: vi.fn() }));
 vi.mock("./secure.js", () => ({ decryptValue: async (v) => v }));
 
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { aiChatStream, aiChat, extractUsage, isOpencodeBase, hostOf } from "./ai.js";
+import { aiChatStream, aiChat, aiErrorCodeOf, extractUsage, isOpencodeBase, hostOf } from "./ai.js";
 import { i18n } from "./i18n/index.js";
 
 // 假 Channel：记录 onmessage 回调与 close 状态，供测试手动触发消息
@@ -130,6 +130,39 @@ describe("aiChat 用量计量", () => {
   it("不传 onUsage 时行为不变", async () => {
     setupRaw(USAGE_BODY);
     expect(await aiChat([{ role: "user", content: "hi" }], {})).toBe("hi");
+  });
+});
+
+describe("模型调用失败的错误码", () => {
+  it("按状态码归类，429/5xx 才是可重试的", () => {
+    expect(aiErrorCodeOf("", 429)).toBe("RATE_LIMIT");
+    expect(aiErrorCodeOf("", 503)).toBe("SERVER");
+    expect(aiErrorCodeOf("", 401)).toBe("AUTH");
+    expect(aiErrorCodeOf("", 400)).toBe("CLIENT");
+  });
+
+  it("桌面端 Rust 抛的是字符串，也要认得出 HTTP 状态与非 HTTP 失败", () => {
+    expect(aiErrorCodeOf("HTTP 429：slow down")).toBe("RATE_LIMIT");
+    expect(aiErrorCodeOf(new Error("HTTP 500：boom"))).toBe("SERVER");
+    expect(aiErrorCodeOf("请求失败：error decoding a response")).toBe("TRANSPORT");
+  });
+
+  it("aiChat 把 Rust 的字符串拒绝包成带 code 的 Error（文案原样保留）", async () => {
+    // 不能直接用 mockRejectedValueOnce：aiChat 里第一次 invoke 是 load_data（读配置），会被它吃掉
+    invoke.mockImplementation(async (cmd) => {
+      if (cmd === "load_data") return { ai: { baseUrl: "https://api.example.com/v1", apiKey: "k", model: "m" } };
+      if (cmd === "ai_chat") throw "HTTP 429：slow down";
+      return {};
+    });
+    await expect(aiChat([{ role: "user", content: "hi" }], {})).rejects.toMatchObject({
+      message: "HTTP 429：slow down",
+      code: "RATE_LIMIT",
+    });
+  });
+
+  it("配置缺失带 CONFIG 码：既不重试，也不会被当成模型回复格式错误", async () => {
+    invoke.mockImplementation(async (cmd) => (cmd === "load_data" ? { ai: { baseUrl: "", apiKey: "", model: "" } } : {}));
+    await expect(aiChat([{ role: "user", content: "hi" }], {})).rejects.toMatchObject({ code: "CONFIG" });
   });
 });
 

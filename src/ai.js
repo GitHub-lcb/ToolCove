@@ -91,11 +91,14 @@ export async function isAIConfigured() {
 }
 
 // 组装请求参数：校验配置 + 推理档位/温度二选一（两端实现共用，保证行为一致）
+/** 配置缺失类错误：重试与「让模型重答」都无意义，必须带 code 让上层立刻收尾。 */
+const configError = (key) => Object.assign(new Error(t(key)), { code: "CONFIG" });
+
 async function buildRequestArgs(messages, opts) {
   const cfg = opts.config || (await loadAIConfig());
-  if (!cfg.baseUrl) throw new Error(t("toolbox.ai.errNoBaseUrl"));
-  if (!cfg.apiKey) throw new Error(t("toolbox.ai.errNoApiKey"));
-  if (!cfg.model) throw new Error(t("toolbox.ai.errNoModel"));
+  if (!cfg.baseUrl) throw configError("toolbox.ai.errNoBaseUrl");
+  if (!cfg.apiKey) throw configError("toolbox.ai.errNoApiKey");
+  if (!cfg.model) throw configError("toolbox.ai.errNoModel");
 
   // 推理档位：优先取 opts，其次配置。设了推理档位就不再传 temperature（推理模型只接受默认温度）。
   const reasoningEffort = (opts.reasoningEffort ?? cfg.reasoningEffort ?? "").trim();
@@ -208,13 +211,47 @@ function browserChatStream(args, handlers) {
   return { stop: () => controller.abort() };
 }
 
+/**
+ * 把模型调用的失败归类成 runtime 认识的错误码。
+ *
+ * runtime 的退避重试按 code 判定（RATE_LIMIT / SERVER / TIMEOUT / TRANSPORT），
+ * 而 repairing planner 把「没有 code 的错误」当成模型回复格式不对（回灌「无法解析为 JSON」重问）。
+ * 所以不带 code 的 429 会既不被重试、又被误判成模型的锅。
+ * 桌面端 Rust 是 `Err(String)`，到了 JS 侧连 Error 都不是，只能按文案认。
+ */
+export function aiErrorCodeOf(error, status) {
+  const code = Number(status);
+  if (Number.isFinite(code) && code > 0) {
+    if (code === 429) return "RATE_LIMIT";
+    if (code >= 500) return "SERVER";
+    if (code === 401 || code === 403) return "AUTH";
+    return "CLIENT";
+  }
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  const http = /HTTP (\d{3})/.exec(text);
+  if (http) return aiErrorCodeOf("", http[1]);
+  return "TRANSPORT";
+}
+
+/** 统一成带 code 的 Error（保留原文案，界面仍然显示它）。 */
+function aiError(error, status) {
+  const base = error instanceof Error ? error : new Error(String(error && error.message ? error.message : error));
+  if (!base.code) base.code = aiErrorCodeOf(error, status);
+  return base;
+}
+
 // 核心：发起一次对话补全。messages 为 [{role, content}] 数组。
 // 返回助手回复的纯文本；出错时 throw Error(message)。
 // opts：{ model, temperature, config, onUsage }（config 可传入临时配置，用于「测试连接」时先于保存生效；
 //       onUsage(usage) 收到本次调用的 token 用量，仅在服务端返回 usage 时触发）
 export async function aiChat(messages, opts = {}) {
   const args = await buildRequestArgs(messages, opts);
-  const raw = isDesktop ? await invoke("ai_chat", args) : await browserChat(args);
+  let raw;
+  try {
+    raw = isDesktop ? await invoke("ai_chat", args) : await browserChat(args);
+  } catch (error) {
+    throw aiError(error);
+  }
   if (typeof opts.onUsage === "function") {
     const usage = extractUsage(raw);
     if (usage) {
