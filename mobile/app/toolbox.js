@@ -38,6 +38,7 @@ export const TOOLS = Object.freeze([
   { key: "generator", group: "development", labelKey: "toolbox.registry.toolGenerator", ready: true },
   { key: "db", group: "development", labelKey: "toolbox.registry.toolDb", ready: true, note: "mobile.noteDb" },
   { key: "request", group: "network", labelKey: "toolbox.registry.toolRequest", ready: true },
+  { key: "downloader", group: "network", labelKey: "toolbox.registry.toolDownloader", ready: false, desktopOnly: true, note: "mobile.noteDownloader" },
   { key: "network", group: "network", labelKey: "toolbox.registry.toolNetwork", ready: true, note: "mobile.noteNetwork" },
   { key: "file", group: "file", labelKey: "toolbox.registry.toolFile", ready: true, note: "mobile.noteFile" },
   { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: true },
@@ -54,9 +55,18 @@ export function toolsOfGroup(group) {
   return TOOLS.filter((tool) => tool.group === group);
 }
 
-/** 已可用 / 全部 的数量，用于给用户一个「迁移到哪了」的直观进度。 */
+/** 桌面独占、永不迁到手机端的工具（平台做不到，不是还没排上）。 */
+export const DESKTOP_ONLY_KEYS = Object.freeze(TOOLS.filter((tool) => tool.desktopOnly).map((tool) => tool.key));
+
+/**
+ * 已可用 / 可迁移总数，用于给用户一个「迁移到哪了」的直观进度。
+ *
+ * 桌面独占的工具**不进分母**：它们不是"还没迁"，是"迁不了"。
+ * 算进去会让进度条永远停在 95% 让人以为还差一把，界面上再配一句「仅桌面端」才不至于误解。
+ */
 export function progressOf(tools = TOOLS) {
-  const total = tools.length;
-  const ready = tools.filter((tool) => tool.ready).length;
+  const scoped = tools.filter((tool) => !tool.desktopOnly);
+  const total = scoped.length;
+  const ready = scoped.filter((tool) => tool.ready).length;
   return { ready, total, pct: total ? Math.round((ready / total) * 100) : 0 };
 }

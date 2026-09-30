@@ -1,5 +1,6 @@
 mod ai;
 mod db;
+mod downloader;
 mod file_tool;
 mod git;
 mod label;
@@ -142,6 +143,12 @@ pub fn run() {
             network::network_ping,
             network::network_trace,
             network::network_interfaces,
+            // 大文件多线程分片下载（下载器工具）
+            downloader::downloader_probe,
+            downloader::downloader_start,
+            downloader::downloader_cancel,
+            downloader::downloader_discard,
+            downloader::downloader_progress_of,
             // 数据库工具
             db::db_test,
             db::db_connect,

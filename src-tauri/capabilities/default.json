@@ -19,6 +19,7 @@
     "tool-generator",
     "tool-pdf",
     "tool-request",
+    "tool-downloader",
     "tool-db",
     "tool-chat",
     "tool-label",

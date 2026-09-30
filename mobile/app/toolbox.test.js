@@ -3,6 +3,19 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TOOLS, TOOL_BY_KEY, TOOL_GROUPS, progressOf, toolsOfGroup } from "./toolbox.js";
 
+/**
+ * 桌面独占、不迁到手机端的工具。
+ *
+ * 为什么需要这份名单：下面那条「全部已迁移」的断言是随工具逐个迁移长出来的，它守的是
+ * 「别忘了把工具搬到手机上」。但有些工具**在安卓上就是做不到**——不是忘了迁，是平台没有
+ * 那个能力（下载器要在磁盘上摊开十几 GB 的分片再合并，SAF 给不出可随机写的目录句柄）。
+ * 把它们混进 ready:false 会让断言分不清「忘了迁」和「迁不了」，等于把这条断言废掉。
+ *
+ * 所以：进名单的工具必须写明降级原因（note），且必须是桌面端 desktopOnly；
+ * 不在名单里的工具一条都不许 ready:false。
+ */
+const DESKTOP_ONLY_TOOLS = new Set(["downloader"]);
+
 describe("手机端工具箱目录", () => {
   it("每个工具的分组都在已定义的分组里（写错分组会让它在界面上消失）", () => {
     const known = new Set(TOOL_GROUPS.map((g) => g.key));
@@ -23,9 +36,37 @@ describe("手机端工具箱目录", () => {
     // 这条用例原本是「未迁移的必须带降级说明」，随着工具逐个迁移，它按自己的提示
     // 变成了现在这条：**断言全部可用**。这样"迁移完成"是一个被测试守住的事实，
     // 而不是靠人记得。
-    const pending = TOOLS.filter((tool) => !tool.ready);
+    //
+    // 唯一的例外是 DESKTOP_ONLY_TOOLS：那些工具在安卓上做不到（平台限制），不是忘了迁。
+    // 例外必须由名单显式声明，不能靠 ready:false 蒙混——否则"忘了迁"也会被当成合理豁免。
+    const pending = TOOLS.filter((tool) => !tool.ready && !DESKTOP_ONLY_TOOLS.has(tool.key));
     expect(pending.map((tool) => tool.key), "还有未迁移的工具").toEqual([]);
-    expect(progressOf().ready).toBe(TOOLS.length);
+    expect(progressOf().ready + DESKTOP_ONLY_TOOLS.size).toBe(TOOLS.length);
+  });
+
+  it("桌面独占的工具不进进度分母（否则进度条永远停在 95% 让人以为还差一把）", () => {
+    const progress = progressOf();
+    expect(progress.total).toBe(TOOLS.length - DESKTOP_ONLY_TOOLS.size);
+    expect(progress.pct).toBe(100);
+    for (const key of DESKTOP_ONLY_TOOLS) {
+      expect(TOOL_BY_KEY[key].desktopOnly, `${key} 标了 ready:false 却没标 desktopOnly`).toBe(true);
+    }
+  });
+
+  it("桌面独占名单里的工具必须写明降级原因，且在桌面端确实标了 desktopOnly", () => {
+    // 白名单本身要被审：随便往里加就能绕过上面那条断言，等于给"忘了迁"开后门。
+    // 所以要求每一条都有 note（界面上要如实告诉用户为什么这里没有），
+    // 并且桌面端注册表里真的标了 desktopOnly（防止名不副实）。
+    const desktop = readFileSync(resolve(process.cwd(), "src/toolboxTools.js"), "utf8");
+    for (const key of DESKTOP_ONLY_TOOLS) {
+      const entry = TOOL_BY_KEY[key];
+      expect(entry, `白名单里的 ${key} 不在手机端清单里`).toBeTruthy();
+      expect(entry.ready, `${key} 在白名单里就不该再标 ready:false 之外的其它状态`).toBe(false);
+      expect(entry.note, `${key} 缺降级说明，界面上会变成一个没原因的空入口`).toBeTruthy();
+      expect(desktop, `${key} 在桌面端没有标 desktopOnly，与白名单矛盾`).toMatch(
+        new RegExp(`key:\\s*"${key}",[\\s\\S]{0,300}?desktopOnly:\\s*true`)
+      );
+    }
   });
 
   it("工具清单与桌面端一一对应（防漏：少一个工具就是功能没对齐）", () => {
@@ -78,7 +119,7 @@ describe("手机端工具箱目录", () => {
   it("toolsOfGroup 保持清单顺序（新增工具后这里要同步，否则界面顺序会漂）", () => {
     expect(toolsOfGroup("data").map((t) => t.key)).toEqual(["json", "xml", "schema", "markdown", "table", "convert", "diff", "time"]);
     expect(toolsOfGroup("development").map((t) => t.key)).toEqual(["crypto", "generator", "db"]);
-    expect(toolsOfGroup("network").map((t) => t.key)).toEqual(["request", "network"]);
+    expect(toolsOfGroup("network").map((t) => t.key)).toEqual(["request", "downloader", "network"]);
     expect(toolsOfGroup("game").map((t) => t.key)).toEqual(["rail"]);
   });
 });

@@ -35,7 +35,7 @@ getrandom = "0.4"
 same-file = "1"
 hmac = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "macros"] }
 futures-util = "0.3"
 mysql = "28.0.0"
 postgres = "0.19.14"

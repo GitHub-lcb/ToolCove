@@ -93,7 +93,9 @@ function close() {
             <button class="m-item-main" :disabled="!tool.ready" @click="open(tool)">
               <span class="m-item-title">
                 {{ t(tool.labelKey) }}
-                <span v-if="!tool.ready" class="m-badge">{{ t("mobile.toolTodo") }}</span>
+                <!-- 桌面独占要说清是「不迁」而不是「还没迁」：不然用户会一直等 -->
+                <span v-if="tool.desktopOnly" class="m-badge">{{ t("mobile.toolDesktopOnly") }}</span>
+                <span v-else-if="!tool.ready" class="m-badge">{{ t("mobile.toolTodo") }}</span>
               </span>
               <span v-if="tool.note" class="m-item-sub">{{ t(tool.note) }}</span>
             </button>

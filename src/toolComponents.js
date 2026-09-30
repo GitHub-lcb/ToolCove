@@ -20,6 +20,7 @@ export const TOOL_COMPONENTS = {
   pdf: defineAsyncComponent(() => import("./tools/PdfTool.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorTool.vue")),
   request: defineAsyncComponent(() => import("./tools/RequestTool.vue")),
+  downloader: defineAsyncComponent(() => import("./tools/DownloadTool.vue")),
   db: defineAsyncComponent(() => import("./tools/DbTool.vue")),
   chat: defineAsyncComponent(() => import("./tools/AiChatTool.vue")),
   label: defineAsyncComponent(() => import("./tools/LabelTool.vue")),

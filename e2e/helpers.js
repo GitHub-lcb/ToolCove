@@ -248,6 +248,7 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
   state.queue = [...responses];
   state.calls = [];
   state.httpRoutes = httpRoutes;
+  state.eventHandlers = {};
 
   await page.exposeFunction("__e2eIpc", async (cmd, args = {}) => {
     ops.push({ cmd, args });
@@ -262,6 +263,10 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
     if (name.includes("listen")) {
       const id = nextId++;
       callbacks.set(id, true);
+      // 记下「哪个事件挂在哪个回调上」，emitDesktopEvent 要靠它把原生事件送进页面
+      if (name === "plugin:event|listen" && args?.event) {
+        state.eventHandlers[args.event] = Number(args?.handler);
+      }
       return id;
     }
     if (name.startsWith("plugin:event|unlisten")) {
@@ -315,14 +320,25 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
 
   await page.addInitScript(() => {
     window.__E2E_DESKTOP_OPS__ = [];
+    window.__E2E_EVENT_HANDLERS__ = {};
     let seq = 1;
     window.__TAURI_INTERNALS__ = {
       invoke: (cmd, args) => {
         window.__E2E_DESKTOP_OPS__.push({ cmd, args });
         return window.__e2eIpc(cmd, args ?? {});
       },
-      transformCallback: () => seq++,
-      unregisterCallback: () => {},
+      // 真实 Tauri 会把回调挂到 window 上（事件派发时按 id 取回来调用）。
+      // 原先这里只返回自增数字，导致页面虽然注册了监听却永远收不到事件——
+      // 凡是靠事件推进的界面（下载进度、托盘消息）在 E2E 里都测不了。
+      // 事件名不在这记：它由 plugin:event|listen 的入参带来，Node 侧的替身已经存下映射。
+      transformCallback: (callback) => {
+        const id = seq++;
+        window[`_${id}`] = callback;
+        return id;
+      },
+      unregisterCallback: (id) => {
+        delete window[`_${id}`];
+      },
       convertFileSrc: (p) => p,
       metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
     };
@@ -339,7 +355,7 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
 // E2E 内部共享状态：挂在 page 对象上。桌面形态下请求由 Node 侧应答，队列必须在 Node 侧。
 const PAGE_STATE = new WeakMap();
 function stateOf(page) {
-  if (!PAGE_STATE.has(page)) PAGE_STATE.set(page, { queue: [], calls: [], typesafeCalls: [], status: 200, delayMs: 0 });
+  if (!PAGE_STATE.has(page)) PAGE_STATE.set(page, { queue: [], calls: [], typesafeCalls: [], status: 200, delayMs: 0, eventHandlers: {} });
   return PAGE_STATE.get(page);
 }
 
@@ -403,6 +419,29 @@ async function writeKv(page, key, data) {
 /** 替身收到的桌面调用（用于断言「预览一套、执行另一套」这类不一致）。 */
 export async function desktopOps(page) {
   return page.evaluate(() => window.__E2E_DESKTOP_OPS__ || []);
+}
+
+/**
+ * 以原生侧的身份派发一个 Tauri 事件（走桌面 IPC 替身）。
+ *
+ * 用于验「靠事件推进」的界面：下载器就靠 downloader:progress / downloader:finished
+ * 走完整个生命周期——不派发事件的话，队列永远停在等待态，进度条也测不到。
+ * 页面若没订阅过该事件会直接抛错（而不是静默无效），免得用例假绿。
+ */
+export async function emitDesktopEvent(page, event, payload) {
+  const delivered = await page.evaluate(
+    ([name, body]) => {
+      const id = window.__E2E_EVENT_HANDLERS__?.[name];
+      if (id === undefined || id === null) return false;
+      const callback = window[`_${id}`];
+      if (typeof callback !== "function") return false;
+      callback({ event: name, id: 0, payload: body });
+      return true;
+    },
+    [event, payload]
+  );
+  if (!delivered) throw new Error(`页面上没有 ${event} 的监听，事件没能派发出去`);
+  return true;
 }
 
 /**

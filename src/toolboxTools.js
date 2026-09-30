@@ -70,6 +70,7 @@ export const TOOLBOX_TOOLS = [
     ready: true,
   },
   { key: "request", labelKey: "toolbox.registry.toolRequest", icon: "send", category: "network", descKey: "toolbox.registry.toolRequestDesc", keywordsKey: "toolbox.registry.kwRequest", ready: true },
+  { key: "downloader", labelKey: "toolbox.registry.toolDownloader", icon: "download", category: "network", descKey: "toolbox.registry.toolDownloaderDesc", keywordsKey: "toolbox.registry.kwDownloader", ready: true, desktopOnly: true },
   { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", ready: true, desktopOnly: true },
   {
     key: "chat",
