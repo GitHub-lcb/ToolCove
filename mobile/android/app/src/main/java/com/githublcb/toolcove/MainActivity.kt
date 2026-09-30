@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Looper
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -95,11 +96,26 @@ class MainActivity : Activity() {
         view.loadUrl("$base/index.html")
     }
 
-    /** 在 UI 线程发起一个系统界面，返回是否成功（桥的工作线程不能直接 startActivity）。 */
+    /**
+     * 在 UI 线程发起一个系统界面，返回是否成功（桥的工作线程不能直接 startActivity）。
+     *
+     * 必须等 UI 线程真的跑完再返回：`runOnUiThread` 是 post，旧写法 post 完立刻读 `launched`，
+     * 在桥的工作线程上恒为 false——选择器其实已经弹了，却回「当前无法打开文件选择器」，
+     * 文件 / 数据库 / 备份恢复入口全部白忙一场。
+     */
     private fun onUi(block: () -> Unit): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) return runCatching(block).isSuccess
         var launched = false
-        runOnUiThread { launched = runCatching(block).isSuccess }
-        return launched
+        val done = java.util.concurrent.CountDownLatch(1)
+        runOnUiThread {
+            try {
+                launched = runCatching(block).isSuccess
+            } finally {
+                done.countDown()
+            }
+        }
+        // 等不到 UI 线程回话就判失败（宁可报"打不开"也不要谎报"已打开"）
+        return done.await(5, java.util.concurrent.TimeUnit.SECONDS) && launched
     }
 
     /** 文件选择器：拿持久读/写权限，否则选完离开本次会话就再也读不到那个文件。 */
