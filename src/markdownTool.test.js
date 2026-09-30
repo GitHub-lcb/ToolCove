@@ -316,3 +316,16 @@ describe("行内标记剥离", () => {
     expect(stripInline("普通文本")).toBe("普通文本");
   });
 });
+
+describe("规整：空行压缩不得改掉代码块正文", () => {
+  it("代码块里的 # 开头行不算标题，前后不插空行", () => {
+    // 回归：compact 后仍用原始下标查 flags，行号错位 → 往 ``` 内部塞空行
+    const src = "# 标题\n\n\n\n正文一\n\n\n\n正文二\n\n\n\n```\n# 这是代码里的注释\n```\n";
+    expect(normalize(src)).toBe("# 标题\n\n正文一\n\n正文二\n\n```\n# 这是代码里的注释\n```\n");
+  });
+
+  it("代码块内部的连续空行原样保留（代码里的空行有意义）", () => {
+    const src = "```\na\n\n\n\nb\n```\n";
+    expect(normalize(src)).toBe(src);
+  });
+});

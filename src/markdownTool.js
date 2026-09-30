@@ -269,20 +269,25 @@ export function normalize(markdown) {
     line = line.replace(/^(\s*)[*+](\s+)/, "$1-$2");
     out.push(line);
   }
-  // 连续空行压成一个（代码块外的）
+  // 连续空行压成一个（代码块外的）。
+  // 压完行号就变了，所以 inCode 必须随行携带：后面按 compact 的下标回查 flags 会错位，
+  // 结果是把代码块里的 "# 开头" 行当标题，在它前后插空行——改掉了代码正文。
   const compact = [];
   for (let index = 0; index < out.length; index += 1) {
-    const blank = out[index].trim() === "" && !flags[index].inCode;
-    if (blank && compact.length && compact[compact.length - 1] === "") continue;
-    compact.push(blank ? "" : out[index]);
+    const inCode = !!flags[index]?.inCode;
+    const blank = out[index].trim() === "" && !inCode;
+    if (blank && compact.length && compact[compact.length - 1].line === "") continue;
+    compact.push({ line: blank ? "" : out[index], inCode });
   }
   // 标题前后各留一个空行（紧贴正文的标题在很多渲染器里会与上一段粘连）
   const spaced = [];
   for (let index = 0; index < compact.length; index += 1) {
-    const isHeading = !flags[index]?.inCode && /^#{1,6}\s/.test(compact[index]);
+    const { line, inCode } = compact[index];
+    const isHeading = !inCode && /^#{1,6}\s/.test(line);
     if (isHeading && spaced.length && spaced[spaced.length - 1] !== "") spaced.push("");
-    spaced.push(compact[index]);
-    if (isHeading && compact[index + 1] !== undefined && compact[index + 1] !== "") spaced.push("");
+    spaced.push(line);
+    const next = compact[index + 1];
+    if (isHeading && next && next.line !== "") spaced.push("");
   }
   // 收尾：
   //   · 只去掉**开头的空行**与**末尾的空白**，不能用 trim()——那会把首行有意义的缩进也吃掉
