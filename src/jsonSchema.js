@@ -60,10 +60,26 @@ function isMultipleOf(value, divisor) {
   return Math.abs(ratio - Math.round(ratio)) < 1e-9;
 }
 
+/**
+ * 真日历校验。V8 的 Date.parse 不把 2026-02-30 当错误，而是顺延成 3 月 2 日——
+ * 用它判非法日期会一律放过。
+ */
+function isCalendarDate(datePart) {
+  const [year, month, day] = String(datePart).split("-").map(Number);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
 const FORMAT_CHECKS = {
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-  date: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)),
-  "date-time": (value) => !Number.isNaN(Date.parse(value)) && /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value),
+  date: (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && isCalendarDate(value),
+  "date-time": (value) => {
+    const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?$/i.exec(String(value));
+    if (!m) return false;
+    // 60 是闰秒，RFC3339 允许
+    return isCalendarDate(m[1]) && Number(m[2]) <= 23 && Number(m[3]) <= 59 && Number(m[4] ?? 0) <= 60;
+  },
   uri: (value) => /^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(value) || /^[a-z][a-z0-9+.-]*:\S+$/i.test(value),
   uuid: (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
   ipv4: (value) => /^(\d{1,3}\.){3}\d{1,3}$/.test(value) && value.split(".").every((part) => Number(part) <= 255),

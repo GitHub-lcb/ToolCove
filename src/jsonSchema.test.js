@@ -449,3 +449,24 @@ describe("解读 Schema", () => {
     expect(rows.some((row) => row.note === "recursive")).toBe(true);
   });
 });
+
+describe("format：日期要真日历校验", () => {
+  it("V8 会顺延的非法日期必须判非法", () => {
+    // 回归：旧实现用 Date.parse 判非法，2026-02-30 被顺延成 3 月 2 日而判通过
+    for (const bad of ["2026-02-30", "2025-02-29", "2026-04-31", "2026-13-01"]) {
+      expect(validateSchema(bad, { type: "string", format: "date" }).valid, bad).toBe(false);
+    }
+    for (const good of ["2026-02-28", "2024-02-29", "2026-12-31"]) {
+      expect(validateSchema(good, { type: "string", format: "date" }).valid, good).toBe(true);
+    }
+  });
+
+  it("date-time 认时/分/秒范围，非法日历日同样拒绝", () => {
+    expect(validateSchema("2026-01-01T10:00:00Z", { type: "string", format: "date-time" }).valid).toBe(true);
+    expect(validateSchema("2026-01-01 10:00", { type: "string", format: "date-time" }).valid).toBe(true);
+    expect(validateSchema("2026-01-01T10:00:00+08:00", { type: "string", format: "date-time" }).valid).toBe(true);
+    for (const bad of ["2026-02-30T10:00:00Z", "2026-01-01T25:00:00Z", "2026-01-01T10:61:00Z"]) {
+      expect(validateSchema(bad, { type: "string", format: "date-time" }).valid, bad).toBe(false);
+    }
+  });
+});
