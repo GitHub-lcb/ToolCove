@@ -19,6 +19,7 @@ import ToolboxView from "./ToolboxView.vue";
 import GlobalSearch from "./GlobalSearch.vue";
 import ModuleTabs from "./ModuleTabs.vue";
 import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget } from "./navConfig.js";
+import { startCheckInScheduler, stopCheckInScheduler } from "./checkin/index.js";
 import pkg from "../package.json";
 
 const { t } = useI18n();
@@ -364,6 +365,9 @@ onMounted(async () => {
     setTimeout(autoBackup, 3000);
     // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
     setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+    // 自动签到的常驻定时器必须挂在主窗口：工具是独立 WebviewWindow，
+    // 关掉工具窗口定时器就没了。toolMode（工具独立窗口）时一律不挂。
+    if (!toolMode) startCheckInScheduler().catch(() => {});
   }
   if (!isTauri) return;
   applyThemeAccent();
@@ -402,6 +406,7 @@ onUnmounted(() => {
     telemetryTimer = null;
   }
   mqUnlisten && mqUnlisten();
+  if (!toolMode) stopCheckInScheduler();
 });
 </script>
 

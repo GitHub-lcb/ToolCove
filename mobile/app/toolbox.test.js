@@ -14,7 +14,15 @@ import { TOOLS, TOOL_BY_KEY, TOOL_GROUPS, progressOf, toolsOfGroup } from "./too
  * 所以：进名单的工具必须写明降级原因（note），且必须是桌面端 desktopOnly；
  * 不在名单里的工具一条都不许 ready:false。
  */
-const DESKTOP_ONLY_TOOLS = new Set(["downloader"]);
+const DESKTOP_ONLY_TOOLS = new Set([
+  "downloader",
+  // 自动签到：桌面端的价值一半在「常驻 + 开机自启的每日定时」，安卓既没有托盘常驻也没有
+  // 开机自启的等价物，这半边能力在手机上做不出来；剩下的一半（手动点一次）不值得再做一个页面。
+  "checkin",
+  // 抓包：要连目标应用的调试端口、还要把进程拉起来重���，这两件事在安卓上都不成立——
+  // 手机里要么根本没有那个应用，要么它跑在别的设备上，抓回来的请求也用不上。
+  "netcapture",
+]);
 
 describe("手机端工具箱目录", () => {
   it("每个工具的分组都在已定义的分组里（写错分组会让它在界面上消失）", () => {
@@ -119,7 +127,7 @@ describe("手机端工具箱目录", () => {
   it("toolsOfGroup 保持清单顺序（新增工具后这里要同步，否则界面顺序会漂）", () => {
     expect(toolsOfGroup("data").map((t) => t.key)).toEqual(["json", "xml", "schema", "markdown", "table", "convert", "diff", "time"]);
     expect(toolsOfGroup("development").map((t) => t.key)).toEqual(["crypto", "generator", "db"]);
-    expect(toolsOfGroup("network").map((t) => t.key)).toEqual(["request", "downloader", "network"]);
+    expect(toolsOfGroup("network").map((t) => t.key)).toEqual(["request", "downloader", "network", "netcapture"]);
     expect(toolsOfGroup("game").map((t) => t.key)).toEqual(["rail"]);
   });
 });

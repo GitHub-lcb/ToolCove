@@ -22,6 +22,8 @@
     "tool-downloader",
     "tool-db",
     "tool-chat",
+    "tool-checkin",
+    "tool-netcapture",
     "tool-label",
     "tool-rail",
     "tool-interview"

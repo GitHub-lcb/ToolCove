@@ -48,10 +48,10 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助", "面试刷题"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
-      ["network", "request", "downloader"],
+      ["network", "request", "downloader", "netcapture"],
       ["file", "image", "pdf", "label"],
       ["crypto", "db"],
-      ["chat"],
+      ["chat", "checkin"],
       ["rail"],
       ["interview"],
     ]);
@@ -65,6 +65,26 @@ describe("searchToolboxTools", () => {
     for (const keyword of ["AI", "对话", "Chat", "提示词", "GPT"]) {
       expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("chat");
     }
+  });
+
+  it("可按自动签到的关键词搜索", () => {
+    for (const keyword of ["签到", "打卡", "积分", "check-in", "checkin", "daily check in"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("checkin");
+    }
+  });
+
+  it("自动签到是桌面独占：接口要带 Cookie 且不开 CORS，定时还依赖托盘常驻", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "checkin")?.desktopOnly).toBe(true);
+  });
+
+  it("可按抓包的关键词搜索", () => {
+    for (const keyword of ["抓包", "抓取", "接口", "请求", "capture", "packet", "API", "DevTools"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("netcapture");
+    }
+  });
+
+  it("抓包是桌面独占：要连本机调试端口并拉起目标进程", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "netcapture")?.desktopOnly).toBe(true);
   });
 
   it("可按标签打印的关键词搜索", () => {

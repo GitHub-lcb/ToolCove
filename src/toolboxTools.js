@@ -82,6 +82,34 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwChat",
     ready: true,
   },
+  // 自动签到桌面独占有两条硬理由，都不是「懒得做」：
+  // 1. 签到请求要带 Cookie / Token，这些接口不开 CORS——浏览器端会被同源策略拦掉，
+  //    而桌面端走 Rust reqwest 原生发出，不受 CORS 约束；
+  // 2. 常驻定时依赖托盘与开机自启，浏览器页面关掉就没了，定时也就没了。
+  // （注释放在对象外：手机端那条测试用「key 到 desktopOnly 不超过 300 字符」的正则核对
+  //   桌面端确实标了 desktopOnly，注释放中间会把这条守卫撑爆。）
+  {
+    key: "checkin",
+    labelKey: "toolbox.registry.toolCheckin",
+    icon: "check",
+    category: "ai",
+    descKey: "toolbox.registry.toolCheckinDesc",
+    keywordsKey: "toolbox.registry.kwCheckin",
+    ready: true,
+    desktopOnly: true,
+    window: { width: 880, height: 640, minWidth: 620, minHeight: 460 },
+  },
+  {
+    key: "netcapture",
+    labelKey: "toolbox.registry.toolNetcapture",
+    icon: "search",
+    category: "network",
+    descKey: "toolbox.registry.toolNetcaptureDesc",
+    keywordsKey: "toolbox.registry.kwNetcapture",
+    ready: true,
+    desktopOnly: true,
+    window: { width: 960, height: 700, minWidth: 680, minHeight: 480 },
+  },
   {
     key: "label",
     labelKey: "toolbox.registry.toolLabel",

@@ -46,6 +46,12 @@ export const TOOLS = Object.freeze([
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: true },
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: true, note: "mobile.noteLabel" },
   { key: "chat", group: "ai", labelKey: "toolbox.registry.toolChat", ready: true },
+  // 桌面端有定时签到，手机端不做：安卓这边既没有托盘常驻也没有开机自启的等价物，
+  // 「每天定点自动签」在手机上只能是前台开着才有意义，那还不如让用户自己在网页上点一下。
+  { key: "checkin", group: "ai", labelKey: "toolbox.registry.toolCheckin", ready: false, desktopOnly: true, note: "mobile.noteCheckin" },
+  // 抓包要连本机调试端口并拉起目标进程，安卓上没有对应能力：
+  // 手机上要么没有那个应用，要么它跑在别的设备上，抓了也用不上。
+  { key: "netcapture", group: "network", labelKey: "toolbox.registry.toolNetcapture", ready: false, desktopOnly: true, note: "mobile.noteNetcapture" },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
   { key: "interview", group: "arcade", labelKey: "toolbox.registry.toolInterview", ready: true },
 ]);

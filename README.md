@@ -15,7 +15,7 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   plans, calls tools (including file, database, and network tools on the desktop build), shows
   every step live, and asks for confirmation before risky writes. Bring your own OpenAI-compatible
   endpoint; a run log is kept so an interrupted task can be resumed.
-- **Toolbox** — 20 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
+- **Toolbox** — 21 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
   keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
 
   | Group | Tools |
@@ -24,7 +24,7 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments) |
   | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export) |
   | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
-  | AI | AI chat (multi-session, image input, prompt presets) |
+  | AI | AI chat (multi-session, image input, prompt presets), Auto check-in (scheduled check-in for the daily-credit campaigns of AI agent tools, driven by site descriptors you fill in — see below) |
   | Game helpers | Rail Tycoon route solver (Lord of the Mysteries homestead trade run: enumerates every valid stop layout from the "next 3 stops" hints, locks the next stop and advises which card to take) |
   | Arcade | Interview prep (offline question banks for four interview tracks — backend/Java, algorithms, system design and frontend — where the model answer starts collapsed so you answer first, then rate yourself honestly; your rating drives a spaced-review queue, and every question credits the high-star open-source repository it draws on. 311 built-in questions across 75 topics under a controlled vocabulary, keyword/topic/difficulty/mastery filters, mock-interview sets drawn evenly from all four tracks, a Markdown/JSON importer, and `npm run bank:fetch` — a build script that scrapes any GitHub repository into an importable bank) |
 
@@ -54,6 +54,32 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
 desktop build, IndexedDB in the browser. No account, no telemetry uploads, no cloud sync unless you
 turn it on. Outbound traffic is only what you explicitly trigger: AI requests, HTTP debugging, and
 optional sync.
+
+### Auto check-in: how it works, and what it will not do
+
+The check-in endpoints of these agent tools are not public and change without notice, so **no
+endpoint is hardcoded**. Each site is a *descriptor* you fill in — which request to send, and how to
+read "already checked in today" out of the response. The tool validates the descriptor, encrypts the
+credentials (DPAPI on Windows), keeps its own per-day record so it never checks in twice, and
+reports the result exactly as the endpoint stated it.
+
+Three things it deliberately will not do:
+
+- **It never claims success it cannot prove.** An HTTP 200 is not success: many gateways wrap errors
+  in a 200 body, and an expired login often returns an HTML login page. If the business code or the
+  status field cannot be read, the tool says *cannot tell* and points at the field mapping you
+  should check. A tool that shows "checked in" every morning while nothing happens is worse than no
+  tool at all.
+- **It sends nothing when the descriptor is invalid.** `baseUrl` must be `https://` (plain `http`
+  would hand your cookie to anyone on the path), a path may not start with `//` (that would replace
+  the host), and every error is listed with the field that caused it.
+- **It does not bypass anything.** No captcha, no signature reverse-engineering, no reading another
+  application's private credential store. You supply your own login state. Note that automating
+  check-ins may violate a given service's terms — that is your call to make.
+
+Scheduling needs the app to stay resident: closing the main window minimizes to the tray, but
+quitting the app stops it. Enable launch-at-startup for unattended runs. A per-day attempt cap and
+`Retry-After` backoff keep it from hammering an endpoint.
 
 ## Browser build
 
@@ -210,10 +236,10 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
 
 - **Agent 工作台**：默认首屏。用自然语言描述目标，Agent 规划并调用工具（桌面端含文件、数据库、
   网络等能力），过程实时可见，写入类操作先确认后执行；支持中断续跑与运行记录。
-- **工具箱**：20 个内置工具——数据转换、文本处理、文本对比、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
+- **工具箱**：21 个内置工具——数据转换、文本处理、文本对比、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
   JSON Schema、时间调度、数据生成、网络诊断、
-  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
-  其中网络诊断、文件处理、数据库管理、标签打印依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
+  API 调试、文件处理、图片处理、PDF 工具、标签打印、加密与校验、数据库管理、AI 对话、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
+  其中网络诊断、文件处理、数据库管理、标签打印、自动签到依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
   标签打印面向佳博 GP-2120TF 这类 TSPL 热敏标签机：排版算成绝对坐标后直接生成 `TEXT` / `BARCODE` /

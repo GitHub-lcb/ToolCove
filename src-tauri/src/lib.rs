@@ -5,6 +5,7 @@ mod file_tool;
 mod git;
 mod label;
 mod network;
+mod netcapture;
 mod printer;
 mod secure;
 mod storage;
@@ -143,6 +144,12 @@ pub fn run() {
             network::network_ping,
             network::network_trace,
             network::network_interfaces,
+            // 抓包工具：探测 CDP 端点（绕开 CORS）、带调试端口拉起应用、查运行中的进程
+            netcapture::netcapture_probe,
+            netcapture::netcapture_launch,
+            netcapture::netcapture_find_processes,
+            netcapture::netcapture_pick_port,
+            netcapture::netcapture_read_node_capture,
             // 大文件多线程分片下载（下载器工具）
             downloader::downloader_probe,
             downloader::downloader_start,

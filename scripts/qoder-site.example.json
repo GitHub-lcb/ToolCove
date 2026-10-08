@@ -1,0 +1,70 @@
+{
+  "_这份文件是说明用的样例，不是拿来直接导入的": [
+    "真值请用抓包工具生成：开着抓包工具 → 在 Qoder 里打开「专属活动权益」弹窗 →",
+    "选中 /sash/api/ 那两条请求 → 生成描述 → 加入签到站点。",
+    "工具会把 Authorization 一并抓下来，你不需要手抄任何凭据。",
+    "下面的 Authorization 值必须替换成真的，直接导入会因为假 token 而 401。"
+  ],
+
+  "key": "qoder",
+  "label": "Qoder CN",
+  "enabled": true,
+  "baseUrl": "https://openapi.qoder.com.cn",
+
+  "status": {
+    "method": "GET",
+    "path": "/sash/api/v1/me/campaigns",
+    "headers": [["Authorization", "Bearer <从抓包工具生成，不要手抄>"]]
+  },
+
+  "checkin": {
+    "method": "POST",
+    "path": "/sash/api/v1/me/campaigns/${campaignId}/claim",
+    "pathFrom": {
+      "campaignId": {
+        "path": "campaigns",
+        "where": { "actionType": "CLAIM_BENEFIT" },
+        "pick": "campaignId"
+      }
+    },
+    "headers": [["Authorization", "Bearer <从抓包工具生成，不要手抄>"]]
+  },
+
+  "read": {
+    "_为什么读活动自己的状态，而不是顶层 claimable": [
+      "顶层 claimable 语义含糊：实测在明明可领的时候给出过 false，",
+      "工具照它取反后判成「已签」并跳过，白丢了一天的额度。",
+      "活动自己的 claimStatus（CLAIMABLE / CLAIMED）才是准确的状态来源。",
+      "状态词由引擎直接识别，不需要再勾 checkedInInvert。"
+    ],
+    "checkedIn": {
+      "path": "campaigns",
+      "where": { "actionType": "CLAIM_BENEFIT" },
+      "pick": "claimStatus"
+    },
+    "points": "",
+    "message": "",
+    "code": "",
+    "successCodes": null
+  },
+
+  "_为什么必须用 pathFrom": [
+    "每日签到活动的窗口是「当天 10:00 到次日 09:59（UTC+8）」，campaignId 每天不同：",
+    "  2026-10-05 是 01a0f1cc-d06c-7d4c-8ea0-4b52b24e94a5 (act-20260930-295)",
+    "写死 ID 的话第二天必定 404。pathFrom 让工具每次先查当天是哪一个，再去领。"
+  ],
+
+  "_凭据是 Bearer token 而不是 Cookie（实测结论）": [
+    "带上全部 qoder Cookie 打接口仍然 401：{\"code\":\"TOKEN_INVALID\",\"message\":\"missing authorization token\"}。",
+    "签到弹窗的 JS 里 fetch 写了 credentials:\"omit\"，全篇也没有 authorization 字样——",
+    "说明 token 是 Qoder 主进程用 webRequest 在网络层注入的，只在 requestWillBeSentExtraInfo 里看得到。",
+    "抓包工具已经会读这一层，所以能自动填上。"
+  ],
+
+  "_已知的局限": [
+    "claimable=false 既可能是「今天已领」，也可能是「还没到 10:00 刷新」，接口没有区分。",
+    "好在两种情况都应当「不领」，所以对自动签到没有实际影响。",
+    "claimStatus 精确到每个活动（在数组里），但取值路径不支持按条件筛数组元素，所以 read 只能用顶层的 claimable。",
+    "积分字段留空：claim 响应不返回到账数量，campaigns 里的 benefit.amount 是活动面值（固定 100），不是账户余额。"
+  ]
+}
