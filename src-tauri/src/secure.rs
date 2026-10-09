@@ -54,6 +54,13 @@ mod dpapi {
     }
 }
 
+/// 供其它模块复用的 DPAPI 解密（当前用户作用域）。
+/// 例：qoder_auth 要解 Chromium OSCrypt 的密钥，那层壳就是 DPAPI。
+#[cfg(windows)]
+pub(crate) fn dpapi_unprotect(blob: &[u8]) -> Result<Vec<u8>, String> {
+    dpapi::unprotect(blob)
+}
+
 /// 加密字符串：返回 base64（前端存 settings.json 时加 enc: 前缀）
 #[tauri::command]
 pub fn encrypt_text(plain: String) -> Result<String, String> {

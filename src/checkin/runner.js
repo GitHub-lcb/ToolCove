@@ -7,12 +7,17 @@
 // 1. 同一站点同时只允许一个在途请求。自动定时和用户手点撞在一起时，
 //    两个请求都会「今天没签」然后各签一次——多签一次轻则被限流，重则被风控标记。
 // 2. 站点之间顺序执行，不并发。定时任务不该在一分钟内同时打向 N 个站点。
-import { classifyCheckIn, classifyStatus, OUTCOME } from "./classify.js";
+import { classifyCheckIn, classifyStatus, OUTCOME, RETRYABLE_OUTCOMES } from "./classify.js";
 import { appendHistory, applyResult, normalizePolicy, planDailyRun, todayKey, withPoints } from "./daily.js";
-import { resolvePath } from "./extract.js";
+import { EXTRACT_ERROR, resolvePath } from "./extract.js";
 import { runAction } from "./http.js";
 
 export const TRIGGER = Object.freeze({ MANUAL: "manual", AUTO: "auto", CATCHUP: "catchup" });
+
+// 「查状态」这次请求本身没成功的几种。带 pathFrom 的站点遇到它们必须停下：
+// 取值的数据来源就是这次的响应体，响应都是错的了，从里面取不到值理所当然，
+// 但把「登录态失效」报成「描述无效」会把人带去改一份没写错的配置。
+const STATUS_FAILED = new Set([OUTCOME.NETWORK, OUTCOME.AUTH, OUTCOME.RATE_LIMITED, OUTCOME.SERVER, OUTCOME.CLIENT, OUTCOME.NOT_JSON, ...RETRYABLE_OUTCOMES]);
 
 /** 状态响应不是合法 JSON 时返回 undefined，让下游报「取不到」而不是在这里炸。 */
 function tryParseJson(text) {
@@ -82,6 +87,9 @@ export function createCheckInRunner(deps) {
     let statusJson;
     if (siteInput?.status) {
       const probe = await runAction(siteInput, "status", deps);
+      if (probe.credentialError) {
+        return { key, outcome: OUTCOME.AUTH, error: `credential:${probe.credentialError}`, trigger, at: now(), points };
+      }
       if (probe.descriptor) siteInput = probe.descriptor;
       // 只有拿到可解析的 JSON 才可能取值成功。解析失败不单独报错——
       // 有 pathFrom 的站点会在下面的 resolve 里报出「取不到」，原因更具体。
@@ -92,6 +100,11 @@ export function createCheckInRunner(deps) {
       }
       // 查状态失败（鉴权/网络）时**不放弃签到**：不少接口的签到端点不依赖状态端点，
       // 直接签一次比把整轮判定挂掉更有用。失败原因留到签到结果里。
+      // 但 pathFrom 是个真依赖：值就在这次响应体里，响应都错了还去取，只会把
+      // 「登录态失效」报成「描述无效」。这类站点在这里就停，把真实原因带出去。
+      if (siteInput?.checkin?.pathFrom && STATUS_FAILED.has(status.outcome)) {
+        return { key, outcome: status.outcome, error: status.error || "", trigger, at: now(), points: status.points ?? points };
+      }
       points = status.points ?? points;
     }
 
@@ -100,10 +113,14 @@ export function createCheckInRunner(deps) {
     if (siteInput?.checkin?.pathFrom) {
       const resolved = resolvePath(siteInput.checkin.path, siteInput.checkin.pathFrom, statusJson);
       if (!resolved.ok) {
+        // 「取不到值」有两种：描述真的写错，和这次响应里活动列表本来就是空的。
+        // 后者不是配置问题，报成「描述无效」会让人去改一份没写错的描述。
+        // 只认「空列表」这一种：数组有内容却没匹配上，仍然更可能是 where 条件写错了。
+        const nothingToClaim = resolved.error === EXTRACT_ERROR.SELECTOR_NO_MATCH && resolved.detail === "empty-list";
         return {
           key,
-          outcome: OUTCOME.BAD_DESCRIPTOR,
-          error: `pathFrom:${resolved.error}${resolved.detail ? `(${resolved.detail})` : ""}`,
+          outcome: nothingToClaim ? OUTCOME.UNKNOWN : OUTCOME.BAD_DESCRIPTOR,
+          error: nothingToClaim ? "没有可领的活动" : `pathFrom:${resolved.error}${resolved.detail ? `(${resolved.detail})` : ""}`,
           trigger,
           at: now(),
           points,
@@ -117,6 +134,9 @@ export function createCheckInRunner(deps) {
     }
 
     const action = await runAction(siteInput, "checkin", deps);
+    if (action.credentialError) {
+      return { key, outcome: OUTCOME.AUTH, error: `credential:${action.credentialError}`, trigger, at: now(), points };
+    }
     const descriptor = action.descriptor;
     if (!descriptor) {
       return { key, outcome: OUTCOME.BAD_DESCRIPTOR, error: (action.errors || []).map((e) => `${e.field}:${e.code}`).join(", ") || "bad-descriptor", trigger, at: now(), points, descriptorErrors: action.errors || [] };

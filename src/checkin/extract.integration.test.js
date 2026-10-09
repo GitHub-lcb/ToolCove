@@ -93,14 +93,17 @@ describe("带动态路径的站点描述", () => {
     expect(result.error).toContain("selectorNoMatch");
   });
 
-  it("状态响应不是 JSON 时报取值失败，而不是发出带 ${} 的畸形请求", async () => {
+  it("状态响应是登录页时报「不是 JSON」，不再伪装成描述无效——同样不发畸形请求", async () => {
     const { runner, calls } = harness([
       { ok: true, status: 200, text: "<html>登录已失效</html>", error: "", retryAfterMs: 0 },
       ok({ status: "CLAIMED" }),
     ]);
     const result = await runner.runSite(QODER, {}, { trigger: TRIGGER.MANUAL });
     expect(calls).toHaveLength(1);
-    expect(result.error).toContain("pathFrom:");
+    // 取值的数据来源就是这次响应，它连 JSON 都不是，再跑 pathFrom 只会得出
+    // 「你的描述写错了」这个假结论（真实原因：登录态过期）。
+    expect(result.outcome).toBe(OUTCOME.NOT_JSON);
+    expect(result.error).not.toContain("pathFrom:");
   });
 
   it("描述文件里占位符没有对应取值规则时，本地就拦下不发请求", async () => {
@@ -109,6 +112,46 @@ describe("带动态路径的站点描述", () => {
     const result = await runner.runSite(bad, {}, { trigger: TRIGGER.MANUAL });
     expect(calls).toHaveLength(0);
     expect(result.outcome).toBe(OUTCOME.BAD_DESCRIPTOR);
+  });
+
+  it("登录态失效（401 + 空响应）报「鉴权失效」，不再伪装成描述无效", async () => {
+    // 这就是当初那个坑：token 过期后响应体是空的，取不到 campaigns，
+    // 于是界面显示「描述无效」，让人去改一份根本没写错的配置。
+    const { runner, calls } = harness([
+      { ok: false, status: 401, text: "", error: "", retryAfterMs: 0 },
+      ok({ status: "CLAIMED" }),
+    ]);
+    const result = await runner.runSite(QODER, {}, { trigger: TRIGGER.MANUAL });
+    expect(calls).toHaveLength(1);
+    expect(result.outcome).toBe(OUTCOME.AUTH);
+    expect(result.error).toContain("401");
+    expect(result.error).not.toContain("pathFrom:");
+  });
+
+  it("活动列表为空时报「没有可领的活动」，而不是描述无效", async () => {
+    const { runner, calls } = harness([ok({ uid: "u", showCampaign: false, claimable: false, campaigns: [] }), ok({ status: "CLAIMED" })]);
+    const result = await runner.runSite(QODER, {}, { trigger: TRIGGER.MANUAL });
+    expect(calls).toHaveLength(1);
+    expect(result.error).toBe("没有可领的活动");
+    expect(result.outcome).not.toBe(OUTCOME.BAD_DESCRIPTOR);
+  });
+
+  it("凭据取不到时一个请求都不发，并说明原因", async () => {
+    const calls = [];
+    const local = createCheckInRunner({
+      now: () => AT,
+      request: async (req) => {
+        calls.push(req);
+        return ok(statusBody);
+      },
+      resolveCredential: async () => {
+        throw new Error("没有找到 Qoder 的登录态文件");
+      },
+    });
+    const result = await local.runSite({ ...QODER, credentialSource: "qoder-cn-local" }, {}, { trigger: TRIGGER.MANUAL });
+    expect(calls).toHaveLength(0);
+    expect(result.outcome).toBe(OUTCOME.AUTH);
+    expect(result.error).toContain("没有找到 Qoder 的登录态文件");
   });
 
   it("没有 status 动作却有 pathFrom —— 保存时就判不成立，不留到定时任务里才炸", () => {

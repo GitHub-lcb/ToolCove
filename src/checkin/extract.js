@@ -63,7 +63,9 @@ export function extractValue(source, selector) {
     if (!where || typeof where !== "object") return true;
     return Object.entries(where).every(([k, v]) => Object.prototype.hasOwnProperty.call(item, k) && item[k] === v);
   });
-  if (!matches) return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, JSON.stringify(where || {}));
+  // 没匹配上分两种，detail 要能区分开：数组本来就是空的（站点此刻就没有活动，
+  // 不是谁把配置写错了），还是数组有内容但条件对不上（那才是描述/条件的问题）。
+  if (!matches) return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, list.length ? JSON.stringify(where || {}) : "empty-list");
 
   const value = pick ? pickPath(matches, pick) : matches;
   return checkValue(value, pick || String(path));

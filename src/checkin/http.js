@@ -5,6 +5,7 @@
 // 而「失败原因」本身就是要在界面上显示的东西，不该以异常形式存在。
 import { invoke } from "../platform/invoke.js";
 import { validateDescriptor } from "./descriptor.js";
+import { resolveCredential } from "./credentials.js";
 
 // Tauri 命令按 camelCase 取参：写 timeout_ms 会被静默忽略并回落 30s（踩过）。
 const MAX_TIMEOUT = 120000;
@@ -60,18 +61,35 @@ export async function runAction(descriptorInput, actionName, deps = {}) {
   const request = deps.request || requestOnce;
   const { ok, errors, value } = validateDescriptor(descriptorInput);
   if (!ok) {
-    return { response: { ok: false, status: 0, text: "", error: "bad-descriptor", retryAfterMs: 0 }, descriptor: null, errors };
+    return { response: { ok: false, status: 0, text: "", error: "bad-descriptor", retryAfterMs: 0 }, descriptor: null, errors, credentialError: "" };
   }
   const action = value[actionName];
   if (!action) {
-    return { response: { ok: false, status: 0, text: "", error: `no-${actionName}`, retryAfterMs: 0 }, descriptor: value, errors: [] };
+    return { response: { ok: false, status: 0, text: "", error: `no-${actionName}`, retryAfterMs: 0 }, descriptor: value, errors: [], credentialError: "" };
+  }
+  let headers = action.headers;
+  if (value.credentialSource) {
+    const resolve = deps.resolveCredential || resolveCredential;
+    try {
+      const cred = await resolve(value.credentialSource);
+      // 覆盖而不是追加：描述文件里可能还留着上一次抓包抄来的旧 authorization，
+      // 出现两条同名头时服务端取哪条不可控，表现就是「凭据明明配对了却还是 401」。
+      headers = [...(headers || []).filter(([name]) => String(name).toLowerCase() !== "authorization"), ["authorization", cred.authorization]];
+    } catch (error) {
+      return {
+        response: { ok: false, status: 0, text: "", error: "credential", retryAfterMs: 0 },
+        descriptor: value,
+        errors: [],
+        credentialError: String(error?.message || error),
+      };
+    }
   }
   const response = await request({
     method: action.method,
     url: joinUrl(value.baseUrl, action.path),
-    headers: action.headers,
+    headers,
     body: action.body || "",
     timeoutMs: value.timeoutMs,
   });
-  return { response, descriptor: value, errors: [] };
+  return { response, descriptor: value, errors: [], credentialError: "" };
 }

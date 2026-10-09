@@ -73,26 +73,34 @@ function textOf(json, read) {
 /**
  * 读「是否已签」字段。
  *
- * 两种形态：
+ * 三种形态：
  *   - 点路径字符串（如 "data.checkedIn"）——普通接口；
- *   - 带 where 的条件选择器——状态藏在数组元素里时用（「哪个活动」+「它的状态」）。
- *     实测 Qoder 每日签到的准确状态就在 campaigns[] 里那条 CLAIM_BENEFIT 的 claimStatus 上，
- *     顶层那个汇总布尔字段会在明明可领时给出 false，照它判会漏签。
+ *   - 带 where 的条件选择器——状态藏在数组元素里时用（「哪个活动」+「它的状态」）；
+ *   - 上面两者的**数组**——按顺序试，第一个读得出的算数。
+ *
+ * 为什么需要数组：同一个站点的「查状态」和「执行签到」两个响应形状可以完全不同
+ * （Qoder CN：前者是 campaigns[].claimStatus，后者是顶层 status），而 read 只有一份配置。
+ * 只填其中一个，另一个响应就读不出状态——签成了显示「无法判定」，
+ * 或者明明已领过却显示「描述无效」。
  *
  * 取反是必需能力：有些接口的布尔语义是「**可以**领」而不是「已经领」。
  * 不取反就会在恰好该签的时候判成「已签」并跳过，而且全程不报错。
  */
-function readCheckedIn(json, read) {
-  let raw;
-  if (read.checkedIn && typeof read.checkedIn === "object") {
-    const got = extractValue(json, read.checkedIn);
-    raw = got.ok ? got.value : undefined;
-  } else {
-    raw = pickPath(json, read.checkedIn);
+function oneTriState(json, spec) {
+  if (spec && typeof spec === "object") {
+    const got = extractValue(json, spec);
+    return got.ok ? toTriState(got.value) : undefined;
   }
-  const tri = toTriState(raw);
-  if (tri === undefined) return undefined;
-  return read.checkedInInvert ? !tri : tri;
+  return toTriState(pickPath(json, spec));
+}
+
+function readCheckedIn(json, read) {
+  const specs = Array.isArray(read.checkedIn) ? read.checkedIn : [read.checkedIn];
+  for (const spec of specs) {
+    const tri = oneTriState(json, spec);
+    if (tri !== undefined) return read.checkedInInvert ? !tri : tri;
+  }
+  return undefined;
 }
 
 /**

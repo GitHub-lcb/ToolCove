@@ -9,6 +9,7 @@
 import { loadToolbox, saveToolbox } from "../toolboxStore.js";
 import { loadSecureToolbox, saveSecureToolbox, isSensitiveName } from "../secureToolbox.js";
 import { encryptValue, decryptValue } from "../secure.js";
+import { mergeBuiltinSites } from "./builtin.js";
 
 export const SITES_KEY = "checkin-sites";
 export const STATE_KEY = "checkin-state";
@@ -38,7 +39,9 @@ export const restoreSites = (sites) => transformSiteHeaders(sites, decryptValue)
 
 export async function loadSites() {
   // 读回来的已经是解密后的明文；旧版本若存的是明文，restore 会原样返回（decryptValue 对无前缀值透传）。
-  return loadSecureToolbox(SITES_KEY, [], restoreSites);
+  const stored = await loadSecureToolbox(SITES_KEY, [], restoreSites);
+  // 内置站点在读取时合并进来：用户没碰过就凭空出现，碰过则按版本升级（见 builtin.js）。
+  return mergeBuiltinSites(stored);
 }
 
 /** 防抖写（200ms）——描述文件在编辑框里逐字输入时不该每敲一下就写一次盘。 */
@@ -46,9 +49,18 @@ export function saveSites(sites, onError) {
   saveSecureToolbox(SITES_KEY, sites, protectSites, onError);
 }
 
+// 内置站点改过 key（区分 CN 与国际版）：读取时把旧 key 的状态带过来，
+// 否则用户昨天刚签成的记录会凭空消失，今天又被判成「没签过」再跑一遍。
+const RENAMED_SITE_KEYS = { qoder: "qoder-cn" };
+
 export async function loadStates() {
   const value = await loadToolbox(STATE_KEY, {});
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const states = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const from = Object.keys(RENAMED_SITE_KEYS).find((key) => states[key] && !states[RENAMED_SITE_KEYS[key]]);
+  if (!from) return states;
+  const next = { ...states, [RENAMED_SITE_KEYS[from]]: states[from] };
+  delete next[from];
+  return next;
 }
 
 export function saveStates(states, onError) {

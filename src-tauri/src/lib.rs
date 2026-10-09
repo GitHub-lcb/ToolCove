@@ -7,6 +7,7 @@ mod label;
 mod network;
 mod netcapture;
 mod printer;
+mod qoder_cn_auth;
 mod secure;
 mod storage;
 mod telemetry;
@@ -195,7 +196,9 @@ pub fn run() {
             telemetry::telemetry_submit,
             // 加密安全存储
             secure::encrypt_text,
-            secure::decrypt_text
+            secure::decrypt_text,
+            // 自动签到：读 Qoder CN 自己的本地登录态，省掉「每次重新抓包」
+            qoder_cn_auth::qoder_cn_auth_token
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

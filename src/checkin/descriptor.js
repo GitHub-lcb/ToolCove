@@ -6,6 +6,7 @@
 // 所以本模块的重点不是「能解析」，而是「填错时绝不发出请求，并把错在哪一条指出来」。
 import { parsePath } from "./paths.js";
 import { placeholdersIn } from "./extract.js";
+import { isCredentialSource } from "./credentials.js";
 
 // RFC 7230 的 token 字符集：header 名不允许出现分隔符，否则会变成请求走私。
 const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -46,6 +47,20 @@ function validatePath(path, field, errors) {
 }
 
 function validateResponsePath(path, field, errors, { required, allowSelector = false }) {
+  // 数组 = 「按顺序试，第一个读得出的算数」。给「查状态」和「执行签到」响应形状不同的站点用，
+  // 否则一份 read 只能对上其中一个，另一个就会显示成「无法判定」。
+  if (Array.isArray(path)) {
+    if (!allowSelector) {
+      errors.push(err(field, "pathSyntax"));
+      return;
+    }
+    if (!path.length) {
+      errors.push(err(field, "fieldRequired"));
+      return;
+    }
+    path.forEach((one, i) => validateResponsePath(one, `${field}[${i}]`, errors, { required: false, allowSelector: true }));
+    return;
+  }
   // 允许条件选择器形态：状态常常藏在数组元素里（「哪个活动」+「它的状态」），
   // 点路径取不到，只能用顶层的汇总字段——而汇总字段语义往往不准。
   if (allowSelector && path && typeof path === "object") {
@@ -246,6 +261,10 @@ export function validateDescriptor(input, { existingKeys = [] } = {}) {
   else if (label.length > 60) errors.push(err("label", "labelTooLong"));
 
   const baseUrl = normalizeBaseUrl(input.baseUrl, errors);
+  // 凭据来源：填了它就不该再手填 authorization——手抄的那份会随客户端登录轮换而过期，
+  // 运行时反而是当场读的那份一直有效。两者同时存在时以 credentialSource 为准（http 层覆盖）。
+  const credentialSource = String(input.credentialSource ?? "").trim();
+  if (credentialSource && !isCredentialSource(credentialSource)) errors.push(err("credentialSource", "credentialSourceUnknown"));
   const status = normalizeAction(input.status, "status", errors, { fallbackMethod: "GET", allowBody: false });
   const checkin = normalizeAction(input.checkin, "checkin", errors, { fallbackMethod: "POST", allowBody: true });
   if (!checkin) errors.push(err("checkin", "fieldRequired"));
@@ -266,6 +285,7 @@ export function validateDescriptor(input, { existingKeys = [] } = {}) {
       // 缺省启用：填完就该能用。停用走界面上的开关（enabled: false）。
       enabled: input.enabled !== false,
       baseUrl,
+      ...(credentialSource ? { credentialSource } : {}),
       status,
       checkin,
       read,

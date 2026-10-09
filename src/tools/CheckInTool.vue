@@ -304,6 +304,7 @@ function fmtTime(at) {
           <span class="ck-badge" :data-tone="toneOf(site)">{{ outcomeLabel(site) }}</span>
           <strong>{{ site.label }}</strong>
           <code class="ck-key">{{ site.key }}</code>
+          <span v-if="site.builtin" class="ck-tag">{{ t("checkin.builtinTag") }}</span>
           <span v-if="states[site.key]?.points != null" class="ck-points">{{ states[site.key].points }}</span>
         </div>
         <div class="ck-item-meta">
@@ -318,7 +319,9 @@ function fmtTime(at) {
           <button class="btn small" :data-role="`toggle-${site.key}`" @click="toggleSite(site)">
             {{ site.enabled === false ? t("checkin.enable") : t("checkin.disable") }}
           </button>
-          <button class="btn small danger" :data-role="`remove-${site.key}`" @click="removeSite(site)">{{ t("checkin.remove") }}</button>
+          <!-- 内置站点不给「删除」：下次读取会原样合并回来，删了等于没删，只会让人以为删不掉。
+               要它别跑就用「停用」，那个选择会被存下来。 -->
+          <button v-if="!site.builtin" class="btn small danger" :data-role="`remove-${site.key}`" @click="removeSite(site)">{{ t("checkin.remove") }}</button>
         </div>
         <details v-if="historyOf(site).length" class="ck-history">
           <summary>{{ t("checkin.history") }}</summary>
@@ -381,6 +384,7 @@ function fmtTime(at) {
 .ck-badge[data-tone="warn"] { color: var(--warn); border-color: var(--warn-border); background: var(--warn-tint); }
 .ck-badge[data-tone="muted"] { color: var(--text-weak); border-color: var(--border); }
 .ck-key { font-size: var(--fs-xs); color: var(--text-weak); font-family: var(--font-mono); }
+.ck-tag { font-size: var(--fs-xs); color: var(--text-weak); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; }
 .ck-points { margin-left: auto; font-weight: 600; font-family: var(--font-num); }
 .ck-history { margin-top: var(--r-xs); font-size: var(--fs-xs); }
 .ck-history summary { cursor: pointer; color: var(--text-weak); }
