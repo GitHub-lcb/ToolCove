@@ -406,6 +406,31 @@ defineProps({
       <rect x="4" y="4" width="16" height="11" rx="2" />
       <path d="M2 19h20" />
     </template>
+    <!-- 截图标注工具组（截图工具栏专用） -->
+    <template v-else-if="name === 'circle'">
+      <circle cx="12" cy="12" r="9" />
+    </template>
+    <template v-else-if="name === 'arrow-up-right'">
+      <path d="M7 7h10v10" />
+      <path d="M7 17 17 7" />
+    </template>
+    <template v-else-if="name === 'pen-line'">
+      <path d="M12 20h9" />
+      <path d="M16.4 3.6a2 2 0 0 1 2.8 2.8L7.4 18.2a2 2 0 0 1-.9.5l-2.8.8a.5.5 0 0 1-.6-.6l.8-2.8a2 2 0 0 1 .5-.9z" />
+    </template>
+    <template v-else-if="name === 'highlighter'">
+      <path d="m9 11-6 6v3h9l3-3" />
+      <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+    </template>
+    <template v-else-if="name === 'mosaic'">
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="10" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="10" width="6" height="6" rx="1" />
+      <rect x="10" y="10" width="6" height="6" rx="1" />
+      <rect x="17" y="10" width="4" height="4" rx="1" />
+      <rect x="10" y="17" width="4" height="4" rx="1" />
+      <rect x="17" y="17" width="4" height="4" rx="1" />
+    </template>
   </svg>
 </template>
 

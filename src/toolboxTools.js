@@ -52,6 +52,19 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwImage",
     ready: true,
   },
+  // 截图独占桌面的硬理由：全局热键、整屏捕获、置顶贴图窗都是 Windows 原生能力，
+  // 浏览器/手机端没有对等物（网页拿不到整屏，也钉不住悬浮窗）。
+  {
+    key: "screenshot",
+    labelKey: "toolbox.registry.toolScreenshot",
+    icon: "crop",
+    category: "file",
+    descKey: "toolbox.registry.toolScreenshotDesc",
+    keywordsKey: "toolbox.registry.kwScreenshot",
+    ready: true,
+    desktopOnly: true,
+    window: { width: 860, height: 660, minWidth: 640, minHeight: 460 },
+  },
   {
     key: "generator",
     labelKey: "toolbox.registry.toolGenerator",

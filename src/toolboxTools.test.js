@@ -68,7 +68,7 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
       ["network", "request", "downloader", "netcapture"],
-      ["file", "image", "pdf", "label"],
+      ["file", "image", "screenshot", "pdf", "label"],
       ["crypto", "db"],
       ["chat", "checkin"],
       ["rail"],
@@ -134,6 +134,16 @@ describe("searchToolboxTools", () => {
 
   it("面试刷题是纯前端工具，浏览器端也可见", () => {
     expect(TOOLBOX_TOOLS.find((tool) => tool.key === "interview")?.desktopOnly).toBeFalsy();
+  });
+
+  it("可按截图的关键词搜索", () => {
+    for (const keyword of ["截图", "截屏", "贴图", "标注", "马赛克", "screenshot", "snip", "capture"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("screenshot");
+    }
+  });
+
+  it("截图是桌面独占：全局热键、整屏捕获与置顶贴图窗都是 Windows 原生能力", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "screenshot")?.desktopOnly).toBe(true);
   });
 });
 

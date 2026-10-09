@@ -48,6 +48,14 @@ encoding_rs = "0.8"
 unicode-width = "0.2"
 qrcode = { version = "0.14", default-features = false }
 barcoders = "2"
-windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory"] }
 # 自动签到读 Qoder 本地登录态：Chromium OSCrypt v10 是 AES-256-GCM，外面那层密钥才是 DPAPI
 aes-gcm = "0.10"
+# 截图工具的 PNG 编解码（纯 Rust，三端可编译；捕获/剪贴板依赖见下方 windows 段）
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# 截图工具的原生部分只做 Windows：xcap（Windows Graphics Capture）与 arboard（剪贴板图片）
+# 都按目标平台条件依赖，避免 Linux CI / 安卓构建被系统库拖挂（截图本来就是桌面独占能力）
+[target.'cfg(target_os = "windows")'.dependencies]
+xcap = "0.9"
+arboard = "3"

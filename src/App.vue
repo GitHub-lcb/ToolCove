@@ -29,6 +29,13 @@ const MODULES = NAV_MODULES;
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
+// 截图遮罩页 / 贴图窗（?shot=overlay|pin）：短命窗口，由 Rust 直接拉起，
+// 只渲染对应页面；主窗口的定时任务（备份/更新/签到/遥测）一律不参与
+const shotMode = new URLSearchParams(window.location.search).get("shot") || "";
+const ScreenshotOverlay = defineAsyncComponent(() => import("./screenshot/OverlayApp.vue"));
+const ScreenshotPin = defineAsyncComponent(() => import("./screenshot/PinApp.vue"));
+const SHOT_PAGES = { overlay: ScreenshotOverlay, pin: ScreenshotPin };
+const shotPage = computed(() => SHOT_PAGES[shotMode] || null);
 let toolWindowShown = false;
 async function revealToolWindow() {
   if (!toolMode || toolWindowShown || !isTauri) return;
@@ -260,7 +267,10 @@ function onKeydown(e) {
   if (key === "settings") openSettings(settingsSection.value);
   else activeModule.value = key;
 }
-onMounted(() => window.addEventListener("keydown", onKeydown));
+onMounted(() => {
+  if (shotMode) return; // Ctrl+1..5 模块热键只在应用外壳里生效
+  window.addEventListener("keydown", onKeydown);
+});
 onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 // 全局搜索/视图跳转导航：切模块 + Tab，并深链到具体记录（带 id 时）
@@ -349,6 +359,7 @@ async function onCheckVersion() {
 }
 
 onMounted(async () => {
+  if (shotMode) return; // 截图遮罩/贴图窗：不挂主窗口的监听与定时
   if (toolMode) setTimeout(revealToolWindow, 3000);
   applyTheme(themeMode.value);
   listen("tray-action", (e) => handleTrayAction(e.payload));
@@ -408,8 +419,11 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- 截图遮罩页 / 贴图窗：独立页面，不渲染应用外壳 -->
+  <component :is="shotPage" v-if="shotPage" />
+
   <!-- 工具独立窗口模式：只渲染工具本体 + toast，不渲染主界面 -->
-  <template v-if="toolMode">
+  <template v-else-if="toolMode">
     <ToolWindow :tool="toolMode" :show-toast="showToast" @ready="revealToolWindow" />
     <transition name="fade">
       <div v-if="toast" class="toast">

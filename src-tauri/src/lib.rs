@@ -8,6 +8,7 @@ mod network;
 mod netcapture;
 mod printer;
 mod qoder_cn_auth;
+mod screenshot;
 mod secure;
 mod storage;
 mod telemetry;
@@ -80,24 +81,15 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        // 全局快捷键 Ctrl+Alt+Q：唤起「快速记问题」（M2 问题视图迁入后前端生效）；
-        // 被占用时仅降级该快捷键，不让启动失败
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, _event| {
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _ = win.show();
-                        let _ = win.unminimize();
-                        let _ = win.set_focus();
-                    }
-                    let _ = app.emit("tray-action", "quick-note");
-                })
-                .build(),
-        )
+        // 全局快捷键插件只负责注册通道；各快捷键的行为在 setup 里按条注册
+        // （这里刻意不用 with_handler：它是「所有快捷键都会触发」的全局回调，
+        //   截图 F1/F3 接进来后会把「显示主窗口」误触到每个热键上）
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             db::init();
             setup_tray(app.handle())?;
             register_quick_note_shortcut(app.handle());
+            screenshot::init(app.handle());
             sanitize_main_window(app.handle(), true);
             Ok(())
         })
@@ -108,6 +100,11 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+                return;
+            }
+            // 截图遮罩 / 贴图窗口销毁兜底：清理会话与贴图注册表，防内存滞留
+            if let tauri::WindowEvent::Destroyed = event {
+                screenshot::on_window_destroyed(window.app_handle(), window.label());
                 return;
             }
             // window-state 极小矩形污染兜底（防抖 400ms）
@@ -198,7 +195,19 @@ pub fn run() {
             secure::encrypt_text,
             secure::decrypt_text,
             // 自动签到：读 Qoder CN 自己的本地登录态，省掉「每次重新抓包」
-            qoder_cn_auth::qoder_cn_auth_token
+            qoder_cn_auth::qoder_cn_auth_token,
+            // 截图工具：F1 冻结式截屏 + 标注 + F3 贴图（仅 Windows）
+            screenshot::screenshot_begin,
+            screenshot::screenshot_frame,
+            screenshot::screenshot_commit,
+            screenshot::screenshot_cancel,
+            screenshot::screenshot_settings_get,
+            screenshot::screenshot_settings_set,
+            screenshot::pin_create_from_clipboard,
+            screenshot::pin_image,
+            screenshot::pin_copy,
+            screenshot::pin_zoom,
+            screenshot::pin_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -206,8 +215,19 @@ pub fn run() {
 
 /// 尽力注册全局快捷键 Ctrl+Alt+Q，失败仅跳过
 fn register_quick_note_shortcut(app: &tauri::AppHandle) {
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
-    if let Err(e) = app.global_shortcut().register("Ctrl+Alt+Q") {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+    let result = app.global_shortcut().on_shortcut("Ctrl+Alt+Q", |app, _shortcut, event| {
+        if event.state != ShortcutState::Pressed {
+            return;
+        }
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.show();
+            let _ = win.unminimize();
+            let _ = win.set_focus();
+        }
+        let _ = app.emit("tray-action", "quick-note");
+    });
+    if let Err(e) = result {
         eprintln!("全局快捷键 Ctrl+Alt+Q 注册失败（可能被其它程序占用），跳过该快捷键: {e}");
     }
 }
@@ -261,24 +281,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 /// 托盘菜单文案：编译期嵌入前端 i18n 字典，按 settings.ui.locale 显式 en-US 选英文，其余用中文
 fn tray_labels(app: &tauri::AppHandle) -> [String; 4] {
-    let dict = if let Ok(dir) = app.path().app_data_dir() {
-        if let Ok(raw) = std::fs::read_to_string(dir.join("settings.json")) {
-            if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&raw) {
-                if settings.pointer("/ui/locale").and_then(|v| v.as_str()) == Some("en-US") {
-                    include_str!("../../src/i18n/en-US.json")
-                } else {
-                    include_str!("../../src/i18n/zh-CN.json")
-                }
-            } else {
-                include_str!("../../src/i18n/zh-CN.json")
-            }
-        } else {
-            include_str!("../../src/i18n/zh-CN.json")
-        }
-    } else {
-        include_str!("../../src/i18n/zh-CN.json")
-    };
-    let value = serde_json::from_str::<serde_json::Value>(dict).unwrap_or_default();
+    let value = serde_json::from_str::<serde_json::Value>(embedded_dict(app)).unwrap_or_default();
     let get = |path: &str| {
         value
             .pointer(path)
@@ -287,6 +290,35 @@ fn tray_labels(app: &tauri::AppHandle) -> [String; 4] {
             .unwrap_or_default()
     };
     [get("/tray/quickNote"), get("/tray/checkUpdate"), get("/tray/showMain"), get("/tray/quit")]
+}
+
+/// 前端 i18n 字典（编译期嵌入）：语言决议与前端 initLocale 对齐，
+/// 显式偏好 en-US 用英文，其余（含跟随系统/缺失）按应用主语言中文。
+fn embedded_dict(app: &tauri::AppHandle) -> &'static str {
+    let english = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join("settings.json")).ok())
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|settings| {
+            settings
+                .pointer("/ui/locale")
+                .and_then(|v| v.as_str())
+                .map(|locale| locale == "en-US")
+        })
+        .unwrap_or(false);
+    if english {
+        include_str!("../../src/i18n/en-US.json")
+    } else {
+        include_str!("../../src/i18n/zh-CN.json")
+    }
+}
+
+/// 原生侧文案（托盘、系统通知等非 WebView 场景）：按 i18n 指针取当前语言文本
+pub(crate) fn localized_text(app: &tauri::AppHandle, pointer: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(embedded_dict(app)).ok()?;
+    value.pointer(pointer).and_then(|v| v.as_str()).map(String::from)
 }
 
 #[cfg(test)]

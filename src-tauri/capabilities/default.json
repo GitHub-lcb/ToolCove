@@ -26,7 +26,8 @@
     "tool-netcapture",
     "tool-label",
     "tool-rail",
-    "tool-interview"
+    "tool-interview",
+    "tool-screenshot"
   ],
   "permissions": [
     "core:default",

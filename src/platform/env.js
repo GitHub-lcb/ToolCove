@@ -35,6 +35,7 @@ export const capabilities = {
   aiRequest: true, // AI 请求：桌面经 Rust 代理、手机经 Kotlin 桥、浏览器直连
   rawPrint: isDesktop, // 标签机 RAW 打印（Windows 打印队列）
   icmpDiagnostics: isDesktop, // ping / traceroute / DNS 等网络诊断
+  screenshot: isDesktop, // 截图：整屏捕获、全局热键、置顶贴图窗（Windows 原生）
 };
 
 export function desktopOnly(command) {

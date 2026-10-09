@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot-pin",
+  "description": "截图贴图窗口（tool-pin-*）：页面自显、拖动、另存为、关闭；缩放走 pin_zoom 命令由 Rust 改窗，因此不需要 set-size/set-position 权限",
+  "windows": ["tool-pin-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-start-dragging",
+    "dialog:default"
+  ]
+}

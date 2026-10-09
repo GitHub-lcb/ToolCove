@@ -96,6 +96,7 @@ describe("能力矩阵", () => {
       aiRequest: true,
       rawPrint: true,
       icmpDiagnostics: true,
+      screenshot: true,
     });
   });
 
@@ -106,8 +107,8 @@ describe("能力矩阵", () => {
     expect(Object.keys(capabilities).sort()).toEqual(
       [
         "aiRequest", "autostart", "backup", "cloudSync", "filePicker", "git", "icmpDiagnostics",
-        "imageStore", "jdbc", "localFile", "multiWindow", "nativeDialog", "rawPrint", "secureStore",
-        "sqlite", "systemProxy", "telemetryUpload", "tray", "updater",
+        "imageStore", "jdbc", "localFile", "multiWindow", "nativeDialog", "rawPrint", "screenshot",
+        "secureStore", "sqlite", "systemProxy", "telemetryUpload", "tray", "updater",
       ].sort()
     );
   });

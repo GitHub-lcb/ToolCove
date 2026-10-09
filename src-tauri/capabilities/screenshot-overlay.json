@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot-overlay",
+  "description": "截图全屏遮罩窗口（shot-overlay-*）：只显示冻结帧、选区与标注，自显/取焦/另存为是它仅有的原生诉求；置顶、定位、尺寸都由 Rust 侧建窗时给定，不经 JS API",
+  "windows": ["shot-overlay-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "dialog:default"
+  ]
+}

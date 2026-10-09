@@ -52,6 +52,8 @@ export const TOOLS = Object.freeze([
   // 抓包要连本机调试端口并拉起目标进程，安卓上没有对应能力：
   // 手机上要么没有那个应用，要么它跑在别的设备上，抓了也用不上。
   { key: "netcapture", group: "network", labelKey: "toolbox.registry.toolNetcapture", ready: false, desktopOnly: true, note: "mobile.noteNetcapture" },
+  // 截图要靠全局热键、整屏捕获与置顶贴图窗，安卓上都没有对等物；手机自带截图更顺手。
+  { key: "screenshot", group: "file", labelKey: "toolbox.registry.toolScreenshot", ready: false, desktopOnly: true, note: "mobile.noteScreenshot" },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
   { key: "interview", group: "arcade", labelKey: "toolbox.registry.toolInterview", ready: true },
 ]);
