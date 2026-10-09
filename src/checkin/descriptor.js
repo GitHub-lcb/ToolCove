@@ -165,7 +165,7 @@ function crossCheckPlaceholders(path, pathFrom, field, errors) {
 }
 
 /** 单个动作（查状态 / 执行签到）的校验与归一化。 */
-function normalizeAction(input, field, errors, { fallbackMethod, allowBody }) {
+function normalizeAction(input, field, errors, { fallbackMethod }) {
   if (input == null) return null;
   if (!isPlainObject(input)) {
     errors.push(err(field, "actionNotObject"));
@@ -179,7 +179,9 @@ function normalizeAction(input, field, errors, { fallbackMethod, allowBody }) {
   const headers = normalizeHeaders(input.headers, `${field}.headers`, errors);
   const body = input.body == null ? "" : String(input.body);
   if (body.length > MAX_BODY) errors.push(err(`${field}.body`, "bodyTooLong"));
-  if (body && !allowBody) errors.push(err(`${field}.body`, "bodyNotAllowed"));
+  // 按方法判断，不按动作判断：TRAE 的「查状态」本身就是 POST + body，
+  // 把它归成「status 不许带 body」只会逼用户把 body 挪到别处去。真正不许的是 GET。
+  if (body && method === "GET") errors.push(err(`${field}.body`, "bodyNotAllowed"));
   const base = { method, path: String(input.path ?? "").trim(), headers };
   if (pathFrom) base.pathFrom = pathFrom;
   if (!body) return base;
@@ -226,6 +228,12 @@ function normalizeRead(input, errors) {
     if (!Array.isArray(input.successCodes)) errors.push(err("read.successCodes", "notArray"));
     else successCodes = input.successCodes.map((v) => (typeof v === "number" ? v : String(v)));
   }
+  // 表示「限流 / 稍后再试」的业务码：HTTP 是 200，含义却是 429，要单独退避而不是算失败
+  let rateLimitCodes = null;
+  if (input.rateLimitCodes != null) {
+    if (!Array.isArray(input.rateLimitCodes)) errors.push(err("read.rateLimitCodes", "notArray"));
+    else rateLimitCodes = input.rateLimitCodes.map((v) => (typeof v === "number" ? v : String(v)));
+  }
   return {
     // 选择器形态原样保留（它是个对象，String() 会把它变成 "[object Object]"）
     checkedIn: input.checkedIn && typeof input.checkedIn === "object" ? input.checkedIn : String(input.checkedIn ?? "").trim(),
@@ -235,6 +243,7 @@ function normalizeRead(input, errors) {
     message: String(input.message ?? "").trim(),
     code: String(input.code ?? "").trim(),
     successCodes,
+    rateLimitCodes,
   };
 }
 

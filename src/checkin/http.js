@@ -71,10 +71,11 @@ export async function runAction(descriptorInput, actionName, deps = {}) {
   if (value.credentialSource) {
     const resolve = deps.resolveCredential || resolveCredential;
     try {
-      const cred = await resolve(value.credentialSource);
+      const dynamic = await resolve(value.credentialSource);
       // 覆盖而不是追加：描述文件里可能还留着上一次抓包抄来的旧 authorization，
       // 出现两条同名头时服务端取哪条不可控，表现就是「凭据明明配对了却还是 401」。
-      headers = [...(headers || []).filter(([name]) => String(name).toLowerCase() !== "authorization"), ["authorization", cred.authorization]];
+      const dynamicNames = new Set(dynamic.map(([name]) => String(name).toLowerCase()));
+      headers = [...(headers || []).filter(([name]) => !dynamicNames.has(String(name).toLowerCase())), ...dynamic];
     } catch (error) {
       return {
         response: { ok: false, status: 0, text: "", error: "credential", retryAfterMs: 0 },

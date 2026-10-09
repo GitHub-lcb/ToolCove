@@ -51,7 +51,8 @@ describe("200 但不是成功", () => {
   it("业务码不在白名单 → failed，且优先展示 message", () => {
     const r = classifyCheckIn(res(200, { code: 40101, message: "登录态已过期" }), READ_WITH_CODE);
     expect(r.outcome).toBe(OUTCOME.FAILED);
-    expect(r.error).toBe("登录态已过期");
+    // message 之外必须带上业务码：限流 / 无资格 / 活动结束常常共用一句文案，只有码能分清该不该重试
+    expect(r.error).toBe("登录态已过期 · code=40101");
   });
 
   it("配了 successCodes 但取不到 code → 也判 failed（路径写错等于没成）", () => {

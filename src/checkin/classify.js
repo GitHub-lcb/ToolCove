@@ -51,6 +51,19 @@ function readPoint(json, read) {
 }
 
 /**
+ * 有些接口用业务码表达「限流/稍后再试」：HTTP 是 200，含义却和 429 一样。
+ * 不认出来的话，它会被当成一次普通失败——不退避、当天继续按额度重试，
+ * 而服务端那边的惩罚窗口恰恰会被连发拉长（TRAE 的 9074 实测就是这样）。
+ */
+function rateLimitCode(json, read) {
+  const list = Array.isArray(read.rateLimitCodes) ? read.rateLimitCodes : [];
+  if (!list.length || !read.code) return null;
+  const code = pickPath(json, read.code);
+  if (code === undefined || code === null || code === "") return null;
+  return list.some((allowed) => String(allowed) === String(code)) ? code : null;
+}
+
+/**
  * 判断业务码是否成功。
  *
  * 没配 code/successCodes 就跳过这一步（很多接口没有业务码）。
@@ -68,6 +81,17 @@ function businessOk(json, read) {
 function textOf(json, read) {
   const message = pickPath(json, read.message);
   return message === undefined || message === null ? "" : String(message);
+}
+
+/**
+ * 业务码不匹配时把实际读到的 code 一起带出去。
+ *
+ * 限流、没有资格、活动结束在服务端是三个不同的码，但 message 常常是同一句
+ * 「请稍后再试」——不带码就只能猜，而这三者的正确处理方式完全不一样。
+ */
+function codeHint(json, read) {
+  const code = pickPath(json, read.code);
+  return code === undefined || code === null || code === "" ? "code-missing" : `code=${code}`;
 }
 
 /**
@@ -122,9 +146,14 @@ export function classifyStatus(response, read) {
   const parsed = parseJson(response.text);
   if (!parsed.ok) return { outcome: OUTCOME.NOT_JSON, error: parsed.reason, checkedIn: undefined };
 
+  const limited = rateLimitCode(parsed.value, read);
+  if (limited !== null) {
+    return { outcome: OUTCOME.RATE_LIMITED, error: `${textOf(parsed.value, read) || "限流"} · code=${limited}`, checkedIn: undefined };
+  }
+
   const codeOk = businessOk(parsed.value, read);
   if (codeOk === false) {
-    return { outcome: OUTCOME.FAILED, error: textOf(parsed.value, read) || "code-mismatch", checkedIn: undefined };
+    return { outcome: OUTCOME.FAILED, error: `${textOf(parsed.value, read) || "code-mismatch"} · ${codeHint(parsed.value, read)}`, checkedIn: undefined };
   }
   const tri = readCheckedIn(parsed.value, read);
   if (tri === undefined) return { outcome: OUTCOME.UNKNOWN, error: "checkedIn-unreadable", checkedIn: undefined };
@@ -161,9 +190,14 @@ export function classifyCheckIn(response, read) {
   const parsed = parseJson(response.text);
   if (!parsed.ok) return { outcome: OUTCOME.NOT_JSON, error: parsed.reason, checkedIn: undefined };
 
+  const limited = rateLimitCode(parsed.value, read);
+  if (limited !== null) {
+    return { outcome: OUTCOME.RATE_LIMITED, error: `${textOf(parsed.value, read) || "限流"} · code=${limited}`, checkedIn: undefined };
+  }
+
   const codeOk = businessOk(parsed.value, read);
   if (codeOk === false) {
-    return { outcome: OUTCOME.FAILED, error: textOf(parsed.value, read) || "code-mismatch", checkedIn: undefined };
+    return { outcome: OUTCOME.FAILED, error: `${textOf(parsed.value, read) || "code-mismatch"} · ${codeHint(parsed.value, read)}`, checkedIn: undefined };
   }
   const tri = readCheckedIn(parsed.value, read);
   const points = readPoint(parsed.value, read);

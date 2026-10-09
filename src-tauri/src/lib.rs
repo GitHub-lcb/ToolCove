@@ -12,6 +12,7 @@ mod screenshot;
 mod secure;
 mod storage;
 mod telemetry;
+mod trae_cn_auth;
 mod typesafe;
 
 use tauri::Emitter;
@@ -196,6 +197,7 @@ pub fn run() {
             secure::decrypt_text,
             // 自动签到：读 Qoder CN 自己的本地登录态，省掉「每次重新抓包」
             qoder_cn_auth::qoder_cn_auth_token,
+            trae_cn_auth::trae_cn_auth_token,
             // 截图工具：F1 冻结式截屏 + 标注 + F3 贴图（仅 Windows）
             screenshot::screenshot_begin,
             screenshot::screenshot_frame,

@@ -77,6 +77,41 @@ describe("Qoder CN 的两个响应形状共用一份 read", () => {
   });
 });
 
+describe("TRAE Work CN 内置条目", () => {
+  const TRAE = BUILTIN_SITES.find((site) => site.key === "trae-cn");
+
+  it("两个动作都带 req_source:2（2=TRAE Work/lite，1=IDE；填错不报错，只是拿不到活动）", () => {
+    for (const action of [TRAE.status, TRAE.checkin]) {
+      expect(action.method).toBe("POST");
+      expect(action.body, action.path).toContain('"req_source":2');
+    }
+  });
+
+  it("不存凭据：authorization 与 x-device-id 都由 credentialSource 当场给", () => {
+    expect(TRAE.credentialSource).toBe("trae-cn-local");
+    for (const action of [TRAE.status, TRAE.checkin]) expect(action.headers).toEqual([]);
+  });
+
+  it("被限流时把业务码一起报出来——message 是同一句，只有码能分清该不该重试", () => {
+    const got = classifyCheckIn(
+      { ok: true, status: 200, text: JSON.stringify({ code: 9074, message: "当前参与用户太多，请稍后再试" }), error: "", retryAfterMs: 0 },
+      TRAE.read,
+    );
+    // 9074 是排队惩罚窗口：判成限流才会退避，判成失败会当天继续重试、把窗口越拉越长
+    expect(got.outcome).toBe(OUTCOME.RATE_LIMITED);
+    expect(got.error).toContain("当前参与用户太多");
+    expect(got.error).toContain("code=9074");
+  });
+
+  it("其它业务码仍然算失败，不要一律当限流", () => {
+    const got = classifyCheckIn(
+      { ok: true, status: 200, text: JSON.stringify({ code: 1002, message: "没有资格" }), error: "", retryAfterMs: 0 },
+      TRAE.read,
+    );
+    expect(got.outcome).toBe(OUTCOME.FAILED);
+  });
+});
+
 describe("mergeBuiltinSites", () => {
   it("内置的是 CN 版：key 与 label 都要能和国际版区分开", () => {
     expect(QODER.key).toBe("qoder-cn");
@@ -90,7 +125,10 @@ describe("mergeBuiltinSites", () => {
 
   it("非内置的同名条目原样保留，不被内置覆盖", () => {
     const mine = { key: "qoder-cn", label: "我自己的", baseUrl: "https://example.com" };
-    expect(mergeBuiltinSites([mine])).toEqual([mine]);
+    const merged = mergeBuiltinSites([mine]);
+    expect(merged[0]).toEqual(mine);
+    // 其余内置条目照常补进来，但不能顶掉同名的用户条目
+    expect(merged.filter((s) => s.key === "qoder-cn")).toEqual([mine]);
   });
 
   it("内置条目过期时升级到代码这份，但保留用户的启用开关", () => {

@@ -61,6 +61,39 @@ export const BUILTIN_SITES = [
       successCodes: null,
     },
   },
+  {
+    key: "trae-cn",
+    label: "TRAE Work CN",
+    enabled: true,
+    builtin: true,
+    revision: 2,
+    // host 也存在 TRAE 自己的凭据里（实测 https://api.trae.cn）。这里写死是因为描述需要一个
+    // 固定的 baseUrl；真要换域名，改这里和改 credentialSource 是同一件事。
+    baseUrl: "https://api.trae.cn",
+    credentialSource: "trae-cn-local",
+    // 两个动作都是 POST，且都要求 req_source：**2 = TRAE Work/lite，1 = TRAE IDE**。
+    // 填错不报错，只会拿不到活动，所以两处必须一起改。
+    status: { method: "POST", path: "/trae/api/v2/ug/checkin_credits/status", headers: [], body: '{"req_source":2}' },
+    checkin: { method: "POST", path: "/trae/api/v2/ug/checkin_credits/claim", headers: [], body: '{"req_source":2}' },
+    read: {
+      // 实测（只读打了一次 status）：
+      //   {"checked_in":false,"code":0,"credits":100,"enable":true,"extra_credits":100,"message":"success"}
+      // 所以 checked_in 就是「今天签了没」，code=0 是业务成功——两个都配上，
+      // 免得 HTTP 200 但业务失败时被当成签到成功。
+      checkedIn: "checked_in",
+      points: "",
+      message: "message",
+      code: "code",
+      // 0 是成功码；toTriState(0) 会把 0 读成 false，所以这里必须靠 successCodes 判，
+      // 不能把 code 当已签字段用。
+      successCodes: [0],
+      // 9074 的文案是「当前参与用户太多，请稍后再试」，但**它不代表账号被限流**——
+      // 我们第一次拿到它是因为把整条 aha JSON 记录当成设备号发出去了（服务端对坏请求
+      // 也只回这一句通用文案）。保留这个映射的理由是：既然它的语义就是「稍后再试」，
+      // 按限流退避（30 分钟）永远比按失败重试安全，连发只会让惩罚窗口变长。
+      rateLimitCodes: [9074],
+    },
+  },
 ];
 
 /** 把内置站点并进用户列表；同名但非内置的条目原样保留。 */
