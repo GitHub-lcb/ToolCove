@@ -116,6 +116,12 @@ onMounted(async () => {
     blobUrl = bytesToBlobUrl(base64ToBytes(b64));
     imageUrl.value = blobUrl;
     phase.value = "ready";
+    // 等图片解码 + 两帧合成再显窗：贴图出现的第一眼就是图本身，不闪空底
+    const img = document.querySelector(".pin-image");
+    if (img && img.decode) {
+      await img.decode().catch(() => {});
+    }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await getCurrentWindow().show();
   } catch (e) {
     failure.value = String(e?.message || e);

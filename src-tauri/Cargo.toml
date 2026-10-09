@@ -61,3 +61,17 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 xcap = "0.9"
 arboard = "3"
+
+# 截图的「抓帧 → PNG 编码 → IPC 回传」在 F1 关键路径上：编完页面才能拿到帧、遮罩才能显出来。
+# dev（tauri dev）默认 opt-level=0，实测 1920x1200@1.5 一块屏编码要 1.5s（release 差一个数量级），
+# 于是只给这几个热路径依赖单独开优化——拿回 dev 手感，又不必把整棵依赖树重编一遍。
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.xcap]
+opt-level = 3
+[profile.dev.package.base64]
+opt-level = 3

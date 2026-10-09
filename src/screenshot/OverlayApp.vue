@@ -25,7 +25,6 @@ const sessionId = params.get("session") || "";
 const monitorIndex = Number(params.get("monitor") || 0);
 
 const phase = ref("loading"); // loading | ready | closing
-const failure = ref("");
 const busy = ref(false);
 const rootRef = ref(null);
 const canvasRef = ref(null);
@@ -97,6 +96,11 @@ function redraw() {
 
   drawMask(ctx, sel);
   if (sel) drawSelectionUi(ctx, sel);
+}
+
+/** 等两帧：第一帧把画布的栅格化结果提交给合成器，第二帧确认它已排入上屏队列 */
+function nextPaint() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 function scheduleRender() {
@@ -695,10 +699,29 @@ const magnifierStyle = computed(() => {
 
 // ---------------- 生命周期 ----------------
 
+// 抓帧是「先建窗（页面开始加载）、后抓帧编码」的并行流程：帧没编好时 Rust 返回
+// 「截图尚未就绪」，这里固定间隔重试到拿到帧、或超过兜底时限。
+// 匹配词必须与 Rust 侧 FRAME_PENDING 一致（见 screenshot.rs）。
+const FRAME_PENDING_MARK = "截图尚未就绪";
+const FRAME_WAIT_DEADLINE_MS = 20000;
+
+async function fetchFrameWithRetry() {
+  const deadline = Date.now() + FRAME_WAIT_DEADLINE_MS;
+  for (;;) {
+    try {
+      return await invoke("screenshot_frame", { sessionId, monitor: monitorIndex });
+    } catch (e) {
+      const message = String(e?.message || e);
+      if (!message.includes(FRAME_PENDING_MARK) || Date.now() > deadline) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+  }
+}
+
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown);
   try {
-    const frame = await invoke("screenshot_frame", { sessionId, monitor: monitorIndex });
+    const frame = await fetchFrameWithRetry();
     const bytes = base64ToBytes(frame.pngB64);
     blobUrl = bytesToBlobUrl(bytes);
     const image = new Image();
@@ -726,13 +749,19 @@ onMounted(async () => {
 
     phase.value = "ready";
     redraw();
-    // 首帧画好再显窗：加载期间用户看到的是桌面本身，而不是白屏
+    // 首帧真正合成上屏再显窗：redraw() 只是把绘制命令排进画布，Chromium 的栅格化/合成
+    // 还差一两帧——这时显窗会先闪一帧空底（页面底色）。等两帧再 show，遮罩出现的第一眼
+    // 就是冻结帧本身（加载期间用户看到的则是桌面，不是任何中间态）
+    await nextPaint();
     const win = getCurrentWindow();
     await win.show();
     await win.setFocus();
   } catch (e) {
-    failure.value = String(e?.message || e);
+    // 取帧失败（含超时）：留着遮罩窗没有意义，主动请 Rust 收掉整次会话。
+    // 不在此渲染错误——窗口马上会被销毁，留个控制台线索即可
+    console.error("截图遮罩取帧失败", e);
     phase.value = "closing";
+    invoke("screenshot_cancel", { sessionId }).catch(() => {});
   }
 });
 

@@ -61,24 +61,32 @@ function makeFramePngBase64(width, height) {
   return png.toString("base64");
 }
 
-/** 打开遮罩页：伪 Tauri IPC 喂冻结帧，其余截图命令记录调用；返回逻辑→物理的换算系数。 */
-async function openOverlay(page) {
+/** 打开遮罩页：伪 Tauri IPC 喂冻结帧，其余截图命令记录调用；返回逻辑→物理的换算系数。
+ *  pendingTimes > 0 时先回「尚未就绪」再给帧——复现「先建窗后抓帧」的并行流程。 */
+async function openOverlay(page, { pendingTimes = 0 } = {}) {
   await seedDesktopIpc(page, {});
   await page.addInitScript(
-    ({ png, frame }) => {
+    ({ png, frame, pendingTimes }) => {
       window.__shotCalls = [];
+      let pendingLeft = pendingTimes;
       const original = window.__TAURI_INTERNALS__.invoke;
       window.__TAURI_INTERNALS__.invoke = (cmd, args) => {
         const name = String(cmd);
         if (name.startsWith("screenshot_") || name.startsWith("pin_")) {
           window.__shotCalls.push({ cmd: name, args: args || {} });
-          if (name === "screenshot_frame") return { ...frame, pngB64: png };
+          if (name === "screenshot_frame") {
+            if (pendingLeft > 0) {
+              pendingLeft -= 1;
+              throw new Error("截图尚未就绪");
+            }
+            return { ...frame, pngB64: png };
+          }
           return null;
         }
         return original(cmd, args);
       };
     },
-    { png: makeFramePngBase64(FRAME_W, FRAME_H), frame: { index: 0, x: 0, y: 0, width: FRAME_W, height: FRAME_H, scale: 1, count: 1 } }
+    { png: makeFramePngBase64(FRAME_W, FRAME_H), frame: { index: 0, x: 0, y: 0, width: FRAME_W, height: FRAME_H, scale: 1, count: 1 }, pendingTimes }
   );
   await page.goto("/?shot=overlay&session=1&monitor=0");
   // 提示条出现 === 已取到帧、首帧已渲染、窗口已自显
@@ -104,6 +112,14 @@ async function waitCall(page, cmd) {
 }
 
 test.describe("截图遮罩页（交互链路）", () => {
+  test("抓帧未就绪时轮询等待，就绪后照常框选（先建窗后抓帧的并行流程）", async ({ page }) => {
+    // 前两次取帧回「尚未就绪」：页面必须继续轮询而不是报错退出
+    await openOverlay(page, { pendingTimes: 2 });
+    await dragSelection(page);
+    const frames = (await shotCalls(page)).filter((c) => c.cmd === "screenshot_frame");
+    expect(frames.length).toBeGreaterThanOrEqual(3); // 两次未就绪 + 一次成功
+  });
+
   test("取帧后进入框选；出现工具栏与尺寸标签；Enter 复制并退出", async ({ page }) => {
     const { kx, ky } = await openOverlay(page);
     await dragSelection(page);

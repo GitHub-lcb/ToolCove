@@ -74,7 +74,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // window-state 要放过截图遮罩/贴图窗：它在窗口就绪时会按「默认状态 visible=true」
+        // 主动 show() + set_focus() 每个新窗口——遮罩窗会在还是默认 800x600、页面还没画的时候
+        // 被它抢先显示出来（白屏小窗 → 再被我们改成全屏），F1 的「小框到大框、白到灰」就是这么来的。
+        // filter 返回 false 的窗口连状态跟踪也一并跳过——这些短命窗口本就不该被记忆/恢复。
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_filter(|label| {
+                    !label.starts_with(screenshot::OVERLAY_PREFIX) && !label.starts_with(screenshot::PIN_PREFIX)
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
