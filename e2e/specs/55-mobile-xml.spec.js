@@ -3,7 +3,7 @@
 // 与桌面端共用同一份纯逻辑（src/xmlTool.js，66 条单测），这里验手机端界面接线：
 // 模式 chips、输入/输出切换、校验提示、导出下载。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -159,7 +159,6 @@ test.describe("手机端工具箱（XML 报文）", () => {
     await page.locator(".m-tab[data-tab='toolbox']").click();
 
     await expect(page.locator('.m-item[data-tool="xml"]')).toBeVisible();
-    const total = await page.locator(".m-item[data-tool]").count();
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText(`${total}/${total}`);
+    await expectMobileToolboxCatalog(page);
   });
 });

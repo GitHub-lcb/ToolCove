@@ -7,7 +7,7 @@
 // 引擎产物由 `npm run build:label-wasm` 生成到 mobile/public/（随 APK 打包），
 // playwright 的 webServer 会先跑 build:mobile，所以 E2E 跑在真实产物上。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -155,16 +155,14 @@ test.describe("手机端工具箱（标签 / WASM 引擎）", () => {
     await expect(note).toContainText(/TSPL|同一份/);
   });
 
-  test("工具箱 14/14：全部可用，能力受限的四项仍带说明", async ({ page }) => {
+  test("工具箱：能力受限的四项仍带降级说明", async ({ page }) => {
     await seedData(page, { settings: {} });
     await page.goto(MOBILE);
     await goToolbox(page);
 
-    // 没有未迁移项
-    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
-    const total = await page.locator(".m-item[data-tool]").count();
-    const progress = await page.locator('[data-role="tool-progress"]').innerText();
-    expect(progress).toContain(`${total}/${total}`);
+    // 未迁移的数量以目录为准（helper 里比对），不再假设「全部可用」——
+    // 那个前提在签到 / 抓包 / 下载三个桌面独占工具加入后就不成立了。
+    await expectMobileToolboxCatalog(page);
 
     // 能力受限的四项说明还在（可用 ≠ 和桌面一样）
     for (const key of ["network", "file", "db", "label"]) {

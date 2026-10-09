@@ -544,12 +544,6 @@ body,
   color: var(--m-muted);
 }
 
-.m-progress {
-  font-size: 0.8rem;
-  color: var(--m-muted);
-  white-space: nowrap;
-}
-
 /* 未迁移的条目：可读但不可点，并带一枚角标说明原因 */
 .m-badge {
   display: inline-block;

@@ -3,7 +3,7 @@
 // 与桌面端共用同一份纯逻辑（src/markdownTool.js）与同一个渲染器（shared.renderMarkdown），
 // 这里验手机端的界面接线：编辑/预览切换、chips 操作、面板展开、导出下载。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -155,8 +155,6 @@ test.describe("手机端工具箱（Markdown）", () => {
     await page.locator(".m-tab[data-tab='toolbox']").click();
 
     await expect(page.locator('.m-item[data-tool="markdown"]')).toBeVisible();
-    // 不写死总数：加工具不该让用例失效
-    const total = await page.locator(".m-item[data-tool]").count();
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText(`${total}/${total}`);
+    await expectMobileToolboxCatalog(page);
   });
 });

@@ -14,6 +14,10 @@ import { invoke } from '../platform/invoke.js';
 import { isReadOnlySql } from '../db.js';
 import { digestText, generatePassword, hmacText } from '../cryptoTool.js';
 import { calculateCenterCrop, calculateContainSize, calculateRenderPlan } from '../imageTool.js';
+import { detectDelimiter, parseDelimited, stats as tableStats, toDelimited, toJson as tableToJson, toMarkdown, toSqlInsert } from '../tableTool.js';
+import { formatXml, validateXml, xmlToJson } from '../xmlTool.js';
+import { inferSchema, validateSchema } from '../jsonSchema.js';
+import { lint as lintMarkdown, normalize as normalizeMarkdown } from '../markdownTool.js';
 import { readSpillResult, readWindowResult } from './readWindow.js';
 import { spillStore } from './spillStoreInstance.js';
 
@@ -42,6 +46,18 @@ export const BUILTIN_TOOL_IMPLS = Object.freeze({
   'text.diff': { inputSchema: schema({ left: text, right: text }, ['left', 'right']), execute: ({ left, right }) => buildTextDiff(left, right) },
   'time.timestamp': { inputSchema: schema({ text, unit: { type: 'string', enum: ['auto', 'seconds', 'milliseconds'] } }, ['text']), execute: ({ text, unit = 'auto' }) => parseTimestamp(text, unit) },
   'id.generate': { inputSchema: schema({ type: { type: 'string', enum: ['uuid-v4', 'uuid-v7', 'ulid', 'nanoid'] }, count: { type: 'integer', minimum: 1, maximum: 100 } }, ['type']), execute: ({ type, count = 1 }) => generateIdentifiers(type, count) },
+  // ── 表格 / XML / JSON Schema / Markdown ────────────────────
+  // 这四个工具的界面能力一直是完整的纯函数实现，之前只有 Agent 够不到。
+  // 全是同步纯转换、不碰原生能力，所以三端（桌面 / 网页 / 手机）都不标 desktopOnly。
+  'table.parse': { inputSchema: schema({ text, delimiter: { type: 'string', maxLength: 4 }, maxRows: { type: 'integer', minimum: 1, maximum: 5000 } }, ['text']), execute: ({ text, delimiter, maxRows = 200 }) => { const char = delimiter || detectDelimiter(text); const { rows, truncated, totalRows } = parseDelimited(text, char, { maxRows }); return { delimiter: char, header: rows[0] || [], rows, rowCount: rows.length, totalRows, truncated, stats: tableStats(rows) }; } },
+  'table.convert': { inputSchema: schema({ text, delimiter: { type: 'string', maxLength: 4 }, format: { type: 'string', enum: ['json', 'markdown', 'sql', 'csv', 'tsv'] }, tableName: { type: 'string', maxLength: 64 }, indent: { type: 'integer', minimum: 0, maximum: 8 } }, ['text', 'format']), execute: ({ text, delimiter, format, tableName, indent = 2 }) => { const rows = parseDelimited(text, delimiter || detectDelimiter(text)).rows; if (format === 'json') return tableToJson(rows, { header: true, indent }); if (format === 'markdown') return toMarkdown(rows); if (format === 'sql') return toSqlInsert(rows, { table: tableName || 't', header: true }); return toDelimited(rows, { delimiter: format === 'tsv' ? '\t' : ',' }); } },
+  'xml.format': { inputSchema: schema({ text, indent: { type: 'integer', minimum: 0, maximum: 8 } }, ['text']), execute: ({ text, indent = 2 }) => formatXml(text, { indent }) },
+  'xml.to_json': { inputSchema: schema({ text, alwaysArray: { type: 'boolean' } }, ['text']), execute: ({ text, alwaysArray = false }) => xmlToJson(text, { alwaysArray }) },
+  'xml.validate': { inputSchema: schema({ text }, ['text']), execute: ({ text }) => { const errors = validateXml(text); return { valid: errors.length === 0, errors }; } },
+  'schema.infer': { inputSchema: schema({ text, required: { type: 'boolean' } }, ['text']), execute: ({ text, required = true }) => inferSchema(unwrap(parseJson(text), 'value'), { required }) },
+  'schema.validate': { inputSchema: schema({ value: text, schemaText: text }, ['value', 'schemaText']), execute: ({ value, schemaText }) => validateSchema(unwrap(parseJson(value), 'value'), unwrap(parseJson(schemaText), 'value')) },
+  'markdown.normalize': { inputSchema: schema({ text }, ['text']), execute: ({ text }) => normalizeMarkdown(text) },
+  'markdown.lint': { inputSchema: schema({ text }, ['text']), execute: ({ text }) => { const issues = lintMarkdown(text); return { count: issues.length, issues }; } },
   'file.inspect': { inputSchema: schema({ paths: { type: 'array', maxItems: 100, items: text } }, ['paths']), execute: ({ paths }) => desktopInvoke('file_tool_inspect', { paths }) },
   'file.read_text': { inputSchema: schema({ path: text, encoding: { type: 'string', enum: ['AUTO', 'UTF-8', 'GBK'] }, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 32000 } }, ['path']), execute: async ({ path, encoding = 'AUTO', offset, limit }) => withWindow(await desktopInvoke('file_tool_read_text', { path, encoding }), offset, limit) },
   'file.write_text': { inputSchema: schema({ path: text, text }, ['path', 'text']), execute: ({ path, text }) => desktopInvoke('file_tool_write_text', { path, text, encoding: 'UTF-8', bom: false }) },

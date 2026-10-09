@@ -4,7 +4,7 @@
 // 所以这里用 Playwright 的 page.route 拦截真实网络请求——被测的仍是生产路径：
 // RequestToolView → invoke("http_request") → browserHttpRequest → fetch。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 const API = "http://e2e.test/api";
@@ -230,10 +230,7 @@ test.describe("手机端工具箱（请求 / 铁路大亨）", () => {
     for (const key of ["request", "rail"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
-    // 只断言形态与一致性，不写死数字也不写死"哪个工具未迁移"
-    // （这两样都随每批推进而变，写死会让用例不断失效——已经改过三次）
-    const text = await page.locator('[data-role="tool-progress"]').innerText();
-    const ready = await page.locator('.m-item[data-ready="true"]').count();
-    expect(Number(text.match(/(\d+)\s*\//)[1])).toBe(ready);
+    // 不写死数字也不写死哪个工具未迁移：直接拿目录本身当基准
+    await expectMobileToolboxCatalog(page);
   });
 });

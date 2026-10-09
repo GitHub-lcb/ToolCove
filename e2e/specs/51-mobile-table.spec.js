@@ -3,7 +3,7 @@
 // 与桌面端**共用同一份纯逻辑**（src/tableTool.js），所以这里重点验手机端的界面接线：
 // 输入 → 表格横向滚动 → chips 操作 → 导出下载。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -169,8 +169,6 @@ test.describe("手机端工具箱（表格处理）", () => {
     await page.locator(".m-tab[data-tab='toolbox']").click();
 
     await expect(page.locator('.m-item[data-tool="table"]')).toBeVisible();
-    // 不写死总数：加工具不该让用例失效（断言一致性而不是快照）
-    const total = await page.locator(".m-item[data-tool]").count();
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText(`${total}/${total}`);
+    await expectMobileToolboxCatalog(page);
   });
 });

@@ -481,6 +481,15 @@ function openInJson(text) {
 .quick-info small { overflow: hidden; color: var(--muted); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .quick-pin { flex-shrink: 0; display: grid; place-items: center; color: var(--amber); }
 
+/* 常用工具是跳转条，不是第二份卡片网格：同一批工具的完整卡片就在下面的分组里，
+   这里再画一遍大卡就成了「同屏两遍」。所以只留图标 + 名字、宽度贴合内容。
+   注意作用域限定在 .quick-list —— .quick-item 还被搜索结果复用，那里要留描述。 */
+.quick-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.quick-list .quick-item { gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
+.quick-list .quick-item .quick-tile { width: 24px; height: 24px; }
+.quick-list .quick-item .quick-info { flex: none; gap: 0; }
+.quick-list .quick-item .quick-info small { display: none; }
+
 /* 首页两栏 */
 .home { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--sp-5); align-items: start; }
 .home-main { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-5); }
@@ -521,7 +530,9 @@ function openInJson(text) {
 .info-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .name { min-width: 0; overflow: hidden; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); text-overflow: ellipsis; white-space: nowrap; }
 .last-tag { flex-shrink: 0; padding: 0 7px; font-size: var(--fs-xs); font-weight: 600; line-height: 1.7; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-pill); }
-.desc { font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-tight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 描述允许两行：一行放不下的时候被 ellipsis 切掉的正好是「这工具能干什么」的后半句
+   （「…导出 J…」「…造样例…」），而这句话就是用户决定点不点进去的依据。 */
+.desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-tight); }
 .go { flex-shrink: 0; color: var(--faint); transition: color 0.15s, transform 0.15s; }
 .tool-item-wrap:hover .tool-item:not(.coming) .go { color: var(--primary); transform: translateX(2px); }
 .go-txt { flex-shrink: 0; font-size: var(--fs-sm); color: var(--muted); }

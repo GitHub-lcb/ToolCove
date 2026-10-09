@@ -4,6 +4,7 @@ import zh from "./zh-CN.json";
 import en from "./en-US.json";
 import { flatKeys, resolveInitialLocale, applyLocale, i18n } from "./index.js";
 import { TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "../toolboxTools.js";
+import { AGENT_TOOL_CATALOG } from "../agent/catalog.js";
 import { ADVICE_KEYS } from "../tools/railTycoon.js";
 
 describe("i18n 字典", () => {
@@ -47,6 +48,16 @@ describe("i18n 字典", () => {
     for (const key of keys) {
       expect(get(zh, key), `zh ${key}`).toBeDefined();
       expect(get(en, key), `en ${key}`).toBeDefined();
+    }
+  });
+
+  // Agent 能力面板按 descriptionKey 取文案，缺键的那行会退化成重复工具名。
+  it("Agent 工具目录引用的词条键都真实存在", () => {
+    const keys = AGENT_TOOL_CATALOG.map((tool) => tool.descriptionKey).filter(Boolean);
+    expect(keys.length).toBe(AGENT_TOOL_CATALOG.length);
+    for (const key of keys) {
+      expect(get(zh, key), `zh ${key}`).toBeTruthy();
+      expect(get(en, key), `en ${key}`).toBeTruthy();
     }
   });
 });

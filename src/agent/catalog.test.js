@@ -44,6 +44,9 @@ describe("目录与实现的一致性", () => {
     for (const meta of AGENT_TOOL_CATALOG) {
       expect(["read", "transform", "write", "database"], meta.name).toContain(meta.risk);
       expect(meta.description?.length, `${meta.name} 的 description`).toBeGreaterThan(0);
+      // 能力面板的兜底是 `tool.descriptionKey || tool.name`（AgentView.vue），
+      // 少了这个键，那一行就会把工具名重复一遍当成描述。
+      expect(meta.descriptionKey, `${meta.name} 缺 descriptionKey`).toBeTruthy();
     }
   });
 
@@ -84,5 +87,62 @@ describe("按需装配", () => {
   it("多次装配复用同一份实现（动态 import 只解析一次）", async () => {
     const [first, second] = await Promise.all([allTools(), allTools()]);
     expect(first.map((t) => t.name)).toEqual(second.map((t) => t.name));
+  });
+});
+
+// 表格 / XML / JSON Schema / Markdown 这四个工具的界面能力一直存在，但 Agent 够不到。
+// 这里逐个跑真实输入：目录与实现的一致性由上面的用例保证，而「跑出来的形状对不对」
+// 只有实际执行才知道——尤其 table 的单元格不该被静默转成数字、schema 的错误要带路径。
+describe("新接入的纯转换工具", () => {
+  const run = (name, input) => BUILTIN_TOOL_IMPLS[name].execute(input);
+
+  it("table.parse 嗅探分隔符并给出表头与统计", async () => {
+    const out = await run("table.parse", { text: "a\tb\n1\t2\n1\t2\n" });
+    expect(out.delimiter).toBe("\t");
+    expect(out.header).toEqual(["a", "b"]);
+    expect(out.totalRows).toBe(3);
+    expect(out.stats).toMatchObject({ rows: 2, columns: 2, duplicates: 1 });
+  });
+
+  it("table.convert 转 JSON 时保留字符串，不做静默类型推断", async () => {
+    expect(await run("table.convert", { text: "a,b\n007,\n", format: "json" })).toContain('"a": "007"');
+    expect(await run("table.convert", { text: "a,b\n1,2\n", format: "markdown" })).toContain("| a | b |");
+    expect(await run("table.convert", { text: "a,b\n1,2\n", format: "sql", tableName: "orders" })).toContain("INSERT INTO");
+    expect(await run("table.convert", { text: "a,b\n1,2\n", format: "tsv" })).toContain("a\tb");
+  });
+
+  it("xml.format 缩进、xml.to_json 用 @ 前缀存属性", async () => {
+    expect(await run("xml.format", { text: "<a><b>1</b></a>", indent: 2 })).toBe("<a>\n  <b>1</b>\n</a>");
+    expect(await run("xml.to_json", { text: '<a x="1"><b>t</b></a>' })).toEqual({ a: { "@x": "1", b: "t" } });
+  });
+
+  it("xml.validate 不合法也不抛异常，只给错误码与行列", async () => {
+    const bad = await run("xml.validate", { text: "<a><b></a>" });
+    expect(bad.valid).toBe(false);
+    expect(bad.errors[0]).toMatchObject({ code: expect.any(String), line: expect.any(Number) });
+    expect(await run("xml.validate", { text: "<a><b>1</b></a>" })).toMatchObject({ valid: true, errors: [] });
+  });
+
+  it("schema.infer 推断类型与 required，schema.validate 返回带路径的错误", async () => {
+    expect(await run("schema.infer", { text: '{"a":1}' })).toEqual({ type: "object", properties: { a: { type: "integer" } }, required: ["a"] });
+    expect(await run("schema.validate", { value: '{"a":1}', schemaText: '{"type":"object","required":["b"]}' })).toMatchObject({
+      valid: false,
+      errors: [{ path: "", keyword: "required", params: { field: "b" } }],
+    });
+  });
+
+  it("markdown.normalize 补井号后的空格，markdown.lint 报未闭合代码块", async () => {
+    expect(await run("markdown.normalize", { text: "#标题\n正文 " })).toBe("# 标题\n\n正文\n");
+    expect((await run("markdown.lint", { text: "```js\nabc" })).issues.map((i) => i.code)).toContain("unclosedFence");
+  });
+
+  it("九个工具都不标 desktopOnly（纯 JS，网页版与手机端同样可跑）", () => {
+    const names = ["table.parse", "table.convert", "xml.format", "xml.to_json", "xml.validate", "schema.infer", "schema.validate", "markdown.normalize", "markdown.lint"];
+    for (const name of names) {
+      expect(AGENT_TOOL_BY_NAME.get(name), name).toBeTruthy();
+      expect(AGENT_TOOL_BY_NAME.get(name).risk, name).toBe("transform");
+      expect(AGENT_TOOL_BY_NAME.get(name).desktopOnly, name).toBeFalsy();
+      expect(listAgentTools({}).find((tool) => tool.name === name).toolKey, name).toBeTruthy();
+    }
   });
 });

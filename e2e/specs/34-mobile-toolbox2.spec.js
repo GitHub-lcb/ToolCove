@@ -3,7 +3,7 @@
 // 加密用**已知向量**断言（sha256("hello") 这类值全网可查），
 // 这样测的是"算对了"而不是"算出了点什么"。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -234,12 +234,7 @@ test.describe("手机端工具箱（加密/生成器/对比）", () => {
     for (const key of ["crypto", "generator", "diff"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
-    // 只断言形态（已迁移 x/y），不断言具体数字——数字会随每批工具推进而变，
-    // 写死会让这条用例每加一个工具就失效（已经踩过一次）。
-    const text = await page.locator('[data-role="tool-progress"]').innerText();
-    expect(text).toMatch(/已迁移\s*\d+\s*\/\s*\d+/);
-    // 更实的判定：页面上 data-ready="true" 的条目数必须与进度里的数字一致
-    const ready = await page.locator('.m-item[data-ready="true"]').count();
-    expect(Number(text.match(/(\d+)\s*\//)[1])).toBe(ready);
+    // 条目数与未迁移数都直接对目录校验，不读页面上的开发者指标
+    await expectMobileToolboxCatalog(page);
   });
 });

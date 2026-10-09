@@ -26,10 +26,10 @@ export const TOOLBOX_GROUPS = [
 export const TOOLBOX_TOOLS = [
   { key: "convert", labelKey: "toolbox.registry.toolConvert", icon: "repeat", category: "data", descKey: "toolbox.registry.toolConvertDesc", keywordsKey: "toolbox.registry.kwConvert", ready: true },
   { key: "table", labelKey: "toolbox.registry.toolTable", icon: "table", category: "data", descKey: "toolbox.registry.toolTableDesc", keywordsKey: "toolbox.registry.kwTable", ready: true },
-  { key: "markdown", labelKey: "toolbox.registry.toolMarkdown", icon: "text", category: "data", descKey: "toolbox.registry.toolMarkdownDesc", keywordsKey: "toolbox.registry.kwMarkdown", ready: true },
-  { key: "xml", labelKey: "toolbox.registry.toolXml", icon: "braces", category: "data", descKey: "toolbox.registry.toolXmlDesc", keywordsKey: "toolbox.registry.kwXml", ready: true },
+  { key: "markdown", labelKey: "toolbox.registry.toolMarkdown", icon: "note", category: "data", descKey: "toolbox.registry.toolMarkdownDesc", keywordsKey: "toolbox.registry.kwMarkdown", ready: true },
+  { key: "xml", labelKey: "toolbox.registry.toolXml", icon: "layers", category: "data", descKey: "toolbox.registry.toolXmlDesc", keywordsKey: "toolbox.registry.kwXml", ready: true },
   { key: "diff", labelKey: "toolbox.registry.toolDiff", icon: "text", category: "data", descKey: "toolbox.registry.toolDiffDesc", keywordsKey: "toolbox.registry.kwDiff", ready: true },
-  { key: "schema", labelKey: "toolbox.registry.toolSchema", icon: "braces", category: "data", descKey: "toolbox.registry.toolSchemaDesc", keywordsKey: "toolbox.registry.kwSchema", ready: true },
+  { key: "schema", labelKey: "toolbox.registry.toolSchema", icon: "layout", category: "data", descKey: "toolbox.registry.toolSchemaDesc", keywordsKey: "toolbox.registry.kwSchema", ready: true },
   { key: "time", labelKey: "toolbox.registry.toolTime", icon: "clock", category: "data", descKey: "toolbox.registry.toolTimeDesc", keywordsKey: "toolbox.registry.kwTime", ready: true },
   {
     key: "json",
@@ -41,7 +41,7 @@ export const TOOLBOX_TOOLS = [
     ready: true,
   },
   { key: "network", labelKey: "toolbox.registry.toolNetwork", icon: "network", category: "network", descKey: "toolbox.registry.toolNetworkDesc", keywordsKey: "toolbox.registry.kwNetwork", ready: true, desktopOnly: true },
-  { key: "crypto", labelKey: "toolbox.registry.toolCrypto", icon: "shield", category: "development", descKey: "toolbox.registry.toolCryptoDesc", ready: true },
+  { key: "crypto", labelKey: "toolbox.registry.toolCrypto", icon: "shield", category: "development", descKey: "toolbox.registry.toolCryptoDesc", keywordsKey: "toolbox.registry.kwCrypto", ready: true },
   { key: "file", labelKey: "toolbox.registry.toolFile", icon: "folder", category: "file", descKey: "toolbox.registry.toolFileDesc", keywordsKey: "toolbox.registry.kwFile", ready: true, desktopOnly: true },
   {
     key: "image",
@@ -72,7 +72,7 @@ export const TOOLBOX_TOOLS = [
   },
   { key: "request", labelKey: "toolbox.registry.toolRequest", icon: "send", category: "network", descKey: "toolbox.registry.toolRequestDesc", keywordsKey: "toolbox.registry.kwRequest", ready: true },
   { key: "downloader", labelKey: "toolbox.registry.toolDownloader", icon: "download", category: "network", descKey: "toolbox.registry.toolDownloaderDesc", keywordsKey: "toolbox.registry.kwDownloader", ready: true, desktopOnly: true },
-  { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", ready: true, desktopOnly: true },
+  { key: "db", labelKey: "toolbox.registry.toolDb", icon: "database", category: "development", descKey: "toolbox.registry.toolDbDesc", keywordsKey: "toolbox.registry.kwDb", ready: true, desktopOnly: true },
   {
     key: "chat",
     labelKey: "toolbox.registry.toolChat",

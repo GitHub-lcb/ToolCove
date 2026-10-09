@@ -20,7 +20,6 @@ import GlobalSearch from "./GlobalSearch.vue";
 import ModuleTabs from "./ModuleTabs.vue";
 import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget } from "./navConfig.js";
 import { startCheckInScheduler, stopCheckInScheduler } from "./checkin/index.js";
-import pkg from "../package.json";
 
 const { t } = useI18n();
 
@@ -119,9 +118,7 @@ function onSettingsSaved() {
   applyThemeAccent();
 }
 
-// ------- 全局页脚 -------
-const year = new Date().getFullYear();
-const version = pkg.version;
+// ------- 操作手册 -------
 const MANUAL_URL = "https://github.com/GitHub-lcb/ToolCove"; // M4 上线文档站后替换
 function openManual() {
   openUrl(MANUAL_URL).catch((e) => showToast(String(e)));
@@ -475,10 +472,6 @@ onUnmounted(() => {
           <div class="pt-text">
             <h1>{{ activeModule === "settings" ? t("nav.settings") : t((MODULES.find((m) => m.key === activeModule) || MODULES[0]).labelKey) }}</h1>
           </div>
-        </div>
-        <div class="top-brand">
-          © {{ year }} ToolCove · {{ t("app.slogan") }}
-          <span class="tb-ver"><span class="tbv-txt">v{{ version }}</span></span>
         </div>
         <div class="top-actions">
           <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
@@ -1201,16 +1194,6 @@ body {
   to { opacity: 1; transform: none; }
 }
 
-/* 顶栏中部品牌条（原底部页脚上移）：吸收中间富余空间，居中、不拦鼠标以不影响拖拽 */
-.top-brand { flex: 1; min-width: 0; text-align: center; font-size: var(--fs-sm); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
-.tb-ver { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; padding: 1px 8px; border: none; border-radius: var(--r-pill); font-family: var(--font-num); font-size: var(--fs-sm); font-weight: 600; color: var(--accent-hover); background: var(--accent-soft); cursor: pointer; pointer-events: auto; transition: background 0.15s, color 0.15s; }
-.tb-ver:hover { color: var(--text-invert); background: var(--accent); }
-.tb-ver:disabled { cursor: default; opacity: 0.7; }
-.tbv-ico { opacity: 0.55; transition: opacity 0.15s, transform 0.4s; }
-.tb-ver:hover .tbv-ico { opacity: 1; }
-.tb-ver.checking .tbv-ico { animation: tbv-spin 0.9s linear infinite; }
-@keyframes tbv-spin { to { transform: rotate(360deg); } }
-
 /* 提示条 */
 .toast {
   position: fixed;
@@ -1257,9 +1240,6 @@ body {
 /* ============ 小窗口适配：按宽度逐步隐藏次要信息，标题永不竖排 ============ */
 @media (max-width: 1180px) {
   .pt-desc { display: none; }   /* 先藏副标题说明 */
-}
-@media (max-width: 1020px) {
-  .top-brand { display: none; } /* 再藏中部品牌条（含版本胶囊） */
 }
 @media (max-width: 920px) {
   .pt-ico { display: none; }    /* 最后藏页面图标，只留标题文字 */

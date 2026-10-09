@@ -558,3 +558,16 @@ export async function expectConfirmCard(page) {
 export async function expectRunFinished(page, status = /已完成/) {
   await expect(page.locator(".st-chip").first()).toHaveText(status, { timeout: 20_000 });
 }
+
+/**
+ * 手机端工具箱目录的一致性断言（代替原先页面上的「已迁移 x/y」进度条）。
+ *
+ * 那些用例真正要守的是「页面渲染出来的条目 = 目录里的条目」「未迁移的数量与目录一致」，
+ * 而不是某个开发者指标的数字——进度条撤掉后，直接拿目录本身当基准，断言反而更硬。
+ * 不写死数字：加工具不该让用例失效。
+ */
+export async function expectMobileToolboxCatalog(page) {
+  const { TOOLS } = await import("../mobile/app/toolbox.js");
+  await expect(page.locator(".m-item[data-tool]")).toHaveCount(TOOLS.length);
+  await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(TOOLS.filter((tool) => !tool.ready).length);
+}

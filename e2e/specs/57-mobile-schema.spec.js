@@ -3,7 +3,7 @@
 // 与桌面端共用同一份纯逻辑（src/jsonSchema.js，60 条单测），这里验手机端界面接线：
 // 模式 chips、输入切换、校验错误列表、造样例、结构解读、导出。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -166,7 +166,6 @@ test.describe("手机端工具箱（JSON Schema）", () => {
     await page.locator(".m-tab[data-tab='toolbox']").click();
 
     await expect(page.locator('.m-item[data-tool="schema"]')).toBeVisible();
-    const total = await page.locator(".m-item[data-tool]").count();
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText(`${total}/${total}`);
+    await expectMobileToolboxCatalog(page);
   });
 });

@@ -29,15 +29,4 @@ test.describe("手机端工具箱（多线程下载）", () => {
     await expect(entry.locator(".m-item-main")).toBeDisabled();
   });
 
-  test("迁移进度不把桌面独占工具算进分母（否则永远停在 95%）", async ({ page }) => {
-    await seedData(page, { settings: {} });
-    await page.goto(MOBILE);
-    await page.locator(".m-tab[data-tab='toolbox']").click();
-
-    // 分母是「可迁移的工具数」，桌面独占那条不计入
-    const text = await page.locator('[data-role="tool-progress"]').textContent();
-    const [, ready, total] = text.match(/(\d+)\s*\/\s*(\d+)/) || [];
-    expect(Number(total), `进度分母应排除桌面独占工具，实际文案：${text}`).toBeLessThan(21);
-    expect(Number(ready)).toBe(Number(total));
-  });
 });

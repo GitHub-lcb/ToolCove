@@ -1,9 +1,9 @@
-// 工具箱 E2E（移动视口）：目录、迁移进度、三个已迁移工具的实际行为。
+// 工具箱 E2E（移动视口）：目录条目一致性、三个已迁移工具的实际行为。
 //
 // 关键的一条是「重工具首屏不加载」：时间工具带 Luxon（约 180KB），
 // 如果它进了首屏包，手机端启动就会明显变慢——这类回归只有靠请求记录才能发现。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import {seedData, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -41,18 +41,22 @@ test.describe("手机端工具箱", () => {
     await page.goto(MOBILE);
     await goToolbox(page);
 
-    // 迁移进度可见（这是一个「做到哪了」的诚实指标）
-    await expect(page.locator('[data-role="tool-progress"]')).toContainText("/");
+    // 目录条目与 mobile/app/toolbox.js 的清单一致（这里原来读的是页面上的迁移进度条）
+    await expectMobileToolboxCatalog(page);
 
     // 已迁移的几个可以点
     for (const key of ["json", "convert", "time"]) {
       await expect(page.locator(`.m-item[data-tool="${key}"]`)).toHaveAttribute("data-ready", "true");
     }
 
-    // 现在 14 个工具**全部迁移完成**，所以"未迁移的禁用"这条规则没有实例可断言了。
-    // 改为断言完成状态本身 + 「能力受限的仍带说明」（可用 ≠ 和桌面一样）——
-    // 后者才是这条用例真正要守的东西，而且不会随进度失效。
-    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
+    // 「未迁移 / 桌面独占要禁用并说明」这条规则现在有实例了（下载 / 签到 / 抓包）：
+    // 以前这里断言 toHaveCount(0)（当时 14 个工具全迁完，没有实例可测），
+    // 那前提随后面新增桌面独占工具失效了——改成真的点一遍禁用态。
+    for (const key of ["downloader", "checkin", "netcapture"]) {
+      const item = page.locator(`.m-item[data-tool="${key}"]`);
+      await expect(item.locator(".m-item-main")).toBeDisabled();
+      await expect(item).toContainText("仅桌面端");
+    }
     for (const key of ["network", "file", "db", "label"]) {
       const item = page.locator(`.m-item[data-tool="${key}"]`);
       await expect(item).toHaveAttribute("data-ready", "true");

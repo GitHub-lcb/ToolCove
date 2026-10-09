@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { groupToolboxTools, searchToolboxTools, TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "./toolboxTools.js";
+import { groupToolboxTools, searchToolboxTools, toolKeywords, TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "./toolboxTools.js";
 import { i18n } from "./i18n/index.js";
 
 describe("searchToolboxTools", () => {
@@ -41,6 +41,25 @@ describe("searchToolboxTools", () => {
 
   it("注册表中的工具 key 唯一", () => {
     expect(new Set(TOOLBOX_TOOLS.map((tool) => tool.key)).size).toBe(TOOLBOX_TOOLS.length);
+  });
+
+  // 搜索的匹配面只有 key/名称/分组/描述/关键词，而描述是一句话——用户按「具体算法名、
+  // 具体数据库名」搜时，只有 keywordsKey 能命中。之前 crypto 与 db 漏了这个字段，
+  // 搜 MD5 / SHA256 / MySQL / Oracle 都找不到工具，所以按字段本身锁一条。
+  it("每个工具都有关键词，新工具不能只靠一句描述被搜到", () => {
+    for (const tool of TOOLBOX_TOOLS) {
+      expect(tool.keywordsKey, `${tool.key} 缺 keywordsKey`).toBeTruthy();
+      expect(toolKeywords(tool).length, `${tool.key} 关键词为空`).toBeGreaterThan(0);
+    }
+  });
+
+  it("可按加密与校验、数据库的具体能力名搜索", () => {
+    for (const keyword of ["MD5", "SHA256", "SHA-512", "HMAC", "AES", "RSA", "密码生成", "校验值"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("crypto");
+    }
+    for (const keyword of ["数据库", "MySQL", "PostgreSQL", "SQLite", "Oracle", "表结构", "DDL"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("db");
+    }
   });
 
   it("按七个明确大类分组，每个工具只出现一次", () => {

@@ -3,7 +3,7 @@
 // 复用 helpers 的 mockAI（走浏览器 fetch 分支的流式接口）与 AI_SETTINGS——
 // 与桌面端用例同一套桩，所以这里验的是"手机端界面对同一份 AI 通道的接线"。
 import { expect, test } from "@playwright/test";
-import { mockAI, seedData, seedWithAI } from "../helpers.js";
+import {mockAI, seedData, seedWithAI, expectMobileToolboxCatalog } from "../helpers.js";
 
 const MOBILE = "/mobile/app/index.html";
 
@@ -146,18 +146,14 @@ test.describe("手机端工具箱（AI 对话）", () => {
     await expect(tool.locator('[data-role="empty"]')).toBeVisible();
   });
 
-  test("工具箱进度与页面条目数一致（不写死数字：加工具不该让这条失效）", async ({ page }) => {
+  test("工具箱条目与目录一致（不写死数字：加工具不该让这条失效）", async ({ page }) => {
     await seedData(page, { settings: {} });
     await page.goto(MOBILE);
     await goToolbox(page);
 
-    // ⚠️ 不写死 "15/15" 这类数字——每加一个工具就要改一次，已经改过两轮。
-    // 改成断言"进度显示的数字 = 页面上真实可点的条目数"，这才是这条用例要守的东西。
-    const total = await page.locator(".m-item[data-tool]").count();
-    const progress = await page.locator('[data-role="tool-progress"]').innerText();
-    expect(total).toBeGreaterThan(10);
-    expect(progress).toContain(`${total}/${total}`);
-    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
+    // 条目数只设下限（加工具不该让用例失效），一致性交给目录校验
+    expect(await page.locator(".m-item[data-tool]").count()).toBeGreaterThan(10);
+    await expectMobileToolboxCatalog(page);
     // AI 分组也在（之前整个分组漏掉了）
     await expect(page.locator('.m-item[data-tool="chat"]')).toBeVisible();
   });

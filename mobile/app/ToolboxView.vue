@@ -2,17 +2,18 @@
 // 工具箱（手机端）：按分组列出全部工具，已迁移的直接进，未迁移的如实标注。
 //
 // 为什么不做「和桌面端一样的工具卡片墙」：桌面端有 1440px 宽 + 多窗口，能并排展示；
-// 手机上把 13 个工具铺成卡片墙只会让人反复滚动。这里分组 + 可搜索折叠成一条，
-// 并且**显示迁移进度**——让用户知道哪些能用、哪些还在路上，而不是点了没反应。
+// 手机上把工具铺成卡片墙只会让人反复滚动。这里分组 + 可搜索折叠成一条，
+// 「哪些还不能用的」由条目上的徽章就地说明（仅桌面端 / 待迁移）。
+// 顶栏原来有一条「已迁移 x/y」进度：那是**迁移工程自己的指标**，迁完之后它常年显示
+// 20/20，还和桌面端注册表的 23 个口径打架——对使用者没有任何信息量，所以撤掉。
 import { computed, defineAsyncComponent, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { TOOL_GROUPS, TOOLS, progressOf, toolsOfGroup } from "./toolbox.js";
+import { TOOL_GROUPS, TOOLS, toolsOfGroup } from "./toolbox.js";
 
 const { t } = useI18n();
 
 const openKey = ref(""); // 空串 = 在列表页
 const current = computed(() => TOOLS.find((tool) => tool.key === openKey.value) || null);
-const progress = computed(() => progressOf());
 
 /**
  * 工具视图表：**按需加载**（defineAsyncComponent）。
@@ -81,11 +82,7 @@ function close() {
     <template v-else>
       <div class="m-tools">
         <h2 class="m-h2">{{ t("nav.toolbox") }}</h2>
-        <span class="m-progress" data-role="tool-progress">
-          {{ t("mobile.toolProgress", { ready: progress.ready, total: progress.total }) }}
-        </span>
       </div>
-      <span class="m-bar" :aria-label="t('mobile.toolProgressLabel')"><i :style="{ width: progress.pct + '%' }"></i></span>
 
       <section v-for="group in TOOL_GROUPS" :key="group.key" class="m-group">
         <h3 class="m-group-title">{{ t(group.labelKey) }}</h3>
