@@ -11,7 +11,7 @@
 //  3) 用 ?tool=downloader 直达而不是点工具箱卡片 —— 点卡片会走 openToolWindow 去建
 //     独立窗口，替身没实现 plugin:webview|create_webview_window，只能靠降级兜底，不稳定。
 import { expect, test } from "@playwright/test";
-import { emitDesktopEvent, seedDesktopIpc } from "../helpers.js";
+import { emitDesktopEvent, seedData, seedDesktopIpc } from "../helpers.js";
 
 const DIR = "D:\\models";
 
@@ -29,6 +29,8 @@ async function itemId(page, index = 0) {
 }
 
 test.beforeEach(async ({ page }) => {
+  // 首启的遥测询问弹窗是全屏遮罩，会把所有点击都拦掉；标记成已询问即可（同 63 号用例）
+  await seedData(page, { settings: { telemetry: { prompted: true, enabled: false } } });
   await seedDesktopIpc(page, {});
   await page.exposeFunction("__e2eProbe", (url) => {
     // 故意用 bad 前缀模拟探测失败：验证错误会显示在队列项上而不是静默失败

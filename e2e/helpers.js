@@ -263,9 +263,18 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
     if (name.includes("listen")) {
       const id = nextId++;
       callbacks.set(id, true);
-      // 记下「哪个事件挂在哪个回调上」，emitDesktopEvent 要靠它把原生事件送进页面
+      // 记下「哪个事件挂在哪个回调上」，emitDesktopEvent 要靠它把原生事件送进页面。
+      // handler 是页面里 transformCallback 分配的 id（真实 Tauri 把它挂在 window._<id> 上）；
+      // 这份映射必须镜像回页面——emitDesktopEvent 在页面里按事件名取 id，只留在 Node 侧它永远取不到。
       if (name === "plugin:event|listen" && args?.event) {
         state.eventHandlers[args.event] = Number(args?.handler);
+        await page.evaluate(
+          ([event, handler]) => {
+            window.__E2E_EVENT_HANDLERS__ = window.__E2E_EVENT_HANDLERS__ || {};
+            window.__E2E_EVENT_HANDLERS__[event] = handler;
+          },
+          [args.event, Number(args?.handler)]
+        );
       }
       return id;
     }

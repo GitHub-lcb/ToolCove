@@ -4,6 +4,9 @@
 // 真正的 SQL 执行在 Kotlin 侧（SqliteAccess），SQL 分类与结果整形另有 17 条 JVM 单测。
 import { expect, test } from "@playwright/test";
 import { seedData, seedMobileBridge } from "../helpers.js";
+// 桌面独占清单从手机端注册表读，而不是在用例里手抄一份：抄的那份一定会腐坏
+// （这条断言原来写死「未就绪数量为 0」，桌面独占工具加入列表后就一直是红的）。
+import { DESKTOP_ONLY_KEYS } from "../../mobile/app/toolbox.js";
 
 const MOBILE = "/mobile/app/index.html";
 const DB_FILE = "/data/app/orders.db";
@@ -220,7 +223,12 @@ test.describe("手机端工具箱（数据库 / SQLite）", () => {
     // 「可用」与「和桌面一样」不是一回事：只支持 SQLite 必须写在列表上
     await expect(db).toContainText(/SQLite|JDBC/);
 
-    // 工具箱现已全部迁移完成（14/14）
-    await expect(page.locator('.m-item[data-ready="false"]')).toHaveCount(0);
+    // 工具箱现已全部迁移完成：列表里**未就绪的只剩「仅桌面端」**（平台做不到，不是还没迁），
+    // 数量必须与注册表里的 desktopOnly 清单精确一致——多一个就是有人忘标、少一个就是白名单漏了。
+    const pending = page.locator('.m-item[data-ready="false"]');
+    await expect(pending).toHaveCount(DESKTOP_ONLY_KEYS.length);
+    for (const key of DESKTOP_ONLY_KEYS) {
+      await expect(page.locator(`.m-item[data-tool="${key}"] .m-badge`)).toContainText("仅桌面端");
+    }
   });
 });
