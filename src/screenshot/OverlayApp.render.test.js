@@ -20,9 +20,11 @@ describe("OverlayApp 渲染", () => {
     expect(html).toContain("<canvas");
   });
 
-  it("加载阶段不渲染工具栏/提示（未取到帧前不打扰）", async () => {
+  it("加载阶段不打扰：工具栏/尺寸标签/手柄已建好但一律隐藏（v-show，拖动开局不再付建树成本）", async () => {
     const html = await render();
-    expect(html).not.toContain("shot-toolbar");
+    expect(html).toMatch(/shot-toolbar[^>]*style="[^"]*display:\s*none/);
+    expect(html).toMatch(/shot-size[^>]*style="[^"]*display:\s*none/);
+    expect(html).toMatch(/shot-handle[^>]*style="[^"]*display:\s*none/);
     expect(html).not.toContain("shot-hint");
   });
 

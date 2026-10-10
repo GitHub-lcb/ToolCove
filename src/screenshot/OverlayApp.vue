@@ -69,33 +69,51 @@ const magnifier = reactive({ visible: false, x: 0, y: 0, color: "#000000", px: 0
 const notice = ref("");
 
 let needRender = false;
+let canvasDirty = true; // 需要重绘画布（帧加载 / 标注增删改 / 有标注时裁剪区变化）
+let canvasHadOps = false;
 
 // ---------------- 渲染 ----------------
+// 分工：画布只画「底图 + 标注」，且底图 1:1 物理像素贴（不缩放、不重采样）；
+// 遮罩、选区框、手柄、尺寸标签、放大镜全部走 DOM——纯框选拖动时只改几个元素的样式，
+// 画布一帧都不用碰（实测旧实现逐帧整屏重绘会把拖动帧间隔打到中位 51ms / p95 316ms）。
+
+function markCanvasDirty() {
+  canvasDirty = true;
+  scheduleRender();
+}
+
+/** 选区几何变了：只有「画布上确有标注」时才需要重绘（否则纯 DOM 层跟着动） */
+function selectionChanged() {
+  if (history.active().length) canvasDirty = true;
+  scheduleRender();
+}
 
 function redraw() {
   const canvas = canvasRef.value;
   if (!canvas || !baseBitmap || phase.value === "loading") return;
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(view.kx, 0, 0, view.ky, 0, 0);
-  ctx.clearRect(0, 0, view.width, view.height);
-  ctx.drawImage(baseBitmap, 0, 0, view.width, view.height);
-
   const sel = selection.value;
-  const ops = history.active();
-  if (sel) {
+  const ops = sel ? history.active() : [];
+  const hasOp = ops.length > 0 || !!(draft.value && draft.value.op);
+  // 没有标注、画布也不脏：整帧零绘制
+  if (!canvasDirty && !hasOp && !canvasHadOps) return;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(baseBitmap, 0, 0); // 冻结帧本来就是本屏物理分辨率，1:1 贴
+  if (hasOp) {
+    ctx.setTransform(view.kx, 0, 0, view.ky, 0, 0); // 标注按逻辑坐标画，交给变换换算
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(sel.x, sel.y, sel.width, sel.height);
-    ctx.clip();
+    if (sel) {
+      ctx.beginPath();
+      ctx.rect(sel.x, sel.y, sel.width, sel.height);
+      ctx.clip();
+    }
     for (const op of ops) drawOp(ctx, op);
     if (draft.value && draft.value.op) drawOp(ctx, draft.value.op);
     ctx.restore();
-  } else if (draft.value && draft.value.op) {
-    drawOp(ctx, draft.value.op);
   }
-
-  drawMask(ctx, sel);
-  if (sel) drawSelectionUi(ctx, sel);
+  canvasDirty = false;
+  canvasHadOps = hasOp;
 }
 
 /** 等两帧：第一帧把画布的栅格化结果提交给合成器，第二帧确认它已排入上屏队列 */
@@ -103,48 +121,47 @@ function nextPaint() {
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
+/** 指针事件先攒着，统一在下一帧处理一次（高刷鼠标 1000Hz 时避免每事件都触发响应式更新） */
+let pendingPoint = null;
+
 function scheduleRender() {
   if (needRender) return;
   needRender = true;
   requestAnimationFrame(() => {
     needRender = false;
+    const point = pendingPoint;
+    pendingPoint = null;
+    if (point) applyPointerMove(point);
     redraw();
   });
 }
 
-function drawMask(ctx, sel) {
-  ctx.save();
-  ctx.fillStyle = sel ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.25)";
-  if (!sel) {
-    ctx.fillRect(0, 0, view.width, view.height);
-  } else {
-    // 只暗化选区之外，且留出一条 1px 的缝避免盖住选区边框
-    const { x, y, width, height } = sel;
-    ctx.fillRect(0, 0, view.width, y);
-    ctx.fillRect(0, y + height, view.width, view.height - y - height);
-    ctx.fillRect(0, y, x, height);
-    ctx.fillRect(x + width, y, view.width - x - width, height);
-  }
-  ctx.restore();
-}
+// ---- DOM 层样式（遮罩 / 选区框 / 手柄）----
 
-function drawSelectionUi(ctx, sel) {
-  ctx.save();
-  ctx.strokeStyle = "#4c9aff";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(sel.x + 0.5, sel.y + 0.5, sel.width - 1, sel.height - 1);
-  // 手柄：白底蓝边的小方块，位置即命中区中心
-  const size = 7;
-  for (const handle of HANDLES) {
-    const point = handlePoint(sel, handle);
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#2b6ad0";
-    ctx.beginPath();
-    ctx.rect(point.x - size / 2, point.y - size / 2, size, size);
-    ctx.fill();
-    ctx.stroke();
-  }
-  ctx.restore();
+const dimRects = computed(() => {
+  const sel = selection.value;
+  const background = sel ? "rgba(0, 0, 0, 0.45)" : "rgba(0, 0, 0, 0.25)";
+  if (!sel) return [{ key: "all", style: { left: "0px", top: "0px", right: "0px", bottom: "0px", background } }];
+  const { x, y, width, height } = sel;
+  return [
+    { key: "t", style: { left: "0px", top: "0px", right: "0px", height: `${y}px`, background } },
+    { key: "b", style: { left: "0px", top: `${y + height}px`, right: "0px", bottom: "0px", background } },
+    { key: "l", style: { left: "0px", top: `${y}px`, width: `${x}px`, height: `${height}px`, background } },
+    { key: "r", style: { left: `${x + width}px`, top: `${y}px`, right: "0px", height: `${height}px`, background } },
+  ];
+});
+
+const selectionBoxStyle = computed(() => {
+  const sel = selection.value;
+  if (!sel) return {};
+  return { left: `${sel.x}px`, top: `${sel.y}px`, width: `${sel.width}px`, height: `${sel.height}px` };
+});
+
+function handleStyle(handle) {
+  const sel = selection.value;
+  if (!sel) return {};
+  const point = handlePoint(sel, handle);
+  return { left: `${point.x}px`, top: `${point.y}px` };
 }
 
 function handlePoint(sel, handle) {
@@ -305,7 +322,7 @@ function onPointerDown(event) {
   // tool 保留选择，方便框选后立刻标注——Snipaste 同款手感
   selection.value = null;
   draft.value = { type: "select", start: point };
-  scheduleRender();
+  selectionChanged();
 }
 
 function beginOp(kind, point) {
@@ -330,7 +347,12 @@ function updateOp(op, start, current) {
 
 function onPointerMove(event) {
   if (phase.value !== "ready") return;
-  const point = pointFromEvent(event);
+  pendingPoint = pointFromEvent(event);
+  scheduleRender();
+}
+
+/** 每帧执行一次的指针处理（事件已合并） */
+function applyPointerMove(point) {
   updateMagnifier(point);
 
   const active = draft.value;
@@ -341,16 +363,18 @@ function onPointerMove(event) {
   if (active.type === "select") {
     active.lastPoint = point;
     selection.value = clampRect(rectFromPoints(active.start, point), bounds());
+    if (history.active().length) canvasDirty = true; // 有标注时裁剪区变化要跟着重画
   } else if (active.type === "move") {
     const dx = point.x - active.start.x;
     const dy = point.y - active.start.y;
     selection.value = moveRect(active.origin, dx, dy, bounds());
+    if (history.active().length) canvasDirty = true;
   } else if (active.type === "resize") {
     selection.value = resizeRect(selection.value, active.handle, point, bounds(), MIN_SELECTION);
+    if (history.active().length) canvasDirty = true;
   } else if (active.type === "draw") {
     updateOp(active.op, active.start, clampToSelection(point));
   }
-  scheduleRender();
 }
 
 function onPointerUp(event) {
@@ -363,7 +387,7 @@ function onPointerUp(event) {
       scheduleRender();
     } else if (selection.value) {
       selection.value = null;
-      scheduleRender();
+      selectionChanged();
     } else {
       cancelSession();
     }
@@ -390,7 +414,9 @@ function onPointerUp(event) {
       syncHistoryFlags();
     }
   }
-  scheduleRender();
+  // 收笔：入历史或丢弃草稿都要刷画布；纯框选（无标注）则只动 DOM 层
+  if (active.type === "draw") markCanvasDirty();
+  else selectionChanged();
 }
 
 /** 过滤误触：一像素的框、没动过的箭头不做成操作（画笔单击留一个圆点是有效的） */
@@ -430,7 +456,8 @@ function updateMagnifier(point) {
   if (!show) return;
   magnifier.x = point.x;
   magnifier.y = point.y;
-  nextTick(() => drawMagnifier());
+  // 直接画：visible 刚变 true 时 canvas 可能还没挂上，下一帧自然补上（不再 nextTick 排队）
+  drawMagnifier();
 }
 
 function drawMagnifier() {
@@ -440,8 +467,10 @@ function drawMagnifier() {
   const zoom = 6;
   const cssSize = 116;
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = cssSize * dpr;
-  canvas.height = cssSize * dpr;
+  if (canvas.width !== cssSize * dpr) {
+    canvas.width = cssSize * dpr; // 只初始化一次：每帧重设 backing store 会白白重建画布
+    canvas.height = cssSize * dpr;
+  }
   const px = Math.round(magnifier.x * view.kx);
   const py = Math.round(magnifier.y * view.ky);
   magnifier.px = px;
@@ -489,7 +518,7 @@ function commitText() {
     text,
   });
   syncHistoryFlags();
-  scheduleRender();
+  markCanvasDirty();
 }
 
 const textInputStyle = computed(() => {
@@ -514,13 +543,13 @@ function syncHistoryFlags() {
 function undo() {
   history.undo();
   syncHistoryFlags();
-  scheduleRender();
+  markCanvasDirty();
 }
 
 function redo() {
   history.redo();
   syncHistoryFlags();
-  scheduleRender();
+  markCanvasDirty();
 }
 
 // ---------------- 输出 ----------------
@@ -553,7 +582,7 @@ async function commit(action, path) {
   if (!selection.value && !textEditing.value) {
     // 无选区按 Enter：整屏复制（快速全屏截图的常见用法）
     selection.value = fullScreenSelection();
-    scheduleRender();
+    selectionChanged();
   }
   if (textEditing.value) commitText();
   busy.value = true;
@@ -616,7 +645,7 @@ function onKeydown(event) {
     else if (tool.value) tool.value = null;
     else if (selection.value) selection.value = null;
     else cancelSession();
-    scheduleRender();
+    selectionChanged();
     return;
   }
   if (event.key === "Enter") {
@@ -653,7 +682,7 @@ function onKeydown(event) {
   if (selection.value && (event.key.startsWith("Arrow"))) {
     event.preventDefault();
     selection.value = nudgeRect(selection.value, event.key, event.shiftKey ? 10 : 1, bounds());
-    scheduleRender();
+    selectionChanged();
   }
 }
 
@@ -661,7 +690,7 @@ function onKeydown(event) {
 
 const toolbarStyle = computed(() => {
   const sel = selection.value;
-  if (!sel) return { display: "none" };
+  if (!sel) return {};
   const barWidth = 560;
   const x = Math.min(Math.max(sel.x + sel.width / 2 - barWidth / 2, 8), Math.max(view.width - barWidth - 8, 8));
   const below = sel.y + sel.height + 10;
@@ -671,7 +700,7 @@ const toolbarStyle = computed(() => {
 
 const sizeLabelStyle = computed(() => {
   const sel = selection.value;
-  if (!sel) return { display: "none" };
+  if (!sel) return {};
   const labelWidth = 96;
   const x = Math.min(Math.max(sel.x + sel.width - labelWidth, 4), Math.max(view.width - labelWidth - 4, 4));
   const y = sel.y + sel.height + 4;
@@ -776,6 +805,11 @@ onBeforeUnmount(() => {
   <div ref="rootRef" class="shot-root" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @contextmenu.prevent @dblclick="selection && confirmCopy()">
     <canvas ref="canvasRef" class="shot-canvas"></canvas>
 
+    <!-- 遮罩 / 选区框 / 手柄：DOM 层（拖动只改样式，拖影/贴手都靠它） -->
+    <div v-for="rect in dimRects" :key="rect.key" class="shot-dim" :style="rect.style"></div>
+    <div v-show="!!selection" class="shot-sel" :style="selectionBoxStyle"></div>
+    <div v-for="h in HANDLES" :key="h" v-show="!!selection" class="shot-handle" :style="handleStyle(h)"></div>
+
     <textarea
       v-if="textEditing"
       ref="textInputRef"
@@ -791,7 +825,7 @@ onBeforeUnmount(() => {
     ></textarea>
 
     <!-- 标注工具栏 -->
-    <div v-if="selection && phase === 'ready'" class="shot-toolbar" :style="toolbarStyle" @pointerdown.stop @dblclick.stop>
+    <div v-show="!!selection && phase === 'ready'" class="shot-toolbar" :style="toolbarStyle" @pointerdown.stop @dblclick.stop>
       <div class="tb-group">
         <button class="tb-btn" :disabled="!canUndo" :title="t('screenshot.undo')" @click="undo"><Icon name="rotate-left" :size="15" /></button>
         <button class="tb-btn" :disabled="!canRedo" :title="t('screenshot.redo')" @click="redo"><Icon name="rotate-right" :size="15" /></button>
@@ -846,7 +880,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 尺寸标签 -->
-    <div v-if="selection" class="shot-size" :style="sizeLabelStyle">{{ sizeLabel }}</div>
+    <div v-show="!!selection" class="shot-size" :style="sizeLabelStyle">{{ sizeLabel }}</div>
 
     <!-- 放大镜 -->
     <div v-if="magnifier.visible && phase === 'ready'" class="shot-magnifier" :style="magnifierStyle">
@@ -878,6 +912,10 @@ onBeforeUnmount(() => {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 .shot-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* 遮罩与选区装饰走 DOM：合成器/轻量布局更新，不触碰画布 */
+.shot-dim { position: absolute; pointer-events: none; z-index: 1; }
+.shot-sel { position: absolute; border: 1px solid #4c9aff; box-sizing: border-box; pointer-events: none; z-index: 2; }
+.shot-handle { position: absolute; width: 7px; height: 7px; margin: -4px 0 0 -4px; background: #ffffff; border: 1px solid #2b6ad0; box-sizing: border-box; pointer-events: none; z-index: 3; }
 
 .shot-toolbar {
   position: absolute;
