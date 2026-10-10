@@ -68,7 +68,7 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
       ["network", "request", "downloader", "netcapture"],
-      ["file", "image", "screenshot", "pdf", "label"],
+      ["file", "image", "screenshot", "disk", "pdf", "label"],
       ["crypto", "db"],
       ["chat", "checkin"],
       ["rail"],
@@ -144,6 +144,16 @@ describe("searchToolboxTools", () => {
 
   it("截图是桌面独占：全局热键、整屏捕获与置顶贴图窗都是 Windows 原生能力", () => {
     expect(TOOLBOX_TOOLS.find((tool) => tool.key === "screenshot")?.desktopOnly).toBe(true);
+  });
+
+  it("可按磁盘分析的关键词搜索", () => {
+    for (const keyword of ["磁盘", "空间分析", "大文件", "占用", "清理", "C 盘", "disk", "space"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("disk");
+    }
+  });
+
+  it("磁盘分析是桌面独占：目录树遍历与体积聚合必须在原生侧做", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "disk")?.desktopOnly).toBe(true);
   });
 });
 

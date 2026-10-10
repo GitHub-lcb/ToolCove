@@ -18,6 +18,7 @@ export const TOOL_COMPONENTS = {
   file: defineAsyncComponent(() => import("./tools/FileTool.vue")),
   image: defineAsyncComponent(() => import("./tools/ImageTool.vue")),
   screenshot: defineAsyncComponent(() => import("./tools/ScreenshotTool.vue")),
+  disk: defineAsyncComponent(() => import("./tools/DiskAnalyzerTool.vue")),
   pdf: defineAsyncComponent(() => import("./tools/PdfTool.vue")),
   generator: defineAsyncComponent(() => import("./tools/GeneratorTool.vue")),
   request: defineAsyncComponent(() => import("./tools/RequestTool.vue")),

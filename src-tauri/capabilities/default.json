@@ -27,7 +27,8 @@
     "tool-label",
     "tool-rail",
     "tool-interview",
-    "tool-screenshot"
+    "tool-screenshot",
+    "tool-disk"
   ],
   "permissions": [
     "core:default",

@@ -48,19 +48,27 @@ encoding_rs = "0.8"
 unicode-width = "0.2"
 qrcode = { version = "0.14", default-features = false }
 barcoders = "2"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory"] }
+# Win32_System_WindowsProgramming：磁盘分析的 GetDriveTypeW 返回值常量（DRIVE_FIXED 等）只在这个命名空间
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming"] }
 # 自动签到读 Qoder 本地登录态：Chromium OSCrypt v10 是 AES-256-GCM，外面那层密钥才是 DPAPI
 aes-gcm = "0.10"
 # TRAE Work CN 的本地凭据信封是 AES-128-CBC（aes 原本只由 aes-gcm 间接引入，这里要显式依赖）
 aes = "0.8"
 # 截图工具的 PNG 编解码（纯 Rust，三端可编译；捕获/剪贴板依赖见下方 windows 段）
 image = { version = "0.25", default-features = false, features = ["png"] }
+# 磁盘分析：目录树扫描是 I/O 密集，按子目录并行递归（纯 Rust，三端可编译）
+rayon = "1"
+# 磁盘分析的「删除到回收站」：走系统回收站（可恢复）；本工具不提供永久删除
+trash = "5"
 
 # 截图工具的原生部分只做 Windows：xcap（Windows Graphics Capture）与 arboard（剪贴板图片）
 # 都按目标平台条件依赖，避免 Linux CI / 安卓构建被系统库拖挂（截图本来就是桌面独占能力）
 [target.'cfg(target_os = "windows")'.dependencies]
 xcap = "0.9"
 arboard = "3"
+# 磁盘迁移：原地留「目录联接」（junction）而不是符号链接——junction 免管理员（符号链接才要），
+# 代价是只能指向本地卷，这正好覆盖「搬到本机另一块盘」这个唯一的使用场景
+junction = "2"
 
 # 截图的「抓帧 → PNG 编码 → IPC 回传」在 F1 关键路径上：编完页面才能拿到帧、遮罩才能显出来。
 # dev（tauri dev）默认 opt-level=0，实测 1920x1200@1.5 一块屏编码要 1.5s（release 差一个数量级），

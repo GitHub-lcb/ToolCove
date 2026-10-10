@@ -1,6 +1,6 @@
 // 手机端工具箱的目录：分组、可用性、后续接哪些。
 //
-// 桌面端有 23 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
+// 桌面端有 25 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
 //   · 双端通用（JSON/转换/时间/生成/请求/图片/PDF/加密/文本 diff）→ 逐个移动端化；
 //   · 平台独占（文件/数据库/标签打印/网络诊断）→ 按安卓现实降级或替换（见 docs/mobile-app-plan.md §1）；
 //   · 游戏辅助（铁路大亨）→ 求解逻辑在 src/tools/railTycoon.js，桌面端在用，手机端后续作为一个工具回归。
@@ -54,6 +54,8 @@ export const TOOLS = Object.freeze([
   { key: "netcapture", group: "network", labelKey: "toolbox.registry.toolNetcapture", ready: false, desktopOnly: true, note: "mobile.noteNetcapture" },
   // 截图要靠全局热键、整屏捕获与置顶贴图窗，安卓上都没有对等物；手机自带截图更顺手。
   { key: "screenshot", group: "file", labelKey: "toolbox.registry.toolScreenshot", ready: false, desktopOnly: true, note: "mobile.noteScreenshot" },
+  // 磁盘分析要遍历整棵目录树并在原生侧聚合体积，安卓上没有对等的可扫描范围（SAF 拿不到系统目录树）。
+  { key: "disk", group: "file", labelKey: "toolbox.registry.toolDisk", ready: false, desktopOnly: true, note: "mobile.noteDisk" },
   { key: "rail", group: "game", labelKey: "toolbox.registry.toolRail", ready: true },
   { key: "interview", group: "arcade", labelKey: "toolbox.registry.toolInterview", ready: true },
 ]);

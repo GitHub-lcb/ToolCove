@@ -1,5 +1,7 @@
 mod ai;
 mod db;
+mod disk;
+mod disk_migrate;
 mod downloader;
 mod file_tool;
 mod git;
@@ -188,6 +190,20 @@ pub fn run() {
             file_tool::file_tool_modify_md5,
             file_tool::file_tool_list_directory,
             file_tool::file_tool_batch_rename,
+            // 磁盘分析助手：磁盘/目录扫描、体积聚合与下钻、最大文件榜
+            disk::disk_list_drives,
+            disk::disk_scan_start,
+            disk::disk_scan_cancel,
+            disk::disk_scan_release,
+            disk::disk_scan_children,
+            disk::disk_dir_files,
+            disk::disk_delete_to_trash,
+            disk::disk_resolve_path,
+            // 磁盘迁移：搬到另一块盘并在原位置留目录联接（junction），可回滚
+            disk_migrate::disk_migrate_check,
+            disk_migrate::disk_migrate_start,
+            disk_migrate::disk_migrate_cancel,
+            disk_migrate::disk_migrate_rollback,
             // 标签打印（TSPL / 佳博 GP-2120TF 这类热敏标签机）
             label::label_layout,
             label::label_printers,

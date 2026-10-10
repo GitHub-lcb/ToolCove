@@ -65,6 +65,19 @@ export const TOOLBOX_TOOLS = [
     desktopOnly: true,
     window: { width: 860, height: 660, minWidth: 640, minHeight: 460 },
   },
+  // 磁盘分析独占桌面的硬理由：浏览器/手机端拿不到目录树，而整盘几十万目录的
+  // 遍历与体积聚合必须在原生侧做（放 WebView 里会把渲染线程卡死）。
+  {
+    key: "disk",
+    labelKey: "toolbox.registry.toolDisk",
+    icon: "hard-drive",
+    category: "file",
+    descKey: "toolbox.registry.toolDiskDesc",
+    keywordsKey: "toolbox.registry.kwDisk",
+    ready: true,
+    desktopOnly: true,
+    window: { width: 1160, height: 760, minWidth: 900, minHeight: 560 },
+  },
   {
     key: "generator",
     labelKey: "toolbox.registry.toolGenerator",

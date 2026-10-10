@@ -20,6 +20,13 @@ export async function openPath(path) {
   return tauriOpenPath(String(path || ""));
 }
 
+/** 在系统文件管理器里定位并选中该路径（opener:default 已含 reveal 权限）。 */
+export async function revealPath(path) {
+  if (!isDesktop) return;
+  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+  return revealItemInDir(String(path || ""));
+}
+
 export async function relaunch() {
   if (!isDesktop) {
     window.location.reload();
