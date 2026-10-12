@@ -32,7 +32,7 @@ test("四个导航模块都能切换并渲染出内容", async ({ page }) => {
 
   // 导航按钮没有 data-module，用可见文案定位（也就是用户看到的那几个词）
   const modules = [
-    { label: "工作台", marker: /概览|迭代进度|待产品确认/ },
+    { label: "研发", marker: /概览|迭代进度|待产品确认/ },
     { label: "记录", marker: /速记|问题/ },
     { label: "工具箱", marker: /工具箱|常用工具|数据与文本/ },
     { label: "Agent", marker: /Agent 工作台|欢迎使用/ },

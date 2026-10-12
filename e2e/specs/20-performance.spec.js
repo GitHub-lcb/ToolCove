@@ -136,7 +136,7 @@ test("切模块与开工具的交互延迟（人眼可感阈值 200ms）", async
     }, label);
 
   const samples = [];
-  for (const label of ["工作台", "记录", "工具箱", "Agent"]) samples.push(await measureNav(label));
+  for (const label of ["研发", "记录", "工具箱", "Agent"]) samples.push(await measureNav(label));
 
   // 打开一个工具（工具箱里点第一张卡）
   const toolDelay = await page.evaluate(async () => {
@@ -151,11 +151,11 @@ test("切模块与开工具的交互延迟（人眼可感阈值 200ms）", async
   });
 
   // 再测一轮并取全部样本的中位数。
-  // 为什么必须测两轮：第一次进入某个模块要编译并执行它的 chunk（工作台/记录的 chunk 首屏没加载），
+  // 为什么必须测两轮：第一次进入某个模块要编译并执行它的 chunk（研发/记录的 chunk 首屏没加载），
   // 首轮样本混着 JIT 与模块求值，会出现 38ms 与 904ms 这种极端值——拿首轮当基线会得出「应用很慢」的错觉，
   // 而用户感知的是「第二次点同一个地方」的开销。
   const warm = [];
-  for (const label of ["工作台", "记录", "工具箱", "Agent", "工作台", "记录"]) warm.push(await measureNav(label));
+  for (const label of ["研发", "记录", "工具箱", "Agent", "研发", "记录"]) warm.push(await measureNav(label));
   const all = [...samples, ...warm];
 
   console.log("== 交互延迟(ms，页面内测量) ==");
