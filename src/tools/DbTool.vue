@@ -7,7 +7,7 @@ import Icon from "../Icon.vue";
 import DbConnModal from "./DbConnModal.vue";
 import DbTableTree from "./DbTableTree.vue";
 import DbDetailModal from "./DbDetailModal.vue";
-import { relativeTime, buildDbResultXlsx } from "../shared.js";
+import { relativeTime, exportDbResultXlsx } from "../shared.js";
 import { askConfirm } from "../confirm.js";
 import { aiComplete, aiChat, isAIConfigured } from "../ai.js";
 import { loadToolbox, saveToolbox, flushToolbox } from "../toolboxStore.js";
@@ -1143,8 +1143,7 @@ async function exportResult(fmt) {
     });
     if (typeof path !== "string" || !path) return;
     try {
-      const contentB64 = await buildDbResultXlsx(columns, rows);
-      await invoke("export_file_b64", { path, contentB64 });
+      await exportDbResultXlsx(path, columns, rows);
       props.showToast(t("toolbox.db.exported", { count: rows.length, name: path.split(/[\\/]/).pop() }));
     } catch (e) {
       props.showToast(String(e));

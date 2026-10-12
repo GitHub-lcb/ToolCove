@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "./platform/invoke.js";
+import { imageSrc } from "./platform/image.js";
 import Icon from "./Icon.vue";
 import { askConfirm } from "./confirm.js";
 import AiExtract from "./AiExtract.vue";
@@ -161,21 +162,16 @@ async function togglePin(s) {
 }
 
 // ------- 图片附件（复用 save_image 机制：文件落盘 images 目录，JSON 只存元数据） -------
-const imgCache = ref({}); // name -> dataURL
+const imgCache = ref({}); // name -> 显示 URL（桌面 asset 协议 / 浏览器 dataURL）
 const previewSrc = ref("");
 const removedImages = ref([]); // 编辑时移除的旧图，保存后才删文件
 
-function mimeOf(name) {
-  const ext = (name.split(".").pop() || "").toLowerCase();
-  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
-}
 async function loadImages() {
   for (const s of snippets.value) {
     for (const img of s.images || []) {
       if (imgCache.value[img.name] !== undefined) continue;
       try {
-        const b64 = await invoke("load_image", { name: img.name });
-        imgCache.value[img.name] = `data:${mimeOf(img.name)};base64,${b64}`;
+        imgCache.value[img.name] = await imageSrc(img.name);
       } catch (e) {
         imgCache.value[img.name] = "";
       }

@@ -1,6 +1,7 @@
 // 资料类型元数据（图标对应 Icon.vue 中的 name，cls 对应 App.vue 全局 tc-chip 配色类）
 import { i18n } from "./i18n/index.js";
 import { highlightCode } from "./highlight.js";
+import { invoke } from "./platform/invoke.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 
@@ -188,29 +189,19 @@ function addXlsxTable(ws, title, cols, rows, maxSpan) {
   ws.addRow([]);
 }
 
-// 生成数据库结果集 Excel：列名 + 行数据 → base64 xlsx
-// 与 buildReleaseXlsx 同一惯例：exceljs 惰性导入，返回 base64 供 invoke("export_file_b64")
-export async function buildDbResultXlsx(cols, rows) {
-  const { default: ExcelJS } = await import("exceljs");
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(t("common.dbSheet") || "Result");
-  ws.columns = cols.map((c) => ({ width: Math.max(10, Math.min(46, String(c).length + 6)) }));
-  const head = ws.addRow(cols);
-  head.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Microsoft YaHei" };
-  head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0a6e65" } };
-  head.alignment = { vertical: "middle" };
-  ws.views = [{ state: "frozen", ySplit: 1 }];
-  for (const row of rows) {
-    ws.addRow(row.map((v) => (v === null || v === undefined ? "" : v)));
-  }
-  // 与 buildReleaseXlsx 同一转换路径：writeBuffer → 分块二进制串 → btoa（webview 无 Buffer）
-  const buf = await wb.xlsx.writeBuffer();
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(bin);
+// 数据库结果集 → .xlsx：桌面端 rust_xlsxwriter 直写目标路径（不加载 exceljs、不过 base64）。
+// 该导出只在桌面端提供（浏览器端 DbTool 直接提示需桌面版），故不做浏览器分支。
+export async function exportDbResultXlsx(path, cols, rows) {
+  await invoke("export_xlsx", {
+    path,
+    sheet: {
+      name: t("common.dbSheet") || "Result",
+      columns: cols.map((c) => Math.max(10, Math.min(46, String(c).length + 6))),
+      header: cols.map((c) => String(c)),
+      rows: rows.map((row) => row.map((v) => (v === null || v === undefined ? null : v))),
+      freezeHeader: true,
+    },
+  });
 }
 
 // 生成上线包 Excel（真正的 .xlsx 二进制工作簿），返回 base64 字符串供原生侧写文件

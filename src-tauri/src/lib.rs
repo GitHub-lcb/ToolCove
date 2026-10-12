@@ -8,6 +8,7 @@ mod git;
 mod label;
 mod network;
 mod netcapture;
+mod pdf;
 mod printer;
 mod qoder_cn_auth;
 mod screenshot;
@@ -17,6 +18,7 @@ mod storage;
 mod telemetry;
 mod trae_cn_auth;
 mod typesafe;
+mod xlsx;
 
 use tauri::Emitter;
 use tauri::Manager;
@@ -139,6 +141,7 @@ pub fn run() {
             storage::export_file_b64,
             storage::save_image,
             storage::load_image,
+            storage::image_file_path,
             storage::delete_image,
             storage::backup_data,
             storage::restore_data,
@@ -188,9 +191,19 @@ pub fn run() {
             file_tool::file_tool_read_base64,
             file_tool::file_tool_write_base64,
             file_tool::file_tool_calculate_md5,
+            file_tool::file_tool_hash_file,
             file_tool::file_tool_modify_md5,
             file_tool::file_tool_list_directory,
             file_tool::file_tool_batch_rename,
+            // Excel 导出（DB 结果集）：rust_xlsxwriter 直写目标路径，不过 base64
+            xlsx::export_xlsx,
+            // PDF 页面操作：lopdf 直读直写文件路径（摘要/合并/提取/删除/旋转/拆分）
+            pdf::pdf_summary,
+            pdf::pdf_merge,
+            pdf::pdf_extract,
+            pdf::pdf_remove,
+            pdf::pdf_rotate,
+            pdf::pdf_split,
             // 磁盘分析助手：磁盘/目录扫描、体积聚合与下钻、最大文件榜
             disk::disk_list_drives,
             disk::disk_scan_start,

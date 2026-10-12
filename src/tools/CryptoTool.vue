@@ -2,6 +2,9 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
+import { isDesktop } from "../platform/env.js";
+import { open as openDialog } from "../platform/dialog.js";
+import { createChannel, invoke } from "../platform/invoke.js";
 import {
   calculateFileHashes,
   decryptAes,
@@ -140,8 +143,21 @@ const fileAlgorithms = ref({ MD5: true, "SHA-1": false, "SHA-256": true, "SHA-38
 const fileProgress = ref(0);
 const fileState = ref({ loading: false, results: null, error: "" });
 const draggingFile = ref(false);
-function chooseFile() {
-  fileInput.value?.click();
+/** 桌面端：系统对话框选路径，哈希走 Rust 流式（不吃 JS 内存）；浏览器/手机端：File 对象 + hash-wasm */
+async function chooseFile() {
+  if (!isDesktop) {
+    fileInput.value?.click();
+    return;
+  }
+  try {
+    const path = await openDialog({ title: t("toolbox.crypto.fileChooseBtn") });
+    if (!path) return;
+    const [info] = (await invoke("file_tool_inspect", { paths: [path] })) || [];
+    if (!info) return;
+    selectFile({ path: info.path, name: info.name, size: info.size });
+  } catch (error) {
+    fileState.value = { loading: false, results: null, error: errorMessage(error) };
+  }
 }
 function onFileSelected(event) {
   setFile(event.target.files?.[0]);
@@ -153,7 +169,10 @@ function onFileDrop(event) {
 }
 function setFile(file) {
   if (!file) return;
-  selectedFile.value = file;
+  selectFile(file);
+}
+function selectFile(value) {
+  selectedFile.value = value;
   fileState.value = { loading: false, results: null, error: "" };
   fileProgress.value = 0;
 }
@@ -164,10 +183,21 @@ async function runFileHash() {
   fileState.value = { loading: true, results: null, error: "" };
   fileProgress.value = 0;
   try {
-    const results = await calculateFileHashes(selectedFile.value, algorithms, {
-      onProgress: (value) => { fileProgress.value = value; },
-    });
-    fileState.value = { loading: false, results, error: "" };
+    if (selectedFile.value.path) {
+      const channel = createChannel();
+      channel.onmessage = (payload) => {
+        const total = Number(payload?.total) || 0;
+        const read = Number(payload?.read) || 0;
+        fileProgress.value = total > 0 ? Math.min(1, read / total) : 1;
+      };
+      const info = await invoke("file_tool_hash_file", { path: selectedFile.value.path, algorithms, channel });
+      fileState.value = { loading: false, results: info.hashes, error: "" };
+    } else {
+      const results = await calculateFileHashes(selectedFile.value, algorithms, {
+        onProgress: (value) => { fileProgress.value = value; },
+      });
+      fileState.value = { loading: false, results, error: "" };
+    }
   } catch (error) {
     fileState.value = { loading: false, results: null, error: errorMessage(error) };
   }

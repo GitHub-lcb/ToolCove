@@ -353,6 +353,245 @@ pub async fn file_tool_calculate_md5(path: String) -> Result<Md5FileInfo, String
         .map_err(|e| format!("MD5 计算任务异常：{e}"))?
 }
 
+/// 多算法文件哈希结果：一次读盘同时喂给全部选中算法。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashFileInfo {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    /// 算法名 → 十六进制摘要；BTreeMap 键序即字母序（MD5, SHA-1, SHA-256, SHA-384, SHA-512）
+    pub hashes: std::collections::BTreeMap<String, String>,
+}
+
+/// 同一次读盘驱动的多算法哈希器（digest 版本不统一的 crate 各自在分支内引入 trait）。
+enum AnyHasher {
+    Md5(md5::Md5),
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+    Sha384(sha2::Sha384),
+    Sha512(sha2::Sha512),
+}
+
+impl AnyHasher {
+    fn new(name: &str) -> Result<Self, String> {
+        Ok(match name {
+            "MD5" => {
+                use md5::Digest;
+                Self::Md5(md5::Md5::new())
+            }
+            "SHA-1" => {
+                use sha1::Digest;
+                Self::Sha1(sha1::Sha1::new())
+            }
+            "SHA-256" => {
+                use sha2::Digest;
+                Self::Sha256(sha2::Sha256::new())
+            }
+            "SHA-384" => {
+                use sha2::Digest;
+                Self::Sha384(sha2::Sha384::new())
+            }
+            "SHA-512" => {
+                use sha2::Digest;
+                Self::Sha512(sha2::Sha512::new())
+            }
+            other => return Err(format!("不支持的哈希算法：{other}")),
+        })
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Md5(hasher) => {
+                use md5::Digest;
+                hasher.update(bytes);
+            }
+            Self::Sha1(hasher) => {
+                use sha1::Digest;
+                hasher.update(bytes);
+            }
+            Self::Sha256(hasher) => {
+                use sha2::Digest;
+                hasher.update(bytes);
+            }
+            Self::Sha384(hasher) => {
+                use sha2::Digest;
+                hasher.update(bytes);
+            }
+            Self::Sha512(hasher) => {
+                use sha2::Digest;
+                hasher.update(bytes);
+            }
+        }
+    }
+
+    fn finalize_hex(self) -> String {
+        let bytes = match self {
+            Self::Md5(hasher) => {
+                use md5::Digest;
+                hasher.finalize().to_vec()
+            }
+            Self::Sha1(hasher) => {
+                use sha1::Digest;
+                hasher.finalize().to_vec()
+            }
+            Self::Sha256(hasher) => {
+                use sha2::Digest;
+                hasher.finalize().to_vec()
+            }
+            Self::Sha384(hasher) => {
+                use sha2::Digest;
+                hasher.finalize().to_vec()
+            }
+            Self::Sha512(hasher) => {
+                use sha2::Digest;
+                hasher.finalize().to_vec()
+            }
+        };
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+}
+
+/// 流式哈希 1MB 分块；`progress(bytes_read, total)` 每块回调一次（空文件也回调一次 (0,0)，
+/// 让前端把进度收尾到 100%）。与 MD5 版本共享「读期间源文件变化」复核。
+pub fn hash_file_generic(
+    path: &std::path::Path,
+    algorithms: &[String],
+    mut progress: impl FnMut(u64, u64),
+) -> Result<HashFileInfo, String> {
+    use std::io::Read;
+
+    if algorithms.is_empty() {
+        return Err("请至少选择一种哈希算法".into());
+    }
+    let mut hashers = algorithms
+        .iter()
+        .map(|name| Ok((name.clone(), AnyHasher::new(name)?)))
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut file = open_md5_source(path)?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("无法读取文件信息：{e}"))?;
+    if !metadata.is_file() {
+        return Err("请选择普通文件".into());
+    }
+    let total = metadata.len();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    let mut bytes_read = 0u64;
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|e| format!("读取文件失败：{e}"))?;
+        if read == 0 {
+            break;
+        }
+        bytes_read += read as u64;
+        for (_, hasher) in hashers.iter_mut() {
+            hasher.update(&buffer[..read]);
+        }
+        progress(bytes_read, total);
+    }
+    if total == 0 {
+        progress(0, 0);
+    }
+    let final_metadata = file
+        .metadata()
+        .map_err(|e| format!("无法复核文件信息：{e}"))?;
+    if !source_metadata_unchanged(&metadata, &final_metadata, bytes_read) {
+        return Err("读取期间源文件发生变化，请重试".into());
+    }
+    Ok(HashFileInfo {
+        path: path.to_string_lossy().into_owned(),
+        name: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        size: bytes_read,
+        hashes: hashers
+            .into_iter()
+            .map(|(name, hasher)| (name, hasher.finalize_hex()))
+            .collect(),
+    })
+}
+
+/// 计算文件哈希（桌面端 Crypto 工具用）：流式读盘走 spawn_blocking，进度经 Channel 推送。
+/// 浏览器/手机端没有本地路径，仍走 hash-wasm（见 src/tools/CryptoTool.vue 的分流）。
+#[tauri::command]
+pub async fn file_tool_hash_file(
+    path: String,
+    algorithms: Vec<String>,
+    channel: tauri::ipc::Channel<serde_json::Value>,
+) -> Result<HashFileInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        hash_file_generic(std::path::Path::new(&path), &algorithms, |read, total| {
+            // 窗口关闭等场景发送失败：忽略即可，计算照常完成
+            let _ = channel.send(serde_json::json!({ "read": read, "total": total }));
+        })
+    })
+    .await
+    .map_err(|e| format!("哈希计算任务异常：{e}"))?
+}
+
+#[cfg(test)]
+mod hash_tests {
+    use super::*;
+
+    fn write_temp(name: &str, content: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("toolcove-hash-{name}-{}", std::process::id()));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn hash_file_generic_matches_known_vectors() {
+        let path = write_temp("vectors", b"hello");
+        let algorithms: Vec<String> = ["MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"]
+            .map(String::from)
+            .to_vec();
+        let info = hash_file_generic(&path, &algorithms, |_, _| {}).unwrap();
+        assert_eq!(info.size, 5);
+        assert_eq!(info.hashes["MD5"], "5d41402abc4b2a76b9719d911017c592");
+        assert_eq!(info.hashes["SHA-1"], "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+        assert_eq!(
+            info.hashes["SHA-256"],
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+        assert_eq!(
+            info.hashes["SHA-384"],
+            "59e1748777448c69de6b800d7a33bbfb9ff1b463e44354c3553bcdb9c666fa90125a3c79f90397bdf5f6a13de828684f"
+        );
+        assert_eq!(
+            info.hashes["SHA-512"],
+            "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn hash_file_generic_handles_empty_file_and_reports_completion() {
+        let path = write_temp("empty", b"");
+        let mut last = (u64::MAX, u64::MAX);
+        let info =
+            hash_file_generic(&path, &["SHA-256".to_string()], |read, total| last = (read, total))
+                .unwrap();
+        assert_eq!(
+            info.hashes["SHA-256"],
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(last, (0, 0), "空文件也应有一次进度回调，前端据此收尾进度");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn hash_file_generic_rejects_unknown_algorithm() {
+        let path = write_temp("unknown", b"x");
+        let error = hash_file_generic(&path, &["CRC32".to_string()], |_, _| {}).unwrap_err();
+        assert!(error.contains("不支持"), "实际：{error}");
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Md5CopyResult {

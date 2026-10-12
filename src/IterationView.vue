@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, inject } from "vue";
 import { invoke } from "./platform/invoke.js";
+import { imageSrc } from "./platform/image.js";
 import { mergeRecords, mutate, load as loadRecords, onDataChanged } from "./data/repository.js";
 import Icon from "./Icon.vue";
 import AiExtract from "./AiExtract.vue";
@@ -798,21 +799,16 @@ async function copyAllBugs() {
 const currentOpenBugs = computed(() => (current.value?.items || []).reduce((s, r) => s + openBugs(r), 0));
 
 // ------- 待确认问题截图附件（复用 ProblemView 的 save_image 机制：图片单独落盘，JSON 只存元数据） -------
-const qImgCache = ref({}); // name -> dataURL
+const qImgCache = ref({}); // name -> 显示 URL（桌面 asset 协议 / 浏览器 dataURL）
 const qPreviewSrc = ref("");
 
-function qMimeOf(name) {
-  const ext = (name.split(".").pop() || "").toLowerCase();
-  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
-}
 // 展开需求时懒加载其下所有问题的截图
 async function loadQImages(r) {
   for (const q of r.questions || []) {
     for (const img of q.images || []) {
       if (qImgCache.value[img.name] !== undefined) continue;
       try {
-        const b64 = await invoke("load_image", { name: img.name });
-        qImgCache.value[img.name] = `data:${qMimeOf(img.name)};base64,${b64}`;
+        qImgCache.value[img.name] = await imageSrc(img.name);
       } catch (e) {
         qImgCache.value[img.name] = "";
       }

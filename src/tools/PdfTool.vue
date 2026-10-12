@@ -70,8 +70,8 @@ const splitRange = ref(""); // 拆分模式：留空 = 每页一个文件
 
 const { dragId, overId, onDragStart, onDragOver, onDrop, onDragEnd } = useDragSort(() => mergeItems.value);
 
-// 只统计真正可合并的条目：解析失败的、以及还没解锁（bytes 为空）的都排除
-const validMergeItems = computed(() => mergeItems.value.filter((item) => !item.invalid && item.bytes));
+// 只统计真正可合并的条目：解析失败的、以及还没解锁（无内容）的都排除
+const validMergeItems = computed(() => mergeItems.value.filter((item) => !item.invalid && (item.bytes || item.path)));
 const mergePageTotal = computed(() => validMergeItems.value.reduce((sum, item) => sum + item.pageCount, 0));
 const canMerge = computed(() => validMergeItems.value.length >= 2 && !busy.value);
 
@@ -119,6 +119,32 @@ function warn(text) {
 }
 
 /**
+ * 归一化来自 Rust 的结构化错误（对象或 JSON 字符串两种形态）→ { code, detail? } 或原样返回。
+ * 桌面端 PDF 命令失败时 Err 会带 code（encrypted / decryptionPasswordRequired / ...），
+ * 前端据此复用 ERROR_KEYS 的 i18n 映射。
+ */
+function pdfInvokeError(error) {
+  if (error && typeof error === "object" && typeof error.code === "string") return error;
+  const text = typeof error === "string" ? error : String(error?.message ?? error);
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed.code === "string") return parsed;
+  } catch {
+    /* 非结构化错误文本 */
+  }
+  return error;
+}
+
+/** 桌面端输入描述：Rust 侧按 path + password 重新解密（口令为空串时按「未提供」处理） */
+function pdfInputOf(src) {
+  return { path: src.path, password: src.password || null };
+}
+
+function createMergeItem(name, size) {
+  return { id: `${name}-${size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, size, bytes: null, path: null, pageCount: 0, invalid: "", decrypted: false, needPassword: false, lockedBytes: null, password: "", error: "", busy: false };
+}
+
+/**
  * 读取 PDF 字节并做概要解析，顺带处理加密文件：
  * 1) 先按「空口令」自动去加密（电子发票 / 银行回单这类权限加密无需密码，用户不必感知）
  * 2) 需要口令的抛 needPassword，交给界面弹出密码输入
@@ -140,22 +166,29 @@ async function readFile(file) {
     }
   }
 }
-function bytesToBase64(bytes) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-    reader.onerror = () => reject(reader.error || new Error(t("toolbox.pdf.errRead")));
-    reader.readAsDataURL(new Blob([bytes], { type: "application/pdf" }));
-  });
-}
 
-/** 落盘：桌面端走系统保存框 + export_file_b64，浏览器端直接下载。 */
+/**
+ * 桌面端等价物：系统对话框拿到路径后交给 Rust 读（字节不进 JS）。
+ * Rust 的 pdf_summary 内置空口令解密尝试；需要口令时返回 decryptionPasswordRequired → 这里翻成 needPassword。
+ */
+async function readPath(path, name) {
+  try {
+    const summary = await invoke("pdf_summary", { path, password: null });
+    return { path, ...summary };
+  } catch (raw) {
+    const error = pdfInvokeError(raw);
+    if (error?.code === "decryptionPasswordRequired") {
+      throw Object.assign(new Error("needPassword"), { code: "needPassword", name, path });
+    }
+    if (error?.code) throw Object.assign(new Error(error.code), { code: error.code, detail: error.detail });
+    throw raw instanceof Error ? raw : new Error(String(raw));
+  }
+}
+/** 落盘（仅浏览器/手机端）：建议文件名 + 触发下载；桌面端各操作由 Rust 直接写盘 */
 async function saveBytes(bytes, name, title) {
   const target = await saveDialog({ title: title || t("toolbox.pdf.saveTitle"), defaultPath: name, filters: PDF_FILTER });
   if (!target) return false;
-  const blob = new Blob([bytes], { type: "application/pdf" });
-  if (isDesktop) await invoke("export_file_b64", { path: target, contentB64: await bytesToBase64(blob) });
-  else downloadBlob(blob, target);
+  downloadBlob(new Blob([bytes], { type: "application/pdf" }), target);
   return true;
 }
 
@@ -193,12 +226,18 @@ async function submitUnlock() {
   unlockBusy.value = true;
   unlockError.value = "";
   try {
-    const plain = await decryptPdf(task.bytes, unlockPassword.value);
-    const summary = await readPdfSummary(plain);
-    source.value = { id: `${task.name}-${plain.length}`, name: task.name, size: plain.length, bytes: plain, decrypted: true, ...summary };
+    if (isDesktop && task.path) {
+      // 桌面端：以口令重新做一次摘要校验；后续操作由各命令内部用同一口令解密
+      const summary = await invoke("pdf_summary", { path: task.path, password: unlockPassword.value });
+      source.value = { id: `${task.name}-${Date.now()}`, name: task.name, size: summary.sizeBytes || 0, path: task.path, password: unlockPassword.value, decrypted: true, ...summary };
+    } else {
+      const plain = await decryptPdf(task.bytes, unlockPassword.value);
+      const summary = await readPdfSummary(plain);
+      source.value = { id: `${task.name}-${plain.length}`, name: task.name, size: plain.length, bytes: plain, decrypted: true, ...summary };
+    }
     cancelUnlock();
-  } catch (error) {
-    unlockError.value = errorText(error);
+  } catch (raw) {
+    unlockError.value = errorText(pdfInvokeError(raw));
   } finally {
     unlockBusy.value = false;
   }
@@ -210,22 +249,60 @@ async function unlockMergeItem(item) {
   item.busy = true;
   item.error = "";
   try {
-    const plain = await decryptPdf(item.lockedBytes, item.password || "");
-    const summary = await readPdfSummary(plain);
-    item.bytes = plain;
-    item.size = plain.length;
-    item.pageCount = summary.pageCount;
-    item.needPassword = false;
-    item.decrypted = true;
-    item.password = "";
+    if (isDesktop && item.path) {
+      const summary = await invoke("pdf_summary", { path: item.path, password: item.password || "" });
+      item.size = summary.sizeBytes || item.size;
+      item.pageCount = summary.pageCount;
+      item.needPassword = false;
+      item.decrypted = true;
+      // 桌面端保留密码：真正的解密发生在后续合并命令里
+    } else {
+      const plain = await decryptPdf(item.lockedBytes, item.password || "");
+      const summary = await readPdfSummary(plain);
+      item.bytes = plain;
+      item.size = plain.length;
+      item.pageCount = summary.pageCount;
+      item.needPassword = false;
+      item.decrypted = true;
+      item.password = "";
+    }
   } catch (error) {
-    item.error = errorText(error);
+    item.error = errorText(pdfInvokeError(error));
   } finally {
     item.busy = false;
   }
 }
 
 // —— 合并 ——
+/** 桌面端：系统对话框多选路径 → Rust 逐个摘要（字节不进 JS） */
+async function pickMergePaths() {
+  const selected = await openDialog({ multiple: true, filters: PDF_FILTER, title: t("toolbox.pdf.addFiles") });
+  if (!selected) return;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  busy.value = true;
+  notice.value = "";
+  for (const path of paths) {
+    const name = String(path).split(/[\\/]/).pop() || "document.pdf";
+    const item = createMergeItem(name, 0);
+    item.path = path;
+    try {
+      const loaded = await readPath(path, name);
+      item.size = loaded.sizeBytes || 0;
+      item.pageCount = loaded.pageCount;
+      item.decrypted = !!loaded.decrypted;
+    } catch (error) {
+      // 需要口令：保留待解锁状态，在本行提供密码输入，不阻塞其它文件入列
+      if (error?.code === "needPassword") item.needPassword = true;
+      else item.invalid = errorText(error);
+    }
+    mergeItems.value.push(item);
+  }
+  busy.value = false;
+}
+function pickMergeFiles() {
+  if (isDesktop) return pickMergePaths();
+  mergeInput.value?.click();
+}
 async function onMergeFiles(event) {
   const files = [...(event.target.files || [])];
   event.target.value = "";
@@ -233,7 +310,7 @@ async function onMergeFiles(event) {
   busy.value = true;
   notice.value = "";
   for (const file of files) {
-    const item = { id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, size: file.size, bytes: null, pageCount: 0, invalid: "", decrypted: false, needPassword: false, lockedBytes: null, password: "", error: "", busy: false };
+    const item = createMergeItem(file.name, file.size);
     try {
       const loaded = await readFile(file);
       item.bytes = loaded.bytes;
@@ -271,11 +348,22 @@ async function doMerge() {
   busy.value = true;
   notice.value = "";
   try {
-    const bytes = await mergePdfs(validMergeItems.value.map((item) => item.bytes));
-    const name = pdfOutputName(validMergeItems.value[0].name, t("toolbox.pdf.suffixMerged"));
+    const items = validMergeItems.value;
+    const name = pdfOutputName(items[0].name, t("toolbox.pdf.suffixMerged"));
+    if (isDesktop) {
+      const target = await saveDialog({ title: t("toolbox.pdf.saveMerged"), defaultPath: name, filters: PDF_FILTER });
+      if (!target) return;
+      await invoke("pdf_merge", {
+        items: items.map((item) => ({ path: item.path, password: item.password || null })),
+        dest: target,
+      });
+      props.showToast(t("toolbox.pdf.doneSaved", { name }));
+      return;
+    }
+    const bytes = await mergePdfs(items.map((item) => item.bytes));
     if (await saveBytes(bytes, name, t("toolbox.pdf.saveMerged"))) props.showToast(t("toolbox.pdf.doneSaved", { name }));
   } catch (error) {
-    fail(error);
+    fail(pdfInvokeError(error));
   } finally {
     busy.value = false;
   }
@@ -298,6 +386,28 @@ async function onSingleFile(event) {
   } finally {
     busy.value = false;
   }
+}
+/** 桌面端：系统对话框拿路径 → Rust 摘要（Rust 内置空口令解密尝试） */
+async function pickSinglePath() {
+  const path = await openDialog({ filters: PDF_FILTER, title: t("toolbox.pdf.pickFile") });
+  if (!path) return;
+  const name = String(path).split(/[\\/]/).pop() || "document.pdf";
+  busy.value = true;
+  resetSingle();
+  try {
+    source.value = { id: `${name}-${Date.now()}`, name, size: 0, ...(await readPath(path, name)) };
+  } catch (error) {
+    source.value = null;
+    // 需要口令：不报错，改为在面板里就地输入密码解锁
+    if (error?.code === "needPassword") unlock.value = { name, path };
+    else fail(pdfInvokeError(error));
+  } finally {
+    busy.value = false;
+  }
+}
+function pickSingleFile() {
+  if (isDesktop) return pickSinglePath();
+  singleInput.value?.click();
 }
 function clearSingle() {
   source.value = null;
@@ -354,11 +464,18 @@ async function saveRotated() {
   busy.value = true;
   notice.value = "";
   try {
-    const bytes = await rotatePages(source.value.bytes, rotation.value);
     const name = pdfOutputName(source.value.name, t("toolbox.pdf.suffixRotated"));
+    if (isDesktop && source.value.path) {
+      const target = await saveDialog({ title: t("toolbox.pdf.saveRotated"), defaultPath: name, filters: PDF_FILTER });
+      if (!target) return;
+      await invoke("pdf_rotate", { input: pdfInputOf(source.value), dest: target, angles: rotation.value });
+      props.showToast(t("toolbox.pdf.doneSaved", { name }));
+      return;
+    }
+    const bytes = await rotatePages(source.value.bytes, rotation.value);
     if (await saveBytes(bytes, name, t("toolbox.pdf.saveRotated"))) props.showToast(t("toolbox.pdf.doneSaved", { name }));
   } catch (error) {
-    fail(error);
+    fail(pdfInvokeError(error));
   } finally {
     busy.value = false;
   }
@@ -370,13 +487,20 @@ async function doExtract() {
   try {
     // 按文档顺序输出：点击顺序不是排序意图，也让文件名里的范围与实际页序一致
     const order = [...selected.value].sort((a, b) => a - b);
+    const name = pdfOutputName(source.value.name, formatPageRanges(order));
+    if (isDesktop && source.value.path) {
+      const target = await saveDialog({ title: t("toolbox.pdf.saveExtract"), defaultPath: name, filters: PDF_FILTER });
+      if (!target) return;
+      await invoke("pdf_extract", { input: pdfInputOf(source.value), dest: target, keep: order, angles: rotationForOrder(order) });
+      props.showToast(t("toolbox.pdf.doneSaved", { name }));
+      return;
+    }
     let bytes = await extractPages(source.value.bytes, order);
     const map = rotationForOrder(order);
     if (Object.keys(map).length) bytes = await rotatePages(bytes, map);
-    const name = pdfOutputName(source.value.name, formatPageRanges(order));
     if (await saveBytes(bytes, name, t("toolbox.pdf.saveExtract"))) props.showToast(t("toolbox.pdf.doneSaved", { name }));
   } catch (error) {
-    fail(error);
+    fail(pdfInvokeError(error));
   } finally {
     busy.value = false;
   }
@@ -387,13 +511,20 @@ async function doRemove() {
   notice.value = "";
   try {
     const order = keptIndices.value;
+    const name = pdfOutputName(source.value.name, t("toolbox.pdf.suffixRemain"));
+    if (isDesktop && source.value.path) {
+      const target = await saveDialog({ title: t("toolbox.pdf.saveRemove"), defaultPath: name, filters: PDF_FILTER });
+      if (!target) return;
+      await invoke("pdf_remove", { input: pdfInputOf(source.value), dest: target, remove: selected.value, angles: rotationForOrder(order) });
+      props.showToast(t("toolbox.pdf.doneSaved", { name }));
+      return;
+    }
     let bytes = await removePages(source.value.bytes, selected.value);
     const map = rotationForOrder(order);
     if (Object.keys(map).length) bytes = await rotatePages(bytes, map);
-    const name = pdfOutputName(source.value.name, t("toolbox.pdf.suffixRemain"));
     if (await saveBytes(bytes, name, t("toolbox.pdf.saveRemove"))) props.showToast(t("toolbox.pdf.doneSaved", { name }));
   } catch (error) {
-    fail(error);
+    fail(pdfInvokeError(error));
   } finally {
     busy.value = false;
   }
@@ -406,25 +537,23 @@ async function doSplit() {
   busy.value = true;
   notice.value = "";
   try {
-    const parts = await splitPdf(source.value.bytes, splitGroups.value);
-    const outputs = parts.map((part) => ({ name: pdfOutputName(source.value.name, formatPageRanges(part.indices)), bytes: part.bytes }));
-    if (isDesktop) {
+    if (isDesktop && source.value.path) {
       const directory = await openDialog({ directory: true, title: t("toolbox.pdf.pickSplitDir") });
       if (!directory) return;
-      const separator = String(directory).includes("\\") ? "\\" : "/";
-      for (const output of outputs) {
-        const path = `${String(directory).replace(/[\\/]$/, "")}${separator}${output.name}`;
-        await invoke("export_file_b64", { path, contentB64: await bytesToBase64(output.bytes) });
-      }
-    } else {
-      for (const output of outputs) {
-        downloadBlob(new Blob([output.bytes], { type: "application/pdf" }), output.name);
-        await new Promise((resolve) => setTimeout(resolve, 80));
-      }
+      const plans = splitGroups.value.map((group) => ({ name: pdfOutputName(source.value.name, formatPageRanges(group.indices)), indices: group.indices }));
+      const written = await invoke("pdf_split", { input: pdfInputOf(source.value), destDir: String(directory), plans });
+      props.showToast(t("toolbox.pdf.doneSplit", { n: written }));
+      return;
+    }
+    const parts = await splitPdf(source.value.bytes, splitGroups.value);
+    const outputs = parts.map((part) => ({ name: pdfOutputName(source.value.name, formatPageRanges(part.indices)), bytes: part.bytes }));
+    for (const output of outputs) {
+      downloadBlob(new Blob([output.bytes], { type: "application/pdf" }), output.name);
+      await new Promise((resolve) => setTimeout(resolve, 80));
     }
     props.showToast(t("toolbox.pdf.doneSplit", { n: outputs.length }));
   } catch (error) {
-    fail(error);
+    fail(pdfInvokeError(error));
   } finally {
     busy.value = false;
   }
@@ -443,7 +572,7 @@ async function doSplit() {
     <template v-if="mode === 'merge'">
       <div class="action-bar">
         <input ref="mergeInput" class="hidden-input" type="file" accept="application/pdf,.pdf" multiple @change="onMergeFiles" />
-        <button class="btn-outline" type="button" :disabled="busy" @click="mergeInput?.click()"><Icon name="plus" :size="15" />{{ t("toolbox.pdf.addFiles") }}</button>
+        <button class="btn-outline" type="button" :disabled="busy" @click="pickMergeFiles"><Icon name="plus" :size="15" />{{ t("toolbox.pdf.addFiles") }}</button>
         <button class="btn-ghost sm" type="button" :disabled="!mergeItems.length || busy" @click="clearMerge">{{ t("toolbox.pdf.clearList") }}</button>
         <span class="bar-hint">{{ t("toolbox.pdf.mergeHint") }}</span>
         <span class="action-spacer"></span>
@@ -501,7 +630,7 @@ async function doSplit() {
           <span class="empty-ico"><Icon name="layers" :size="28" /></span>
           <b>{{ t("toolbox.pdf.mergeEmptyTitle") }}</b>
           <p>{{ t("toolbox.pdf.mergeEmptyHint") }}</p>
-          <button class="btn-outline" type="button" @click="mergeInput?.click()"><Icon name="plus" :size="15" />{{ t("toolbox.pdf.addFiles") }}</button>
+          <button class="btn-outline" type="button" @click="pickMergeFiles"><Icon name="plus" :size="15" />{{ t("toolbox.pdf.addFiles") }}</button>
         </div>
       </section>
     </template>
@@ -510,7 +639,7 @@ async function doSplit() {
     <template v-else>
       <div class="action-bar">
         <input ref="singleInput" class="hidden-input" type="file" accept="application/pdf,.pdf" @change="onSingleFile" />
-        <button class="btn-outline" type="button" :disabled="busy" @click="singleInput?.click()">
+        <button class="btn-outline" type="button" :disabled="busy" @click="pickSingleFile">
           <Icon name="file" :size="15" />{{ source ? t("toolbox.pdf.switchFile") : t("toolbox.pdf.pickFile") }}
         </button>
         <span v-if="source" class="file-chip" :title="source.name"><Icon name="file" :size="13" />{{ source.name }}</span>
@@ -615,7 +744,7 @@ async function doSplit() {
           <span class="empty-ico"><Icon name="file" :size="28" /></span>
           <b>{{ t("toolbox.pdf.pickEmptyTitle") }}</b>
           <p>{{ t("toolbox.pdf.pickEmptyHint") }}</p>
-          <button class="btn-outline" type="button" @click="singleInput?.click()"><Icon name="file" :size="15" />{{ t("toolbox.pdf.pickFile") }}</button>
+          <button class="btn-outline" type="button" @click="pickSingleFile"><Icon name="file" :size="15" />{{ t("toolbox.pdf.pickFile") }}</button>
         </template>
       </div>
     </template>

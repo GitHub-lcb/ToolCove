@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 # TSPL 排版引擎：纯计算、无平台依赖，桌面端与手机端（编译成 WASM）共用同一份实现。
 # 见 crates/label-core 与 docs/mobile-app-plan.md §6。
 label-core = { path = "../crates/label-core" }
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
@@ -28,6 +28,7 @@ tauri-plugin-global-shortcut = "2.3.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+sha1 = "0.10"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 md-5 = "0.11"
@@ -60,6 +61,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 rayon = "1"
 # 磁盘分析的「删除到回收站」：走系统回收站（可恢复）；本工具不提供永久删除
 trash = "5"
+rust_xlsxwriter = "0.99.1"
+lopdf = "0.45.0"
 
 # 截图工具的原生部分只做 Windows：xcap（Windows Graphics Capture）与 arboard（剪贴板图片）
 # 都按目标平台条件依赖，避免 Linux CI / 安卓构建被系统库拖挂（截图本来就是桌面独占能力）

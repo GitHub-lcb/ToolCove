@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, inject } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "./platform/invoke.js";
+import { imageSrc } from "./platform/image.js";
 import Icon from "./Icon.vue";
 import { load as loadRecords, mergeRecords, mutate, onDataChanged, remove as removeRecord, restore as restoreRecord } from "./data/repository.js";
 import AiExtract from "./AiExtract.vue";
@@ -413,7 +414,7 @@ function notePreview(text) {
   const s = String(text || "").replace(/\s+/g, " ").trim();
   return s.length > 160 ? s.slice(0, 160) + t("problem.noteExpandHint") : s;
 }
-const imgCache = ref({}); // name -> dataURL
+const imgCache = ref({}); // name -> 显示 URL（桌面 asset 协议 / 浏览器 dataURL）
 const previewSrc = ref("");
 const lastExpandedId = ref(null); // 最近展开的问题：Ctrl+V 贴图的目标
 
@@ -542,16 +543,11 @@ function renderAnalysis(text) {
   }
   return html;
 }
-function mimeOf(name) {
-  const ext = (name.split(".").pop() || "").toLowerCase();
-  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
-}
 async function loadImages(p) {
   for (const img of p.images || []) {
     if (imgCache.value[img.name] !== undefined) continue;
     try {
-      const b64 = await invoke("load_image", { name: img.name });
-      imgCache.value[img.name] = `data:${mimeOf(img.name)};base64,${b64}`;
+      imgCache.value[img.name] = await imageSrc(img.name);
     } catch (e) {
       imgCache.value[img.name] = "";
     }

@@ -1,7 +1,14 @@
 // PDF 工具纯逻辑层：页码范围解析 + 基于 pdf-lib 的「字节进字节出」页面操作。
 // 不依赖 DOM / Tauri / i18n，可在 node 环境直接单测；UI 只负责取文件、组装参数、落盘与提示。
 // 约束：pdf-lib 不能解密，遇到加密 PDF 抛 code=encrypted，绝不产出损坏文件。
-import { PDFDocument, degrees } from "pdf-lib";
+//
+// pdf-lib 改惰性加载：桌面端 PDF 操作已走 Rust（tools/PdfTool.vue 按 isDesktop 分流），
+// 打开工具不再解析这 ~400KB 的库；浏览器/手机端在首次真正用到时加载。
+let pdfLibPromise = null;
+function loadPdfLib() {
+  pdfLibPromise = pdfLibPromise || import("pdf-lib");
+  return pdfLibPromise;
+}
 
 /** 逻辑层错误：带 code（UI 映射 i18n 文案）与可选 detail（原始 token / 文件名等）。 */
 export function pdfError(code, detail) {
@@ -168,6 +175,7 @@ export function attributeLoadFailure(bytes) {
  * 而直接解析失败，此时必须靠 looksEncryptedPdf 归因，否则用户会被告知文件损坏。
  */
 async function loadPdf(bytes) {
+  const { PDFDocument } = await loadPdfLib();
   let doc;
   try {
     doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -194,6 +202,7 @@ function copyMetadata(source, target) {
 }
 
 async function copySelection(source, indices) {
+  const { PDFDocument } = await loadPdfLib();
   const target = await PDFDocument.create();
   const pages = await target.copyPages(source, indices);
   for (const page of pages) target.addPage(page);
@@ -235,6 +244,7 @@ export async function readPdfSummary(bytes) {
 export async function mergePdfs(list) {
   const items = (Array.isArray(list) ? list : []).filter(Boolean);
   if (!items.length) throw pdfError("emptyInput");
+  const { PDFDocument } = await loadPdfLib();
   const target = await PDFDocument.create();
   let first = null;
   for (const bytes of items) {
@@ -272,6 +282,7 @@ export async function removePages(bytes, indices) {
 
 /** 旋转：angles 为 { 页码(0基): 增量角度 }，增量叠加在页面原有旋转上。 */
 export async function rotatePages(bytes, angles) {
+  const { degrees } = await loadPdfLib();
   const doc = await loadPdf(bytes);
   const pages = doc.getPages();
   let changed = 0;

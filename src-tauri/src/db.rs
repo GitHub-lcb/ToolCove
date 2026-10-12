@@ -1646,32 +1646,46 @@ mod tests {
     }
 }
 
+// 数据库命令统一 async + spawn_blocking：真正的执行本来就在 db-worker 线程（见 worker），
+// 但包装层要同步等 worker 回消息——同步命令的等待发生在主线程，慢 SQL 会把整个 UI 冻住。
+// 业务实现仍在 db-worker 上串行执行，语义不变。
+
 /// 测试数据库连接（建立后立即断开），返回耗时；失败返回 Err。
 #[tauri::command]
-pub fn db_test(opts: serde_json::Value) -> Result<serde_json::Value, String> {
-    test(&opts)
+pub async fn db_test(opts: serde_json::Value) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || test(&opts))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 建立数据库连接，返回连接 id（后续 db_query/db_close 使用）
 #[tauri::command]
-pub fn db_connect(opts: serde_json::Value) -> Result<String, String> {
-    connect(&opts)
+pub async fn db_connect(opts: serde_json::Value) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || connect(&opts))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 在已建立的连接上执行 SQL，返回 { columns, colTypes, rows, rowCount, affected, truncated, durationMs }
 #[tauri::command]
-pub fn db_query(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
-    query(&conn_id, &sql)
+pub async fn db_query(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || query(&conn_id, &sql))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 只读查询：拒绝写入类 SQL（Agent 的 db.query_readonly 工具使用）。
 /// 前端也会先过滤一次；这里是第二道闸门，防止绕过前端直接调用命令。
 #[tauri::command]
-pub fn db_query_readonly(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
-    if !is_read_only_sql(&sql) {
-        return Err("只读查询仅允许 SELECT / WITH / SHOW / DESCRIBE 等只读语句".to_string());
-    }
-    query(&conn_id, &sql)
+pub async fn db_query_readonly(conn_id: String, sql: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_read_only_sql(&sql) {
+            return Err("只读查询仅允许 SELECT / WITH / SHOW / DESCRIBE 等只读语句".to_string());
+        }
+        query(&conn_id, &sql)
+    })
+    .await
+    .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 保守识别只读 SQL：无法确定时按写操作处理（与前端 src/db.js 的 isReadOnlySql 语义对齐）
@@ -1820,28 +1834,37 @@ pub async fn db_install_oracle_driver(app: tauri::AppHandle, url: String, sha256
 
 /// 列出连接下的表/视图清单：[{ name, kind }]（kind: table / view）
 #[tauri::command]
-pub fn db_tables(conn_id: String) -> Result<serde_json::Value, String> {
-    tables(&conn_id)
+pub async fn db_tables(conn_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || tables(&conn_id))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 列出表的列结构：[{ name, type, nullable, pk, comment }]
 #[tauri::command]
-pub fn db_columns(conn_id: String, table: String) -> Result<serde_json::Value, String> {
-    columns(&conn_id, &table)
+pub async fn db_columns(conn_id: String, table: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || columns(&conn_id, &table))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 列出表的索引：[{ name, unique, columns, def?, comment? }]（按索引名分组）
 #[tauri::command]
-pub fn db_indexes(conn_id: String, table: String) -> Result<serde_json::Value, String> {
-    indexes(&conn_id, &table)
+pub async fn db_indexes(conn_id: String, table: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || indexes(&conn_id, &table))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
 
 /// 获取表的建表 DDL 文本（PostgreSQL 为按元数据还原的重建语句）
 #[tauri::command]
-pub fn db_ddl(conn_id: String, table: String) -> Result<serde_json::Value, String> {
-    ddl(&conn_id, &table)
+pub async fn db_ddl(conn_id: String, table: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || ddl(&conn_id, &table))
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }
-/// 关闭数据库连接（幂等，连接不存在也返回成功）
+
+/// 关闭数据库连接（幂等，连接不存在也返回成功）：fire-and-forget，不等待 worker 回复
 #[tauri::command]
 pub fn db_close(conn_id: String) -> Result<(), String> {
     close(&conn_id)
@@ -1849,6 +1872,8 @@ pub fn db_close(conn_id: String) -> Result<(), String> {
 
 /// 枚举本机已安装的 ODBC 驱动（供 Oracle 连接选择驱动）
 #[tauri::command]
-pub fn db_drivers() -> Result<Vec<String>, String> {
-    list_drivers()
+pub async fn db_drivers() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(list_drivers)
+        .await
+        .map_err(|e| format!("数据库任务异常：{e}"))?
 }

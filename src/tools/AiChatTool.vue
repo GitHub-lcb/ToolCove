@@ -1,6 +1,6 @@
 <script setup>
 // AI 对话工具：多会话管理 + 流式对话（可停止）+ 图片输入 + 提示词预设 + Markdown 渲染。
-// 会话与预设持久化走 toolboxStore（chat / chatPresets）；图片走 save_image/load_image（JSON 只存文件名）。
+// 会话与预设持久化走 toolboxStore（chat / chatPresets）；图片落盘 images/ 目录（JSON 只存文件名，显示 URL 见 platform/image.js）。
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import Icon from "../Icon.vue";
 import MarkdownRender from "./MarkdownRender.vue";
@@ -19,6 +19,7 @@ import {
 import { askConfirm } from "../confirm.js";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
+import { imageSrc } from "../platform/image.js";
 
 const { t } = useI18n();
 
@@ -138,17 +139,12 @@ function commitRename(s) {
 }
 
 // ---------- 图片 ----------
-function mimeOf(name) {
-  const ext = String(name || "").split(".").pop()?.toLowerCase();
-  return ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
-}
 async function loadSessionImages(s) {
   for (const m of s.messages) {
     for (const img of m.images || []) {
       if (imgCache.has(img.name)) continue;
       try {
-        const b64 = await invoke("load_image", { name: img.name });
-        imgCache.set(img.name, `data:${mimeOf(img.name)};base64,${b64}`);
+        imgCache.set(img.name, await imageSrc(img.name));
       } catch {
         imgCache.set(img.name, "");
       }

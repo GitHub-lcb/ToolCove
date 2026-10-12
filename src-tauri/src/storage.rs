@@ -226,6 +226,17 @@ pub async fn load_image(app: tauri::AppHandle, name: String) -> Result<String, S
     .map_err(|e| e.to_string())?
 }
 
+/// 图片附件的绝对路径（不读盘，只拼路径）：桌面端让 WebView 走 asset 协议直接加载文件，
+/// 不经 base64/IPC。scope 见 tauri.conf.json 的 assetProtocol（$APPDATA/images/**）。
+#[tauri::command]
+pub fn image_file_path(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    let path = image_path(&app, &name)?;
+    if !path.exists() {
+        return Err("图片不存在".to_string());
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// 删除图片附件（文件不存在视为成功）
 #[tauri::command]
 pub async fn delete_image(app: tauri::AppHandle, name: String) -> Result<(), String> {
