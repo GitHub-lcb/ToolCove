@@ -21,7 +21,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, LoadCursorW,
     PostQuitMessage, RegisterClassW, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, TranslateMessage, CS_DBLCLKS, ES_AUTOHSCROLL,
-    ES_LEFT, GWLP_WNDPROC, IDC_CROSS, WM_SETFONT, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MSG, SW_SHOW, WM_DESTROY, WM_ERASEBKGND,
+    ES_LEFT, GWLP_WNDPROC, IDC_CROSS, IDC_SIZEALL, WM_SETFONT, WM_LBUTTONDBLCLK, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MSG, SW_SHOW, WM_DESTROY, WM_ERASEBKGND,
     WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WNDCLASSW,
     WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
 };
@@ -73,6 +73,8 @@ struct WinState {
     edit_at: Option<(i32, i32)>,
     /// 进入文本输入前的原窗口过程（子类化时需要）
     edit_prev_proc: isize,
+    /// EDIT 底色画刷（惰性创建、销毁 EDIT 时释放）
+    edit_brush: isize,
 }
 
 enum Drag {
@@ -139,7 +141,7 @@ fn run_overlay(app: AppHandle, monitors: Vec<ShotMonitor>, frames: Vec<(usize, i
             .enumerate()
             .map(|(i, tool)| t(tool.name_key(), ["矩形", "椭圆", "箭头", "画笔", "记号笔", "文字", "马赛克"][i]))
             .collect(),
-        hint: t("hint", "Enter 复制 · Ctrl+S 另存为 · F3 贴图 · Ctrl+Z 撤销 · Esc 取消"),
+        hint: t("hint", "Enter 复制 · Ctrl+S 保存 · F3 贴图 · Ctrl+Z 撤销 · Esc 取消"),
     };
 
     unsafe {
@@ -185,6 +187,7 @@ fn run_overlay(app: AppHandle, monitors: Vec<ShotMonitor>, frames: Vec<(usize, i
                 edit: std::ptr::null_mut(),
                 edit_at: None,
                 edit_prev_proc: 0,
+                edit_brush: 0,
             });
         }
         let mut pending = pending.into_iter();
@@ -274,6 +277,23 @@ fn finish_session() {
 // ---------------- 窗口过程 ----------------
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    // 处理器内的 panic 不能跨 extern "system" 边界（会直接 abort 整个应用）；
+    // 兜住并记录日志，会话尽量继续（退出路径 Esc 仍可用）。
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| wndproc_impl(hwnd, msg, wparam, lparam))) {
+        Ok(v) => v,
+        Err(e) => {
+            let text = e
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| e.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".into());
+            eprintln!("遮罩消息处理 panic（已兜住，会话继续）：{text}");
+            0
+        }
+    }
+}
+
+unsafe fn wndproc_impl(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_PAINT => {
             paint_window(hwnd);
@@ -290,6 +310,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_LBUTTONUP => {
             on_lbutton_up(hwnd, lparam);
+            0
+        }
+        // 双击选区内 = 直接复制并退出（与 WebView 版一致的顺手操作）
+        WM_LBUTTONDBLCLK => {
+            let (x, y) = cursor_of(lparam);
+            let inside = with_ctx(|ctx| ctx.windows.get(&(hwnd as isize)).map(|st| st.sel.map(|s| s.contains((x, y))).unwrap_or(false))).flatten().unwrap_or(false);
+            if inside {
+                confirm(hwnd, Action::Copy);
+            }
             0
         }
         WM_RBUTTONUP => {
@@ -312,11 +341,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             1
         }
         // 文本输入框跟遮罩一个底色（原生 EDIT 默认白底在暗色遮罩上很突兀）
+        // 注意 COLORREF 是 0x00BBGGRR：#161b22 要写成 0x00221B16；brush 缓存复用避免每次重绘泄漏 GDI 句柄
         windows_sys::Win32::UI::WindowsAndMessaging::WM_CTLCOLOREDIT => {
             let hdc = wparam as HDC;
             windows_sys::Win32::Graphics::Gdi::SetTextColor(hdc, 0x00F3EDE6);
-            windows_sys::Win32::Graphics::Gdi::SetBkColor(hdc, 0x00121B16);
-            let brush = windows_sys::Win32::Graphics::Gdi::CreateSolidBrush(0x00121B16);
+            windows_sys::Win32::Graphics::Gdi::SetBkColor(hdc, 0x00221B16);
+            let brush = with_ctx(|ctx| {
+                let Some(st) = ctx.windows.get_mut(&(hwnd as isize)) else { return 0 };
+                if st.edit_brush == 0 {
+                    st.edit_brush = windows_sys::Win32::Graphics::Gdi::CreateSolidBrush(0x00221B16) as isize;
+                }
+                st.edit_brush
+            })
+            .unwrap_or(0);
             brush as LRESULT
         }
         WM_KEYDOWN => {
@@ -406,6 +443,7 @@ fn on_lbutton_down(hwnd: HWND, lparam: LPARAM) {
         return;
     }
     let mut action: Option<ToolbarItem> = None;
+    let mut edit_at: Option<(i32, i32)> = None;
     with_ctx(|ctx| {
         let Some(st) = ctx.windows.get_mut(&(hwnd as isize)) else { return };
         let bounds = bounds_of(st);
@@ -431,7 +469,8 @@ fn on_lbutton_down(hwnd: HWND, lparam: LPARAM) {
                 }
             } else if sel.contains((x, y)) {
                 if st.tool == Some(Tool::Text) {
-                    open_text_edit(hwnd, (x, y));
+                    // 不能在 with_ctx 闭包里再进 with_ctx（RefCell 二次借用会 panic），出闭包后开输入框
+                    edit_at = Some((x, y));
                     return;
                 }
                 st.drag = Some(Drag::Draw { start: (x, y) });
@@ -443,6 +482,9 @@ fn on_lbutton_down(hwnd: HWND, lparam: LPARAM) {
         st.draft = None;
         st.drag = Some(Drag::Select { start: (x, y) });
     });
+    if let Some(at) = edit_at {
+        open_text_edit(hwnd, at);
+    }
     if let Some(item) = action {
         apply_toolbar(hwnd, item);
     }
@@ -479,10 +521,11 @@ fn on_lbutton_up(hwnd: HWND, lparam: LPARAM) {
 
 fn on_right_up(hwnd: HWND) {
     let mut cancel_all = false;
+    let mut commit = false;
     with_ctx(|ctx| {
         let Some(st) = ctx.windows.get_mut(&(hwnd as isize)) else { return };
         if !st.edit.is_null() {
-            commit_text(hwnd);
+            commit = true;
             return;
         }
         if st.tool.is_some() {
@@ -494,6 +537,10 @@ fn on_right_up(hwnd: HWND) {
             cancel_all = true;
         }
     });
+    if commit {
+        commit_text(hwnd);
+        return;
+    }
     if cancel_all {
         finish_session();
     } else {
@@ -505,6 +552,7 @@ fn on_keydown(hwnd: HWND, vk: i32) {
     let ctrl = unsafe { GetKeyState(VK_CONTROL) } < 0;
     let shift = unsafe { GetKeyState(VK_SHIFT) } < 0;
     let mut cancel_all = false;
+    let mut close_edit = false;
     let mut do_copy = false;
     let mut do_save = false;
     let mut do_pin = false;
@@ -516,7 +564,7 @@ fn on_keydown(hwnd: HWND, vk: i32) {
         match vk {
             x if x == VK_ESCAPE => {
                 if !st.edit.is_null() {
-                    close_text_edit(hwnd);
+                    close_edit = true;
                 } else if st.tool.is_some() {
                     st.tool = None;
                 } else if st.sel.is_some() {
@@ -548,6 +596,10 @@ fn on_keydown(hwnd: HWND, vk: i32) {
             _ => {}
         }
     });
+    if close_edit {
+        close_text_edit(hwnd);
+        return;
+    }
     if cancel_all {
         finish_session();
         return;
@@ -572,6 +624,14 @@ fn set_cursor(hwnd: HWND) {
         let st = ctx.windows.get(&(hwnd as isize))?;
         let c = if st.tool.is_some() {
             IDC_CROSS
+        } else if let Some(sel) = st.sel {
+            if hit_handle(sel, st.cursor, 7).is_some() {
+                IDC_CROSS
+            } else if sel.contains(st.cursor) {
+                IDC_SIZEALL
+            } else {
+                IDC_CROSS
+            }
         } else if let Some(h) = st.hover_handle {
             match h {
                 "nw" | "se" => IDC_SIZENWSE,
@@ -610,6 +670,7 @@ fn paint_window(hwnd: HWND) {
             let Some(st) = ctx.windows.get_mut(&(hwnd as isize)) else { return false };
             let sel = st.sel;
             let layout = sel.map(|s| toolbar_layout(s, (st.frame.w, st.frame.h), &toolbar_item_widths()));
+            let over_bar = layout.as_ref().map(|l| l.bar.contains(st.cursor)).unwrap_or(false);
             let text = &ctx.text;
             let tool_labels: Vec<String> = text.tools.clone();
             let scene = paint::Scene {
@@ -620,13 +681,14 @@ fn paint_window(hwnd: HWND) {
                 can_redo: st.history.can_redo(),
                 draft: st.draft.as_ref(),
                 selection: sel,
+                hover: st.hover_item,
                 size_label: sel.map(|s| format!("{} × {}", s.w, s.h)).unwrap_or_default(),
                 toolbar: layout.as_ref(),
                 active_tool: st.tool,
                 color: st.color,
                 width_idx: st.width_idx,
                 hint: &text.hint,
-                magnifier: if st.tool.is_none() && st.drag.is_none() {
+                magnifier: if st.tool.is_none() && st.drag.is_none() && !over_bar {
                     let (x, y) = st.cursor;
                     let px = (x).clamp(0, st.frame.w - 1) as usize;
                     let py = (y).clamp(0, st.frame.h - 1) as usize;
@@ -766,6 +828,21 @@ fn edit_text(edit: HWND) -> String {
 }
 
 unsafe extern "system" fn edit_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| edit_proc_impl(hwnd, msg, wparam, lparam))) {
+        Ok(v) => v,
+        Err(e) => {
+            let text = e
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| e.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".into());
+            eprintln!("文本输入处理 panic（已兜住）：{text}");
+            0
+        }
+    }
+}
+
+unsafe fn edit_proc_impl(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let parent = windows_sys::Win32::UI::WindowsAndMessaging::GetParent(hwnd);
     match msg {
         WM_KEYDOWN => {
@@ -826,6 +903,12 @@ fn commit_text_value(hwnd: HWND, text: String) {
         let at = st.edit_at.take();
         st.edit = std::ptr::null_mut();
         st.edit_prev_proc = 0;
+        if st.edit_brush != 0 {
+            unsafe {
+                windows_sys::Win32::Graphics::Gdi::DeleteObject(st.edit_brush as _);
+            }
+            st.edit_brush = 0;
+        }
         if text.is_empty() {
             return;
         }
@@ -843,6 +926,12 @@ fn close_text_edit(hwnd: HWND) {
             st.edit = std::ptr::null_mut();
             st.edit_at = None;
             st.edit_prev_proc = 0;
+            if st.edit_brush != 0 {
+                unsafe {
+                    windows_sys::Win32::Graphics::Gdi::DeleteObject(st.edit_brush as _);
+                }
+                st.edit_brush = 0;
+            }
             e
         })
     })

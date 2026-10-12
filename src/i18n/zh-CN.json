@@ -3843,7 +3843,7 @@
     "copy": "复制",
     "save": "保存",
     "pin": "贴图",
-    "hint": "Enter 复制 · Ctrl+S 另存为 · F3 贴图 · Ctrl+Z 撤销 · Esc 取消",
+    "hint": "Enter 复制 · Ctrl+S 保存 · F3 贴图 · Ctrl+Z 撤销 · Esc 取消",
     "menuCopy": "复制图片",
     "menuSaveAs": "另存为…",
     "menuResetZoom": "重置缩放",

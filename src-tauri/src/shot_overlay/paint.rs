@@ -10,12 +10,14 @@ use windows_sys::Win32::Graphics::Gdi::{
     BITMAPINFOHEADER, BI_RGB, COLORONCOLOR, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, SRCCOPY,
 };
 use windows_sys::Win32::Graphics::GdiPlus::{
+    GdipAddPathArcI, GdipClosePathFigure, GdipCreatePath, GdipDeletePath, GdipDrawPath, GdipFillPath,
     GdipCreateFont, GdipCreateFontFamilyFromName, GdipCreateFromHDC, GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat,
     GdipDeleteBrush, GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePen, GdipDeleteStringFormat, GdipDrawEllipseI,
     GdipDrawLineI, GdipDrawLinesI, GdipDrawRectangleI, GdipDrawString, GdipFillEllipseI, GdipFillPolygonI, GdipFillRectangleI,
-    GdipSetPageUnit, GdipSetSmoothingMode, GdipSetStringFormatFlags, GdipSetTextRenderingHint,
-    GdiplusStartup, FillModeAlternate, GpBrush, GpFont, GpFontFamily, GpGraphics, GpPen, GpStringFormat, Point, RectF,
-    SmoothingModeAntiAlias, StringFormatFlagsNoWrap, TextRenderingHintAntiAliasGridFit, UnitPixel, GdiplusStartupInput,
+    GdipSetPageUnit, GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatFlags, GdipSetStringFormatLineAlign,
+    GdipSetTextRenderingHint, GdiplusStartup, FillModeAlternate, GpBrush, GpFont, GpFontFamily, GpGraphics, GpPath, GpPen,
+    GpStringFormat, Point, RectF, SmoothingModeAntiAlias, StringAlignmentCenter, StringFormatFlagsNoClip, StringFormatFlagsNoWrap,
+    TextRenderingHintAntiAliasGridFit, UnitPixel, GdiplusStartupInput,
 };
 
 
@@ -71,11 +73,19 @@ impl Dib {
         }
     }
 
-    /// 从 RGBA 字节建 DIB（每行 dst 宽度 = w*4）
+    /// 从 RGBA 字节建 DIB。注意 DIB 内存是 BGRA（GDI 的 32bpp BI_RGB），
+    /// 逐像素换 R/B 后再写，否则屏幕上显示的画面会 R/B 互换（偏色）。
     pub fn from_rgba(rgba: &[u8], w: i32, h: i32) -> Self {
         let dib = Self::new(w, h);
         unsafe {
-            std::ptr::copy_nonoverlapping(rgba.as_ptr(), dib.bits as *mut u8, (w as usize) * (h as usize) * 4);
+            let n = (w as usize) * (h as usize);
+            let dst = dib.bits as *mut u8;
+            for i in 0..n {
+                *dst.add(i * 4) = rgba[i * 4 + 2];
+                *dst.add(i * 4 + 1) = rgba[i * 4 + 1];
+                *dst.add(i * 4 + 2) = rgba[i * 4];
+                *dst.add(i * 4 + 3) = rgba[i * 4 + 3];
+            }
         }
         dib
     }
@@ -95,11 +105,18 @@ impl Dib {
         }
     }
 
+    /// 返回真正的 RGBA 字节供导出（DIB 内存是 BGRA，返回前换回 R/B）
     pub fn rgba(&self) -> Vec<u8> {
         unsafe {
-            let n = (self.w as usize) * (self.h as usize) * 4;
-            let mut out = vec![0u8; n];
-            std::ptr::copy_nonoverlapping(self.bits as *const u8, out.as_mut_ptr(), n);
+            let n = (self.w as usize) * (self.h as usize);
+            let mut out = vec![0u8; n * 4];
+            let src = self.bits as *const u8;
+            for i in 0..n {
+                out[i * 4] = *src.add(i * 4 + 2);
+                out[i * 4 + 1] = *src.add(i * 4 + 1);
+                out[i * 4 + 2] = *src.add(i * 4);
+                out[i * 4 + 3] = *src.add(i * 4 + 3);
+            }
             out
         }
     }
@@ -262,6 +279,67 @@ impl Gp {
         text.chars().map(|c| if (c as u32) > 0x2E80 { size } else { size * 0.55 }).sum::<f32>() as i32
     }
 
+    /// 在给定矩形内水平 + 垂直居中画一段文字（按钮标签用；靠 GDI+ 自己算排版，不手调偏移）
+    pub unsafe fn text_centered(&self, text: &str, r: Rect, size: f32, rgb: u32, alpha: u32, family: &str) {
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        let fam_wide: Vec<u16> = family.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut fam: *mut GpFontFamily = std::ptr::null_mut();
+        GdipCreateFontFamilyFromName(fam_wide.as_ptr(), std::ptr::null_mut(), &mut fam);
+        if fam.is_null() {
+            return;
+        }
+        let mut font: *mut GpFont = std::ptr::null_mut();
+        GdipCreateFont(fam, size, 0, UnitPixel as i32, &mut font);
+        let mut fmt: *mut GpStringFormat = std::ptr::null_mut();
+        GdipCreateStringFormat(0, 0, &mut fmt);
+        GdipSetStringFormatFlags(fmt, (StringFormatFlagsNoWrap | StringFormatFlagsNoClip) as i32);
+        GdipSetStringFormatAlign(fmt, StringAlignmentCenter);
+        GdipSetStringFormatLineAlign(fmt, StringAlignmentCenter);
+        let layout = RectF { X: r.x as f32, Y: r.y as f32, Width: r.w as f32, Height: r.h as f32 };
+        let brush = self.brush(rgb, alpha);
+        GdipDrawString(self.g, wide.as_ptr(), -1, font, &layout, fmt, brush);
+        GdipDeleteBrush(brush);
+        GdipDeleteStringFormat(fmt);
+        GdipDeleteFont(font);
+        GdipDeleteFontFamily(fam);
+    }
+
+    /// 圆角矩形路径（四角圆弧 + 四边直线）
+    unsafe fn round_path(&self, r: Rect, radius: i32) -> *mut GpPath {
+        let rad = radius.max(0).min(r.w / 2).min(r.h / 2);
+        let d = rad * 2;
+        let mut path: *mut GpPath = std::ptr::null_mut();
+        GdipCreatePath(FillModeAlternate as i32, &mut path);
+        GdipAddPathArcI(path, r.x, r.y, d, d, 180.0, 90.0);
+        GdipAddPathArcI(path, r.right() - d, r.y, d, d, 270.0, 90.0);
+        GdipAddPathArcI(path, r.right() - d, r.bottom() - d, d, d, 0.0, 90.0);
+        GdipAddPathArcI(path, r.x, r.bottom() - d, d, d, 90.0, 90.0);
+        GdipClosePathFigure(path);
+        path
+    }
+
+    pub unsafe fn fill_round(&self, r: Rect, radius: i32, rgb: u32, alpha: u32) {
+        let path = self.round_path(r, radius);
+        let b = self.brush(rgb, alpha);
+        GdipFillPath(self.g, b, path);
+        GdipDeleteBrush(b);
+        GdipDeletePath(path);
+    }
+
+    pub unsafe fn stroke_round(&self, r: Rect, radius: i32, rgb: u32, width: i32, alpha: u32) {
+        let path = self.round_path(r, radius);
+        let p = self.pen(rgb, width, alpha);
+        GdipDrawPath(self.g, p, path);
+        GdipDeletePen(p);
+        GdipDeletePath(path);
+    }
+
+    /// 悬浮阴影：两层低透明黑、向下偏移（比真阴影便宜一档，观感够用）
+    unsafe fn drop_shadow(&self, r: Rect, radius: i32) {
+        self.fill_round(Rect::new(r.x - 2, r.y + 2, r.w + 4, r.h + 4), radius + 2, 0x000000, 42);
+        self.fill_round(Rect::new(r.x - 1, r.y + 4, r.w + 2, r.h + 4), radius + 1, 0x000000, 26);
+    }
+
     fn width(&self) -> i32 {
         // GDI+ 的布局矩形给足宽度即可（NoWrap 下不会换行）
         100_000
@@ -341,6 +419,7 @@ pub struct Scene<'a> {
     pub can_redo: bool,
     pub draft: Option<&'a Op>,
     pub selection: Option<Rect>,
+    pub hover: Option<super::state::ToolbarItem>,
     pub labels: Labels<'a>,
     pub size_label: String,
     pub toolbar: Option<&'a super::state::ToolbarLayout>,
@@ -394,35 +473,60 @@ pub unsafe fn paint(canvas: &mut Dib, scene: &Scene, font_family: &str) {
             g.fill_rect(Rect::new(p.0 - 3, p.1 - 3, 7, 7), 0xffffff, 255);
             g.stroke_rect(Rect::new(p.0 - 3, p.1 - 3, 7, 7), BLUE_DARK, 1, 255);
         }
-        // 4) 尺寸标签
+        // 4) 尺寸标签：贴在选区内右下角，避免与选区外的工具栏/放大镜抢位
         if !scene.size_label.is_empty() {
             let w = scene.size_label.chars().count() as i32 * 8 + 18;
-            let lx = sel.right() - w;
-            let ly = if sel.bottom() + 30 < canvas.h { sel.bottom() + 4 } else { (sel.y - 30).max(4) };
-            g.fill_rect(Rect::new(lx, ly, w, 22), 0x161b22, 242);
-            g.text(&scene.size_label, (lx + 9, ly + 4), 13.0, 0xe6edf3, 255, font_family);
+            const INSET: i32 = 8;
+            if sel.w >= w + INSET * 2 && sel.h >= 24 + INSET * 2 {
+                let lx = sel.right() - w - INSET;
+                let ly = sel.bottom() - 24 - INSET;
+                g.fill_round(Rect::new(lx, ly, w, 24), 7, 0x161b22, 242);
+                g.stroke_round(Rect::new(lx, ly, w, 24), 7, 0x30363d, 1, 220);
+                g.text(&scene.size_label, (lx + 10, ly + 4), 13.0, 0xe6edf3, 255, font_family);
+            }
         }
     }
-    // 5) 工具栏
+    // 5) 工具栏：圆角 + 悬浮阴影 + 半透明深底（压在画面上也读得清）
     if let Some(layout) = scene.toolbar {
-        g.fill_rect(layout.bar, 0x161b22, 246);
-        g.stroke_rect(layout.bar, 0x30363d, 1, 255);
-        for (item, r) in &layout.items {
+        g.drop_shadow(layout.bar, 12);
+        g.fill_round(layout.bar, 12, 0x161b22, 246);
+        g.stroke_round(layout.bar, 12, 0x30363d, 1, 255);
+        for (i, (item, r)) in layout.items.iter().enumerate() {
+            // 分组之间的细竖线（布局留的 SEP 空档里居中）
+            if i > 0 && super::state::is_sep_before(item, &layout.items[i - 1].0) {
+                g.line((r.x - 6, layout.bar.y + 9), (r.x - 6, layout.bar.y + layout.bar.h - 9), 0x30363d, 1, 255);
+            }
             paint_toolbar_item(&g, scene, item, *r, font_family);
         }
     }
-    // 6) 放大镜
+    // 5.5) 悬停工具名气泡：图标按钮的可读性兜底（顺带把 i18n 工具名用上）
+    if let Some(layout) = scene.toolbar {
+        if let Some(super::state::ToolbarItem::Tool(t)) = scene.hover {
+            if let Some((_, r)) = layout.items.iter().find(|(it, _)| *it == super::state::ToolbarItem::Tool(t)) {
+                let name = scene.labels.tools.get(tool_index(t)).map(|s| s.as_str()).unwrap_or("");
+                if !name.is_empty() {
+                    let w = name.chars().map(|c| if (c as u32) > 0x2E80 { 13.5 } else { 7.5 }).sum::<f32>() as i32 + 20;
+                    let tx = (r.x + r.w / 2 - w / 2).clamp(6, (canvas.w - w - 6).max(6));
+                    let ty = (layout.bar.y - 32).max(6);
+                    g.fill_round(Rect::new(tx, ty, w, 24), 7, 0x161b22, 240);
+                    g.stroke_round(Rect::new(tx, ty, w, 24), 7, 0x30363d, 1, 220);
+                    g.text(name, (tx + 10, ty + 4), 12.5, 0xe6edf3, 255, font_family);
+                }
+            }
+        }
+    }
+    // 6) 放大镜（与工具栏相交时自动让位）
     if let Some((mx, my, color, (px, py))) = scene.magnifier {
-        let m = magnifier_rect((mx, my), (canvas.w, canvas.h));
+        let m = magnifier_rect((mx, my), (canvas.w, canvas.h), scene.toolbar.map(|l| l.bar));
         let zoom = 6;
         let src = ((m.w / zoom) as f32 * 0.5) as i32;
         canvas.stretch_from(scene.frame, px - src, py - src, src * 2, src * 2, Rect::new(m.x, m.y, m.w, m.w));
         // 十字线
         g.line((m.x + m.w / 2, m.y), (m.x + m.w / 2, m.y + m.w), BLUE, 1, 200);
         g.line((m.x, m.y + m.w / 2), (m.x + m.w, m.y + m.w / 2), BLUE, 1, 200);
-        g.fill_rect(Rect::new(m.x, m.y + m.w, m.w, m.h - m.w), 0x161b22, 242);
-        g.fill_rect(Rect::new(m.x + 5, m.y + m.w + 7, 11, 11), color, 255);
-        g.stroke_rect(Rect::new(m.x + 5, m.y + m.w + 7, 11, 11), 0x8b949e, 1, 255);
+        g.fill_round(Rect::new(m.x, m.y + m.w, m.w, m.h - m.w), 8, 0x161b22, 242);
+        g.fill_round(Rect::new(m.x + 5, m.y + m.w + 7, 11, 11), 3, color, 255);
+        g.stroke_round(Rect::new(m.x + 5, m.y + m.w + 7, 11, 11), 3, 0x8b949e, 1, 255);
         let hex = format!("#{color:06x}");
         g.text(&hex, (m.x + 21, m.y + m.w + 5), 12.0, 0xc9d1d9, 255, font_family);
         let pos = format!("{px}, {py}");
@@ -432,10 +536,12 @@ pub unsafe fn paint(canvas: &mut Dib, scene: &Scene, font_family: &str) {
     if let Some((tx, ty, color)) = scene.text_cursor {
         g.stroke_rect(Rect::new(tx - 2, ty - 2, 3, TEXT_SIZES[0] + 4), color, 1, 200);
     }
-    // 8) 底部快捷键提示
+    // 8) 底部快捷键提示（alpha 对齐其他 chip；文字用 app 深色主题的 de-emphasized 档，最坏背景也能过 AA）
     if !scene.hint.is_empty() {
-        g.fill_rect(Rect::new(12, canvas.h - 30, scene.hint.chars().count() as i32 * 8 + 20, 24), 0x161b22, 216);
-        g.text(scene.hint, (22, canvas.h - 26), 12.5, 0x8b949e, 255, font_family);
+        let w = scene.hint.chars().map(|c| if (c as u32) > 0x2E80 { 12.5 } else { 7.0 }).sum::<f32>() as i32 + 22;
+        g.fill_round(Rect::new(12, canvas.h - 34, w, 26), 8, 0x161b22, 246);
+        g.stroke_round(Rect::new(12, canvas.h - 34, w, 26), 8, 0x30363d, 1, 220);
+        g.text(scene.hint, (23, canvas.h - 30), 12.5, 0x9aa4b2, 255, font_family);
     }
 }
 
@@ -447,52 +553,150 @@ fn handle_point(sel: Rect, h: &str) -> (i32, i32) {
 
 unsafe fn paint_toolbar_item(g: &Gp, scene: &Scene, item: &super::state::ToolbarItem, r: Rect, family: &str) {
     use super::state::ToolbarItem as T;
-    let hovered = false; // 原生版先不做 hover 高亮（后续可加）
+    let hovered = scene.hover == Some(*item);
+    let icon_rect = r.inset(8);
     match item {
         T::Tool(t) => {
             let active = scene.active_tool == Some(*t);
             if active {
-                g.fill_rect(r, 0x1a3352, 255);
-                g.stroke_rect(r, BLUE_DARK, 1, 255);
+                g.fill_round(r, 8, 0x1a3352, 255);
+                g.stroke_round(r, 8, BLUE, 1, 255);
+            } else if hovered {
+                g.fill_round(r, 8, 0x21262d, 255);
             }
-            let label = scene.labels.tools.get(tool_index(*t)).map(|s| s.as_str()).unwrap_or("");
-            g.text(label, (r.x + 5, r.y + 7), 12.5, if active { 0x79c0ff } else { 0xc9d1d9 }, 255, family);
-            let _ = hovered;
+            let fg = if active { 0x79c0ff } else if hovered { 0xffffff } else { 0xc9d1d9 };
+            draw_tool_icon(g, *t, icon_rect, fg, 255);
         }
         T::Color(c) => {
             let on = scene.color == *c;
-            let inner = r.inset(3);
-            g.fill_rect(Rect::new(inner.x - 1, inner.y - 1, inner.w + 2, inner.h + 2), if on { BLUE } else { 0x30363d }, 255);
-            g.fill_rect(inner, *c, 255);
+            let inner = r.inset(4);
+            if on {
+                g.stroke_round(Rect::new(inner.x - 2, inner.y - 2, inner.w + 4, inner.h + 4), 6, BLUE, 2, 255);
+            } else if hovered {
+                g.stroke_round(Rect::new(inner.x - 2, inner.y - 2, inner.w + 4, inner.h + 4), 6, 0x8b949e, 1, 200);
+            }
+            g.fill_round(inner, 4, *c, 255);
+            g.stroke_round(inner, 4, 0x000000, 1, 60);
         }
         T::Width(i) => {
             let on = scene.width_idx == *i;
             if on {
-                g.fill_rect(r, 0x1a3352, 255);
+                g.fill_round(r, 8, 0x1a3352, 255);
+                g.stroke_round(r, 8, BLUE, 1, 255);
+            } else if hovered {
+                g.fill_round(r, 8, 0x21262d, 255);
             }
             let d = 4 + (*i as i32) * 4;
             let c = (r.x + r.w / 2, r.y + r.h / 2);
-            g.fill_ellipse(Rect::new(c.0 - d / 2, c.1 - d / 2, d, d), if on { 0x79c0ff } else { 0xc9d1d9 }, 255);
+            let fg = if on { 0x79c0ff } else if hovered { 0xffffff } else { 0xc9d1d9 };
+            g.fill_ellipse(Rect::new(c.0 - d / 2, c.1 - d / 2, d, d), fg, 255);
         }
-        T::Undo => {
-            let lit = scene.can_undo;
-            g.text("↶", (r.x + 8, r.y + 6), 15.0, if lit { 0xc9d1d9 } else { 0x555c66 }, 255, family);
-        }
-        T::Redo => {
-            let lit = scene.can_redo;
-            g.text("↷", (r.x + 8, r.y + 6), 15.0, if lit { 0xc9d1d9 } else { 0x555c66 }, 255, family);
+        T::Undo | T::Redo => {
+            let lit = if matches!(item, T::Undo) { scene.can_undo } else { scene.can_redo };
+            if hovered && lit {
+                g.fill_round(r, 8, 0x21262d, 255);
+            }
+            let fg = if !lit { 0x4a525c } else if hovered { 0xffffff } else { 0xc9d1d9 };
+            let glyph = if matches!(item, T::Undo) { "↶" } else { "↷" };
+            // 字形墨迹在行框里偏上，矩形下移 2px 补正（与动作按钮标签同理）
+            g.text_centered(glyph, Rect::new(r.x, r.y + 2, r.w, r.h), 16.0, fg, 255, family);
         }
         T::Copy | T::Save | T::Pin | T::Cancel => {
-            let (label, fg) = match item {
-                T::Copy => (scene.labels.copy, 0xffffff),
-                T::Save => (scene.labels.save, 0xc9d1d9),
-                T::Pin => (scene.labels.pin, 0xc9d1d9),
-                _ => ("✕", 0xc9d1d9),
-            };
-            if matches!(item, T::Copy) {
-                g.fill_rect(r, 0x2b6ad0, 255);
+            let primary = matches!(item, T::Copy);
+            if primary {
+                // hover 只轻微提亮（#2e6fd6 对白字仍 4.8:1，过 AA；再亮就不达标了）
+                g.fill_round(r, 8, if hovered { 0x2e6fd6 } else { 0x2b6ad0 }, 255);
+            } else if hovered {
+                g.fill_round(r, 8, 0x21262d, 255);
             }
-            g.text(label, (r.x + 9, r.y + 7), 12.5, fg, 255, family);
+            let fg = if primary { 0xffffff } else if hovered { 0xffffff } else { 0xc9d1d9 };
+            let (label, icon): (&str, Option<&str>) = match item {
+                T::Copy => (scene.labels.copy, Some("copy")),
+                T::Save => (scene.labels.save, Some("save")),
+                T::Pin => (scene.labels.pin, Some("pin")),
+                _ => ("", Some("x")),
+            };
+            // 图标 + 标签作为一个整体在按钮内居中：水平按内容总宽算起点，垂直交给 rect 居中排版
+            const ICON: i32 = 16;
+            let label_w = if label.is_empty() {
+                0
+            } else {
+                label.chars().map(|c| if (c as u32) > 0x2E80 { 12.5 } else { 6.9 }).sum::<f32>() as i32
+            };
+            let icon_w = if icon.is_some() { ICON } else { 0 };
+            let gap = if icon_w > 0 && label_w > 0 { 5 } else { 0 };
+            let mut cx = r.x + (r.w - icon_w - gap - label_w) / 2;
+            if let Some(kind) = icon {
+                draw_action_icon(g, kind, Rect::new(cx, r.y + (r.h - ICON) / 2, ICON, ICON), fg, 255);
+                cx += icon_w + gap;
+            }
+            if !label.is_empty() {
+                // 排版矩形向两侧扩 8px（中心不变）：预估宽度略小于实际时也不会被裁字；
+                // 下移 2px：CJK 字符墨迹在行框里天然偏上，GDI+ 行居中后视觉仍略高
+                g.text_centered(label, Rect::new(cx - 8, r.y + 2, label_w + 16, r.h), 12.5, fg, 255, family);
+            }
+        }
+    }
+}
+
+/// 工具按钮的矢量图标（画笔风格：2px 描边、圆角端点，跟 Snipaste 一类工具对齐）
+unsafe fn draw_tool_icon(g: &Gp, tool: Tool, box_: Rect, color: u32, alpha: u32) {
+    let c = (box_.x + box_.w / 2, box_.y + box_.h / 2);
+    let s = 7;
+    match tool {
+        Tool::Rect => g.stroke_round(Rect::new(c.0 - s, c.1 - s, s * 2, s * 2), 2, color, 2, alpha),
+        Tool::Ellipse => g.stroke_ellipse(Rect::new(c.0 - s, c.1 - s, s * 2, s * 2), color, 2, alpha),
+        Tool::Arrow => {
+            g.line((c.0 - s, c.1 + s), (c.0 + s, c.1 - s), color, 2, alpha);
+            g.line((c.0 + s, c.1 - s), (c.0 + s - 5, c.1 - s + 1), color, 2, alpha);
+            g.line((c.0 + s, c.1 - s), (c.0 + s - 1, c.1 - s + 5), color, 2, alpha);
+        }
+        Tool::Pen => {
+            g.line((c.0 - s + 1, c.1 + s - 1), (c.0 + s - 2, c.1 - s + 2), color, 2, alpha);
+            g.fill_rect(Rect::new(c.0 - s - 1, c.1 + s - 3, 3, 3), color, alpha);
+        }
+        Tool::Marker => {
+            g.line((c.0 - s, c.1 + s), (c.0 + s, c.1 - s), color, 7, 120);
+            g.line((c.0 - s, c.1 + s), (c.0 + s, c.1 - s), color, 2, alpha);
+        }
+        Tool::Text => {
+            g.line((c.0 - s + 1, c.1 - s + 2), (c.0 + s - 1, c.1 - s + 2), color, 2, alpha);
+            g.line((c.0, c.1 - s + 2), (c.0, c.1 + s), color, 2, alpha);
+        }
+        Tool::Mosaic => {
+            for (dx, dy, filled) in [(-s, -s, true), (-s + 5, -s, false), (-s, -s + 5, false), (-s + 10, -s + 5, true), (-s + 5, -s + 10, true), (-s + 10, -s + 10, false)] {
+                if filled {
+                    g.fill_round(Rect::new(c.0 + dx, c.1 + dy, 4, 4), 1, color, alpha);
+                } else {
+                    g.stroke_round(Rect::new(c.0 + dx, c.1 + dy, 4, 4), 1, color, 1, alpha);
+                }
+            }
+        }
+    }
+}
+
+/// 动作按钮的小图标
+unsafe fn draw_action_icon(g: &Gp, kind: &str, box_: Rect, color: u32, alpha: u32) {
+    let (x, y) = (box_.x, box_.y);
+    // 每个图形的墨迹（而非外框）在 16px 里居中：否则视觉上整体偏左上
+    match kind {
+        "copy" => {
+            g.stroke_round(Rect::new(x + 1, y + 5, 9, 9), 2, color, 2, alpha);
+            g.stroke_round(Rect::new(x + 5, y + 2, 9, 9), 2, color, 2, alpha);
+        }
+        "save" => {
+            g.line((x + 8, y + 4), (x + 8, y + 12), color, 2, alpha);
+            g.line((x + 8, y + 12), (x + 5, y + 9), color, 2, alpha);
+            g.line((x + 8, y + 12), (x + 11, y + 9), color, 2, alpha);
+        }
+        "pin" => {
+            g.line((x + 6, y + 5), (x + 11, y + 10), color, 2, alpha);
+            g.stroke_round(Rect::new(x + 4, y + 3, 6, 6), 2, color, 2, alpha);
+            g.line((x + 4, y + 12), (x + 7, y + 9), color, 2, alpha);
+        }
+        _ => {
+            g.line((x + 4, y + 4), (x + 11, y + 11), color, 2, alpha);
+            g.line((x + 11, y + 4), (x + 4, y + 11), color, 2, alpha);
         }
     }
 }
@@ -522,4 +726,19 @@ pub unsafe fn render_output(frame: &Dib, ops: &[Op], sel: Rect) -> (Vec<u8>, i32
     }
     drop(g);
     (out.rgba(), w, h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 锁住颜色约定：DIB 内存是 BGRA（GDI），导出字节是 RGBA——任一方向漏换都会偏色
+    #[test]
+    fn dib_memory_is_bgra_rgba_roundtrip() {
+        let src = vec![10u8, 20, 30, 255, 200, 100, 50, 255];
+        let d = Dib::from_rgba(&src, 2, 1);
+        let mem = unsafe { std::slice::from_raw_parts(d.bits as *const u8, 8) };
+        assert_eq!(mem, &[30, 20, 10, 255, 50, 100, 200, 255], "DIB 内存应为 BGRA");
+        assert_eq!(d.rgba(), src, "导出应换回 RGBA");
+    }
 }

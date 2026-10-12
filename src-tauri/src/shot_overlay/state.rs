@@ -32,6 +32,9 @@ impl Rect {
     pub fn inset(&self, n: i32) -> Self {
         Self::new(self.x + n, self.y + n, (self.w - 2 * n).max(0), (self.h - 2 * n).max(0))
     }
+    pub fn intersects(&self, o: Rect) -> bool {
+        self.x < o.right() && o.x < self.right() && self.y < o.bottom() && o.y < self.bottom()
+    }
 }
 
 /// 两点归一化（支持任意方向拖拽）
@@ -270,7 +273,7 @@ pub fn toolbar_layout(sel: Rect, window: (i32, i32), item_widths: &[(ToolbarItem
 }
 
 /// 分组之间画分隔线（工具组、颜色组、粗细组、动作组之间）
-fn is_sep_before(cur: &ToolbarItem, prev: &ToolbarItem) -> bool {
+pub fn is_sep_before(cur: &ToolbarItem, prev: &ToolbarItem) -> bool {
     let group = |it: &ToolbarItem| match it {
         ToolbarItem::Undo | ToolbarItem::Redo => 0,
         ToolbarItem::Tool(_) => 1,
@@ -285,32 +288,54 @@ pub fn hit_toolbar(layout: &ToolbarLayout, p: (i32, i32)) -> Option<ToolbarItem>
     layout.items.iter().find(|(_, r)| r.contains(p)).map(|(it, _)| *it)
 }
 
-/// 放大镜面板：跟随光标，贴边翻转
-pub fn magnifier_rect(cursor: (i32, i32), window: (i32, i32)) -> Rect {
+/// 放大镜面板：跟随光标，贴边翻转；与 avoid（工具栏）相交时自动让位
+pub fn magnifier_rect(cursor: (i32, i32), window: (i32, i32), avoid: Option<Rect>) -> Rect {
     const SIZE: i32 = 116;
     const META: i32 = 26;
-    let flip_x = cursor.0 + 24 + SIZE > window.0;
-    let flip_y = cursor.1 + 24 + SIZE + META > window.1;
-    let x = if flip_x { cursor.0 - 24 - SIZE } else { cursor.0 + 24 };
-    let y = if flip_y { cursor.1 - 24 - SIZE - META } else { cursor.1 + 24 };
-    Rect::new(x, y, SIZE, SIZE + META)
+    const OFF: i32 = 24;
+    const H: i32 = SIZE + META;
+    let flip_x = cursor.0 + OFF + SIZE > window.0;
+    let flip_y = cursor.1 + OFF + H > window.1;
+    let mut x = if flip_x { cursor.0 - OFF - SIZE } else { cursor.0 + OFF };
+    let mut y = if flip_y { cursor.1 - OFF - H } else { cursor.1 + OFF };
+    let hit = |x: i32, y: i32| {
+        avoid.map(|a| a.inset(-4).intersects(Rect::new(x, y, SIZE, H))).unwrap_or(false)
+    };
+    if hit(x, y) {
+        if let Some(a) = avoid {
+            let up = a.y - H - 6;
+            let down = a.bottom() + 6;
+            // 光标在工具栏上方就往上让，否则往下让；一侧放不下自动换另一侧
+            y = if cursor.1 <= a.y {
+                if up >= 4 { up } else { down }
+            } else if down + H <= window.1 - 4 {
+                down
+            } else {
+                up
+            };
+        }
+        if hit(x, y) {
+            x = if flip_x { cursor.0 + OFF } else { cursor.0 - OFF - SIZE };
+        }
+    }
+    Rect::new(x.clamp(4, (window.0 - SIZE - 4).max(4)), y.clamp(4, (window.1 - H - 4).max(4)), SIZE, H)
 }
 
 /// 工具栏项的固定宽度（布局与命中都用它）
 pub fn toolbar_item_widths() -> Vec<(ToolbarItem, i32)> {
     let mut v = vec![(ToolbarItem::Undo, 30), (ToolbarItem::Redo, 30)];
     for t in TOOLS {
-        v.push((ToolbarItem::Tool(t), 36));
+        v.push((ToolbarItem::Tool(t), 34));
     }
     for c in PALETTE {
-        v.push((ToolbarItem::Color(c), 22));
+        v.push((ToolbarItem::Color(c), 24));
     }
     for i in 0..LINE_WIDTHS.len() {
-        v.push((ToolbarItem::Width(i), 26));
+        v.push((ToolbarItem::Width(i), 28));
     }
-    v.push((ToolbarItem::Copy, 56));
-    v.push((ToolbarItem::Save, 52));
-    v.push((ToolbarItem::Pin, 52));
+    v.push((ToolbarItem::Copy, 64));
+    v.push((ToolbarItem::Save, 62));
+    v.push((ToolbarItem::Pin, 62));
     v.push((ToolbarItem::Cancel, 30));
     v
 }
@@ -399,10 +424,27 @@ mod tests {
 
     #[test]
     fn magnifier_flips_near_edges() {
-        let m = magnifier_rect((100, 100), (1280, 800));
+        let m = magnifier_rect((100, 100), (1280, 800), None);
         assert!(m.x > 100 && m.y > 100, "默认在光标右下");
-        let m2 = magnifier_rect((1270, 790), (1280, 800));
+        let m2 = magnifier_rect((1270, 790), (1280, 800), None);
         assert!(m2.right() <= 1280 && m2.bottom() <= 800, "贴边时翻到左上");
+    }
+
+    #[test]
+    fn magnifier_avoids_toolbar() {
+        let win = (1920, 1080);
+        let bar = Rect::new(500, 910, 884, 34);
+        // 光标在选区右下角（工具栏正上方）时，原始位置会压住工具栏
+        let raw = magnifier_rect((1350, 900), win, None);
+        assert!(raw.intersects(bar.inset(-4)), "默认位置确实与工具栏相交");
+        let m = magnifier_rect((1350, 900), win, Some(bar));
+        assert!(!m.intersects(bar.inset(-4)), "避让后不与工具栏相交");
+        assert!(m.bottom() <= bar.y, "让位后整体位于工具栏上方");
+        // 光标在工具栏下方（选区上方工具栏的情形）时让位到工具栏上沿之上
+        let bar2 = Rect::new(500, 906, 884, 34);
+        let m2 = magnifier_rect((1350, 1000), win, Some(bar2));
+        assert!(!m2.intersects(bar2.inset(-4)));
+        assert!(m2.bottom() <= bar2.y, "让位后整体位于工具栏上方");
     }
 
     #[test]
