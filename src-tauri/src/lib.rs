@@ -12,6 +12,7 @@ mod printer;
 mod qoder_cn_auth;
 mod screenshot;
 mod secure;
+mod shot_overlay;
 mod storage;
 mod telemetry;
 mod trae_cn_auth;
@@ -226,9 +227,6 @@ pub fn run() {
             trae_cn_auth::trae_cn_auth_token,
             // 截图工具：F1 冻结式截屏 + 标注 + F3 贴图（仅 Windows）
             screenshot::screenshot_begin,
-            screenshot::screenshot_frame,
-            screenshot::screenshot_commit,
-            screenshot::screenshot_cancel,
             screenshot::screenshot_settings_get,
             screenshot::screenshot_settings_set,
             screenshot::pin_create_from_clipboard,

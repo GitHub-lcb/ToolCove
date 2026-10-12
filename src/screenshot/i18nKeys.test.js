@@ -39,33 +39,13 @@ const TOOL_PAGE_KEYS = [
   "pinGuide3",
 ];
 
-const OVERLAY_KEYS = [
-  "toolRect",
-  "toolEllipse",
-  "toolArrow",
-  "toolPen",
-  "toolMarker",
-  "toolText",
-  "toolMosaic",
-  "undo",
-  "redo",
-  "copy",
-  "save",
-  "pin",
-  "copyTip",
-  "saveTip",
-  "pinTip",
-  "cancelTip",
-  "customColor",
-  "lineWidth",
-  "textPlaceholder",
-  "hint",
-];
+// 原生遮罩（Rust 侧）用到的文案键：工具栏标签与底部提示
+const OVERLAY_KEYS = ["toolRect", "toolEllipse", "toolArrow", "toolPen", "toolMarker", "toolText", "toolMosaic", "copy", "save", "pin", "hint"];
 
 const PIN_KEYS = ["menuCopy", "menuSaveAs", "menuResetZoom", "menuClose"];
 
 // Rust 侧系统通知文案（lib.rs 的 localized_text 直读字典）
-const NATIVE_KEYS = ["notifyTitle", "captureFail", "noClipboardImage"];
+const NATIVE_KEYS = ["notifyTitle", "captureFail", "noClipboardImage", "noticeTitle", "noticeBody"];
 
 const SCREENSHOT_KEYS = [...TOOL_PAGE_KEYS, ...OVERLAY_KEYS, ...PIN_KEYS, ...NATIVE_KEYS];
 
@@ -92,6 +72,13 @@ describe("截图 i18n 键清单", () => {
   it("captureFail 带 {err} 占位，Rust 通知替换它才有位置放原因", () => {
     for (const [locale, dict] of DICTS) {
       expect(dict.screenshot.captureFail, locale).toContain("{err}");
+    }
+  });
+
+  it("首次启用提示带 {capture}/{pin} 占位（Rust 用实际热键替换）", () => {
+    for (const [locale, dict] of DICTS) {
+      expect(dict.screenshot.noticeBody, locale).toContain("{capture}");
+      expect(dict.screenshot.noticeBody, locale).toContain("{pin}");
     }
   });
 

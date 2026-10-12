@@ -29,13 +29,12 @@ const MODULES = NAV_MODULES;
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
-// 截图遮罩页 / 贴图窗（?shot=overlay|pin）：短命窗口，由 Rust 直接拉起，
-// 只渲染对应页面；主窗口的定时任务（备份/更新/签到/遥测）一律不参与
+// 截图贴图窗（?shot=pin）：短命窗口，由 Rust 直接拉起，只渲染贴图页；
+// 主窗口的定时任务（备份/更新/签到/遥测）一律不参与。
+// （截图遮罩已是 Rust 原生窗口，不再有 WebView 页面）
 const shotMode = new URLSearchParams(window.location.search).get("shot") || "";
-const ScreenshotOverlay = defineAsyncComponent(() => import("./screenshot/OverlayApp.vue"));
 const ScreenshotPin = defineAsyncComponent(() => import("./screenshot/PinApp.vue"));
-const SHOT_PAGES = { overlay: ScreenshotOverlay, pin: ScreenshotPin };
-const shotPage = computed(() => SHOT_PAGES[shotMode] || null);
+const shotPage = computed(() => (shotMode === "pin" ? ScreenshotPin : null));
 let toolWindowShown = false;
 async function revealToolWindow() {
   if (!toolMode || toolWindowShown || !isTauri) return;

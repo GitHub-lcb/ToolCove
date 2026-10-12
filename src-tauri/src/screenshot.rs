@@ -16,15 +16,14 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// 遮罩窗口标签前缀（完整形态：shot-overlay-<会话号>-<屏号>）
+/// 旧 WebView 遮罩窗的标签前缀（原生版已不用；window-state 过滤仍按它排除历史窗口）
+#[allow(dead_code)]
 pub const OVERLAY_PREFIX: &str = "shot-overlay-";
 /// 贴图窗口标签前缀（完整形态：tool-pin-<序号>）
 pub const PIN_PREFIX: &str = "tool-pin-";
 const SETTINGS_FILE: &str = "screenshot.json";
-/// 页面就绪兜底：超时仍没有任何遮罩页来取帧，说明页面没加载出来，销毁窗口并清理注册表，
-/// 否则会留下「看不见但一直占着会话」的幽灵窗口，把后续 F1 全挡在门外。
-/// dev（vite 逐模块加载）首屏可能偏慢，留足余量。
-const PAGE_READY_TIMEOUT: Duration = Duration::from_millis(15000);
+/// 贴图页加载兜底：超时未取图说明页面没加载出来，销毁窗口并清注册表
+const PAGE_READY_TIMEOUT: Duration = Duration::from_millis(8000);
 const PIN_MIN_EDGE: u32 = 24;
 const PIN_MAX_ZOOM: f64 = 8.0;
 const PIN_MARGIN: i32 = 8;
@@ -36,33 +35,17 @@ const NOT_WINDOWS: &str = "截图工具仅支持 Windows 桌面端";
 
 
 
-// ---------------- 会话注册表（冻结帧） ----------------
+// ---------------- 显示器几何 ----------------
 
-/// 一块屏的几何（不含帧内容）：建遮罩窗只需要它，所以抓帧与建窗可以并行。
-#[derive(Clone)]
-struct ShotMonitor {
-    index: usize,
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    scale: f64,
-}
-
-struct ShotSession {
-    monitors: Vec<ShotMonitor>,
-    /// 屏号 → 编码好的 PNG；抓帧线程完成后填入（页面在此之前轮询等待）
-    frames: HashMap<usize, Vec<u8>>,
-    /// 遮罩页是否来问过（watchdog 只清理「页面从未加载出来」的会话）
-    ready: bool,
-    /// 抓帧失败的原因（页面轮询时会拿到它，随后会话被收掉）
-    failed: Option<String>,
-}
-
-static SESSIONS: OnceLock<Mutex<HashMap<String, ShotSession>>> = OnceLock::new();
-
-fn sessions() -> &'static Mutex<HashMap<String, ShotSession>> {
-    SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+/// 一块屏的几何（不含帧内容）：原生遮罩按它摆放窗口，捕获按它取帧。
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct ShotMonitor {
+    pub index: usize,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
 }
 
 // ---------------- 贴图注册表 ----------------
@@ -94,6 +77,9 @@ fn next_seq() -> u64 {
 pub struct ShotSettings {
     pub capture_hotkey: String,
     pub pin_hotkey: String,
+    /// 首次注册热键后是否已弹过「全局热键已启用」的说明通知（只影响这一条提示，不影响功能）
+    #[serde(default)]
+    pub hotkey_notice_shown: bool,
 }
 
 impl Default for ShotSettings {
@@ -101,6 +87,7 @@ impl Default for ShotSettings {
         Self {
             capture_hotkey: "F1".to_string(),
             pin_hotkey: "F3".to_string(),
+            hotkey_notice_shown: false,
         }
     }
 }
@@ -161,10 +148,39 @@ pub fn init(app: &AppHandle) {
     let settings = load_settings(app);
     let capture_ok = register_capture_hotkey(app, &settings.capture_hotkey);
     let pin_ok = register_pin_hotkey(app, &settings.pin_hotkey);
-    let mut rt = hotkeys().lock().unwrap();
-    rt.settings = settings;
-    rt.capture_registered = capture_ok;
-    rt.pin_registered = pin_ok;
+    {
+        let mut rt = hotkeys().lock().unwrap();
+        rt.settings = settings.clone();
+        rt.capture_registered = capture_ok;
+        rt.pin_registered = pin_ok;
+    }
+
+    // 首次真正注册上全局热键时说明一次：F1/F3 从此是**系统级**热键（别的程序里也能按）。
+    // 不弹的话就是静默占用（F1 还是很多软件的帮助键），用户只会觉得「怎么不灵了」。
+    // 标记落在 screenshot.json：说一次就够，之后改键/关闭都在工具页。
+    let active = (capture_ok && !settings.capture_hotkey.trim().is_empty())
+        || (pin_ok && !settings.pin_hotkey.trim().is_empty());
+    if active && !settings.hotkey_notice_shown {
+        notify_hotkey_notice(app, &settings);
+        let updated = ShotSettings { hotkey_notice_shown: true, ..settings };
+        if save_settings(app, &updated).is_ok() {
+            hotkeys().lock().unwrap().settings = updated;
+        }
+    }
+}
+
+/// 「全局热键已启用」的一次性说明（走系统通知，主窗口不一定在场）
+fn notify_hotkey_notice(app: &AppHandle, settings: &ShotSettings) {
+    use tauri_plugin_notification::NotificationExt;
+    let title = crate::localized_text(app, "/screenshot/noticeTitle").unwrap_or_else(|| "截图".to_string());
+    let body = crate::localized_text(app, "/screenshot/noticeBody")
+        .unwrap_or_default()
+        .replace("{capture}", settings.capture_hotkey.trim())
+        .replace("{pin}", settings.pin_hotkey.trim());
+    if body.is_empty() {
+        return;
+    }
+    let _ = app.notification().builder().title(title).body(body).show();
 }
 
 fn register_capture_hotkey(app: &AppHandle, accelerator: &str) -> bool {
@@ -281,7 +297,11 @@ pub fn screenshot_settings_set(
     if !capture_failed && !pin_failed {
         persist_error = save_settings(
             &app,
-            &ShotSettings { capture_hotkey: capture.clone(), pin_hotkey: pin.clone() },
+            &ShotSettings {
+                capture_hotkey: capture.clone(),
+                pin_hotkey: pin.clone(),
+                hotkey_notice_shown: true, // 用户都进设置页改键了，不必再弹「热键已启用」
+            },
         )
         .err();
     }
@@ -303,7 +323,11 @@ pub fn screenshot_settings_set(
     }
 
     let mut rt = hotkeys().lock().unwrap();
-    rt.settings = ShotSettings { capture_hotkey: capture.clone(), pin_hotkey: pin.clone() };
+    rt.settings = ShotSettings {
+        capture_hotkey: capture.clone(),
+        pin_hotkey: pin.clone(),
+        hotkey_notice_shown: true,
+    };
     rt.capture_registered = capture_ok && !capture.is_empty();
     rt.pin_registered = pin_ok && !pin.is_empty();
     Ok(HotkeyInfo {
@@ -314,42 +338,21 @@ pub fn screenshot_settings_set(
     })
 }
 
-// ---------------- 截屏会话 ----------------
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FrameInfo {
-    pub index: usize,
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-    pub scale: f64,
-    pub count: usize,
-    pub png_b64: String,
-}
-
-/// 抓帧尚未完成的哨兵错误：遮罩页据此继续轮询（见 OverlayApp.vue 的 fetchFrameWithRetry，
-/// 两处的匹配词必须一致）。这是「等一等就有」的正常中间态，不是失败。
-pub const FRAME_PENDING: &str = "截图尚未就绪";
+// ---------------- 截屏入口 ----------------
 
 /// 发起一次截屏（F1 与工具页按钮共用入口）。
 ///
-/// 无论调用方在哪个线程，整个流程一律先挪到工作线程：
-/// 热键回调是在**主线程的消息派发里**被调用的（global-hotkey 的消息窗建在主线程），
-/// 在那里同步创建 WebView2 窗口 = 嵌套在消息处理中建窗，WebView2 初始化等待的消息
-/// 恰恰被自己堵死——实测直接把整个应用卡成「未响应」。
-///
-/// 工作线程内的顺序：抓帧**先行**（按下的那一刻就冻结屏幕），
-/// 建窗与页面加载随后经 run_on_main_thread 投递（此时已是事件循环上的普通任务，
-/// 不再嵌套），两条耗时路径并行，互不等待。
+/// 工作线程里：枚举 → 抓帧（RGBA，不做 PNG 编码）→ 交原生遮罩窗口显示。
+/// 热键回调在主线程的消息派发里，所以这里第一步就是挪到工作线程。
 pub fn begin_capture(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || begin_capture_worker(&app));
 }
 
 fn begin_capture_worker(app: &AppHandle) {
-    // 只枚举几何（微秒级）：遮罩窗按显示器物理矩形摆放，不需要帧内容
+    if crate::shot_overlay::is_active() {
+        return; // 已有遮罩会话
+    }
     let monitors = match enumerate_monitors() {
         Ok(monitors) => monitors,
         Err(e) => {
@@ -357,257 +360,18 @@ fn begin_capture_worker(app: &AppHandle) {
             return;
         }
     };
-    let session_id = next_seq().to_string();
-
-    // 预检与占位在同一把锁里完成：连按两次 F1（两次回调并发）只有一个会话能占位；
-    // 窗口已消失的残留会话先摘掉，销毁动作放到锁外做
-    let (stale, busy): (Vec<String>, bool) = {
-        let mut guard = sessions().lock().unwrap();
-        let stale: Vec<String> = guard
-            .keys()
-            .filter(|sid| !session_still_live(app, sid))
-            .cloned()
-            .collect();
-        for sid in &stale {
-            guard.remove(sid);
-        }
-        let busy = !guard.is_empty();
-        if !busy {
-            guard.insert(
-                session_id.clone(),
-                ShotSession { monitors: monitors.clone(), frames: HashMap::new(), ready: false, failed: None },
-            );
-        }
-        (stale, busy)
-    };
-    for sid in stale {
-        finish_session(app, &sid);
-    }
-    if busy {
-        return;
-    }
-
-    // 抓帧先行：按下的那一刻就冻结屏幕（WGC 抓的就是当下这一帧），编码在工作线程里跑
     let app_capture = app.clone();
-    let sid_capture = session_id.clone();
     let monitors_capture = monitors.clone();
     std::thread::spawn(move || match capture_frames(&monitors_capture) {
-        Ok(frames) => {
-            let mut guard = sessions().lock().unwrap();
-            if let Some(session) = guard.get_mut(&sid_capture) {
-                session.frames = frames;
-            }
-        }
-        Err(e) => {
-            if let Some(session) = sessions().lock().unwrap().get_mut(&sid_capture) {
-                session.failed = Some(e.clone());
-            }
-            notify_user(&app_capture, "captureFail", Some(&e));
-            finish_session(&app_capture, &sid_capture);
-        }
+        Ok(frames) => crate::shot_overlay::open(app_capture, monitors_capture, frames),
+        Err(e) => notify_user(&app_capture, "captureFail", Some(&e)),
     });
-
-    // 建窗（主线程执行）：从工作线程 run_on_main_thread 是异步投递，这里等一下结果
-    let (tx, rx) = std::sync::mpsc::channel();
-    let app_build = app.clone();
-    let sid = session_id.clone();
-    let geometry = monitors;
-    let scheduled = app.run_on_main_thread(move || {
-        let _ = tx.send(create_overlay_windows(&app_build, &sid, &geometry));
-    });
-    let created = match scheduled {
-        Ok(()) => rx.recv_timeout(Duration::from_secs(10)).unwrap_or(0),
-        Err(e) => {
-            eprintln!("调度遮罩窗口创建失败：{e}");
-            0
-        }
-    };
-    if created == 0 {
-        finish_session(app, &session_id);
-        notify_user(app, "captureFail", Some("无法创建全屏遮罩窗口"));
-        return;
-    }
-
-    start_session_watchdog(app.clone(), session_id);
 }
 
 /// 工具页「立即截图」按钮：与 F1 热键同一入口
 #[tauri::command]
 pub fn screenshot_begin(app: AppHandle) {
     begin_capture(&app);
-}
-
-/// 遮罩页取帧：帧未编好时返回 FRAME_PENDING（页面继续轮询），
-/// 顺带把该会话标记为「已就绪」，页面就绪后由页面 show 自己
-#[tauri::command]
-pub fn screenshot_frame(session_id: String, monitor: usize) -> Result<FrameInfo, String> {
-    let mut guard = sessions().lock().unwrap();
-    let session = guard
-        .get_mut(&session_id)
-        .ok_or_else(|| "截图会话已结束".to_string())?;
-    if let Some(error) = session.failed.clone() {
-        return Err(error);
-    }
-    // 页面只要来问过就算「已就绪」——watchdog 管的是「页面压根没加载出来」，
-    // 抓帧慢是另一回事（抓帧失败的会话会被抓帧线程自己收掉）
-    session.ready = true;
-    let monitor_geom = session
-        .monitors
-        .iter()
-        .find(|m| m.index == monitor)
-        .cloned()
-        .ok_or_else(|| "显示器不存在".to_string())?;
-    let png = session.frames.get(&monitor).cloned();
-    let count = session.monitors.len();
-    let Some(png) = png else {
-        return Err(FRAME_PENDING.to_string());
-    };
-    Ok(FrameInfo {
-        index: monitor_geom.index,
-        x: monitor_geom.x,
-        y: monitor_geom.y,
-        width: monitor_geom.width,
-        height: monitor_geom.height,
-        scale: monitor_geom.scale,
-        count,
-        png_b64: B64.encode(&png),
-    })
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PinRect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-/// 确认本次截图：把遮罩页合成好的 PNG 落剪贴板 / 文件 / 贴图窗口，随后收掉所有遮罩。
-/// 动作失败时**不**收遮罩——用户还在选区内，可以改存为文件或重试。
-///
-/// 这类会建/销毁窗口的命令一律 `async`：同步命令跑在主线程上，
-/// 里面的 run_on_main_thread 会**就地执行**，等于嵌套建窗（同 F1 那个死锁的成因）；
-/// async 命令跑在异步运行时里，建窗变成投递到事件循环的普通任务，不再嵌套。
-#[tauri::command]
-pub async fn screenshot_commit(
-    app: AppHandle,
-    session_id: String,
-    action: String,
-    data_b64: String,
-    path: Option<String>,
-    pin_rect: Option<PinRect>,
-) -> Result<(), String> {
-    let png = B64
-        .decode(data_b64.trim())
-        .map_err(|e| format!("结果图片数据无效：{e}"))?;
-    match action.as_str() {
-        "copy" => clipboard_set_png(&png)?,
-        "save" => {
-            let target = path.ok_or_else(|| "缺少保存路径".to_string())?;
-            std::fs::write(&target, &png).map_err(|e| format!("保存失败：{e}"))?;
-        }
-        "pin" => {
-            let at = pin_rect.and_then(|r| {
-                // 宽高只作合法性守卫（0 / NaN 说明前端算错），异常时退回光标落点
-                (r.width.is_finite() && r.width > 1.0 && r.height.is_finite() && r.height > 1.0)
-                    .then_some((r.x.round() as i32, r.y.round() as i32))
-            });
-            create_pin(&app, png, at)?;
-        }
-        other => return Err(format!("未知的截图操作：{other}")),
-    }
-    finish_session(&app, &session_id);
-    Ok(())
-}
-
-/// 取消本次截图（Esc / 右键退出）：收掉遮罩与冻结帧
-#[tauri::command]
-pub async fn screenshot_cancel(app: AppHandle, session_id: String) {
-    finish_session(&app, &session_id);
-}
-
-fn finish_session(app: &AppHandle, session_id: &str) {
-    sessions().lock().unwrap().remove(session_id);
-    destroy_overlay_windows(app, session_id);
-}
-
-fn destroy_overlay_windows(app: &AppHandle, session_id: &str) {
-    let prefix = format!("{OVERLAY_PREFIX}{session_id}-");
-    let app_task = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        for (label, win) in app_task.webview_windows() {
-            if label.starts_with(&prefix) {
-                let _ = win.destroy();
-            }
-        }
-    });
-}
-
-/// 会话的遮罩窗是否还在。**不要求窗口可见**：先建窗后抓帧的流程里，
-/// 窗口在抓帧期间是隐藏的（等页面取到帧后自显），此时会话同样是「活着」的——
-/// 若按可见性判定，连按两次 F1 会把正在抓帧的会话误判成残留、当场收掉重开。
-fn session_still_live(app: &AppHandle, session_id: &str) -> bool {
-    let prefix = format!("{OVERLAY_PREFIX}{session_id}-");
-    app.webview_windows().keys().any(|label| label.starts_with(&prefix))
-}
-
-fn start_session_watchdog(app: AppHandle, session_id: String) {
-    std::thread::spawn(move || {
-        std::thread::sleep(PAGE_READY_TIMEOUT);
-        let stale = {
-            let mut guard = sessions().lock().unwrap();
-            match guard.get(&session_id) {
-                Some(session) if !session.ready => {
-                    guard.remove(&session_id);
-                    true
-                }
-                _ => false,
-            }
-        };
-        if stale {
-            destroy_overlay_windows(&app, &session_id);
-            notify_user(&app, "captureFail", Some("遮罩页加载超时"));
-        }
-    });
-}
-
-fn create_overlay_windows(app: &AppHandle, session_id: &str, monitors: &[ShotMonitor]) -> usize {
-    let mut created = 0;
-    for monitor in monitors {
-        let index = monitor.index;
-        let label = format!("{OVERLAY_PREFIX}{session_id}-{index}");
-        let url = format!("index.html?shot=overlay&session={session_id}&monitor={index}");
-        // 建窗即按最终几何（builder 只收逻辑像素，按本屏的缩放比换算；下面再用物理像素校正）。
-        // 这样即使有任何东西在页面自显之前把窗口露出来，它也是「正确大小的深色窗」而不是
-        // 默认 800x600 的白窗——「小框到大框、白到灰」的观感由这两道保险一起消掉。
-        let logical_w = monitor.width as f64 / monitor.scale.max(1.0);
-        let logical_h = monitor.height as f64 / monitor.scale.max(1.0);
-        let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-            .title("")
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .shadow(false)
-            .visible(false)
-            .focused(false)
-            .inner_size(logical_w, logical_h)
-            .build();
-        match built {
-            Ok(win) => {
-                // 位置与尺寸用物理像素精确摆放：builder 的 inner_size 是逻辑像素，
-                // 多屏混合 DPI 下会算歪；隐藏状态下搬窗用户不可见
-                let _ = win.set_position(tauri::PhysicalPosition::new(monitor.x, monitor.y));
-                let _ = win.set_size(tauri::PhysicalSize::new(monitor.width, monitor.height));
-                created += 1;
-            }
-            Err(e) => eprintln!("创建遮罩窗口 {label} 失败：{e}"),
-        }
-    }
-    created
 }
 
 // ---------------- 贴图 ----------------
@@ -794,22 +558,55 @@ fn start_pin_watchdog(app: AppHandle, label: String) {
 /// 窗口销毁兜底（lib.rs 的 on_window_event 转发）：
 /// 贴图清注册表；遮罩在该会话的最后一扇窗销毁时清会话，防冻结帧常驻内存。
 pub fn on_window_destroyed(app: &AppHandle, label: &str) {
+    // 遮罩窗现在是原生 Win32 窗口，不经过 Tauri；这里只剩贴图窗要清注册表
+    let _ = app;
     if label.starts_with(PIN_PREFIX) {
         pins().lock().unwrap().remove(label);
-        return;
     }
-    if let Some(rest) = label.strip_prefix(OVERLAY_PREFIX) {
-        if let Some((session_id, _index)) = rest.rsplit_once('-') {
-            let prefix = format!("{OVERLAY_PREFIX}{session_id}-");
-            let remaining = app
-                .webview_windows()
-                .keys()
-                .any(|other| other != label && other.starts_with(&prefix));
-            if !remaining {
-                sessions().lock().unwrap().remove(session_id);
-            }
-        }
+}
+
+// ---------------- 供原生遮罩复用的入口 ----------------
+
+/// RGBA 直接进剪贴板（原生遮罩走这条路，不经过 PNG 编码）
+#[cfg(windows)]
+pub(crate) fn clipboard_set_rgba(rgba: &[u8], width: i32, height: i32) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| format!("打开剪贴板失败：{e}"))?;
+    clipboard
+        .set_image(arboard::ImageData {
+            width: width.max(0) as usize,
+            height: height.max(0) as usize,
+            bytes: std::borrow::Cow::Borrowed(rgba),
+        })
+        .map_err(|e| format!("写入剪贴板失败：{e}"))
+}
+
+#[cfg(not(windows))]
+pub(crate) fn clipboard_set_rgba(_rgba: &[u8], _width: i32, _height: i32) -> Result<(), String> {
+    Err(NOT_WINDOWS.to_string())
+}
+
+/// RGBA → PNG（保存 / 贴图用）
+pub(crate) fn encode_rgba_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        let image = image::RgbaImage::from_raw(width, height, rgba.to_vec())?;
+        encode_png(&image).ok()
     }
+    #[cfg(not(windows))]
+    {
+        let _ = (rgba, width, height);
+        None
+    }
+}
+
+/// 创建贴图窗（字节版；原生遮罩确认后直接调用）
+pub(crate) fn create_pin_bytes(app: &AppHandle, png: Vec<u8>, at: Option<(i32, i32)>) -> Result<String, String> {
+    create_pin(app, png, at)
+}
+
+/// 截图失败的系统通知（原生遮罩里没有页面可以弹 toast）
+pub(crate) fn notify_capture_fail(app: &AppHandle, err: &str) {
+    notify_user(app, "captureFail", Some(err));
 }
 
 // ---------------- 纯函数（可单测） ----------------
@@ -920,12 +717,12 @@ fn enumerate_monitors() -> Result<Vec<ShotMonitor>, String> {
 /// 逐屏抓帧并编码（在**工作线程**里跑：抓帧 ~数百毫秒、编码更重）。
 /// 索引与 `enumerate_monitors` 的排序一致，直接按屏号返回，页面据此取自己那块屏。
 #[cfg(windows)]
-fn capture_frames(monitors: &[ShotMonitor]) -> Result<HashMap<usize, Vec<u8>>, String> {
+fn capture_frames(monitors: &[ShotMonitor]) -> Result<Vec<(usize, image::RgbaImage)>, String> {
     use xcap::Monitor;
     let handles = Monitor::all().map_err(|e| format!("枚举显示器失败：{e}"))?;
     let mut sorted: Vec<&Monitor> = handles.iter().collect();
     sorted.sort_by_key(|m| (m.x().unwrap_or(0), m.y().unwrap_or(0)));
-    let mut frames = HashMap::new();
+    let mut frames = Vec::new();
     for monitor in monitors {
         let handle = sorted
             .get(monitor.index)
@@ -933,13 +730,14 @@ fn capture_frames(monitors: &[ShotMonitor]) -> Result<HashMap<usize, Vec<u8>>, S
         let image = handle
             .capture_image()
             .map_err(|e| format!("捕获显示器失败：{e}"))?;
-        frames.insert(monitor.index, encode_png(&image)?);
+        // 原生遮罩直接吃 RGBA：PNG 编码整条路径（编→base64→传→解）都不再需要
+        frames.push((monitor.index, image));
     }
     Ok(frames)
 }
 
 #[cfg(not(windows))]
-fn capture_frames(_monitors: &[ShotMonitor]) -> Result<HashMap<usize, Vec<u8>>, String> {
+fn capture_frames(_monitors: &[ShotMonitor]) -> Result<Vec<(usize, image::RgbaImage)>, String> {
     Err(NOT_WINDOWS.to_string())
 }
 

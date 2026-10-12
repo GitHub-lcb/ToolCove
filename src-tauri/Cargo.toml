@@ -49,7 +49,7 @@ unicode-width = "0.2"
 qrcode = { version = "0.14", default-features = false }
 barcoders = "2"
 # Win32_System_WindowsProgramming：磁盘分析的 GetDriveTypeW 返回值常量（DRIVE_FIXED 等）只在这个命名空间
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming", "Win32_Graphics_Gdi", "Win32_Graphics_GdiPlus", "Win32_System_LibraryLoader", "Win32_System_SystemInformation", "Win32_UI_Input_KeyboardAndMouse"] }
 # 自动签到读 Qoder 本地登录态：Chromium OSCrypt v10 是 AES-256-GCM，外面那层密钥才是 DPAPI
 aes-gcm = "0.10"
 # TRAE Work CN 的本地凭据信封是 AES-128-CBC（aes 原本只由 aes-gcm 间接引入，这里要显式依赖）
