@@ -28,7 +28,8 @@
     "tool-rail",
     "tool-interview",
     "tool-screenshot",
-    "tool-disk"
+    "tool-disk",
+    "tool-prompt"
   ],
   "permissions": [
     "core:default",

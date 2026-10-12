@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 # TSPL 排版引擎：纯计算、无平台依赖，桌面端与手机端（编译成 WASM）共用同一份实现。
 # 见 crates/label-core 与 docs/mobile-app-plan.md §6。
 label-core = { path = "../crates/label-core" }
+# protocol-asset：提示词工具用 asset 协议给工具窗内联播放 media/ 里的生成视频（tauri.conf.json 的 assetProtocol 需同名 feature 配对）
 tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

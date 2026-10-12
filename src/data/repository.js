@@ -10,6 +10,8 @@ import { invoke } from "../platform/invoke.js";
 export const KINDS = Object.freeze({
   snippets: { key: "snippets", shape: "array", sync: true },
   problems: { key: "problems", shape: "array", sync: true },
+  // 提示词库（生图/生视频）：与速记/问题同为用户内容，墓碑 + 云同步同路径
+  prompts: { key: "prompts", shape: "array", sync: true },
   iterations: { key: "iterations", shape: "array", sync: false },
   domains: { key: "domains", shape: "array", sync: false },
   pools: { key: "pools", shape: "array", sync: false },

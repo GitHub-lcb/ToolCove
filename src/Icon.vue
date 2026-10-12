@@ -395,6 +395,17 @@ defineProps({
     <template v-else-if="name === 'zap'">
       <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
     </template>
+    <template v-else-if="name === 'wand'">
+      <!-- 提示词工具（lucide wand-2）：魔杖 + 星点 -->
+      <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" />
+      <path d="m14 7 3 3" />
+      <path d="M5 6v4" />
+      <path d="M19 14v4" />
+      <path d="M10 2v2" />
+      <path d="M7 8H3" />
+      <path d="M21 16h-4" />
+      <path d="M11 3H9" />
+    </template>
     <template v-else-if="name === 'star'">
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </template>

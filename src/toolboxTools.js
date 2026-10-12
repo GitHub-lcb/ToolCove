@@ -125,6 +125,22 @@ export const TOOLBOX_TOOLS = [
     desktopOnly: true,
     window: { width: 880, height: 640, minWidth: 620, minHeight: 460 },
   },
+  // 提示词工具（生图/生视频提示词 + 直接生成）桌面独占有两条硬理由：
+  // 1. 生成要连本机 ComfyUI——它默认不发 CORS 头，浏览器 fetch 会被拦，必须走 Rust 原生 HTTP 代理；
+  // 2. 生成媒体依赖原生流式落盘（大视频不过 base64）与系统播放器/asset 协议预览。
+  // （注释放对象外：手机端那条测试用「key 到 desktopOnly 不超过 300 字符」的正则核对
+  //   桌面端确实标了 desktopOnly，注释放中间会把这条守卫撑爆。）
+  {
+    key: "prompt",
+    labelKey: "toolbox.registry.toolPrompt",
+    icon: "wand",
+    category: "ai",
+    descKey: "toolbox.registry.toolPromptDesc",
+    keywordsKey: "toolbox.registry.kwPrompt",
+    ready: true,
+    desktopOnly: true,
+    window: { width: 1180, height: 780, minWidth: 960, minHeight: 620 },
+  },
   {
     key: "netcapture",
     labelKey: "toolbox.registry.toolNetcapture",

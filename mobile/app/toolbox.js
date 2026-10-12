@@ -1,6 +1,6 @@
 // 手机端工具箱的目录：分组、可用性、后续接哪些。
 //
-// 桌面端有 25 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
+// 桌面端有 26 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
 //   · 双端通用（JSON/转换/时间/生成/请求/图片/PDF/加密/文本 diff）→ 逐个移动端化；
 //   · 平台独占（文件/数据库/标签打印/网络诊断）→ 按安卓现实降级或替换（见 docs/mobile-app-plan.md §1）；
 //   · 游戏辅助（铁路大亨）→ 求解逻辑在 src/tools/railTycoon.js，桌面端在用，手机端后续作为一个工具回归。
@@ -49,6 +49,9 @@ export const TOOLS = Object.freeze([
   // 桌面端有定时签到，手机端不做：安卓这边既没有托盘常驻也没有开机自启的等价物，
   // 「每天定点自动签」在手机上只能是前台开着才有意义，那还不如让用户自己在网页上点一下。
   { key: "checkin", group: "ai", labelKey: "toolbox.registry.toolCheckin", ready: false, desktopOnly: true, note: "mobile.noteCheckin" },
+  // 提示词工具的生成能力要连本机 ComfyUI（不开 CORS，必须走原生 HTTP）与原生媒体落盘/播放；
+  // 安卓上没有对等能力，本轮整体不做（提示词库本身是纯文本，将来若单拆库视图可再迁）。
+  { key: "prompt", group: "ai", labelKey: "toolbox.registry.toolPrompt", ready: false, desktopOnly: true, note: "mobile.notePrompt" },
   // 抓包要连本机调试端口并拉起目标进程，安卓上没有对应能力：
   // 手机上要么没有那个应用，要么它跑在别的设备上，抓了也用不上。
   { key: "netcapture", group: "network", labelKey: "toolbox.registry.toolNetcapture", ready: false, desktopOnly: true, note: "mobile.noteNetcapture" },

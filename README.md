@@ -2,36 +2,57 @@
 
 **An agent-driven developer workbench — local-first, no account, free and open source (MIT).**
 
-ToolCove gathers the small but frequent actions of daily development — formatting, conversion,
-encryption, diffing, request debugging, quick notes, issue tracking, and AI assistance — into one
-app, with a built-in agent that can drive those tools for you. It runs as a **Windows desktop app**
-(Tauri 2) and as a **static web app** in the browser.
+Most tool apps are a pile of buttons: you still have to know which button to press, in what order,
+with what arguments. ToolCove inverts that. Its 26 built-in tools double as an **action space** the
+agent plans over — you describe the goal in natural language, and the agent chooses the actions,
+chains them, shows every step, and stops for your approval before anything risky gets written.
+Formatting, conversion, encryption, diffing, request debugging, file and database work, quick notes
+and issue tracking are all reachable both ways: you can click them, or you can let the agent drive
+them.
+
+It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in the browser; an
+**Android app** is in active rework toward desktop parity
+([`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)).
 
 ![ToolCove](docs/screenshots/toolbox-dark.png)
 
 ## Features
 
-- **Agent workspace** — the default first screen. Describe a goal in natural language; the agent
-  plans, calls tools (including file, database, and network tools on the desktop build), shows
-  every step live, and asks for confirmation before risky writes. Bring your own OpenAI-compatible
-  endpoint; a run log is kept so an interrupted task can be resumed.
-- **Toolbox** — 21 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
+- **Agent workspace** — the default first screen, and the reason the rest of the app is shaped the
+  way it is. Describe a goal; the agent plans over the tool catalog, executes one typed action at a
+  time, streams every step (tool, arguments, result, duration), and can be stopped or resumed —
+  the run log is persisted, so an interrupted task picks up where it left off. It brings its own
+  guard rails rather than trusting the model: every action carries a risk tier
+  (`transform` / `read` / `write` / `database`), write actions must produce a diff preview before
+  you are asked to approve them, deletions always confirm, and the approval policy itself is
+  yours (`risky` / `always` / `never`). Large results are truncated to a `spill:` handle that the
+  agent reads back in slices instead of flooding its context. Successful runs can be kept as
+  *skills* (up to 50; at most 3 are matched and injected per run, under a fixed token budget) —
+  a skill is a hint about what worked last time, never a forced step. Bring your own
+  OpenAI-compatible endpoint; nothing is sent anywhere until you ask for it.
+- **Toolbox** — 26 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
   keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
 
   | Group | Tools |
   |-------|-------|
-  | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (regex / replace / line ops / naming / stats), Diff (line & word diff, merge view), Table converter (CSV/TSV ↔ JSON / Markdown / SQL INSERT, clean & reshape), Markdown (outline / TOC / lint / format / HTML preview), Structured data (JSON / YAML validate-format-tree-convert), XML (validate / format / XML↔JSON / XPath), JSON Schema (infer / validate / sample / explain structure), Time & schedule (timestamp / timezone / Cron), Data generation (UUID / ULID / NanoID / mock / templates) |
-  | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments) |
-  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export) |
-  | Dev tools | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
-  | AI | AI chat (multi-session, image input, prompt presets), Auto check-in (scheduled check-in for the daily-credit campaigns of AI agent tools, driven by site descriptors you fill in — see below) |
+  | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (regex / replace / line ops / naming / stats, with a line & word diff tab), Table converter (CSV/TSV ↔ JSON / Markdown / SQL INSERT, clean & reshape), Markdown (outline / TOC / lint / format / HTML preview), Structured data (JSON / YAML validate-format-tree-convert), XML (validate / format / XML↔JSON / XPath), JSON Schema (infer / validate / sample / explain structure), Time & schedule (timestamp / timezone / Cron), Data generation (UUID / ULID / NanoID / mock / templates) |
+  | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments), Multi-threaded downloader (chunked resume, batch queue), API capture (watch a local app's requests over CDP, turn one into a check-in site descriptor) |
+  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export), Screenshot (F1 freeze-and-annotate, F3 pin), Disk analyzer (parallel scan, treemap, recycle-bin delete, cross-drive junction moves) |
+  | Development | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
+  | AI | AI chat (multi-session, image input, prompt presets), Prompts (prompt library + cloud image generation / local ComfyUI workflows, including video), Auto check-in (scheduled check-in for the daily-credit campaigns of AI agent tools, driven by site descriptors you fill in — see below) |
   | Game helpers | Rail Tycoon route solver (Lord of the Mysteries homestead trade run: enumerates every valid stop layout from the "next 3 stops" hints, locks the next stop and advises which card to take) |
   | Arcade | Interview prep (offline question banks for four interview tracks — backend/Java, algorithms, system design and frontend — where the model answer starts collapsed so you answer first, then rate yourself honestly; your rating drives a spaced-review queue, and every question credits the high-star open-source repository it draws on. 311 built-in questions across 75 topics under a controlled vocabulary, keyword/topic/difficulty/mastery filters, mock-interview sets drawn evenly from all four tracks, a Markdown/JSON importer, and `npm run bank:fetch` — a build script that scrapes any GitHub repository into an importable bank) |
 
-  Network diagnostics, file processing, the database manager and label printing need native capabilities
-  and are available in the desktop build only; everything else — including the PDF toolkit, which runs in
-  the frontend on pdf-lib (plus qpdf-wasm, lazily fetched only when a file turns out to be
-  encrypted) — works in both builds.
+  The gallery and the global search both render from one registry (`src/toolboxTools.js`); the table
+  above mirrors it group for group. If a tool is missing from this list, that is a documentation
+  bug worth filing.
+
+  Ten of them need native capabilities and are desktop-only: network diagnostics, file processing,
+  the database manager, label printing, screenshot, disk analyzer, multi-threaded downloader, API
+  capture, auto check-in and prompts. The browser build hides them rather than showing them broken;
+  the Android app goes through its own native bridge (see [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)).
+  Everything else — including the PDF toolkit, which runs in the frontend on pdf-lib
+  (plus qpdf-wasm, lazily fetched only when a file turns out to be encrypted) — works in both builds.
 
   The gallery home has its own search (tool name, capability, or keyword), a quick-access row built
   from your pinned and recently used tools, and collapsible groups whose tools render as two-column
@@ -51,9 +72,37 @@ app, with a built-in agent that can drive those tools for you. It runs as a **Wi
   the zero-dependency Node server in [`server/`](server/README.md) or use a hosted instance you trust.
 
 **Privacy first**: everything is stored locally — JSON files in your app-data directory on the
-desktop build, IndexedDB in the browser. No account, no telemetry uploads, no cloud sync unless you
-turn it on. Outbound traffic is only what you explicitly trigger: AI requests, HTTP debugging, and
-optional sync.
+desktop build, IndexedDB in the browser. No account, no cloud sync unless you turn it on, and
+telemetry is opt-in (a one-time prompt decides it, and the upload endpoint defaults to empty, so
+nothing leaves the machine until you both allow it and point it somewhere). Outbound traffic is
+only what you explicitly trigger: AI and agent requests, HTTP debugging, downloads you start, image
+generation against an endpoint you configured, the check-ins you schedule, and optional sync.
+
+### What the agent can drive — and what it cannot
+
+Being honest about this is part of the positioning: the agent exposes **38 typed actions drawn from
+15 of the 26 tools** today, and the plan is to close that gap rather than pretend the toolbox is
+already one big action space.
+
+- **Agent-drivable now**: data conversion, text processing & diff, table, Markdown, XML, JSON + YAML,
+  JSON Schema, time & Cron, ID/mock generation, checksum (digest / HMAC / password generator),
+  network diagnostics, HTTP requests, file read / list / write, image resize planning, the database
+  (read-only queries by design), and
+  the local business data (snippets, problems, prompts, iterations, domains, pools, releases)
+  through `data.query` / `data.get` / `data.create` / `data.update` / `data.remove`.
+- **Not drivable because a human is the point**: Screenshot (you frame the selection; the agent has
+  no screen to look at), Rail Tycoon solver and Interview prep (these are things you play, not
+  things you delegate), AI chat (the chat *is* the interaction).
+- **Not drivable yet**: PDF toolkit, Disk analyzer, Multi-threaded downloader, Label printing, API
+  capture, Prompts/ComfyUI generation, Auto check-in. Each already has native commands behind it,
+  so these are wiring work — adding a catalog entry, an argument schema and a risk tier — not new
+  capability.
+
+The rule that follows from calling the tools an action space: **a new tool that cannot be called by
+the agent is either a deliberate exception (like Screenshot) or unfinished.** `src/agent/catalog.js`
+holds the metadata and `catalog.test.js` asserts it against the implementation in both directions,
+so "the catalog promises a tool that does not exist" fails a test rather than failing a user
+mid-task.
 
 ### Auto check-in: how it works, and what it will not do
 
@@ -238,20 +287,34 @@ Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). For secur
 
 ## 中文简介
 
-ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的零散开发动作收拢到一个应用里，
-内置 Agent 智能体帮你串联这些工具。支持 **Windows 桌面端**（Tauri 2）与**浏览器端**（纯静态站点）。
+ToolCove（工具湾）是面向开发者的**智能体工作台**：本地优先、无账号、开源免费（MIT）。
+它和「一堆小工具合集」的差别在于：26 个内置工具同时是 Agent 的**动作空间**——你用自然语言说出目标，
+Agent 自己挑动作、串起来执行、每步实时可见，风险操作先给你看 diff 再确认。支持 **Windows 桌面端**
+（Tauri 2）、**浏览器端**（纯静态站点），安卓 App 正按「功能对齐桌面端」重做。
 
-- **Agent 工作台**：默认首屏。用自然语言描述目标，Agent 规划并调用工具（桌面端含文件、数据库、
-  网络等能力），过程实时可见，写入类操作先确认后执行；支持中断续跑与运行记录。
-- **工具箱**：25 个内置工具——数据转换、文本处理、文本对比、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
+- **Agent 工作台**：默认首屏，也是这个应用其它部分之所以长成现在这样的理由。Agent 在工具目录上规划，
+  一次执行一个带类型的动作，实时报出工具、参数、结果与耗时；运行记录落盘，中断的任务可以续跑。
+  它不靠「相信模型」来保证安全：每个动作带风险级别（`transform` / `read` / `write` / `database`），
+  写入类必须先产出 diff 预览才请你批准，删除类一律确认，审批策略由你定（`risky` / `always` / `never`）；
+  大结果裁剪成 `spill:` 句柄供分段回读，而不是淹没上下文；成功的运行可以存成**技能**（上限 50 条，
+  单次最多命中 3 条、注入预算固定），技能只是「上次这么做成了」的提示，不是强制步骤。
+  模型走你自己配置的任意 OpenAI 兼容端点，你不发起就没有任何对外请求。
+  **目前 Agent 覆盖 26 个工具里的 15 个、共 38 个动作**，能做什么、不能做什么见下方专门说明。
+- **工具箱**：26 个内置工具——数据转换、文本处理（含文本对比）、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
   JSON Schema、时间调度、数据生成、网络诊断、
-  API 调试、文件处理、图片处理、PDF 工具、标签打印、截图、磁盘分析、加密与校验、数据库管理、AI 对话、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
-  其中网络诊断、文件处理、数据库管理、标签打印、截图、磁盘分析、自动签到依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
+  API 调试、多线程下载、接口抓包、文件处理、图片处理、PDF 工具、标签打印、截图、磁盘分析、加密与校验、数据库管理、AI 对话、提示词、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
+  其中网络诊断、文件处理、数据库管理、标签打印、截图、磁盘分析、多线程下载、接口抓包、自动签到、提示词这 10 个依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。
   标签打印面向佳博 GP-2120TF 这类 TSPL 热敏标签机：排版算成绝对坐标后直接生成 `TEXT` / `BARCODE` /
   `QRCODE` 指令，按 GB18030 编码走 RAW 写入 Windows 打印队列（不经驱动渲染，203dpi 下最锐利），
   预览与实打同源，可导出 `.prn` 给供应商排查。
+  提示词（生图 / 生视频）把提示词库与生成通道放在一起：库支持分类、标签、搜索、置顶、`{{变量}}` 填表
+  与 JSON 导入导出；生成有三条通道——云端生图（独立配置任意 OpenAI 兼容 `/images/generations` 端点）、
+  本机 ComfyUI 文生图（自动列 checkpoint，正负提示词 + 尺寸/步数/种子直接出图）、导入 ComfyUI
+  「API 格式」工作流跑任意流程（含视频）。请求经 Rust 原生发出（ComfyUI 默认不发 CORS 头），
+  进度用 ComfyUI 内置 WebSocket 报步进、以轮询 /history 为最终真值；生成结果流式落到本机 media 目录
+  （刻意不进数据备份，设置页如实说明并可从结果卡「另存为」导出）。
   首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏与最近使用排列，分类可同时展开、
   宽窗口下工具卡两列排布；收藏与展开状态本地记忆。
   铁路大亨站点推断（游戏辅助）面向《诡秘之主》家园「列车贸易」的挑战线路：把每站的「未来 3 站」
@@ -317,6 +380,17 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   **包含本应用数据目录的祖先目录（例如整个 `AppData\Roaming`）也会被拒绝**（边写边搬必然失败，请改迁具体子目录）；
   商店应用数据（`AppData\Local\Packages`）、系统组件数据（`Local\Microsoft`）与 `Temp` 这类高风险位置允许迁但会给出提醒；
   迁完留**迁移记录**、可一键回滚（回滚先校验「原路径确实是指向该目标的链接」，防止误删真实目录）。
+- **Agent 能驱动什么、不能驱动什么**（把这条写清楚就是定位的一部分）：
+  **能驱动**——数据转换、文本处理与对比、表格、Markdown、XML、JSON/YAML、JSON Schema、时间调度、
+  标识符与 Mock 生成、摘要 / HMAC / 密码生成、网络诊断、HTTP 请求、文件读列写、图片尺寸规划、数据库（按设计只给
+  只读查询），以及本地业务数据（速记 / 问题 / 提示词 / 迭代 / 领域 / 池 / 发布）的查、取、建、改、删。
+  **不能驱动，因为人本身就是环节**——截图（选区要你框，Agent 没有屏幕可看）、铁路大亨与面试刷题
+  （这两个是你玩的，不是委托给它的）、AI 对话（对话就是交互本身）。
+  **还不能驱动**——PDF 工具、磁盘分析、多线程下载、标签打印、接口抓包、提示词生成、自动签到：
+  它们背后的原生命令都在，缺的只是目录条目 + 参数 Schema + 风险级别这三件接线工作，不是新能力。
+  由此推出工具准入规则：**新工具如果 Agent 调不到，它要么是刻意例外（截图这类），要么是没做完**。
+  `src/agent/catalog.js` 存元数据，`catalog.test.js` 双向校验目录与实现一致——「目录说有、实际没有」
+  这种事应该在测试里失败，而不是在用户跑到一半时失败。
 - **手机端**：安卓 App 正在重做，目标是**功能对齐桌面端**——架构、分期与无法对齐的平台能力
   （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。
   旧的手机端实现（铁路大亨悬浮面板）已整体移除；铁路大亨的求解逻辑仍在
@@ -327,7 +401,9 @@ ToolCove（工具湾）是面向开发者的效率工作台，把日常高频的
   无需账号，可用 `server/` 内的零依赖 Node 服务自托管。
 
 **纯本地、无账号、开源免费（MIT）**：数据全部保存在本机（桌面端为本地 JSON，浏览器端为
-IndexedDB）；无遥测上传、无强制云同步；外部请求（AI、HTTP 调试、可选同步）均由你主动触发。
+IndexedDB）；无强制云同步；遥测是**可选开启**——一次性弹窗决定，且上报端点默认为空，
+两件事都做了才会有数据离开这台机器。外部请求（AI 与 Agent、HTTP 调试、你发起的下载、
+你配置的生成端点、你排定的签到、可选同步）均由你主动触发。
 
 - 下载安装：[GitHub Releases](https://github.com/GitHub-lcb/ToolCove/releases)（应用启动时自动检查更新，
   更新包验签后安装）

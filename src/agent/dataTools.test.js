@@ -280,6 +280,26 @@ describe("data.remove", () => {
   });
 });
 
+describe("prompts 提示词类别", () => {
+  it("必填 positive、target 枚举收口、写入即入队云同步（与速记同待遇）", async () => {
+    const create = byName(await freshTools(), "data.create");
+    await expect(create.execute({ kind: "prompts", draft: { title: "缺正文" } })).rejects.toThrow(/缺少必填字段：positive/);
+    await expect(create.execute({ kind: "prompts", draft: { positive: "x", target: "audio" } })).rejects.toThrow(/prompts\.target 只能是/);
+    const { record } = await create.execute({ kind: "prompts", draft: { positive: "一只猫在屋顶", target: "image", tags: ["猫"] } });
+    expect(store.get("prompts")[0]).toMatchObject({ id: record.id, positive: "一只猫在屋顶", target: "image" });
+    await vi.waitFor(() => expect(syncMock.enqueueSync).toHaveBeenCalledWith(["prompts"]));
+  });
+
+  it("更新白名单覆盖 negative / target，脏字段被拒", async () => {
+    store.set("prompts", [{ id: "q1", title: "人像", positive: "p", target: "image", updatedAt: 1 }]);
+    const update = byName(await freshTools(), "data.update");
+    await expect(update.execute({ kind: "prompts", id: "q1", patch: { id: "x" } })).rejects.toThrow(/patch 为空|不可修改字段/);
+    const { record } = await update.execute({ kind: "prompts", id: "q1", patch: { negative: "lowres", target: "video" } });
+    expect(record).toMatchObject({ negative: "lowres", target: "video" });
+    expect(store.get("prompts")[0].target).toBe("video");
+  });
+});
+
 describe("确认策略：data.remove 强制确认", () => {
   const plannerRemove = (id) => async ({ history }) => {
     const done = history.some((h) => h.result || h.error);

@@ -26,6 +26,7 @@ export const TOOL_COMPONENTS = {
   db: defineAsyncComponent(() => import("./tools/DbTool.vue")),
   chat: defineAsyncComponent(() => import("./tools/AiChatTool.vue")),
   checkin: defineAsyncComponent(() => import("./tools/CheckInTool.vue")),
+  prompt: defineAsyncComponent(() => import("./tools/PromptTool.vue")),
   netcapture: defineAsyncComponent(() => import("./tools/NetCaptureTool.vue")),
   label: defineAsyncComponent(() => import("./tools/LabelTool.vue")),
   rail: defineAsyncComponent(() => import("./tools/RailTycoonTool.vue")),

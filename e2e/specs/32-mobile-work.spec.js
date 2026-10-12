@@ -14,7 +14,9 @@ const ITERATIONS = [
     status: "dev",
     releaseDate: "2026-10-01",
     items: [
-      { id: "r1", name: "登录改造", done: false, estimateDays: 2, subtasks: [{ id: "s1", name: "接口", hours: 6, done: true }, { id: "s2", name: "页面", hours: 4, done: false }] },
+      // s1 特意是未完成态：下面「子任务层」用例勾选它之后断言出现 ✓——
+      // 曾经写成 done:true，点击把它切成 ○，断言只能靠「Vue 还没刷新 DOM」的瞬间偶然通过（1/3 假绿的 flake）
+      { id: "r1", name: "登录改造", done: false, estimateDays: 2, subtasks: [{ id: "s1", name: "接口", hours: 6, done: false }, { id: "s2", name: "页面", hours: 4, done: false }] },
       { id: "r2", name: "导出补丁", done: true, estimateDays: 1, subtasks: [{ id: "s3", name: "补 BOM", hours: 2, done: true }] },
     ],
   },

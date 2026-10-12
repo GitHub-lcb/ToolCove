@@ -70,7 +70,7 @@ describe("searchToolboxTools", () => {
       ["network", "request", "downloader", "netcapture"],
       ["file", "image", "screenshot", "disk", "pdf", "label"],
       ["crypto", "db"],
-      ["chat", "checkin"],
+      ["chat", "checkin", "prompt"],
       ["rail"],
       ["interview"],
     ]);
@@ -154,6 +154,26 @@ describe("searchToolboxTools", () => {
 
   it("磁盘分析是桌面独占：目录树遍历与体积聚合必须在原生侧做", () => {
     expect(TOOLBOX_TOOLS.find((tool) => tool.key === "disk")?.desktopOnly).toBe(true);
+  });
+
+  it("可按提示词工具的关键词搜索", () => {
+    for (const keyword of ["提示词", "提示词库", "生图", "文生图", "生视频", "ComfyUI", "负向提示词", "AI 绘画"]) {
+      expect(searchToolboxTools(keyword).map((tool) => tool.key)).toContain("prompt");
+    }
+  });
+
+  it("提示词是桌面独占：生成要连本机 ComfyUI（不开 CORS）并依赖原生媒体落盘", () => {
+    expect(TOOLBOX_TOOLS.find((tool) => tool.key === "prompt")?.desktopOnly).toBe(true);
+  });
+
+  it("提示词的词条不得含 JSON 之类被精确断言锁定的子串（回归：搜索面不漂移）", () => {
+    // toolboxTools.test.js 顶部对 "JSON"/"数据转换"/"网络工具"/"Base64" 做 toEqual 精确断言，
+    // 新工具的词条一旦混入这些子串会同时命中，把那些回归断言变成噪音。
+    const tool = TOOLBOX_TOOLS.find((item) => item.key === "prompt");
+    const words = [i18n.global.t(tool.labelKey), i18n.global.t(tool.descKey), ...toolKeywords(tool)].join("\n").toLowerCase();
+    for (const forbidden of ["json", "数据转换", "网络工具", "base64", "ping"]) {
+      expect(words.includes(forbidden), `提示词词条含 ${forbidden}`).toBe(false);
+    }
   });
 });
 

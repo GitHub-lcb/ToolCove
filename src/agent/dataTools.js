@@ -33,6 +33,11 @@ const KIND_META = Object.freeze({
   domains: { required: ["name"], fields: ["name", "note"] },
   pools: { required: ["domainId", "name"], fields: ["name", "note", "path"] },
   releases: { required: ["name"], fields: ["name", "codingProject"] },
+  prompts: {
+    required: ["positive"],
+    fields: ["title", "positive", "negative", "target", "category", "tags", "note", "pinned"],
+    enums: { target: ["image", "video"] },
+  },
 });
 
 const text = { type: "string", maxLength: 16000 };
@@ -90,7 +95,7 @@ export function createDataTools() {
   return [
     {
       name: "data.query",
-      description: "检索本地业务数据（kind：snippets 速记 / problems 问题 / iterations 迭代 / domains 领域 / pools 池 / releases 发布），支持关键词、标签、状态过滤，返回按更新时间倒序的 {total, items} 摘要",
+      description: "检索本地业务数据（kind：snippets 速记 / problems 问题 / iterations 迭代 / domains 领域 / pools 池 / releases 发布 / prompts 生图与生视频提示词），支持关键词、标签、状态过滤，返回按更新时间倒序的 {total, items} 摘要",
       descriptionKey: "agent.toolDataQuery",
       risk: "read",
       retryable: false,
@@ -125,7 +130,7 @@ export function createDataTools() {
     },
     {
       name: "data.create",
-      description: "新建一条本地业务数据（kind 同 data.query）。draft 必填：snippets/problems 用 title，domains 用 name，pools 用 domainId+name，iterations 用 title+version，releases 用 name",
+      description: "新建一条本地业务数据（kind 同 data.query）。draft 必填：snippets/problems 用 title，domains 用 name，pools 用 domainId+name，iterations 用 title+version，releases 用 name，prompts 用 positive",
       descriptionKey: "agent.toolDataCreate",
       risk: "write",
       retryable: false,
@@ -159,7 +164,7 @@ export function createDataTools() {
     },
     {
       name: "data.remove",
-      description: "删除一条本地业务数据（速记/问题会同步删除到其他设备；不可恢复）。执行前必须由用户确认",
+      description: "删除一条本地业务数据（速记/问题/提示词属同步类别，会同步删除到其他设备；不可恢复）。执行前必须由用户确认",
       descriptionKey: "agent.toolDataRemove",
       risk: "write",
       confirm: "always",

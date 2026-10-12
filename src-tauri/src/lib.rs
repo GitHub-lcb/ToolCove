@@ -10,6 +10,7 @@ mod network;
 mod netcapture;
 mod pdf;
 mod printer;
+mod prompt_media;
 mod qoder_cn_auth;
 mod screenshot;
 mod secure;
@@ -219,6 +220,13 @@ pub fn run() {
             disk_migrate::disk_migrate_start,
             disk_migrate::disk_migrate_cancel,
             disk_migrate::disk_migrate_rollback,
+            // 提示词工具：云端生图与 ComfyUI 结果的媒体存取（media/ 目录刻意不进数据备份）
+            prompt_media::prompt_image_generate,
+            prompt_media::media_fetch_stream,
+            prompt_media::media_read_b64,
+            prompt_media::media_delete,
+            prompt_media::media_path,
+            prompt_media::media_export,
             // 标签打印（TSPL / 佳博 GP-2120TF 这类热敏标签机）
             label::label_layout,
             label::label_printers,

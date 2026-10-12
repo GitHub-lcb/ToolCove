@@ -49,11 +49,11 @@ export const AGENT_TOOL_CATALOG = Object.freeze([
   // ── 图像 ───────────────────────────────────────────────────
   { name: "image.plan", description: "按源图尺寸计算等比缩放、居中裁剪与旋转后的输出尺寸计划", descriptionKey: "agent.toolImagePlan", toolKey: "image", risk: "transform", retryable: false },
   // ── 业务数据（实现见 dataTools.js） ────────────────────────
-  { name: "data.query", descriptionKey: "agent.toolDataQuery", description: "检索本地业务数据（kind：snippets 速记 / problems 问题 / iterations 迭代 / domains 领域 / pools 池 / releases 发布），支持关键词、标签、状态过滤，返回按更新时间倒序的 {total, items} 摘要", toolKey: "data", risk: "read", retryable: false },
+  { name: "data.query", descriptionKey: "agent.toolDataQuery", description: "检索本地业务数据（kind：snippets 速记 / problems 问题 / iterations 迭代 / domains 领域 / pools 池 / releases 发布 / prompts 生图与生视频提示词），支持关键词、标签、状态过滤，返回按更新时间倒序的 {total, items} 摘要", toolKey: "data", risk: "read", retryable: false },
   { name: "data.get", descriptionKey: "agent.toolDataGet", description: "按 id 读取一条完整的本地业务数据（先用 data.query 拿到 id；kind 同 data.query）", toolKey: "data", risk: "read", retryable: false },
-  { name: "data.create", descriptionKey: "agent.toolDataCreate", description: "新建一条本地业务数据（kind 同 data.query）。draft 必填：snippets/problems 用 title，domains 用 name，pools 用 domainId+name，iterations 用 title+version，releases 用 name", toolKey: "data", risk: "write", retryable: false },
-  { name: "data.update", descriptionKey: "agent.toolDataUpdate", description: "按 id 修改一条本地业务数据（kind 同 data.query）。可改字段：snippets→title/category/content/pinned；problems→title/type/status/tags/note/resolution；iterations→title/version/status/releaseDate/goal/domainIds；domains→name/note；pools→name/note/path；releases→name/codingProject", toolKey: "data", risk: "write", retryable: false },
-  { name: "data.remove", descriptionKey: "agent.toolDataRemove", description: "删除一条本地业务数据（速记/问题会同步删除到其他设备；不可恢复）。执行前必须由用户确认", toolKey: "data", risk: "write", retryable: false, confirm: "always" },
+  { name: "data.create", descriptionKey: "agent.toolDataCreate", description: "新建一条本地业务数据（kind 同 data.query）。draft 必填：snippets/problems 用 title，domains 用 name，pools 用 domainId+name，iterations 用 title+version，releases 用 name，prompts 用 positive", toolKey: "data", risk: "write", retryable: false },
+  { name: "data.update", descriptionKey: "agent.toolDataUpdate", description: "按 id 修改一条本地业务数据（kind 同 data.query）。可改字段：snippets→title/category/content/pinned；problems→title/type/status/tags/note/resolution；iterations→title/version/status/releaseDate/goal/domainIds；domains→name/note；pools→name/note/path；releases→name/codingProject；prompts→title/positive/negative/target/category/tags/note/pinned", toolKey: "data", risk: "write", retryable: false },
+  { name: "data.remove", descriptionKey: "agent.toolDataRemove", description: "删除一条本地业务数据（速记/问题/提示词属同步类别，会同步删除到其他设备；不可恢复）。执行前必须由用户确认", toolKey: "data", risk: "write", retryable: false, confirm: "always" },
 ]);
 
 /** 工具名全集（设置归一化与能力面板共用，单一真相源）。 */
