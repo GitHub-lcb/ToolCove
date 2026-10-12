@@ -38,8 +38,11 @@ describe("PromptTool 渲染", () => {
     expect(html).not.toContain("undefined");
     expect(html).not.toContain("NaN");
     expect(html).not.toContain(">null<");
-    // 生成面板要等配置读完（bootstrapped）才挂载，SSR 首屏按设计不含它——不该反过来渲染半个空壳
-    expect(html).not.toContain(t("toolbox.prompt.gen-run"));
+    // 生成面板要等配置读完（bootstrapped）才挂载，SSR 首屏按设计不含它——不该反过来渲染半个空壳。
+    // 这里断言的是它自己的 data-role：早先写的是 t("toolbox.prompt.gen-run")，
+    // 而 "gen-run" 只是组件的 data-role 名、根本不是 i18n 键——vue-i18n 对未知键原样返回
+    // 键名，于是「不包含键名字面量」永远成立，这条断言其实什么都没验证。
+    expect(html).not.toContain('data-role="gen-run"');
   });
 
   it("不渲染任何未注册的 i18n 键", async () => {

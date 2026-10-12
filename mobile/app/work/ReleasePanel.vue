@@ -326,7 +326,7 @@ async function toggleStep(pool, stepKey) {
         <label class="m-field">
           <span>{{ t("mobile.releaseDeploy") }}</span>
           <select v-model="form.deployType" data-role="release-deploy">
-            <option value="auto">{{ t("mobile.deployAuto") }}</option>
+            <option value="auto">{{ t("mobile.deploy_auto") }}</option>
             <option v-for="type in DEPLOY_TYPES.filter((x) => x !== 'auto')" :key="type" :value="type">{{ t(`mobile.deploy_${type}`) }}</option>
           </select>
         </label>

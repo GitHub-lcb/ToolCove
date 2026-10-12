@@ -106,8 +106,8 @@ const kb = (bytes) => `${Math.max(1, Math.round(Number(bytes || 0) / 1024))} KB`
 
     <!-- 文件信息：读出来之后才知道真实编码与是否 lossy，这些必须让用户看到 -->
     <ul v-if="meta" class="m-stats" data-role="file-meta">
-      <li><b>{{ t("toolbox.file.fileName") }}</b><span data-role="file-name">{{ meta.name }}</span></li>
-      <li><b>{{ t("toolbox.file.fileSize") }}</b><span data-role="file-size">{{ kb(meta.size) }}</span></li>
+      <li><b>{{ t("mobile.fileName") }}</b><span data-role="file-name">{{ meta.name }}</span></li>
+      <li><b>{{ t("mobile.fileSize") }}</b><span data-role="file-size">{{ kb(meta.size) }}</span></li>
       <li><b>{{ t("mobile.fileEncoding") }}</b><span data-role="file-encoding">{{ meta.encoding }}</span></li>
       <li v-if="meta.hasBom"><b>BOM</b><span>{{ t("mobile.fileHasBom") }}</span></li>
     </ul>
