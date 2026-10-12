@@ -64,6 +64,25 @@ function rateLimitCode(json, read) {
 }
 
 /**
+ * 业务码形式的「今天已经签过了」。
+ *
+ * 为什么不能只靠 HTTP 状态码：WorkBuddy CN 重复签到返回的是 **HTTP 400 +
+ * {"code":10001,"msg":"今天已签到，请明天再来"}**。只看状态码会把它归进 client 失败，
+ * 于是当天继续重试、界面显示红色徽章——而事实是今天已经签好了，
+ * 用户会跑去查网络和登录态，方向完全错。
+ *
+ * 幂等语义必须与「限流」分开：已签不该退避（重试没有意义），也不该推进 lastDay
+ * 之外的任何东西——而它**要**推进 lastDay，否则第二天会以为今天没签。
+ */
+function alreadyCode(json, read) {
+  const list = Array.isArray(read.alreadyCodes) ? read.alreadyCodes : [];
+  if (!list.length || !read.code) return null;
+  const code = pickPath(json, read.code);
+  if (code === undefined || code === null || code === "") return null;
+  return list.some((allowed) => String(allowed) === String(code)) ? code : null;
+}
+
+/**
  * 判断业务码是否成功。
  *
  * 没配 code/successCodes 就跳过这一步（很多接口没有业务码）。
@@ -124,6 +143,20 @@ function readCheckedIn(json, read) {
     const tri = oneTriState(json, spec);
     if (tri !== undefined) return read.checkedInInvert ? !tri : tri;
   }
+  // 布尔字段一个都读不出时，退到「某字段出现即已完成」。
+  //
+  // 为什么需要：有的站点**签到响应里没有任何状态字段**，成功判据就是响应体里出现了
+  // 某个业务字段。WorkBuddy CN 就是这样——签到成功时 data 里是 {credit, streak_days,
+  // is_streak_day}，app 自己也是靠 `!('credit' in e)` 区分成功与业务错误。
+  // 没有这个口子，一次真的签成了会被读成「无法判定」，用户看到黄色警告去改一份
+  // 根本没写错的描述。
+  //
+  // 只看「字段是否存在」而**不看值**：出现即代表服务端认了这次请求，
+  // 而值本身可能是 0（如 credit 为 0 的活动），按真值判断会把它误判成失败。
+  if (read.checkedInPresence) {
+    const present = pickPath(json, read.checkedInPresence);
+    if (present !== undefined) return true;
+  }
   return undefined;
 }
 
@@ -136,6 +169,15 @@ export function classifyStatus(response, read) {
     return { outcome: OUTCOME.NETWORK, error: String(response.error), checkedIn: undefined };
   }
   const { status } = response;
+  // 「已签」判定必须排在状态码之前：WorkBuddy 用 HTTP 400 表达它。
+  // 先按 4xx 归成 client 失败的话，一次「今天早已签好」会被报成红色错误。
+  const parsedEarly = parseJson(response.text);
+  if (parsedEarly.ok) {
+    const already = alreadyCode(parsedEarly.value, read);
+    if (already !== null) {
+      return { outcome: OUTCOME.ALREADY, error: "", checkedIn: true, points: readPoint(parsedEarly.value, read) };
+    }
+  }
   if (status === 401 || status === 403) {
     return { outcome: OUTCOME.AUTH, error: `HTTP ${status}`, checkedIn: undefined };
   }
@@ -143,7 +185,7 @@ export function classifyStatus(response, read) {
   if (status >= 500) return { outcome: OUTCOME.SERVER, error: `HTTP ${status}`, checkedIn: undefined };
   if (status < 200 || status >= 300) return { outcome: OUTCOME.CLIENT, error: `HTTP ${status}`, checkedIn: undefined };
 
-  const parsed = parseJson(response.text);
+  const parsed = parsedEarly;
   if (!parsed.ok) return { outcome: OUTCOME.NOT_JSON, error: parsed.reason, checkedIn: undefined };
 
   const limited = rateLimitCode(parsed.value, read);
@@ -180,6 +222,22 @@ export function classifyCheckIn(response, read) {
     return { outcome: OUTCOME.NETWORK, error: String(response.error), checkedIn: undefined };
   }
   const { status } = response;
+  // 同 classifyStatus：业务码语义优先于 HTTP 状态码。
+  // 对签到而言这条尤其重要——重复签到时服务端正是在 400 里告诉我们「今天已签到」，
+  // 而那是一次**成功**的幂等结果，不是失败。
+  const parsedEarly = parseJson(response.text);
+  if (parsedEarly.ok) {
+    const already = alreadyCode(parsedEarly.value, read);
+    if (already !== null) {
+      return {
+        outcome: OUTCOME.ALREADY,
+        error: "",
+        checkedIn: true,
+        points: readPoint(parsedEarly.value, read),
+        message: textOf(parsedEarly.value, read),
+      };
+    }
+  }
   if (status === 401 || status === 403) {
     return { outcome: OUTCOME.AUTH, error: `HTTP ${status}`, checkedIn: undefined };
   }
@@ -187,7 +245,7 @@ export function classifyCheckIn(response, read) {
   if (status >= 500) return { outcome: OUTCOME.SERVER, error: `HTTP ${status}`, checkedIn: undefined };
   if (status < 200 || status >= 300) return { outcome: OUTCOME.CLIENT, error: `HTTP ${status}`, checkedIn: undefined };
 
-  const parsed = parseJson(response.text);
+  const parsed = parsedEarly;
   if (!parsed.ok) return { outcome: OUTCOME.NOT_JSON, error: parsed.reason, checkedIn: undefined };
 
   const limited = rateLimitCode(parsed.value, read);

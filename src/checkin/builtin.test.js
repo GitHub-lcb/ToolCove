@@ -112,6 +112,80 @@ describe("TRAE Work CN 内置条目", () => {
   });
 });
 
+describe("WorkBuddy CN 内置条目", () => {
+  const WB = BUILTIN_SITES.find((site) => site.key === "workbuddy-cn");
+  const ok = (body, status = 200) => ({ ok: status < 300, status, text: JSON.stringify(body), error: "", retryAfterMs: 0 });
+
+  it("用的是桌面端端点，不是 Web 端那个恒为 inactive 的 checkin-status", () => {
+    // /billing/meter/checkin-status（少了 -activity）在桌面账号上恒返回
+    // active:false + today_checked_in:false，会把每一次签到都静默判成「无需签到」。
+    expect(WB.status.path).toBe("/v2/billing/meter/checkin-activity-status");
+    expect(WB.checkin.path).toBe("/v2/billing/meter/daily-checkin");
+    expect(WB.status.path).not.toBe("/billing/meter/checkin-status");
+  });
+
+  it("两个动作都是 POST + 空 JSON 对象（不是空 body）", () => {
+    for (const action of [WB.status, WB.checkin]) {
+      expect(action.method).toBe("POST");
+      expect(action.body).toBe("{}");
+    }
+  });
+
+  it("不存凭据：token 与账号头都由 credentialSource 当场给", () => {
+    expect(WB.credentialSource).toBe("workbuddy-cn-local");
+    for (const action of [WB.status, WB.checkin]) expect(action.headers).toEqual([]);
+  });
+
+  it("查状态：today_checked_in 为真 → 今日已签，不再发签到请求", () => {
+    const got = classifyStatus(ok({ code: 0, msg: "OK", data: { active: true, today_checked_in: true, streak_days: 4 } }), WB.read);
+    expect(got.outcome).toBe(OUTCOME.ALREADY);
+  });
+
+  it("查状态：活动开着但今天没签 → 必须去签（不能读成已签）", () => {
+    const got = classifyStatus(ok({ code: 0, msg: "OK", data: { active: true, today_checked_in: false, daily_credit: 100 } }), WB.read);
+    expect(got.outcome).toBe(OUTCOME.NEEDED);
+  });
+
+  it("刻意不把 data.active 当已签兜底：active:true 且没有 today_checked_in 时不能判成已签", () => {
+    // 兜底成 active 会在接口不再下发 today_checked_in 的那天开始静默漏签。
+    const got = classifyStatus(ok({ code: 0, msg: "OK", data: { active: true } }), WB.read);
+    expect(got.outcome).not.toBe(OUTCOME.ALREADY);
+  });
+
+  it("签到响应没有 today_checked_in，靠 credit 出现判成功", () => {
+    // 实测：{"code":0,"msg":"OK","data":{"credit":100,"streak_days":4,"is_streak_day":false}}
+    const got = classifyCheckIn(ok({ code: 0, msg: "OK", data: { credit: 100, streak_days: 4, is_streak_day: false } }), WB.read);
+    expect(got.outcome).toBe(OUTCOME.OK);
+    expect(got.points).toBe(100);
+  });
+
+  it("重复签到：HTTP 400 + code 10001 是幂等成功，不是失败", () => {
+    // 实测：{"code":10001,"msg":"今天已签到，请明天再来"}
+    const got = classifyCheckIn(ok({ code: 10001, msg: "今天已签到，请明天再来" }, 400), WB.read);
+    expect(got.outcome).toBe(OUTCOME.ALREADY);
+  });
+
+  it("1001 老码同样认作已签（服务端现在是 10001，两个都留着）", () => {
+    expect(classifyCheckIn(ok({ code: 1001, msg: "已签到" }, 400), WB.read).outcome).toBe(OUTCOME.ALREADY);
+  });
+
+  it("其它业务码仍然是失败，不能一律当已签", () => {
+    const got = classifyCheckIn(ok({ code: 1003, msg: "活动已结束" }, 400), WB.read);
+    expect(got.outcome).not.toBe(OUTCOME.ALREADY);
+    expect(got.outcome).toBe(OUTCOME.CLIENT);
+  });
+
+  it("登录态失效时服务端返回的是 HTML，必须报鉴权失败而不是解析成功", () => {
+    const got = classifyCheckIn({ ok: false, status: 401, text: "<html>401 Authorization Required</html>", error: "", retryAfterMs: 0 }, WB.read);
+    expect(got.outcome).toBe(OUTCOME.AUTH);
+  });
+
+  it("credit 为 0 的活动也算签成（presence 只看字段在不在，不看真假）", () => {
+    const got = classifyCheckIn(ok({ code: 0, msg: "OK", data: { credit: 0, streak_days: 1, is_streak_day: false } }), WB.read);
+    expect(got.outcome).toBe(OUTCOME.OK);
+  });
+});
+
 describe("mergeBuiltinSites", () => {
   it("内置的是 CN 版：key 与 label 都要能和国际版区分开", () => {
     expect(QODER.key).toBe("qoder-cn");

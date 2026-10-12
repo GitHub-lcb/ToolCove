@@ -69,6 +69,20 @@ describe("credentialSource 注入", () => {
     expect(headerOf(calls[0], "x-device-id")).toEqual(["设备号新的"]);
   });
 
+  it("WorkBuddy CN 的 uuid / domain 头也是由凭据来源给的", async () => {
+    const { calls, deps } = harness({
+      resolveCredential: async () => [
+        ["authorization", "Bearer 当场读的 JWT"],
+        ["x-user-id", "602ed4a5"],
+        ["x-domain", "copilot.tencent.com"],
+      ],
+    });
+    await runAction(site({ credentialSource: "workbuddy-cn-local" }), "status", deps);
+    expect(headerOf(calls[0], "authorization")).toEqual(["Bearer 当场读的 JWT"]);
+    expect(headerOf(calls[0], "x-user-id")).toEqual(["602ed4a5"]);
+    expect(headerOf(calls[0], "x-domain")).toEqual(["copilot.tencent.com"]);
+  });
+
   it("没配 credentialSource 的站点行为不变", async () => {
     const { calls, deps } = harness({ resolveCredential: async () => {
       throw new Error("不该被调用");

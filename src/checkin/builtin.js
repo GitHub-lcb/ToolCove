@@ -94,6 +94,48 @@ export const BUILTIN_SITES = [
       rateLimitCodes: [9074],
     },
   },
+  {
+    key: "workbuddy-cn",
+    label: "WorkBuddy CN",
+    enabled: true,
+    builtin: true,
+    revision: 1,
+    baseUrl: "https://www.workbuddy.cn",
+    credentialSource: "workbuddy-cn-local",
+    // 两个动作都是 POST + 空 JSON 对象（`{}`，不是空 body）。
+    // 端点取自 WorkBuddy 桌面端 app.asar 自身：
+    //   AuthService.getCheckinStatus()  → /v2/billing/meter/checkin-activity-status
+    //   AuthService.claimDailyCheckin() → /v2/billing/meter/daily-checkin
+    // 注意别用 Web/console 端的 /billing/meter/checkin-status（少 "-activity"）：
+    // 那个在桌面端账号上恒返回 active:false、today_checked_in:false，
+    // 看起来像「活动没开」，实际会把每一次签到都静默判成「无需签到」。
+    status: { method: "POST", path: "/v2/billing/meter/checkin-activity-status", headers: [], body: "{}" },
+    checkin: { method: "POST", path: "/v2/billing/meter/daily-checkin", headers: [], body: "{}" },
+    read: {
+      // 两个响应的形状**完全不同**，一份 read 只能按顺序试：
+      //   查状态 → data.today_checked_in 是权威布尔值（data.active 只表示活动是否开放）
+      //   执行签到 → data 里只有 {credit, streak_days, is_streak_day}，**根本没有** today_checked_in
+      // 所以：布尔字段负责查状态，checkedInPresence 负责签到响应。
+      //
+      // 刻意**不**把 data.active 当 checkedIn 的兜底：active 的语义是「活动开着」，
+      // 不是「今天签过」。一旦接口哪天不再下发 today_checked_in，兜底就会把
+      // active:true 读成「已签到」并跳过当天——那是静默漏签，比报错难发现得多。
+      checkedIn: "data.today_checked_in",
+      checkedInPresence: "data.credit",
+      // 签到响应里本次到账的积分（实测 100）。查状态那条没有 credit 字段
+      // （它给的是 daily_credit / today_credit / total_credits），所以这里读不到就是没有。
+      points: "data.credit",
+      message: "msg",
+      code: "code",
+      // 0 是业务成功码；code 是数字，用 successCodes 才能把 0 正确判成成功
+      // （toTriState(0) 会读成 false，所以不能让 code 兼任已签字段）。
+      successCodes: [0],
+      // 重复签到：HTTP 400 + {"code":10001,"msg":"今天已签到，请明天再来"}。
+      // 实测服务端返回的就是 10001，而 app 自己的错误映射函数只列了 1001/1002/1003
+      // （落到 UnknownBizError）——所以以实测码为准，同时也把 1001 认下来。
+      alreadyCodes: [10001, 1001],
+    },
+  },
 ];
 
 /** 把内置站点并进用户列表；同名但非内置的条目原样保留。 */

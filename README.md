@@ -57,11 +57,17 @@ optional sync.
 
 ### Auto check-in: how it works, and what it will not do
 
-The check-in endpoints of these agent tools are not public and change without notice, so **no
-endpoint is hardcoded**. Each site is a *descriptor* you fill in — which request to send, and how to
-read "already checked in today" out of the response. The tool validates the descriptor, encrypts the
-credentials (DPAPI on Windows), keeps its own per-day record so it never checks in twice, and
-reports the result exactly as the endpoint stated it.
+The check-in endpoints of these agent tools are not public and change without notice, so a site is a
+*descriptor*: which request to send, and how to read "already checked in today" out of the response.
+You can add your own, and three sites ship built in — **Qoder CN**, **TRAE Work CN** and
+**WorkBuddy CN** — which reuse the login state each desktop app already keeps on this machine, so
+there is no token to copy and nothing to re-capture when it rotates. The tool validates every
+descriptor, encrypts credentials (DPAPI on Windows), keeps its own per-day record so it never checks
+in twice, and reports the result exactly as the endpoint stated it.
+
+Built-in entries are still descriptors: they are merged into your list on load, you can disable one,
+and a newer revision in the code replaces a stale stored copy (keeping your on/off choice). Editing
+one yourself is fine — the merge only touches entries it owns.
 
 Three things it deliberately will not do:
 
@@ -73,9 +79,10 @@ Three things it deliberately will not do:
 - **It sends nothing when the descriptor is invalid.** `baseUrl` must be `https://` (plain `http`
   would hand your cookie to anyone on the path), a path may not start with `//` (that would replace
   the host), and every error is listed with the field that caused it.
-- **It does not bypass anything.** No captcha, no signature reverse-engineering, no reading another
-  application's private credential store. You supply your own login state. Note that automating
-  check-ins may violate a given service's terms — that is your call to make.
+- **It does not bypass anything.** No captcha, no signature reverse-engineering. The built-in
+  sources read the login state those apps already store for the signed-in local user, and send only
+  the request you configured. Note that automating check-ins may violate a given service's terms —
+  that is your call to make.
 
 Scheduling needs the app to stay resident: closing the main window minimizes to the tray, but
 quitting the app stops it. Enable launch-at-startup for unattended runs. A per-day attempt cap and

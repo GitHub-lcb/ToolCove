@@ -31,6 +31,23 @@ const SOURCES = {
     if (got?.deviceId) headers.push(["x-device-id", String(got.deviceId)]);
     return headers;
   },
+
+  // WorkBuddy CN：token 是裸 JWT（见 workbuddy_cn_auth.rs），scheme 是自己拼的 Bearer。
+  // uid / domain 只是服务端用来定位账号的元信息，缺了不影响鉴权，所以不给它们抛错。
+  "workbuddy-cn-local": async () => {
+    const got = await invoke("workbuddy_cn_auth_token");
+    const token = String(got?.token || "");
+    if (!token) throw new Error("本地登录态里没有可用的 token");
+    const headers = [["authorization", `Bearer ${token}`]];
+    if (got?.uid) headers.push(["x-user-id", String(got.uid)]);
+    if (got?.domain) headers.push(["x-domain", String(got.domain)]);
+    // 企业号的计费按企业维度走；个人号没有这个字段，不能凭空加一个空头。
+    if (got?.enterpriseId) {
+      headers.push(["x-enterprise-id", String(got.enterpriseId)]);
+      headers.push(["x-tenant-id", String(got.enterpriseId)]);
+    }
+    return headers;
+  },
 };
 
 export const CREDENTIAL_SOURCES = Object.keys(SOURCES);

@@ -223,6 +223,11 @@ function normalizeRead(input, errors) {
   validateResponsePath(input.points, "read.points", errors, { required: false });
   validateResponsePath(input.message, "read.message", errors, { required: false });
   validateResponsePath(input.code, "read.code", errors, { required: false });
+  // 「某字段出现即表示已完成」。给 WorkBuddy 这种**签到响应里没有布尔状态字段**的站点用：
+  // 它的成功判据是响应体里出现 credit（app 源码里就是靠 `!('credit' in e)` 区分成功与业务错误），
+  // 而「查状态」那条响应给的是 today_checked_in——两条形状不同，一份 read 装不下，
+  // 不补这个口子的话，一次真的签成了会被读成「无法判定」。
+  validateResponsePath(input.checkedInPresence, "read.checkedInPresence", errors, { required: false });
   let successCodes = null;
   if (input.successCodes != null) {
     if (!Array.isArray(input.successCodes)) errors.push(err("read.successCodes", "notArray"));
@@ -234,16 +239,26 @@ function normalizeRead(input, errors) {
     if (!Array.isArray(input.rateLimitCodes)) errors.push(err("read.rateLimitCodes", "notArray"));
     else rateLimitCodes = input.rateLimitCodes.map((v) => (typeof v === "number" ? v : String(v)));
   }
+  // 表示「今天已经签过了」的业务码。和 rateLimitCodes 同一个理由：语义不在 HTTP 状态码里。
+  // WorkBuddy 重复签到返回的是 **HTTP 400 + code 10001**，只看状态码会把它报成一次失败，
+  // 用户看到红色徽章跑去查网络，而事实是今天已经签好了。
+  let alreadyCodes = null;
+  if (input.alreadyCodes != null) {
+    if (!Array.isArray(input.alreadyCodes)) errors.push(err("read.alreadyCodes", "notArray"));
+    else alreadyCodes = input.alreadyCodes.map((v) => (typeof v === "number" ? v : String(v)));
+  }
   return {
     // 选择器形态原样保留（它是个对象，String() 会把它变成 "[object Object]"）
     checkedIn: input.checkedIn && typeof input.checkedIn === "object" ? input.checkedIn : String(input.checkedIn ?? "").trim(),
     // 勾上表示该字段是「可领取」而不是「已领取」，读出来会被取反。
     checkedInInvert: input.checkedInInvert === true,
+    checkedInPresence: String(input.checkedInPresence ?? "").trim(),
     points: String(input.points ?? "").trim(),
     message: String(input.message ?? "").trim(),
     code: String(input.code ?? "").trim(),
     successCodes,
     rateLimitCodes,
+    alreadyCodes,
   };
 }
 
