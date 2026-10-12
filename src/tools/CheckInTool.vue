@@ -365,31 +365,31 @@ function fmtTime(at) {
 .btn:hover:not(:disabled) { border-color: var(--primary); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--text-invert); }
-.btn.small { padding: 3px 8px; font-size: var(--fs-xs); }
+.btn.small { padding: 3px var(--sp-2); font-size: var(--fs-xs); }
 .btn.danger { color: var(--danger); }
 .ck-sched { display: flex; flex-wrap: wrap; align-items: center; gap: var(--fs-md); padding: var(--fs-sm) var(--fs-md); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }
-.ck-switch { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); cursor: pointer; }
-.ck-field { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
-.ck-field input { padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); }
+.ck-switch { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); cursor: pointer; }
+.ck-field { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); }
+.ck-field input { padding: 3px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); }
 .ck-next { margin-left: auto; font-size: var(--fs-sm); color: var(--text-weak); }
 .ck-warn { margin: 0; font-size: var(--fs-xs); color: var(--text-weak); line-height: var(--lh-body); }
-.ck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
 .ck-item { padding: 10px var(--fs-md); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }
 .ck-item-main { display: flex; align-items: center; gap: var(--r-xs); }
-.ck-item-meta { display: flex; gap: var(--fs-md); margin-top: 6px; font-size: var(--fs-xs); color: var(--text-weak); }
-.ck-item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--r-xs); }
-.ck-badge { padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-xs); border: 1px solid transparent; }
+.ck-item-meta { display: flex; gap: var(--fs-md); margin-top: var(--sp-1); font-size: var(--fs-xs); color: var(--text-weak); }
+.ck-item-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--r-xs); }
+.ck-badge { padding: 2px var(--sp-2); border-radius: var(--r-pill); font-size: var(--fs-xs); border: 1px solid transparent; }
 .ck-badge[data-tone="ok"] { color: var(--success); border-color: var(--success-border); background: var(--success-tint); }
 .ck-badge[data-tone="bad"] { color: var(--danger); border-color: var(--border-danger); background: var(--danger-soft); }
 .ck-badge[data-tone="warn"] { color: var(--warn); border-color: var(--warn-border); background: var(--warn-tint); }
 .ck-badge[data-tone="muted"] { color: var(--text-weak); border-color: var(--border); }
 .ck-key { font-size: var(--fs-xs); color: var(--text-weak); font-family: var(--font-mono); }
-.ck-tag { font-size: var(--fs-xs); color: var(--text-weak); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; }
+.ck-tag { font-size: var(--fs-xs); color: var(--text-weak); border: 1px solid var(--border); border-radius: 999px; padding: 0 var(--sp-1); }
 .ck-points { margin-left: auto; font-weight: 600; font-family: var(--font-num); }
 .ck-history { margin-top: var(--r-xs); font-size: var(--fs-xs); }
 .ck-history summary { cursor: pointer; color: var(--text-weak); }
-.ck-history ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.ck-history li { display: flex; flex-wrap: wrap; gap: 10px; }
+.ck-history ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ck-history li { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 .ck-empty { padding: 18px; text-align: center; color: var(--text-weak); border: 1px dashed var(--border); border-radius: var(--r-sm); }
 .ck-editor { display: flex; flex-direction: column; gap: var(--r-xs); padding: var(--fs-md); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }
 .ck-editor h3 { margin: 0; font-size: var(--fs-md); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRequirementItem, normalizeEstimateDays, parseEstimateInput, requirementActualHours, requirementCompletedHours, requirementMetrics, sizeByDays, subtaskActualHours } from "./requirementMetrics.js";
+import { createRequirementItem, iterationProgress, normalizeEstimateDays, parseEstimateInput, requirementActualHours, requirementCompletedHours, requirementMetrics, sizeByDays, subtaskActualHours } from "./requirementMetrics.js";
 
 describe("需求规模", () => {
   it("按 10、30 人天边界分类", () => {
@@ -105,5 +105,22 @@ describe("新建需求条目", () => {
     expect(parseEstimateInput("0").valid).toBe(false);
     expect(parseEstimateInput("-1").valid).toBe(false);
     expect(parseEstimateInput("abc").valid).toBe(false);
+  });
+});
+
+describe("iterationProgress", () => {
+  it("按需求的 done 计数（数据模型里需求没有 status 字段）", () => {
+    const it = { items: [{ name: "a", done: true }, { name: "b" }, { name: "c", done: true }, { name: "d", done: false }] };
+    expect(iterationProgress(it)).toEqual({ total: 4, done: 2, pct: 50 });
+  });
+
+  it("空迭代返回 0 而不是 NaN", () => {
+    expect(iterationProgress({})).toEqual({ total: 0, done: 0, pct: 0 });
+    expect(iterationProgress(null)).toEqual({ total: 0, done: 0, pct: 0 });
+    expect(iterationProgress({ items: [] }).pct).toBe(0);
+  });
+
+  it("全部完成为 100", () => {
+    expect(iterationProgress({ items: [{ done: true }, { done: 1 }] }).pct).toBe(100);
   });
 });

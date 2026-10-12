@@ -1,7 +1,7 @@
 <script setup>
 // 面试刷题（手机端）。
 //
-// 逻辑一行都不重写：题库契约在 src/tools/interviewBank.js，进度与间隔重复在
+// 逻辑一行都不重写：题库契约在 src/tools/interview/interviewBank.js，进度与间隔重复在
 // interviewProgress.js，导入解析在 interviewImport.js——与桌面端同一份，
 // 所以同一道题在两端的掌握度、复习队列、筛选结果必然一致。
 //
@@ -10,7 +10,7 @@
 // 自评四档做成一行大按钮，拇指够得着。
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { renderMarkdown } from "../../../src/shared.js";
+import { renderMarkdown } from "../../../src/shared/markdown.js";
 import { loadToolbox, saveToolboxNow } from "../../../src/toolboxStore.js";
 import {
   bankStats,
@@ -22,8 +22,8 @@ import {
   mergeBank,
   sourceLinks,
   topicsOf,
-} from "../../../src/tools/interviewBank.js";
-import { parseBank } from "../../../src/tools/interviewImport.js";
+} from "../../../src/tools/interview/interviewBank.js";
+import { parseBank } from "../../../src/tools/interview/interviewImport.js";
 import {
   advanceSession,
   createSave,
@@ -39,7 +39,7 @@ import {
   setNote,
   startSession,
   toggleStar,
-} from "../../../src/tools/interviewProgress.js";
+} from "../../../src/tools/interview/interviewProgress.js";
 
 const { t } = useI18n();
 

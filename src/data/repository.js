@@ -63,7 +63,7 @@ function cloneData(value) {
 }
 
 /**
- * updatedAt 归一化为毫秒时间戳：视图写 Date.now()（数字），tasks.js 写 ISO 字符串，
+ * updatedAt 归一化为毫秒时间戳：视图写 Date.now()（数字），iterations.js 写 ISO 字符串，
  * 两种写法必须可比，否则 Number(ISO) = NaN → 0 会被判成"更旧"而丢改动。
  */
 function tsOf(value) {

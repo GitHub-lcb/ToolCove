@@ -1,0 +1,879 @@
+<script setup>
+import { ref, computed, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent, watch } from "vue";
+import { invoke } from "../platform/invoke.js";
+import { getCurrentWindow } from "../platform/window.js";
+import { listen } from "../platform/events.js";
+import { openUrl } from "../platform/shell.js";
+import { isDesktop, capabilities } from "../platform/env.js";
+import { useI18n } from "vue-i18n";
+import Icon from "../ui/Icon.vue";
+import { fmtDate } from "../shared/dates.js";
+import { normalizeHiddenModules } from "./settingsConfig.js";
+import { shouldPrompt, consent as telemetryConsent, track as telemetryTrack, flush as telemetryFlush, getConfig as telemetryGetConfig, invalidateConfigCache as telemetryInvalidateCache } from "./telemetry.js";
+import { applyAccent, resetAccent, loadAccentKey } from "./accentTheme.js";
+import { getThemeMode, setThemeMode, syncThemeAttribute, nextThemeMode, isDarkEffective } from "./theme.js";
+import { getDensity, setDensity } from "./theme.js";
+import { checkForUpdate } from "./updater.js";
+import ConfirmDialog from "../ui/ConfirmDialog.vue";
+import { askConfirm } from "../ui/confirm.js";
+import ToolWindow from "./ToolWindow.vue";
+import ToolboxView from "../views/ToolboxView.vue";
+import GlobalSearch from "../views/GlobalSearch.vue";
+import ModuleTabs from "./ModuleTabs.vue";
+import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget } from "./navConfig.js";
+import { startCheckInScheduler, stopCheckInScheduler } from "../checkin/index.js";
+
+const { t } = useI18n();
+
+// ------- 导航分层：4 个一级模块（侧边栏）+ 设置；work / records 内部再分 Tab -------
+// 配置与旧 key 映射见 navConfig.js（纯函数，单测覆盖）
+const MODULES = NAV_MODULES;
+
+// 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
+const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
+// 截图贴图窗（?shot=pin）：短命窗口，由 Rust 直接拉起，只渲染贴图页；
+// 主窗口的定时任务（备份/更新/签到/遥测）一律不参与。
+// （截图遮罩已是 Rust 原生窗口，不再有 WebView 页面）
+const shotMode = new URLSearchParams(window.location.search).get("shot") || "";
+const ScreenshotPin = defineAsyncComponent(() => import("../screenshot/PinApp.vue"));
+const shotPage = computed(() => (shotMode === "pin" ? ScreenshotPin : null));
+let toolWindowShown = false;
+async function revealToolWindow() {
+  if (!toolMode || toolWindowShown || !isTauri) return;
+  toolWindowShown = true;
+  try {
+    await applyTheme(themeMode.value);
+    await nextTick();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const win = getCurrentWindow();
+    await win.show();
+    await win.setFocus();
+  } catch {
+    toolWindowShown = false;
+  }
+}
+
+// ------- 状态 -------
+const activeModule = ref("agent");
+// 各模块记住自己停留的 Tab（不入 settings：纯会话内状态，重启回默认 Tab）
+const moduleTabs = ref({ ...MODULE_HOME_TAB });
+const activeTab = computed(() => (MODULE_TABS[activeModule.value] ? moduleTabs.value[activeModule.value] : null));
+const collapsed = ref(true);
+const toast = ref(null);
+// 视图埋点（节流 10s；可选遥测未开启时只本地计数）
+let viewTrackTs = {};
+watch([activeModule, activeTab], ([key, tab]) => {
+  const view = tab ? `${key}.${tab}` : key;
+  const now = Date.now();
+  if (now - (viewTrackTs[view] || 0) < 10000) return;
+  viewTrackTs[view] = now;
+  telemetryTrack("view." + view);
+});
+const jump = ref(null);
+const gsRef = ref(null);
+
+const WelcomeView = defineAsyncComponent(() => import("../views/WelcomeView.vue"));
+const AgentView = defineAsyncComponent(() => import("../views/AgentView.vue"));
+const WorkOverviewView = defineAsyncComponent(() => import("../views/WorkOverviewView.vue"));
+const DomainView = defineAsyncComponent(() => import("../views/DomainView.vue"));
+const TaskView = defineAsyncComponent(() => import("../views/TaskView.vue"));
+const SnippetView = defineAsyncComponent(() => import("../views/SnippetView.vue"));
+const ProblemView = defineAsyncComponent(() => import("../views/ProblemView.vue"));
+const SettingsView = defineAsyncComponent(() => import("../views/SettingsView.vue"));
+const IterationView = defineAsyncComponent(() => import("../views/IterationView.vue"));
+const RequirementBoardView = defineAsyncComponent(() => import("../views/RequirementBoardView.vue"));
+const ReleaseView = defineAsyncComponent(() => import("../views/ReleaseView.vue"));
+// Tab key → 组件；无 Tab 的模块（agent/toolbox/settings）直接渲染
+const TAB_COMPONENTS = { overview: WorkOverviewView, domain: DomainView, iteration: IterationView, requirement: RequirementBoardView, release: ReleaseView, task: TaskView, snippet: SnippetView, problem: ProblemView };
+const PLAIN_COMPONENTS = { agent: AgentView, toolbox: ToolboxView, settings: SettingsView };
+const activeTabs = computed(() => (MODULE_TABS[activeModule.value] || []).map((x) => ({ ...x, comp: TAB_COMPONENTS[x.key] })));
+const plainViewComp = computed(() => PLAIN_COMPONENTS[activeModule.value] || WelcomeView);
+// 深链只在「模块 + Tab + 条目」全命中时下发给视图；用户手动切走后自动失效
+const activeJump = computed(() => {
+  const j = jump.value;
+  if (!j) return null;
+  return j.module === activeModule.value && (j.tab || null) === (activeTab.value || null) ? j : null;
+});
+
+const settingsSection = ref("general");
+function openSettings(section) {
+  activeModule.value = "settings";
+  settingsSection.value = section;
+}
+provide("openSettings", openSettings);
+
+// 界面设置（密度 + 侧边栏模块展示/隐藏，设置里可切换；紧凑为默认）
+// 密度通过 src/app/theme.js 落到 <html data-density> 上，而不是挂在 .shell 的类名上：
+// 独立工具窗口（ToolWindow 的 .tool-win）不在 .shell 内，绑类名时"界面密度"
+// 对工具窗口完全无效（审计实测）。属性挂在 :root 上则任何容器都能继承。
+const density = ref(getDensity());
+const hiddenModules = ref([]); // 设置里隐藏的模块 key；隐藏只是不展示，全局搜索仍可达
+const visibleModules = computed(() => MODULES.filter((m) => !hiddenModules.value.includes(m.key)));
+async function refreshUiSettings() {
+  try {
+    const s = (await invoke("load_data", { key: "settings" })) || {};
+    density.value = s.ui?.density === "comfort" ? "comfort" : "compact";
+    setDensity(density.value);
+    hiddenModules.value = normalizeHiddenModules(MODULES.map((m) => m.key), s.ui?.hiddenModules);
+    // 当前所在模块被隐藏时切到第一个可见模块，避免侧边栏失去选中高亮
+    if (MODULES.some((m) => m.key === activeModule.value) && hiddenModules.value.includes(activeModule.value) && visibleModules.value.length) {
+      activeModule.value = visibleModules.value[0].key;
+    }
+  } catch (e) {}
+}
+
+// 保存设置后刷新界面设置（密度 / 侧边栏模块展示）
+function onSettingsSaved() {
+  refreshUiSettings();
+  telemetryInvalidateCache();
+  telemetryFlush().catch(() => {}); // 设置保存即冲刷待发计数（P1-1 flush 时机②）
+  applyThemeAccent();
+}
+
+// ------- 操作手册 -------
+const MANUAL_URL = "https://github.com/GitHub-lcb/ToolCove"; // M4 上线文档站后替换
+function openManual() {
+  openUrl(MANUAL_URL).catch((e) => showToast(String(e)));
+}
+
+// ------- 自定义标题栏（decorations:false，顶栏自绘窗口控制） -------
+const isTauri = isDesktop;
+const isMaximized = ref(false);
+async function refreshMaximized() {
+  try {
+    isMaximized.value = await getCurrentWindow().isMaximized();
+  } catch (e) {
+    /* 非 Tauri 环境忽略 */
+  }
+}
+function winMinimize() { getCurrentWindow().minimize().catch(() => {}); }
+function winToggleMax() { getCurrentWindow().toggleMaximize().catch(() => {}); }
+function winClose() { getCurrentWindow().close().catch(() => {}); }
+let unlistenResize = null;
+onMounted(async () => {
+  if (!isTauri) return;
+  refreshMaximized();
+  try {
+    unlistenResize = await getCurrentWindow().onResized(() => {
+      refreshMaximized();
+      forceWebviewReflow();
+    });
+  } catch (e) {}
+});
+// WebView2 偶发 resize 后不重绘：class 切换 + 读 offsetWidth 强制重排
+function forceWebviewReflow() {
+  requestAnimationFrame(() => {
+    const el = document.documentElement;
+    el.classList.remove("win-resized");
+    void el.offsetWidth;
+    el.classList.add("win-resized");
+  });
+}
+onUnmounted(() => unlistenResize && unlistenResize());
+
+// ------- 提示（支持带撤销等动作按钮） -------
+let toastTimer = null;
+let toastAction = null;
+let toastExpire = null;
+const toastWaiting = [];
+const TOAST_QUEUE_MAX = 5;
+
+function showToast(msg, opts = {}) {
+  // 撤销窗口还开着时，后来的提示一律排队。旧实现让新提示直接顶掉旧的，代价是
+  // 撤销按钮无声消失、且旧提示的 onExpire 当场执行（问题/速记用它物理删附件图片）——
+  // 用户既来不及撤销，也不会意识到文件已经没了。
+  if (toastExpire) {
+    if (toastWaiting.length < TOAST_QUEUE_MAX) toastWaiting.push({ msg, opts });
+    return;
+  }
+  displayToast(msg, opts);
+}
+
+function displayToast(msg, opts) {
+  toast.value = { text: msg, actionLabel: opts.actionLabel || "" };
+  toastAction = opts.onAction || null;
+  toastExpire = opts.onExpire || null;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(dismissToast, opts.duration || (opts.actionLabel ? 5000 : 2200));
+}
+
+function nextQueuedToast() {
+  const next = toastWaiting.shift();
+  if (next) displayToast(next.msg, next.opts);
+}
+
+function dismissToast() {
+  toast.value = null;
+  toastAction = null;
+  if (toastExpire) {
+    const f = toastExpire;
+    toastExpire = null;
+    f();
+  }
+  nextQueuedToast();
+}
+function onToastAction() {
+  clearTimeout(toastTimer);
+  const f = toastAction;
+  toastAction = null;
+  toastExpire = null;
+  toast.value = null;
+  if (f) f();
+  nextQueuedToast();
+}
+
+// ------- 全局右键菜单 -------
+const ctxMenu = ref({ x: 0, y: 0, items: [], visible: false });
+function openCtxMenu(e, items) {
+  e.preventDefault();
+  ctxMenu.value = { x: e.clientX, y: e.clientY, items, visible: true };
+  nextTick(() => {
+    const el = document.querySelector(".ctx-menu");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.right > window.innerWidth - 8) ctxMenu.value.x = Math.max(8, ctxMenu.value.x - r.width);
+    if (r.bottom > window.innerHeight - 8) ctxMenu.value.y = Math.max(8, ctxMenu.value.y - r.height);
+  });
+}
+function onCtxAction(item) {
+  ctxMenu.value.visible = false;
+  item.fn && item.fn();
+}
+function closeCtxMenu() { ctxMenu.value.visible = false; }
+onMounted(() => {
+  window.addEventListener("click", closeCtxMenu);
+  window.addEventListener("blur", closeCtxMenu);
+});
+onUnmounted(() => {
+  window.removeEventListener("click", closeCtxMenu);
+  window.removeEventListener("blur", closeCtxMenu);
+});
+provide("openCtxMenu", openCtxMenu);
+
+// ------- 全局快捷键（Ctrl+1~5 切模块：1 Agent / 2 研发 / 3 记录 / 4 工具箱 / 5 设置；
+// Ctrl+0 保留为工具箱（旧习惯）；Ctrl+K 开全局搜索） -------
+const HOTKEY_MODULES = MODULES.map((m) => m.key).concat("settings"); // Ctrl+1..5
+function onKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+    e.preventDefault();
+    gsRef.value?.openPalette();
+    return;
+  }
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === "0") {
+    e.preventDefault();
+    activeModule.value = "toolbox";
+    return;
+  }
+  if (!/^[1-9]$/.test(e.key)) return;
+  const key = HOTKEY_MODULES[Number(e.key) - 1];
+  if (!key) return;
+  e.preventDefault();
+  if (key === "settings") openSettings(settingsSection.value);
+  else activeModule.value = key;
+}
+onMounted(() => {
+  if (shotMode) return; // Ctrl+1..5 模块热键只在应用外壳里生效
+  window.addEventListener("keydown", onKeydown);
+});
+onUnmounted(() => window.removeEventListener("keydown", onKeydown));
+
+// 全局搜索/视图跳转导航：切模块 + Tab，并深链到具体记录（带 id 时）
+// 兼容旧视图 key（{module:'iteration'}）与新坐标（{module:'work', tab:'iteration'}）
+function onGlobalNavigate(input) {
+  const target = resolveNavTarget(input);
+  if (!target) return;
+  activeModule.value = target.module;
+  if (target.tab) moduleTabs.value[target.module] = target.tab;
+  const id = input && input.id;
+  jump.value = id ? { ...target, id, ts: Date.now() } : null;
+}
+function onTabSwitch(tabKey) {
+  moduleTabs.value[activeModule.value] = tabKey;
+}
+
+// 托盘/全局快捷键动作：quick-note 切到问题 Tab 并唤起新建弹窗；check-update 手动检查更新
+async function handleTrayAction(action) {
+  if (action === "quick-note") {
+    onGlobalNavigate({ module: "records", tab: "problem" });
+    await nextTick();
+    setTimeout(() => window.dispatchEvent(new CustomEvent("quick-note")), 60);
+  } else if (action === "check-update") {
+    checkForUpdate({ silent: false, showToast });
+  }
+}
+
+// ------- 主题切换 -------
+// 主题的真相源在 src/app/theme.js（既有单测可覆盖，也供 ToolWindow / 手机端复用）。
+// 这里只负责：把模式投影到 <html data-theme>（让 CSS 变量真的切换）、
+// 通知 Tauri 窗口装饰，并重放自定义强调色。
+const THEME_MODES = [
+  { key: "system", labelKey: "common.themeSystem", icon: "contrast" },
+  { key: "light", labelKey: "common.themeLight", icon: "sun" },
+  { key: "dark", labelKey: "common.themeDark", icon: "moon" },
+];
+const themeMode = ref(getThemeMode());
+const themeMeta = computed(() => THEME_MODES.find((x) => x.key === themeMode.value) || THEME_MODES[0]);
+async function applyTheme(mode) {
+  // 属性先落：CSS 变量必须立刻跟着变，不能等 IPC（旧实现只等 IPC，于是
+  // 浏览器端手动切深色时 CSS 变量一个字都没变——审计实测到的缺陷）。
+  syncThemeAttribute(mode);
+  applyThemeAccent();
+  try {
+    await getCurrentWindow().setTheme(mode === "system" ? null : mode);
+  } catch (e) {
+    /* 非 Tauri 环境：属性已经生效，窗口装饰交给系统 */
+  }
+}
+// 按当前主题/系统偏好重放自定义主题色
+function applyThemeAccent() {
+  const key = loadAccentKey();
+  if (!key) {
+    resetAccent();
+    return;
+  }
+  if (!applyAccent(key, themeMode.value, isDarkEffective(themeMode.value))) resetAccent();
+}
+function cycleTheme() {
+  themeMode.value = nextThemeMode(themeMode.value);
+  setThemeMode(themeMode.value);
+  applyTheme(themeMode.value);
+  showToast(t("common.themeSwitched", { label: t(themeMeta.value.labelKey) }));
+}
+
+// ------- 每天首次启动自动备份（storage.rs 提供，保留最近 7 份） -------
+async function autoBackup() {
+  try {
+    const summary = await invoke("auto_backup", { stamp: fmtDate(new Date()) });
+    if (summary) showToast(t("common.backupDone", { summary }));
+  } catch (e) {
+    /* 备份失败不打扰使用 */
+  }
+}
+
+// ------- 版本更新（顶栏手动入口；启动静默检查与托盘入口走 updater.js） -------
+const syncDot = ref("disabled");
+const checkingVer = ref(false);
+async function onCheckVersion() {
+  if (checkingVer.value) return;
+  checkingVer.value = true;
+  try {
+    await checkForUpdate({ silent: false, showToast });
+  } finally {
+    checkingVer.value = false;
+  }
+}
+
+onMounted(async () => {
+  if (shotMode) return; // 截图遮罩/贴图窗：不挂主窗口的监听与定时
+  if (toolMode) setTimeout(revealToolWindow, 3000);
+  applyTheme(themeMode.value);
+  listen("tray-action", (e) => handleTrayAction(e.payload));
+  window.addEventListener("settings-saved", onSettingsSaved);
+  window.addEventListener("accent-changed", applyThemeAccent);
+  window.addEventListener("sync-status", (e) => {
+    syncDot.value = (e && e.detail && e.detail.status) || "disabled";
+  });
+  refreshUiSettings();
+  if (isTauri) {
+    setTimeout(autoBackup, 3000);
+    // 启动静默检查新版本，有更新弹确认；延迟几秒避免与首屏抢 IO
+    setTimeout(() => checkForUpdate({ silent: true, showToast }), 3000);
+    // 自动签到的常驻定时器必须挂在主窗口：工具是独立 WebviewWindow，
+    // 关掉工具窗口定时器就没了。toolMode（工具独立窗口）时一律不挂。
+    if (!toolMode) startCheckInScheduler().catch(() => {});
+  }
+  if (!isTauri) return;
+  applyThemeAccent();
+  // 可选遥测：首启询问一次（askConfirm，同意/拒绝即时落盘；失败不阻断启动）
+  const telemetryCfg = await telemetryGetConfig().catch(() => null);
+  if (telemetryCfg && shouldPrompt({ telemetry: telemetryCfg })) {
+    const allow = await askConfirm({
+      title: t("telemetry.promptTitle"),
+      message: t("telemetry.promptBody"),
+      okText: t("telemetry.allow"),
+      cancelText: t("telemetry.deny"),
+      danger: false,
+    });
+    await telemetryConsent(allow);
+  }
+  // 定时 flush（P1-1 flush 时机①：启用期间每 10 分钟）
+  telemetryTimer = setInterval(() => telemetryFlush().catch(() => {}), 10 * 60 * 1000);
+  // 系统深浅切换时重放 accent（themeMode=system 场景）
+  const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+  mqUnlisten = null;
+  if (mq && mq.addEventListener) {
+    const onMq = () => applyThemeAccent();
+    mq.addEventListener("change", onMq);
+    mqUnlisten = () => mq.removeEventListener("change", onMq);
+  }
+  // 关闭前尽力冲刷（P1-1 flush 时机③：fire-and-forget）
+  window.addEventListener("beforeunload", () => { telemetryFlush().catch(() => {}); });
+});
+let telemetryTimer = null;
+let mqUnlisten = null;
+onUnmounted(() => {
+  window.removeEventListener("settings-saved", onSettingsSaved);
+  window.removeEventListener("accent-changed", applyThemeAccent);
+  if (telemetryTimer) {
+    clearInterval(telemetryTimer);
+    telemetryTimer = null;
+  }
+  mqUnlisten && mqUnlisten();
+  if (!toolMode) stopCheckInScheduler();
+});
+</script>
+
+<template>
+  <!-- 截图遮罩页 / 贴图窗：独立页面，不渲染应用外壳 -->
+  <component :is="shotPage" v-if="shotPage" />
+
+  <!-- 工具独立窗口模式：只渲染工具本体 + toast，不渲染主界面 -->
+  <template v-else-if="toolMode">
+    <ToolWindow :tool="toolMode" :show-toast="showToast" @ready="revealToolWindow" />
+    <transition name="fade">
+      <div v-if="toast" class="toast">
+        {{ toast.text }}
+        <button v-if="toast.actionLabel" class="toast-act" @click="onToastAction">{{ toast.actionLabel }}</button>
+      </div>
+    </transition>
+    <ConfirmDialog />
+  </template>
+
+  <div v-else class="shell" :class="{ collapsed }">
+    <div class="orbs" aria-hidden="true">
+      <span class="orb o1"></span>
+      <span class="orb o2"></span>
+      <span class="orb o3"></span>
+    </div>
+    <!-- ============ 侧边栏 ============ -->
+    <aside class="sidebar">
+      <div class="brand" data-tauri-drag-region>
+        <span class="brand-logo"><Icon name="sparkles" :size="20" /></span>
+        <span class="brand-name">ToolCove</span>
+      </div>
+
+      <nav class="nav">
+        <button
+          v-for="m in visibleModules"
+          :key="m.key"
+          class="nav-item"
+          :class="{ on: activeModule === m.key }"
+          :title="t(m.labelKey)"
+          @click="activeModule = m.key"
+        >
+          <span class="nav-ico"><Icon :name="m.icon" :size="17" /></span>
+          <span class="nav-label">{{ t(m.labelKey) }}</span>
+        </button>
+      </nav>
+
+      <div class="side-foot">
+        <!-- 赞助入口：项目免费开源，靠自愿赞助维持 -->
+        <button class="collapse sponsor-btn" :title="t('sponsor.sideTip')" @click="openSettings('sponsor')">
+          <span class="clp-ico"><Icon name="heart" :size="15" /></span>
+          <span class="nav-label">{{ t("sponsor.sideBadge") }}</span>
+        </button>
+        <button class="collapse" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" @click="openSettings('general')">
+          <span class="clp-ico"><Icon name="settings" :size="15" /></span>
+          <span class="nav-label">{{ t("nav.settings") }}</span>
+        </button>
+        <button class="collapse" :title="collapsed ? t('nav.expand') : t('nav.collapse')" @click="collapsed = !collapsed">
+          <span class="clp-ico"><Icon name="chevrons-left" :size="14" :class="{ flip: collapsed }" /></span>
+          <span class="nav-label">{{ collapsed ? t("nav.expand") : t("nav.collapse") }}</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============ 主区 ============ -->
+    <div class="main">
+      <header class="topbar" data-tauri-drag-region>
+        <div class="page-title">
+          <span class="pt-ico"><Icon :name="activeModule === 'settings' ? 'settings' : (MODULES.find((m) => m.key === activeModule) || MODULES[0]).icon" :size="20" /></span>
+          <div class="pt-text">
+            <h1>{{ activeModule === "settings" ? t("nav.settings") : t((MODULES.find((m) => m.key === activeModule) || MODULES[0]).labelKey) }}</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
+          <button v-if="capabilities.cloudSync" class="theme-btn sync-ind" :class="syncDot" :title="t('sync.statusTitle')" @click="openSettings('sync')">
+            <span class="sync-ind-dot"></span>
+          </button>
+          <button class="theme-btn" :title="t('common.manual')" @click="openManual">
+            <Icon name="book-open" :size="16" />
+          </button>
+          <button v-if="capabilities.updater" class="theme-btn" :title="checkingVer ? t('common.updateChecking') : t('common.updateCheckTip')" :disabled="checkingVer" @click="onCheckVersion">
+            <Icon name="repeat" :size="15" />
+          </button>
+          <button class="theme-btn" :title="t('common.appearance') + '：' + t(themeMeta.labelKey)" @click="cycleTheme">
+            <Icon :name="themeMeta.icon" :size="15" />
+          </button>
+          <div v-if="isTauri" class="win-ctrls">
+            <button class="wc-btn" :title="t('common.winMinimize')" @click="winMinimize"><Icon name="minus" :size="14" /></button>
+            <button class="wc-btn" :title="isMaximized ? t('common.winRestore') : t('common.winMaximize')" @click="winToggleMax">
+              <Icon :name="isMaximized ? 'copy' : 'square'" :size="12" />
+            </button>
+            <button class="wc-btn close" :title="t('common.winClose')" @click="winClose"><Icon name="x" :size="15" /></button>
+          </div>
+        </div>
+      </header>
+
+      <div class="body">
+        <ModuleTabs
+          v-if="activeTabs.length"
+          :key="activeModule"
+          :tabs="activeTabs"
+          :active="activeTab"
+          :show-toast="showToast"
+          :jump-id="activeJump"
+          @update:active="onTabSwitch"
+          @navigate="onGlobalNavigate"
+        />
+        <component
+          v-else
+          :is="plainViewComp"
+          :key="activeModule"
+          :show-toast="showToast"
+          :section="settingsSection"
+          :jump-id="activeJump"
+          @navigate="onGlobalNavigate"
+        />
+      </div>
+    </div>
+
+    <transition name="fade">
+      <div v-if="toast" class="toast">
+        {{ toast.text }}
+        <button v-if="toast.actionLabel" class="toast-act" @click="onToastAction">{{ toast.actionLabel }}</button>
+      </div>
+    </transition>
+
+    <transition name="cf-fade">
+      <div v-if="ctxMenu.visible" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+        <button v-for="(it, i) in ctxMenu.items" :key="i" class="ctx-item" :class="{ danger: it.danger }" @click="onCtxAction(it)">
+          <Icon :name="it.icon" :size="14" /> {{ it.label }}
+        </button>
+      </div>
+    </transition>
+
+    <ConfirmDialog />
+  </div>
+</template>
+
+<!-- 全局样式已抽到 src/styles/：tokens.css（设计令牌）/ primitives.css（组件原语）/
+     globals.css（应用级基线 + 旧类名兼容别名）。三者在 main.js 里引入。 -->
+
+<style scoped>
+.shell {
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns 0.22s ease;
+}
+.shell.collapsed { grid-template-columns: 76px 1fr; }
+
+/* 环境柔光（低饱和低透明度，仅作背景点缀；深色下经 --orb-opacity 减半） */
+.orbs { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.orb { position: absolute; border-radius: 50%; filter: blur(72px); opacity: var(--orb-opacity, 0.18); }
+.o1 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(9, 105, 218, 0.45), transparent 70%); top: -70px; right: 7%; animation: drift1 19s ease-in-out infinite; }
+.o2 { width: 320px; height: 320px; background: radial-gradient(circle, rgba(88, 166, 255, 0.4), transparent 70%); bottom: -90px; right: 22%; animation: drift2 23s ease-in-out infinite; }
+.o3 { width: 280px; height: 280px; background: radial-gradient(circle, rgba(56, 139, 253, 0.3), transparent 70%); top: 42%; left: 28%; animation: drift3 27s ease-in-out infinite; }
+@keyframes drift1 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-46px, 34px); } }
+@keyframes drift2 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(34px, -44px); } }
+@keyframes drift3 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(24px, 22px); } }
+
+/* ============ 侧边栏 ============ */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-7) var(--sp-5) var(--sp-6);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-right: 1px solid rgba(216, 222, 228, 0.9);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+.brand { display: flex; align-items: center; gap: var(--sp-4); padding: 4px var(--sp-2) 22px; }
+/* 品牌区子元素不拦截鼠标，拖拽落到 .brand 的 drag-region 上（可拖动窗口） */
+.brand > * { pointer-events: none; }
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--grad-brand);
+  color: var(--text-invert);
+  box-shadow: var(--glow-md);
+}
+.brand-name { font-size: var(--fs-lg); font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+
+/* nav 可滚：min-height:0 解除 flex 默认不收缩；负 margin+同值 padding 把滚动区撑到侧边栏边缘，选中项左侧指示条（left:-14px）不被裁 */
+.nav { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 -14px; padding: 0 var(--sp-5); scrollbar-width: thin; scrollbar-color: var(--border-steel) transparent; }
+.nav-item { flex-shrink: 0; }
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  padding: 11px var(--sp-4);
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-weak);
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(35, 43, 66, 0.04), 0 6px 16px rgba(35, 43, 66, 0.05);
+  transition: background 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.nav-ico { display: grid; place-items: center; flex-shrink: 0; width: 24px; color: var(--text-weak); }
+.nav-item:hover .nav-ico { color: var(--primary-hover); }
+.nav-item.on .nav-ico { color: var(--primary-hover); }
+.nav-item:hover { color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(35, 43, 66, 0.05), 0 10px 22px rgba(35, 43, 66, 0.08); }
+/* 键盘导航的焦点框用主题紫柔化，覆盖浏览器默认黑框 */
+.nav-item:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+.nav-item.on { background: var(--grad-selected); color: var(--primary-hover); border-color: var(--border-blue); box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06), 0 8px 20px rgba(37, 99, 235, 0.1); }
+.nav-item.on::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  background: var(--primary);
+}
+
+/* 侧边栏底部（收起钉底 + 设置入口） */
+.side-foot { display: flex; flex-direction: column; gap: 7px; margin-top: auto; padding-top: var(--sp-4); border-top: 1px solid var(--card-border); }
+
+.collapse {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  border: 1px solid transparent;
+  background: none;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-md);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.collapse:hover { background: var(--card); border-color: var(--card-border); color: var(--primary); }
+.collapse.on { background: var(--grad-selected); border-color: var(--border-blue); color: var(--primary-hover); }
+.collapse:hover .clp-ico { background: var(--primary-soft); color: var(--primary); }
+/* 赞助入口：金色主题，与品牌一致但不抢主导航焦点 */
+.sponsor-btn { color: var(--warn); }
+.sponsor-btn .clp-ico { background: var(--warn-soft); color: var(--warn); }
+.sponsor-btn:hover { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--warn-soft) 70%, var(--card)), var(--card)); }
+.clp-ico {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--text-weak);
+  transition: background 0.15s, color 0.15s;
+}
+.clp-ico svg { transition: transform 0.22s ease; }
+.clp-ico svg.flip { transform: scaleX(-1); }
+
+/* 收起态 */
+.shell.collapsed .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.shell.collapsed .brand-name,
+.shell.collapsed .nav-label { display: none; }
+.shell.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+.shell.collapsed .collapse { justify-content: center; padding-left: 0; padding-right: 0; }
+
+/* ============ 主区 ============ */
+.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; position: relative; z-index: 1; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-7) 30px var(--sp-5);
+  flex-shrink: 0;
+}
+/* 页面标题区不拦截鼠标，拖拽落到 topbar 的 drag-region 上（可拖动窗口/双击最大化）；flex-shrink:0 保证窄窗口时标题优先不被挤压 */
+.page-title { display: flex; align-items: center; gap: 13px; min-width: 0; flex-shrink: 0; pointer-events: none; }
+.pt-ico {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+.pt-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pt-text h1 { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: 0.2px; white-space: nowrap; }
+.pt-desc { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.top-actions { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 1; min-width: 0; }
+/* 图标按钮/通知/头像/窗口控制不收缩，窄窗时只压缩搜索框，保证最小化/最大化/关闭永远可见可点 */
+.top-actions > * { flex-shrink: 0; }
+/* 全局搜索框可收缩：窄窗口时先缩搜索框宽度（省略号兜底），而不是挤压页面标题 */
+.top-actions :deep(.gs-trigger) { flex-shrink: 1; min-width: 0; }
+.theme-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
+.theme-btn:hover { border-color: var(--primary); color: var(--primary); }
+/* 云同步指示灯：灰=未启用/蓝=同步中/绿=已同步/红=失败/琥珀=已吊销 */
+.sync-ind { display: grid; place-items: center; }
+.sync-ind-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); transition: background 0.2s; }
+.sync-ind.syncing .sync-ind-dot { background: var(--primary); animation: sync-ind-pulse 1.1s ease-in-out infinite; }
+.sync-ind.idle .sync-ind-dot { background: var(--success); }
+.sync-ind.error .sync-ind-dot { background: var(--danger); }
+.sync-ind.revoked .sync-ind-dot { background: var(--warn); }
+@keyframes sync-ind-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* 窗口控制按钮（自定义标题栏） */
+.win-ctrls { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.wc-btn { width: 32px; height: 30px; padding: 0; display: grid; place-items: center; border: none; background: none; border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: background 0.12s, color 0.12s; }
+.wc-btn:hover { background: rgba(120, 130, 150, 0.14); color: var(--text); }
+.wc-btn.close:hover { background: var(--win-close); color: var(--text-invert); }
+
+/* 铃铛通知中心 */
+.notice-wrap { position: relative; }
+.bell-btn { position: relative; }
+.bell-dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  background: var(--danger-bright);
+  color: var(--text-invert);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--bg);
+  line-height: 1;
+}
+.notice-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 340px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.18);
+  z-index: 60;
+  overflow: hidden;
+}
+.np-head { display: flex; align-items: center; justify-content: space-between; padding: 13px var(--sp-6) var(--sp-3); border-bottom: 1px solid var(--border); }
+.np-head b { font-size: var(--fs-base); }
+.np-clear { border: none; background: none; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; padding: 2px var(--sp-1); border-radius: var(--r-xs); }
+.np-clear:hover { color: var(--danger); background: var(--danger-soft); }
+.np-list { overflow-y: auto; padding: var(--sp-1) var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: 2px; }
+.np-item { display: flex; align-items: flex-start; gap: var(--sp-2); padding: 9px var(--sp-2); border-radius: var(--r-sm); }
+.np-item.unread { background: var(--primary-soft); }
+.np-tag { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); margin-top: 1px; }
+.np-tag.release { background: var(--warn-soft); color: var(--warn); }
+.np-tag.backup { background: var(--success-soft); color: var(--success-deep); }
+.np-tag.sync { background: var(--primary-soft); color: var(--primary); }
+.np-text { flex: 1; min-width: 0; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); word-break: break-word; }
+.np-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.np-empty { margin: 0; padding: 22px var(--sp-7) 26px; font-size: var(--fs-sm); color: var(--muted); text-align: center; }
+
+/* 当前用户（仅头像，主区已有问候语） */
+.user-chip { display: flex; align-items: center; flex-shrink: 0; cursor: default; }
+.uc-avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--grad-brand);
+  color: var(--text-invert);
+  font-size: var(--fs-base);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.28);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.user-chip:hover .uc-avatar { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(99, 102, 241, 0.36); }
+
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+
+/* 视图切换动画：入场淡入 + 上移 6px（组件 key 重建触发；无 leave，reduced-motion 全局降级） */
+.body > * { animation: viewIn 0.18s ease; }
+@keyframes viewIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 提示条 */
+.toast {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--toast-bg);
+  color: var(--text-invert);
+  padding: 11px 22px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-base);
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  max-width: calc(100vw - 60px);
+}
+.toast-act {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: var(--primary-bright);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  padding: 4px var(--sp-4);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.toast-act:hover { background: rgba(255, 255, 255, 0.24); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ============ 深色模式（组件级覆盖，变量在全局块已翻转） ============ */
+@media (prefers-color-scheme: dark) {
+  .sidebar { background: rgba(13, 17, 23, 0.72); border-right-color: var(--border); }
+  .nav { scrollbar-color: var(--faint) transparent; }
+  .nav-item:hover { background: rgba(56, 139, 253, 0.12); }
+  .pt-ico { background: var(--card-raised); }
+  .theme-btn { background: var(--card-raised); }
+}
+
+/* ============ 小窗口适配：按宽度逐步隐藏次要信息，标题永不竖排 ============ */
+@media (max-width: 1180px) {
+  .pt-desc { display: none; }   /* 先藏副标题说明 */
+}
+@media (max-width: 920px) {
+  .pt-ico { display: none; }    /* 最后藏页面图标，只留标题文字 */
+  .topbar { padding-left: var(--sp-7); padding-right: var(--sp-7); }
+}
+/* 矮窗口：压缩顶栏纵向留白，把空间留给内容区 */
+@media (max-height: 720px) {
+  .topbar { padding-top: var(--sp-5); padding-bottom: var(--sp-3); }
+}
+</style>

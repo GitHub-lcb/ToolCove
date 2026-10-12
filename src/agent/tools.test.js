@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAgentRegistry, listAgentTools, resolveRunOptions } from "./tools.js";
-import { AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../settingsConfig.js";
+import { AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../app/settingsConfig.js";
 
 describe("resolveRunOptions", () => {
   it("缺省配置落到 12 步 / 1 次重试 / risky 确认", () => {

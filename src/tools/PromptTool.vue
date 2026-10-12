@@ -12,7 +12,7 @@ import { invoke } from "../platform/invoke.js";
 import { isDesktop } from "../platform/env.js";
 import { save as saveDialog } from "../platform/dialog.js";
 import { openPath } from "../platform/shell.js";
-import { askConfirm } from "../confirm.js";
+import { askConfirm } from "../ui/confirm.js";
 import { loadToolbox, saveToolbox } from "../toolboxStore.js";
 import { flushSecureToolbox, loadSecureToolbox, saveSecureToolbox } from "../secureToolbox.js";
 import { decryptValue, encryptValue } from "../secure.js";
@@ -44,7 +44,7 @@ import {
   WORKFLOW_MAX_BYTES,
 } from "../promptLib.js";
 import { normalizeGenConfig, SIZE_OPTIONS } from "../promptGen.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import PromptGenPanel from "./PromptGenPanel.vue";
 import PromptHistoryPanel from "./PromptHistoryPanel.vue";
 import PromptWorkflowDialog from "./PromptWorkflowDialog.vue";
@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--sp-4);
   color: var(--text-weak);
   padding: 40px;
   text-align: center;
@@ -773,10 +773,10 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 .lib-head {
-  padding: 10px 12px 8px;
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   border-bottom: 1px solid var(--card-border);
 }
 .lib-head h3 {
@@ -785,11 +785,11 @@ onBeforeUnmount(() => {
 }
 .lib-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .filters {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .filters select {
   flex: 1;
@@ -802,8 +802,8 @@ onBeforeUnmount(() => {
 .lib-row {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
   border-bottom: 1px solid var(--card-border);
 }
@@ -833,7 +833,7 @@ onBeforeUnmount(() => {
 }
 .badge {
   font-size: var(--fs-xs);
-  padding: 1px 6px;
+  padding: 1px var(--sp-1);
   border-radius: var(--r-pill, 999px);
   background: var(--well);
   color: var(--text-weak);
@@ -878,10 +878,10 @@ onBeforeUnmount(() => {
   color: var(--danger);
 }
 .lib-empty {
-  padding: 16px 12px;
+  padding: var(--sp-6) var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .empty-title {
   margin: 0;
@@ -895,10 +895,10 @@ onBeforeUnmount(() => {
 .samples {
   border: 1px solid var(--card-border);
   border-radius: var(--r-sm, 8px);
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .samples-head {
   display: flex;
@@ -911,12 +911,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .sample-info {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   min-width: 0;
 }
 .sample-title {
@@ -935,7 +935,7 @@ onBeforeUnmount(() => {
 .tabs {
   display: flex;
   gap: 4px;
-  padding: 8px 12px 0;
+  padding: var(--sp-2) var(--sp-4) 0;
   border-bottom: 1px solid var(--card-border);
 }
 .tabs button {
@@ -943,7 +943,7 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--text-weak);
   font-size: var(--fs-sm);
-  padding: 6px 12px;
+  padding: var(--sp-1) var(--sp-4);
   border-bottom: 2px solid transparent;
   cursor: pointer;
 }
@@ -957,16 +957,16 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 .pane {
-  padding: 12px;
+  padding: var(--sp-4);
 }
 .set-block {
   border: 1px solid var(--card-border);
   border-radius: var(--r-sm, 8px);
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .set-block h4 {
   margin: 0;
@@ -975,7 +975,7 @@ onBeforeUnmount(() => {
 .set-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .field {
   display: flex;
@@ -988,32 +988,32 @@ onBeforeUnmount(() => {
 .check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: var(--fs-sm);
   color: var(--text-weak);
 }
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .wf-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .wf-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .wf-name {
   font-size: var(--fs-sm);
 }
 .wf-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .seg {
   display: flex;
@@ -1024,7 +1024,7 @@ onBeforeUnmount(() => {
   align-self: flex-start;
 }
 .seg.small button {
-  padding: 5px 12px;
+  padding: 5px var(--sp-4);
 }
 .seg button {
   border: none;
@@ -1055,10 +1055,10 @@ onBeforeUnmount(() => {
   border: 1px solid var(--card-border);
   border-radius: var(--r-md, 10px);
   box-shadow: var(--shadow);
-  padding: 14px 16px;
+  padding: var(--sp-5) var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 .box h3 {
   margin: 0;
@@ -1067,7 +1067,7 @@ onBeforeUnmount(() => {
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .file {
   display: none;
@@ -1080,14 +1080,14 @@ onBeforeUnmount(() => {
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .primary {
   background: var(--primary);
   color: var(--text-invert);
   border: none;
   border-radius: var(--r-sm, 8px);
-  padding: 7px 16px;
+  padding: 7px var(--sp-6);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -1102,7 +1102,7 @@ onBeforeUnmount(() => {
   border-radius: var(--r-sm, 8px);
   background: transparent;
   color: var(--text);
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -1136,7 +1136,7 @@ select {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-xs, 6px);
-  padding: 6px 8px;
+  padding: var(--sp-1) var(--sp-2);
   min-width: 0;
 }
 textarea {

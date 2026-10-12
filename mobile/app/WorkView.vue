@@ -4,12 +4,12 @@
 // 四层导航用应用内状态而不是路由：安卓上没有浏览器地址栏，返回键由 update 后的层级回退处理；
 // 这与桌面端「多窗口 + 自由布局」是**有意的差异**（见 docs/mobile-app-plan.md §5）。
 //
-// 逻辑全部复用共享层：集合增删改走 src/tasks.js，工时/规模走 src/requirementMetrics.js，
+// 逻辑全部复用共享层：集合增删改走 src/iterations.js，工时/规模走 src/requirementMetrics.js，
 // 汇总与排序在本页纯函数 work.js 里（已单测）。
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { load as loadKind, mutate, onDataChanged } from "../../src/data/repository.js";
-import { addIteration, addRequirement, addSubTask, newIteration, newRequirement, newSubTask, removeIteration, removeRequirement, removeSubTask, updateIteration, updateRequirement, updateSubTask } from "../../src/tasks.js";
+import { addIteration, addRequirement, addSubTask, newIteration, newRequirement, newSubTask, removeIteration, removeRequirement, removeSubTask, updateIteration, updateRequirement, updateSubTask } from "../../src/iterations.js";
 import { ITERATION_STATUSES, filterRequirements, hoursText, iterationSummary, requirementLine, sortIterations } from "./work.js";
 
 // 概览按需加载：它只在第一层用得到，而手机端首屏体积要省（与工具箱同样的做法）
@@ -43,7 +43,7 @@ const visibleRequirements = computed(() => filterRequirements(currentIteration.v
  * 工作台的分段：概览 / 迭代 / 领域 / 发布。
  *
  * 为什么把领域与发布也做成工作台的分段，而不是底部标签栏的新标签：
- * 桌面端的导航里它们与迭代同属 work 模块（见 src/navConfig.js 的 MODULE_HOME_TAB），
+ * 桌面端的导航里它们与迭代同属 work 模块（见 src/app/navConfig.js 的 MODULE_HOME_TAB），
  * 手机上底部已经有 5 个标签，再塞两个会让每个都变窄到难以点中。
  * 分段是"同一模块内的视图切换"，与桌面端的模块归属一致。
  */
@@ -85,7 +85,7 @@ async function load() {
 /**
  * 所有写操作都经 repository.mutate：乐观锁 + 冲突重放 + 广播，与桌面视图同一写入口。
  *
- * ⚠️ tasks.js 的集合操作是**函数式**的（返回新数组，不就地改），所以必须把返回值交回 mutate。
+ * ⚠️ iterations.js 的集合操作是**函数式**的（返回新数组，不就地改），所以必须把返回值交回 mutate。
  * 写成「就地修改 + 返回 undefined」会让改动被静默丢弃——不报错、界面也不变，极难排查（踩过一次）。
  */
 async function write(transform) {
@@ -182,7 +182,7 @@ async function confirmRemove() {
     view.level = "iter";
     view.reqId = "";
   } else {
-    // 子任务：removeSubTask 在 tasks.js 里，和另外两层同一套集合 API
+    // 子任务：removeSubTask 在 iterations.js 里，和另外两层同一套集合 API
     await write((list) => removeSubTask(list, view.iterId, view.reqId, id));
   }
 }

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import DiffTool from "./DiffTool.vue";
 import {
   buildHighlightSegments,
@@ -243,7 +243,6 @@ async function copyText(value, label = t("toolbox.text.copyDefaultLabel")) {
 .editor-panel, .result-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
 .editor-panel:focus-within { border-color: var(--primary); }
 .editor-panel.invalid { border-color: var(--border-danger); }
-.panel-head { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-head .panel-actions { display: flex; align-items: center; gap: var(--sp-1); }

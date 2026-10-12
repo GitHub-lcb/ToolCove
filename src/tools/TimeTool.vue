@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import {
   addDateTime,
   calculateDateDifference,

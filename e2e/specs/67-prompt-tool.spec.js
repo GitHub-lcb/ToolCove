@@ -283,7 +283,11 @@ test.describe("工具（提示词）", () => {
     expect(args.prompt).toBe("一只在屋顶的猫");
     expect(args.negativePrompt).toBe("lowres");
     expect(args.model).toBe("img-model");
-    await expect(page.locator('[data-role="gen-result"] img')).toHaveAttribute("src", /^data:image\/png;base64,/);
+    // 桌面端图片走 **asset 协议**（src/platform/image.js 的 imageSrc 分支），
+    // 不是 base64 data URL——base64 是浏览器/手机端落 IndexedDB 时的降级路径。
+    // 所以这里断言的是「拿到一个 asset.localhost 的 URL」这个**平台差异本身**，
+    // 它比断言某个具体字符串更能说明代码走对了分支。
+    await expect(page.locator('[data-role="gen-result"] img')).toHaveAttribute("src", /^http:\/\/asset\.localhost\//);
 
     await page.locator('[data-role="tab-history"]').click();
     await expect(page.locator('[data-role="hist-row"]')).toHaveCount(1);
@@ -340,7 +344,9 @@ test.describe("工具（提示词）", () => {
     expect(scenario.promptBody.prompt["6"].inputs.text).toBe("portrait of 阿狸");
     expect(scenario.promptBody.client_id).toBeTruthy();
     await expect(page.locator(".pm-card")).toHaveCount(2);
-    await expect(page.locator('.pm-card[data-role$=".png"] img')).toHaveAttribute("src", /^data:image\/png;base64,/);
+    // 图片 src 走 asset 协议（见上方「云端生图成功」一例的说明）；
+    // browser 形态才会是 data:image/png;base64,。
+    await expect(page.locator('.pm-card[data-role$=".png"] img')).toHaveAttribute("src", /^http:\/\/asset\.localhost\//);
     // 视频卡片：内联 video + 打开/定位/另存为三个保底动作
     await expect(page.locator('.pm-card[data-role$=".mp4"] video')).toHaveCount(1);
     await expect(page.locator('.pm-card[data-role$=".mp4"] .pm-actions button')).toHaveCount(3);

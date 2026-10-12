@@ -17,6 +17,20 @@ export function normalizeEstimateDays(value) {
   return Number.isFinite(days) && days > 0 ? round(days) : null;
 }
 
+/**
+ * 迭代完成度：`{ total, done, pct }`。
+ *
+ * 为什么收在这里：这段逻辑此前在 `WorkOverviewView.vue` 与 `IterationView.vue` 里
+ * 各有一份**逐字符相同**的实现。概览卡片和迭代列表显示的是同一个数，
+ * 两份拷贝迟早会有一份先改——收进纯函数模块后两端只能从同一处算。
+ */
+export function iterationProgress(iteration) {
+  const list = iteration?.items || [];
+  const total = list.length;
+  const done = list.filter((x) => x.done).length;
+  return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
+}
+
 export function subtaskActualHours(task) {
   const logs = Array.isArray(task?.logs) ? task.logs : [];
   if (logs.length) return round(logs.reduce((sum, log) => sum + Math.max(0, Number(log.hours) || 0), 0));

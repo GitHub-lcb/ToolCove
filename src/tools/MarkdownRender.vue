@@ -2,7 +2,7 @@
 // AI 回复的 Markdown 渲染：v-html 输出 renderMarkdown（highlight 开启），代码块复制走事件委托
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { renderMarkdown } from "../shared.js";
+import { renderMarkdown } from "../shared/markdown.js";
 
 const { t } = useI18n();
 
@@ -35,8 +35,8 @@ function onMdClick(e) {
 /* v-html 注入的内容不受 scoped 限制，统一用 :deep 覆盖（颜色/字号走全局设计令牌） */
 .md :deep(.md-code) {
   position: relative;
-  margin: 6px 0;
-  padding: 26px 12px 10px;
+  margin: var(--sp-1) 0;
+  padding: 26px var(--sp-4) var(--sp-3);
   background: var(--well);
   border: 1px solid var(--card-border);
   border-radius: var(--r-sm);
@@ -49,7 +49,7 @@ function onMdClick(e) {
   position: absolute;
   top: 5px;
   right: 6px;
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   font-size: var(--fs-xs);
   color: var(--muted);
   background: var(--card);
@@ -62,13 +62,13 @@ function onMdClick(e) {
   border-color: var(--border-blue);
 }
 .md :deep(.md-table) {
-  margin: 6px 0;
+  margin: var(--sp-1) 0;
   border-collapse: collapse;
   font-size: var(--fs-sm);
 }
 .md :deep(.md-table th),
 .md :deep(.md-table td) {
-  padding: 4px 10px;
+  padding: 4px var(--sp-3);
   border: 1px solid var(--card-border);
   text-align: left;
 }
@@ -77,8 +77,8 @@ function onMdClick(e) {
   font-weight: 600;
 }
 .md :deep(blockquote) {
-  margin: 6px 0;
-  padding: 2px 12px;
+  margin: var(--sp-1) 0;
+  padding: 2px var(--sp-4);
   border-left: 3px solid var(--border-blue);
   color: var(--muted);
 }

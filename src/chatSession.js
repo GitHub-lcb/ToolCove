@@ -3,7 +3,7 @@
 // 界面文案走 i18n（默认预设 name 为字典键 toolbox.ai.preset*，content 为提示词功能数据键 prompt.preset*）。
 
 import { i18n } from "./i18n/index.js";
-import { track } from "./telemetry.js";
+import { track } from "./app/telemetry.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 

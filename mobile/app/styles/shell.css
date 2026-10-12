@@ -1,39 +1,45 @@
 /* 手机端样式：壳层 + 记录页 + 编辑表单 + 弹层。
-   设计取向与桌面端共用同一套语义色（见 src/App.vue 的 token），但版式按手机重排：
-   底部标签栏、全屏编辑、不小于 44px 的触摸目标、安全区内边距。 */
+   设计取向与桌面端共用同一套语义色（真相源是 src/styles/tokens.css），但版式按手机重排：
+   底部标签栏、全屏编辑、不小于 44px 的触摸目标、安全区内边距。
+
+   ── 为什么 --m-* 一律写成 var(--…) 别名 ──────────────────────────
+   手机端是**独立构建**（mobile/vite.mobile.config.js，注入 __MOBILE__），
+   以前不加载 tokens.css，所以这里自带一份"抄来的"颜色值。抄写本身就是缺陷源：
+   审计实测三处已经漂了（--m-muted、深色 --m-muted、深色 --m-danger），
+   而漂掉的值是**静默**的——两端都显示得出来，只是深浅、粗细略有不同，谁也没报错。
+
+   现在 `main.js` 先 import tokens.css，这里只做**角色别名**：
+   一个十六进制字面量都不留，手机端的颜色永远是桌面令牌在当前模式下的取值。
+   唯一的例外是深色下的 --m-primary：手机把它指向 --primary-hover，
+   因为手机深色界面上主色多数用作**文字/链接**，用 --primary（#2b6ad0）在 #0d1117 上对比不足。
+   这是角色选择，不是数值差异——值仍然只有 tokens.css 一份。
+   守卫见 `mobile/app/mobileTokens.test.js`（别名里出现裸色值即失败）。 */
 
 :root {
-  --m-bg: #ffffff;
-  --m-card: #ffffff;
-  --m-soft: #f6f8fa;
-  --m-text: #1f2328;
-  --m-muted: #5f6773;
-  --m-border: #d8dee4;
-  --m-primary: #0969da;
-  --m-primary-soft: #eaf2fd;
-  --m-danger: #cf222e;
-  --m-danger-soft: #ffebe9;
-  --m-ok: #1a7f37;
-  --m-radius: 12px;
-  --m-gap: 12px;
-  --m-pad: 16px;
-  --m-touch: 44px;
-  --m-tabbar: 56px;
+  --m-bg: var(--bg);
+  --m-card: var(--card);
+  --m-soft: var(--card-soft);   /* 卡片内嵌套区块底 */
+  --m-text: var(--text);
+  --m-muted: var(--muted);
+  --m-border: var(--border);
+  --m-primary: var(--primary);
+  --m-primary-soft: var(--primary-soft);
+  --m-danger: var(--danger);
+  --m-danger-soft: var(--danger-soft);
+  --m-ok: var(--done);
+  --m-ok-soft: var(--done-soft);
+  --m-warn: var(--wait);
+  --m-warn-soft: var(--wait-soft);
+  --m-radius: var(--r-md);
+  --m-gap: var(--sp-4);         /* 12px（旧注释把它标成 --sp-6，是错的） */
+  --m-pad: var(--sp-6);         /* 16px */
+  --m-touch: 44px;              /* iOS HIG / Material 的最小触摸目标，手机独有 */
+  --m-tabbar: 56px;             /* 手机底部标签栏高度，手机独有 */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --m-bg: #0d1117;
-    --m-card: #161b22;
-    --m-soft: #1c2128;
-    --m-text: #e6edf3;
-    --m-muted: #9aa4b2;
-    --m-border: #30363d;
-    --m-primary: #58a6ff;
-    --m-primary-soft: #1a3352;
-    --m-danger: #ff7b72;
-    --m-danger-soft: #3d1d1d;
-    --m-ok: #3fb950;
+    --m-primary: var(--primary-hover); /* 深色下主色多用于文字，取可读的一档 */
   }
 }
 
@@ -71,6 +77,7 @@ body,
 .m-tabbar {
   position: sticky;
   bottom: 0;
+  z-index: 20;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
@@ -78,20 +85,45 @@ body,
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--m-card);
   border-top: 1px solid var(--m-border);
+  /* 顶部一道极淡的内阴影，让标签栏从内容上「浮起来」而不是贴在内容上 */
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.02), 0 -6px 18px rgba(0, 0, 0, 0.04);
 }
 
+/* 滚动时收紧底栏：内容滑到标签栏下方的观感更干净。
+   用 sticky（而非 fixed）是为了让整页滚动与 WebView 返回键的行为保持简单可预期。 */
 .m-tab {
   min-height: var(--m-touch);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
+  padding: 6px 2px 4px;
   border: 0;
   background: none;
   color: var(--m-muted);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  font-family: inherit;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  position: relative;
+  transition: color 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 选中态：顶部一条 3px 的短横线（Material 3 的 active indicator）。
+   放在顶部而不是底部，是为了让手指自然落点（标签中部偏上）正对着指示线。 */
+.m-tab::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--m-primary);
+  transform: translateX(-50%);
+  transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .m-tab.on {
@@ -99,14 +131,41 @@ body,
   font-weight: 600;
 }
 
+.m-tab.on::before {
+  width: 22px;
+}
+
+/* 按下时给一点触感反馈：手指落点要"有反应"，否则密集点击容易误以为没点上 */
+.m-tab:active {
+  background: var(--m-primary-soft);
+}
+
+/* 焦点可见（外接键盘 / 无障碍开关打开时不能只剩颜色变化） */
+.m-tab:focus-visible {
+  outline: 2px solid var(--m-primary);
+  outline-offset: -3px;
+  border-radius: 8px;
+}
+
 /* 未完成的标签保留可见（让人知道会有什么），但降一档亮度 */
 .m-tab.todo {
   opacity: 0.55;
 }
 
+/* 图标：现在走共享的 Icon 组件（纯 SVG），用 currentColor 跟随标签色 */
 .m-tab-ico {
-  font-size: 1.1rem;
-  line-height: 1;
+  display: grid;
+  place-items: center;
+  height: 24px;
+}
+
+.m-tab-ico .icon {
+  stroke-width: 1.9;
+}
+
+/* 选中时图标略加重：只靠颜色区分在小屏、强光下不够 */
+.m-tab.on .m-tab-ico .icon {
+  stroke-width: 2.3;
 }
 
 /* ---------- 记录页 ---------- */
@@ -157,7 +216,7 @@ body,
   border: 0;
   border-radius: var(--m-radius);
   background: var(--m-primary);
-  color: #fff;
+  color: var(--text-invert);
   font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
@@ -415,7 +474,7 @@ body,
 .m-modal-ok {
   border: 0;
   background: var(--m-danger);
-  color: #fff;
+  color: var(--text-invert);
 }
 
 /* ---------- 占位页 ---------- */
@@ -538,10 +597,95 @@ body,
 }
 
 .m-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 6px;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--m-muted);
+}
+
+/* ============================================================
+   手机端工具箱：启动台 + 带图标的工具条目
+   ============================================================
+   此前工具列表是**一列纯文字**，而桌面端 26 个工具都带图标——同一个工具
+   在两端长得不一样。图标改为复用桌面注册表（见 toolbox.js 的 iconOfTool），
+   样式在这里补上。
+   ============================================================ */
+.m-launchpad {
+  display: flex;
+  align-items: center;
+  gap: var(--m-gap);
+  margin-bottom: var(--m-gap);
+  padding: var(--m-pad);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-primary-soft);
+}
+.m-lp-stats {
+  display: flex;
+  gap: var(--m-pad);
+  flex-shrink: 0;
+}
+.m-lp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+.m-lp-stat b {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--m-primary);
+}
+.m-lp-stat i {
+  font-size: 0.72rem;
+  font-style: normal;
+  color: var(--m-muted);
+}
+/* 进度条：只表示「可迁移工具里已可用的比例」，桌面独占不进分母 */
+.m-lp-bar {
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--m-card);
+}
+.m-lp-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--m-primary);
+  transition: width 0.25s ease;
+}
+
+/* 工具条目改成「图标 + 文字」横排。
+   只在工具箱内生效（.m-toolbox 作用域），记录页的 .m-item 保持原来的竖排。 */
+.m-toolbox .m-item-main {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--m-gap);
+}
+.m-toolbox .m-item-ico {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--m-soft);
+  color: var(--m-primary);
+}
+.m-toolbox .m-item-main[disabled] .m-item-ico {
+  color: var(--m-muted);
+}
+.m-toolbox .m-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 /* 未迁移的条目：可读但不可点，并带一枚角标说明原因 */
@@ -800,7 +944,7 @@ body,
 }
 
 .m-advice li[data-tone="success"] { border-left-color: var(--m-ok); }
-.m-advice li[data-tone="warn"] { border-left-color: #9a6700; }
+.m-advice li[data-tone="warn"] { border-left-color: var(--m-warn); }
 .m-advice li[data-tone="danger"] { border-left-color: var(--m-danger); }
 .m-advice li[data-tone="info"] { border-left-color: var(--m-primary); }
 
@@ -868,6 +1012,8 @@ body,
   font-size: 0.7rem;
   padding: 0 4px;
   border-radius: 4px;
+  /* 色板上的代码标签：底是固定的半透明白，文字就必须是固定的深色——
+     换成 --m-text 会在深色模式变成近白字压在白底上。这里**不该**跟随主题。 */
   background: rgba(255, 255, 255, 0.75);
   color: #1f2328;
 }
@@ -1044,6 +1190,7 @@ body,
 
 .m-canvas-wrap canvas {
   border: 1px solid var(--m-border);
+  /* 画布是"纸"：标签/图片预览的底必须始终是白，深色模式下也不跟着主题翻。 */
   background: #ffffff;
   image-rendering: pixelated;
 }
@@ -1185,13 +1332,13 @@ body,
 }
 
 .m-badge[data-badge="success"] {
-  background: var(--m-ok-soft, #e6f4ea);
-  color: var(--m-ok, #1e7e34);
+  background: var(--m-ok-soft);
+  color: var(--m-ok);
 }
 
 .m-badge[data-badge="failed"] {
-  background: var(--m-danger-soft, #fdecea);
-  color: var(--m-danger, #c0392b);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
 }
 
 .m-badge[data-badge="deploying"] {
@@ -1238,11 +1385,11 @@ body,
 }
 
 .m-mark[data-status="pass"] {
-  color: var(--m-ok, #1e7e34);
+  color: var(--m-ok);
 }
 
 .m-mark[data-status="fail"] {
-  color: var(--m-danger, #c0392b);
+  color: var(--m-danger);
 }
 
 .m-mark[data-status="manual"] {
@@ -1251,7 +1398,7 @@ body,
 
 /* 自检结果项：失败项整行也要能一眼看到 */
 .m-stats li[data-status="fail"] {
-  background: var(--m-danger-soft, #fdecea);
+  background: var(--m-danger-soft);
 }
 
 /* ---------- 表格工具 ---------- */

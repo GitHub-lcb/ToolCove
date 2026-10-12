@@ -4,7 +4,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { acceleratorFromEvent, acceleratorParts } from "../screenshot/hotkey.js";
 
 const props = defineProps({ showToast: { type: Function, default: () => {} } });
@@ -180,37 +180,37 @@ async function captureNow() {
 </template>
 
 <style scoped>
-.shot-tool { padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 14px; max-width: 780px; }
-.st-head h2 { margin: 0 0 6px; font-size: var(--fs-xl); }
+.shot-tool { padding: var(--sp-7) 24px 32px; display: flex; flex-direction: column; gap: var(--sp-5); max-width: 780px; }
+.st-head h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-xl); }
 .st-sub { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: var(--lh-body); }
 
-.st-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); padding: 14px 16px; }
-.st-card h3 { margin: 0 0 10px; font-size: var(--fs-base); }
+.st-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); padding: var(--sp-5) var(--sp-6); }
+.st-card h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-base); }
 
-.st-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.st-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); }
 .st-row-main { display: flex; flex-direction: column; gap: 3px; }
 .st-hint { color: var(--muted); font-size: var(--fs-sm); }
-.st-error { margin: 10px 0 0; color: var(--danger); font-size: var(--fs-sm); }
+.st-error { margin: var(--sp-3) 0 0; color: var(--danger); font-size: var(--fs-sm); }
 
-.st-hk { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.st-hk { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) 0; }
 .st-hk-label { width: 64px; color: var(--text-weak); font-size: var(--fs-md); }
 .st-hk-key {
   display: inline-flex; align-items: center; gap: 4px; min-width: 168px;
-  padding: 6px 10px; background: var(--ghost); border: 1px solid var(--border-strong);
+  padding: var(--sp-1) var(--sp-3); background: var(--ghost); border: 1px solid var(--border-strong);
   border-radius: var(--r-sm); color: var(--text); font-size: var(--fs-md); cursor: pointer;
 }
 .st-hk-key:hover { border-color: var(--primary); }
 .st-hk-key.rec { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
-.st-hk-key kbd { padding: 1px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--card); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.st-hk-key kbd { padding: 1px var(--sp-1); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--card); font-family: var(--font-mono); font-size: var(--fs-xs); }
 
 .st-chip { font-size: var(--fs-xs); font-weight: 600; padding: 2px 9px; border-radius: var(--r-pill); }
 .st-chip.on { color: var(--success-deep); background: var(--success-soft); }
 .st-chip.warn { color: var(--warn-deep); background: var(--amber-soft); }
 .st-chip.off { color: var(--text-soft); background: var(--well); }
 
-.st-hk-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.st-hk-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-1); }
 
-.st-steps { margin: 0 0 12px; padding-left: 20px; color: var(--text); font-size: var(--fs-md); line-height: var(--lh-body); }
+.st-steps { margin: 0 0 var(--sp-4); padding-left: var(--sp-7); color: var(--text); font-size: var(--fs-md); line-height: var(--lh-body); }
 .st-steps li { margin: 3px 0; }
 
 .st-keys { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
@@ -218,6 +218,6 @@ async function captureNow() {
 .st-keys-cell { width: 200px; }
 .st-keys kbd { display: inline-block; margin-right: 4px; padding: 1px 7px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--ghost); font-family: var(--font-mono); font-size: var(--fs-xs); }
 
-.st-list { margin: 0; padding-left: 20px; color: var(--text); font-size: var(--fs-md); line-height: var(--lh-body); }
+.st-list { margin: 0; padding-left: var(--sp-7); color: var(--text); font-size: var(--fs-md); line-height: var(--lh-body); }
 .st-list li { margin: 3px 0; }
 </style>

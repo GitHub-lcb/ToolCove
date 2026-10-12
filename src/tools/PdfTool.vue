@@ -5,9 +5,9 @@ import { invoke } from "../platform/invoke.js";
 import { save as saveDialog, open as openDialog } from "../platform/dialog.js";
 import { downloadBlob } from "../platform/download.js";
 import { isDesktop } from "../platform/env.js";
-import { useDragSort } from "../dragsort.js";
+import { useDragSort } from "../ui/dragsort.js";
 import { formatFileSize } from "../fileTool.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import {
   buildSplitGroups,
   extractPages,
@@ -776,7 +776,6 @@ async function doSplit() {
 .range-field { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); font-size: var(--fs-sm); }
 
 .panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
-.panel-head { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-foot { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); background: var(--card-soft); flex-wrap: wrap; }
@@ -798,7 +797,7 @@ async function doSplit() {
 .file-row.locked { border-color: var(--amber-border); background: var(--amber-soft); }
 .file-item-wrap { min-width: 0; }
 .row-warn { color: var(--warn-deep); }
-.decrypted-tag { margin-left: var(--sp-2); padding: 0 6px; border-radius: var(--r-pill); background: var(--success-soft); color: var(--success-deep); font-size: var(--fs-xs); font-weight: 600; }
+.decrypted-tag { margin-left: var(--sp-2); padding: 0 var(--sp-1); border-radius: var(--r-pill); background: var(--success-soft); color: var(--success-deep); font-size: var(--fs-xs); font-weight: 600; }
 /* 解锁行：紧贴文件行下方，输入密码后原地解锁 */
 .unlock-row { display: flex; align-items: center; gap: var(--sp-2); margin: 2px 0 var(--sp-2) var(--sp-7); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--amber-border); border-radius: var(--r-sm); background: var(--amber-soft); flex-wrap: wrap; }
 .unlock-ico { flex-shrink: 0; color: var(--warn-deep); }
@@ -807,7 +806,7 @@ async function doSplit() {
 .unlock-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .unlock-inline { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
 .empty-ico.locked { background: var(--amber-soft); color: var(--warn-deep); }
-.row-order { flex-shrink: 0; min-width: 26px; padding: 1px 6px; border-radius: var(--r-xs); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-xs); text-align: center; }
+.row-order { flex-shrink: 0; min-width: 26px; padding: 1px var(--sp-1); border-radius: var(--r-xs); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-xs); text-align: center; }
 .row-ico { flex-shrink: 0; display: grid; place-items: center; color: var(--primary-hover); }
 .row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-name { overflow: hidden; font-size: var(--fs-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

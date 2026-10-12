@@ -4,7 +4,7 @@
 // 所以「所见即所打」。移植自 print-tool（佳博 GP-2120TF 标签打印工具）。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { invoke } from "../platform/invoke.js";
 import { save as saveDialog } from "../platform/dialog.js";
 import { isDesktop } from "../platform/env.js";
@@ -723,7 +723,7 @@ onBeforeUnmount(() => {
 /* 顶栏 */
 .lab-bar { flex-shrink: 0; display: flex; align-items: flex-end; gap: var(--sp-3); }
 .lab-bar .grow { flex: 1; }
-.bar-error, .bar-warn { display: flex; align-items: center; gap: var(--sp-1); padding-bottom: 8px; font-size: var(--fs-sm); }
+.bar-error, .bar-warn { display: flex; align-items: center; gap: var(--sp-1); padding-bottom: var(--sp-2); font-size: var(--fs-sm); }
 .bar-error { color: var(--danger-deep); }
 .bar-warn { color: var(--warn-deep); }
 
@@ -750,7 +750,6 @@ onBeforeUnmount(() => {
 .lab-editor > *, .lab-preview > * { flex-shrink: 0; }
 
 .panel { border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); overflow: hidden; }
-.panel-head { min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); white-space: nowrap; }
 details.panel > summary { cursor: pointer; list-style: none; }

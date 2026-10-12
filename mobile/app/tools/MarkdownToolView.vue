@@ -8,7 +8,7 @@
 // 改成切换式；工具操作收进 chips；侧栏信息用可折叠卡片。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { renderMarkdown } from "../../../src/shared.js";
+import { renderMarkdown } from "../../../src/shared/markdown.js";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
 import { formatTables, lint, normalize, outline, stats, toHtmlDocument, toToc } from "../../../src/markdownTool.js";
 

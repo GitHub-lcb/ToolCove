@@ -12,6 +12,9 @@ import { i18n, initLocale, warmFallbackLocale } from "../../src/i18n/index.js";
 import { capabilities, isMobile, isDesktop, isBrowser } from "../../src/platform/env.js";
 import { installNativeBridge } from "./platform/bridge.js";
 import Shell from "./Shell.vue";
+// 设计令牌先于手机端样式：shell.css 里的 --m-* 全是 tokens.css 的角色别名，
+// 反过来引会让第一轮样式计算拿不到令牌值（未定义的 var 会让整条声明失效，而不是取空值）。
+import "../../src/styles/tokens.css";
 import "./styles/shell.css";
 
 // 原生桥必须先接上：后面的存储/网络调用都经 platform/invoke 分发

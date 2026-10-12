@@ -1,7 +1,7 @@
 <script setup>
 // 表详情弹窗（DbTool 拆出）：索引 / DDL 双 Tab，懒加载由父组件负责
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const { t } = useI18n();
 
@@ -66,10 +66,10 @@ const emit = defineEmits(["close"]);
 
 <style scoped>
 .db-detail-modal { width: 720px; }
-.db-detail-modal h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dd-table-name { font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600; background: var(--well); padding: 2px 8px; border-radius: var(--r-xs); color: var(--text); }
-.dd-tabs { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: 10px; background: var(--well); border-radius: var(--r-pill); }
-.dd-tab { padding: 5px 14px; font-size: var(--fs-sm); font-weight: 600; border: none; background: transparent; color: var(--muted); border-radius: var(--r-pill); cursor: pointer; transition: all 0.15s; }
+.db-detail-modal h2 { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.dd-table-name { font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600; background: var(--well); padding: 2px var(--sp-2); border-radius: var(--r-xs); color: var(--text); }
+.dd-tabs { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: var(--sp-3); background: var(--well); border-radius: var(--r-pill); }
+.dd-tab { padding: 5px var(--sp-5); font-size: var(--fs-sm); font-weight: 600; border: none; background: transparent; color: var(--muted); border-radius: var(--r-pill); cursor: pointer; transition: all 0.15s; }
 .dd-tab:hover { color: var(--primary); }
 .dd-tab.on { background: var(--card); color: var(--primary); box-shadow: 0 1px 4px rgba(16, 24, 40, 0.12); }
 .dd-body { min-height: 120px; max-height: 55vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-sm); }
@@ -84,16 +84,16 @@ const emit = defineEmits(["close"]);
 .idx-cols, .idx-def { font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .idx-def { color: var(--muted); }
 /* DDL 原文 */
-.ddl-pre { margin: 0; padding: 12px 14px; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); white-space: pre-wrap; word-break: break-all; color: var(--text); }
+.ddl-pre { margin: 0; padding: var(--sp-4) var(--sp-5); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); white-space: pre-wrap; word-break: break-all; color: var(--text); }
 
-.meta-tip { padding: 2px 6px; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
+.meta-tip { padding: 2px var(--sp-1); font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 .meta-tip.err { color: var(--danger); }
 
 .tbl { border-collapse: collapse; width: 100%; table-layout: fixed; font-family: var(--font-mono); font-size: var(--fs-xs); }
-.tbl th { position: sticky; top: 0; z-index: 1; padding: 7px 12px; font-weight: 700; text-align: left; background: var(--primary-soft); color: var(--primary); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tbl td { padding: 6px 12px; border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.tbl th { position: sticky; top: 0; z-index: 1; padding: 7px var(--sp-4); font-weight: 700; text-align: left; background: var(--primary-soft); color: var(--primary); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tbl td { padding: var(--sp-1) var(--sp-4); border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 
-.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; font-size: var(--fs-md); font-weight: 600; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px var(--sp-5); font-size: var(--fs-md); font-weight: 600; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
 .btn.primary { background: var(--primary); color: var(--text-invert); }
 .btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
 .btn.solid { background: var(--card); color: var(--text); border-color: var(--border-strong); }

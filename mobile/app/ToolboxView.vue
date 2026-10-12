@@ -8,12 +8,22 @@
 // 20/20，还和桌面端注册表的 23 个口径打架——对使用者没有任何信息量，所以撤掉。
 import { computed, defineAsyncComponent, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { TOOL_GROUPS, TOOLS, toolsOfGroup } from "./toolbox.js";
+import Icon from "../../src/ui/Icon.vue";
+import { TOOL_GROUPS, TOOLS, toolsOfGroup, iconOfTool, iconOfGroup, progressOf } from "./toolbox.js";
 
 const { t } = useI18n();
 
 const openKey = ref(""); // 空串 = 在列表页
 const current = computed(() => TOOLS.find((tool) => tool.key === openKey.value) || null);
+
+/**
+ * 启动台数字：与桌面端启动台（ToolboxView.vue）同一套口径。
+ *
+ * 桌面独占的工具**不进分母**——它们是"迁不了"而不是"还没迁"，
+ * 算进去进度条会永远停在八成，让人误以为还差一把。详见 toolbox.js 的 progressOf。
+ */
+const progress = computed(() => progressOf());
+const readyCount = computed(() => TOOLS.filter((tool) => tool.ready).length);
 
 /**
  * 工具视图表：**按需加载**（defineAsyncComponent）。
@@ -84,18 +94,37 @@ function close() {
         <h2 class="m-h2">{{ t("nav.toolbox") }}</h2>
       </div>
 
+      <!-- 启动台：与桌面端同一套数字与图标（口径见 toolbox.js 的 iconOfTool / progressOf）。
+           手机上不放整面卡片墙（1440px 的桌面那样做只会让人一直滑），
+           但仍要在第一屏说清「这里有多少件能用」——那是本产品与通用 Agent 的差别所在。 -->
+      <section class="m-launchpad">
+        <div class="m-lp-stats">
+          <span class="m-lp-stat"><b>{{ readyCount }}</b><i>{{ t("toolbox.launchpad.statTools") }}</i></span>
+          <span class="m-lp-stat"><b>{{ progress.total }}</b><i>{{ t("mobile.toolboxMigratable") }}</i></span>
+        </div>
+        <div class="m-lp-bar" role="img" :aria-label="t('mobile.toolboxProgress', { ready: progress.ready, total: progress.total })">
+          <span :style="{ width: progress.pct + '%' }"></span>
+        </div>
+      </section>
+
       <section v-for="group in TOOL_GROUPS" :key="group.key" class="m-group">
-        <h3 class="m-group-title">{{ t(group.labelKey) }}</h3>
+        <h3 class="m-group-title">
+          <Icon :name="iconOfGroup(group)" :size="16" />
+          {{ t(group.labelKey) }}
+        </h3>
         <ul class="m-list">
           <li v-for="tool in toolsOfGroup(group.key)" :key="tool.key" class="m-item" :data-tool="tool.key" :data-ready="tool.ready">
             <button class="m-item-main" :disabled="!tool.ready" @click="open(tool)">
-              <span class="m-item-title">
-                {{ t(tool.labelKey) }}
-                <!-- 桌面独占要说清是「不迁」而不是「还没迁」：不然用户会一直等 -->
-                <span v-if="tool.desktopOnly" class="m-badge">{{ t("mobile.toolDesktopOnly") }}</span>
-                <span v-else-if="!tool.ready" class="m-badge">{{ t("mobile.toolTodo") }}</span>
+              <span class="m-item-ico" aria-hidden="true"><Icon :name="iconOfTool(tool)" :size="19" /></span>
+              <span class="m-item-text">
+                <span class="m-item-title">
+                  {{ t(tool.labelKey) }}
+                  <!-- 桌面独占要说清是「不迁」而不是「还没迁」：不然用户会一直等 -->
+                  <span v-if="tool.desktopOnly" class="m-badge">{{ t("mobile.toolDesktopOnly") }}</span>
+                  <span v-else-if="!tool.ready" class="m-badge">{{ t("mobile.toolTodo") }}</span>
+                </span>
+                <span v-if="tool.note" class="m-item-sub">{{ t(tool.note) }}</span>
               </span>
-              <span v-if="tool.note" class="m-item-sub">{{ t(tool.note) }}</span>
             </button>
           </li>
         </ul>

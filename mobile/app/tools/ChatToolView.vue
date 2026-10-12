@@ -11,7 +11,7 @@ import { useI18n } from "vue-i18n";
 import { DEFAULT_PRESETS, buildContextMessages, createSession, deleteSession, renameSession, sessionTitle, trimMessages } from "../../../src/chatSession.js";
 import { aiChatStream, isAIConfigured } from "../../../src/ai.js";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
-import { renderMarkdown } from "../../../src/shared.js";
+import { renderMarkdown } from "../../../src/shared/markdown.js";
 
 const { t } = useI18n();
 

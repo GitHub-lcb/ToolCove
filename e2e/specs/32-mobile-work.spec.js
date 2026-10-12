@@ -1,4 +1,4 @@
-// 工作台 E2E（移动视口）：迭代 → 需求 → 子任务三层，全部走共享的 tasks.js / requirementMetrics.js。
+// 工作台 E2E（移动视口）：迭代 → 需求 → 子任务三层，全部走共享的 iterations.js / requirementMetrics.js。
 //
 // 与记录页一样，这一套不依赖安卓环境：数据经 repository 落到 IndexedDB，
 // 刷新后仍在即说明「写路径真的落盘」，而不是只改了内存。

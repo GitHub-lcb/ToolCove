@@ -10,8 +10,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
-import { askConfirm } from "../confirm.js";
-import Icon from "../Icon.vue";
+import { askConfirm } from "../ui/confirm.js";
+import Icon from "../ui/Icon.vue";
 import { buildTxt2ImgWorkflow, injectMapping, normalizeComfyBase, SAMPLER_OPTIONS, SCHEDULER_OPTIONS } from "../comfy.js";
 import { cancelRemote, listCheckpoints, probe, runJob } from "../comfyClient.js";
 import { cloudConfigReady, genErrorKeyOf, mediaName, normalizeExt } from "../promptGen.js";
@@ -573,7 +573,7 @@ watch(
 .gen-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   min-width: 0;
 }
 .seg {
@@ -589,7 +589,7 @@ watch(
   background: transparent;
   color: var(--text-weak);
   font-size: var(--fs-sm);
-  padding: 6px 8px;
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-xs, 6px);
   cursor: pointer;
 }
@@ -601,14 +601,14 @@ watch(
 .state-line {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: var(--fs-sm);
   color: var(--text-weak);
 }
 .comfy-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .field {
   display: flex;
@@ -629,12 +629,12 @@ watch(
 .params {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .seed-row {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .seed-input {
   max-width: 140px;
@@ -642,22 +642,22 @@ watch(
 .check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: var(--fs-sm);
   color: var(--text-weak);
 }
 .prompt-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .vars {
   border: 1px solid var(--card-border);
   border-radius: var(--r-sm, 8px);
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
   background: var(--card-soft, transparent);
 }
 .vars-head {
@@ -669,7 +669,7 @@ watch(
   display: grid;
   grid-template-columns: minmax(60px, 160px) 1fr;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   max-width: none;
 }
 .hint {
@@ -697,17 +697,17 @@ watch(
 .run-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .primary {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   background: var(--primary);
   color: var(--text-invert);
   border: none;
   border-radius: var(--r-sm, 8px);
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-6);
   font-size: var(--fs-base);
   cursor: pointer;
 }
@@ -723,7 +723,7 @@ watch(
   border-radius: var(--r-sm, 8px);
   background: transparent;
   color: var(--text);
-  padding: 7px 12px;
+  padding: 7px var(--sp-4);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -764,14 +764,14 @@ watch(
 }
 .progress-text {
   display: flex;
-  gap: 12px;
+  gap: var(--sp-4);
   font-size: var(--fs-xs);
   color: var(--text-weak);
 }
 .result {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .result-head {
   display: flex;
@@ -783,7 +783,7 @@ watch(
 .media-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .link {
   border: none;
@@ -821,7 +821,7 @@ select {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-xs, 6px);
-  padding: 6px 8px;
+  padding: var(--sp-1) var(--sp-2);
   min-width: 0;
 }
 textarea {

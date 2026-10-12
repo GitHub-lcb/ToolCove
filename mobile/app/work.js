@@ -2,7 +2,7 @@
 //
 // 复用口径（一行都没重写）：
 //   · 工时与规模 → src/requirementMetrics.js（requirementMetrics / requirementActualHours）
-//   · 集合增删改 → src/tasks.js（add/update/removeRequirement 等）
+//   · 集合增删改 → src/iterations.js（add/update/removeRequirement 等）
 // 这里只补手机端需要的**汇总与排序**，因为桌面把这段算在 106KB 的 IterationView.vue 里，
 // 手机端版式不同，不能照搬视图。
 

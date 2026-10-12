@@ -1,14 +1,17 @@
 # ToolCove · 工具湾
 
-**An agent-driven developer workbench — local-first, no account, free and open source (MIT).**
+**A personal agent workbench where the toolbox *is* the action space — local-first, no account, free and open source (MIT).**
 
-Most tool apps are a pile of buttons: you still have to know which button to press, in what order,
-with what arguments. ToolCove inverts that. Its 26 built-in tools double as an **action space** the
-agent plans over — you describe the goal in natural language, and the agent chooses the actions,
-chains them, shows every step, and stops for your approval before anything risky gets written.
-Formatting, conversion, encryption, diffing, request debugging, file and database work, quick notes
-and issue tracking are all reachable both ways: you can click them, or you can let the agent drive
-them.
+Most agent products give you a chat box and a set of cloud tools. Most tool apps give you a pile of
+buttons. ToolCove is built on the observation that **you should not have to choose between the two**:
+the 26 built-in tools *are* the action space the agent plans over. Every tool you can click is a real
+action the planner can call — not a mock, not a thin wrapper around somebody's cloud API.
+
+So the same capability is reachable both ways. Describe the goal in natural language and the agent
+picks the actions, chains them, shows every step, and stops for your approval before anything risky
+gets written — or just click the tool yourself when you already know what you want.
+
+That is the whole bet: **a workbench where the toolbox and the agent are the same thing.**
 
 It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in the browser; an
 **Android app** is in active rework toward desktop parity
@@ -65,11 +68,36 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   over the game. Everything runs locally — no network, no injection, no game-process access — and it
   works in both the desktop and browser builds.
 
+- **Your own work data, as an action space too** — the delivery modules below are not just
+  screens the agent can see: it can read and write them through typed `data.*` actions. It creates an
+  iteration, updates a requirement's status, appends a work-log note, removes a snippet — each one
+  gated by the same risk tiers and approval policy as file and database writes.
 - **Snippets** — quick notes with one-click copy, global search, password masking, and image attachments.
 - **Problems** — lightweight issue tracker with local tags, AI-assisted analysis, and team-experience reuse.
 - **Cloud sync (optional)** — end-to-end encrypted multi-device sync for snippets and issues.
   The server only ever stores ciphertext; pairing uses anonymous codes, no account. Self-host with
   the zero-dependency Node server in [`server/`](server/README.md) or use a hosted instance you trust.
+
+### Delivery management (your own data)
+
+A personal agent workbench needs something to work on. These six modules — the app's **Delivery**
+tab — are where your own delivery data lives, and the agent reads and writes them through the same
+typed actions it uses for everything else.
+
+- **Overview** — today's actions, KPI tiles, this week's releases, and a single log stream merged from
+  iteration requirements and issues. Weekend-aware: it does not nudge you to log hours on a Saturday.
+- **Domains & pools** — a registry of what you work on (domains) and the code pools under each, with
+  per-pool `git pull`, release health badges, and bulk/AI/legacy import.
+- **Iterations** — the main surface. Per iteration: status stepper, nested requirement → subtask tree,
+  work-hour entry, "awaiting product" Q&A with screenshots, bug tracking, documents, and a timeline view.
+- **Requirement board** — every requirement across every iteration flattened into a Kanban sized by
+  estimate days (small / medium / large / unestimated), with effort, actuals, and overrun per item.
+- **Release** — release health across all pools, plus a per-release checklist (package → upload →
+  deploy → verify) recorded locally, with an Excel "release package" export.
+- **Tasks & hours** — monthly timesheet trends, day logs, hours-to-XLSX export, and an AI weekly report
+  that remembers your preferred structure.
+
+**Snippets** and **Problems** live in their own **Records** module for quick capture and issue tracking.
 
 **Privacy first**: everything is stored locally — JSON files in your app-data directory on the
 desktop build, IndexedDB in the browser. No account, no cloud sync unless you turn it on, and
@@ -395,10 +423,30 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。
   旧的手机端实现（铁路大亨悬浮面板）已整体移除；铁路大亨的求解逻辑仍在
   `src/tools/railTycoon.js`，桌面端与浏览器端照常使用，后续会作为 App 里的一个工具回归。
+- **你自己的业务数据也进动作空间**：下面的研发管理模块不只是给 Agent 看的界面，它通过与文件、
+  数据库同源的 `data.*` 类型化动作被读写——建迭代、改需求状态、记一笔工时、删一条速记，
+  都过同一套风险分级与批准策略。
 - **速记**：常用数据随手记，一键复制、全局搜索（Ctrl+K）、密码脱敏、图片附件。
 - **问题记录**：轻量问题跟踪，本地标签分类，支持 AI 辅助分析与经验复用。
 - **云同步（可选）**：速记与问题记录的多设备端到端加密同步；服务端只见密文，配对码入伙、
   无需账号，可用 `server/` 内的零依赖 Node 服务自托管。
+
+### 研发管理（你自己的交付数据）
+
+个人 Agent 工作台需要一份「可供它施展」的数据。侧边栏的**研发**标签下六个模块就是你的交付数据所在之处，
+而且它们与其它能力一样，是 Agent 通过类型化动作直接读写的对象。
+
+- **概览**：今日行动（上线 / 逾期 / 待产品确认 / 工时汇总成一条）、KPI 数字条、本周上线、
+  迭代需求与问题合并而成的一条动态流水。认得工作日——周末不会催你记工时。
+- **领域与池**：你做的是哪些事（领域）、每个领域下挂了哪些代码池；支持按池 `git pull`、
+  发布健康度徽标，以及批量 / AI / 旧资料库导入。
+- **迭代**：主界面。每个迭代有阶段步进器、需求 → 子任务的两层树、工时登记、
+  「待产品确认」问答与截图、问题跟踪、文档，以及时间线视图。
+- **需求大盘**：把全部迭代的需求摊平成看板，按预估天数分档（小 / 中 / 大 / 未评估），
+  每项给出预估、实际与超额。
+- **发布**：所有池的发布健康度总览，以及按「打包 → 上传 → 发布 → 验证」逐步记录的发布工作台，
+  另有「上线包」三表编辑与 Excel 导出。
+- **任务与工时**：月度工时趋势、按日流水、工时导出 Excel，以及会记住你偏好的 AI 周报。
 
 **纯本地、无账号、开源免费（MIT）**：数据全部保存在本机（桌面端为本地 JSON，浏览器端为
 IndexedDB）；无强制云同步；遥测是**可选开启**——一次性弹窗决定，且上报端点默认为空，

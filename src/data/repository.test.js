@@ -1,6 +1,6 @@
 // 数据访问层单测：内存后端模拟 Rust 侧 load/save_data_versioned 的乐观锁语义。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { addSubTask } from "../tasks.js";
+import { addSubTask } from "../iterations.js";
 
 const syncMock = vi.hoisted(() => ({
   markTombstone: vi.fn(async () => {}),

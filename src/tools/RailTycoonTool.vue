@@ -21,7 +21,7 @@
 // 始发站**同样要记「未来 3 站」提示**（它的提示覆盖第 2~4 站），只是没有哪条提示会回头覆盖它。
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { flushToolbox, loadToolbox, saveToolbox } from "../toolboxStore.js";
 import {
   buildAdvice,
@@ -1242,7 +1242,7 @@ onBeforeUnmount(() => {
 /* 按钮按整块换行，不要在按钮内部把文字折成三行 */
 .action-bar .btn-ghost { white-space: nowrap; }
 /* 悬浮开关是纯图标按钮：让掉一半左右内边距，顶栏在 640px（英文文案最长）下才放得下 4 个控件 */
-.action-bar .btn-ghost.icon { padding: 6px 8px; }
+.action-bar .btn-ghost.icon { padding: var(--sp-1) var(--sp-2); }
 .rail-tool.is-full > .action-bar { flex-shrink: 0; }
 .action-spacer { flex: 1; min-width: 0; }
 .badge-route { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
@@ -1365,11 +1365,11 @@ onBeforeUnmount(() => {
 /* 「当前站」/「下一站」：两张卡各自在说哪一站，靠这一枚标签点明。
    做成 pill 但**不是按钮**：它没有任何交互，点它什么都不该发生——
    旧版这里是可点的「‹ 下一站 ›」，被当成「确认录入」按过。 */
-.hdr-tag { padding: 0 6px; border-radius: var(--r-pill); background: var(--well); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+.hdr-tag { padding: 0 var(--sp-1); border-radius: var(--r-pill); background: var(--well); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
 .quick-spacer { flex: 1; min-width: 0; }
 /* 头部的小动作按钮（清除本站 / 覆盖层关闭钮）。
    这一族原本是「上一站 / 下一站」翻站按钮，现在只服务「改记录」——高 24px。 */
-.qnav { display: inline-flex; align-items: center; justify-content: center; gap: 2px; height: 24px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--r-xs); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.qnav { display: inline-flex; align-items: center; justify-content: center; gap: 2px; height: 24px; padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--r-xs); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
 .qnav.icon { width: 26px; padding: 0; }
 .qnav:hover:not(:disabled) { background: var(--well-hover); color: var(--text); }
 .qnav:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1518,7 +1518,7 @@ onBeforeUnmount(() => {
 /* 危险的确认按钮走全局那套 .btn-outline.danger（浅底 + 同色边 + 同色字），
    只补一个紧凑尺寸：全局只有 .btn-outline.lg，而这一行要和旁边的 .btn-ghost.sm 同高。
    不去动全局按钮体系。 */
-.confirm-btns .btn-outline { padding: 6px 10px; font-size: var(--fs-sm); }
+.confirm-btns .btn-outline { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); }
 
 .side { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); overflow: auto; }
 .card { flex-shrink: 0; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }

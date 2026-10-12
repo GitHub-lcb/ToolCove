@@ -9,7 +9,7 @@
  * updatedAt 取值归一：数字毫秒与 ISO 字符串必须可比。
  *
  * `Number("2026-09-10T08:00:00.000Z")` 是 NaN → `|| 0` 会把这条记录判成「最旧」，
- * 于是远端必赢、本机改动永不被推送（tasks.js 写的是 ISO，见 data/repository.js 同名逻辑）。
+ * 于是远端必赢、本机改动永不被推送（iterations.js 写的是 ISO，见 data/repository.js 同名逻辑）。
  */
 export function stampOf(value) {
   const n = Number(value);

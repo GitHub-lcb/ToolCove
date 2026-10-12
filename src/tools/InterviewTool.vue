@@ -2,7 +2,8 @@
 // 面试刷题 · 桌面版面。
 //
 // 三块职责，全都不含规则：把筛选条件交给 filterQuestions、把自评交给 rate、把复习队列交给 dueQuestions。
-// 题库契约在 interviewBank.js，进度与间隔重复在 interviewProgress.js，导入解析在 interviewImport.js。
+// 题库契约在 interview/interviewBank.js，进度与间隔重复在 interview/interviewProgress.js，
+// 导入解析在 interview/interviewImport.js。
 //
 // 版面为什么长这样：
 //  - **左边列表右边详情**：刷题是「扫一批 → 挑一道 → 读完 → 自评 → 下一道」的循环，
@@ -14,7 +15,7 @@
 //  - **出处挂在题解末尾而不是开头**：先看答案再看「哪来的」，顺序反了会变成在读别人的仓库目录。
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import MarkdownRender from "./MarkdownRender.vue";
 import { openUrl } from "../platform/shell.js";
 import { loadToolbox, saveToolboxNow } from "../toolboxStore.js";
@@ -28,8 +29,8 @@ import {
   mergeBank,
   sourceLinks,
   topicsOf,
-} from "./interviewBank.js";
-import { exportBankJson, parseBank } from "./interviewImport.js";
+} from "./interview/interviewBank.js";
+import { exportBankJson, parseBank } from "./interview/interviewImport.js";
 import {
   advanceSession,
   createSave,
@@ -46,7 +47,7 @@ import {
   setNote,
   startSession,
   toggleStar,
-} from "./interviewProgress.js";
+} from "./interview/interviewProgress.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -645,7 +646,7 @@ function recordStars(id) {
 .head-stats { display: flex; align-items: center; gap: var(--sp-3); color: var(--muted); font-size: var(--fs-sm); }
 .head-stats b { color: var(--text); font-family: var(--font-num); font-size: var(--fs-md); }
 .pct { color: var(--primary-hover); font-family: var(--font-num); font-weight: 600; }
-.due { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: var(--r-pill); background: var(--amber-soft); color: var(--amber); font-size: var(--fs-xs); }
+.due { display: inline-flex; align-items: center; gap: 3px; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--amber-soft); color: var(--amber); font-size: var(--fs-xs); }
 
 .head-bar { display: flex; align-items: center; gap: var(--sp-4); }
 .tabs { display: flex; gap: var(--sp-1); }
@@ -699,7 +700,7 @@ function recordStars(id) {
 .dactions { display: flex; gap: var(--sp-2); }
 .question { margin: 0; font-size: var(--fs-xl); line-height: 1.55; }
 .tags { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.tag { padding: 1px 8px; border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); }
+.tag { padding: 1px var(--sp-2); border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); }
 
 .reveal-bar { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .reveal-tip { color: var(--muted); font-size: var(--fs-sm); }

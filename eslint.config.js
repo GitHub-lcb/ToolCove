@@ -75,6 +75,14 @@ export default [
     },
   },
   {
+    // 分层边界不在 lint 里做，见 `src/importBoundaries.test.js`。
+    //
+    // 试过 `no-restricted-imports` 的 patterns，但它匹配的是**写法字面量**而不是解析后的路径：
+    // 同一个目标从 `src/platform/invoke.js` 写 `../shared.js`、从 `src/platform/backends/browser.js`
+    // 写 `../../shared.js`，于是一条 glob 既会漏判又会误伤「platform 内部互引」（`../kv.js` 对
+    // backends 是同级、对 platform 根就是越界）。glob 得按目录深度逐个枚举，根目录一分区就全废。
+    // 那条测试按解析后的真实路径判定，一次写准，并且带「注入违规必须失败」的自检。
+    //
     // 测试与 E2E：fixture 与临时变量多，未使用变量只作提示；其它规则照旧
     files: ["**/*.test.js", "e2e/**/*.js"],
     rules: {

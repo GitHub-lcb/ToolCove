@@ -9,7 +9,7 @@
 // 不引 XML 解析库一样：单测跑在 node 环境、三端一致、错误定位可控。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { loadToolbox, saveToolbox } from "../toolboxStore.js";
 import { inferSchema, sampleFromSchema, summarizeSchema, validateSchema } from "../jsonSchema.js";
 
@@ -203,7 +203,7 @@ watch([json, schemaText, mode], () => {
 .tool-schema {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
 }
@@ -212,7 +212,7 @@ watch([json, schemaText, mode], () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .s-spacer {
@@ -227,7 +227,7 @@ watch([json, schemaText, mode], () => {
 }
 
 .s-seg button {
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 0;
   background: var(--card);
   color: var(--muted);
@@ -244,7 +244,7 @@ watch([json, schemaText, mode], () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -271,7 +271,7 @@ watch([json, schemaText, mode], () => {
 .s-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--sp-3);
   flex: 1;
   min-height: 0;
 }
@@ -292,7 +292,7 @@ watch([json, schemaText, mode], () => {
 .s-output {
   flex: 1;
   min-height: 180px;
-  padding: 10px;
+  padding: var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -308,7 +308,7 @@ watch([json, schemaText, mode], () => {
 }
 
 .s-result {
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 8px;
   background: var(--soft);
 }
@@ -320,7 +320,7 @@ watch([json, schemaText, mode], () => {
 }
 
 .s-bad {
-  margin: 0 0 6px;
+  margin: 0 0 var(--sp-1);
   color: var(--danger);
   font-size: 0.85rem;
   font-weight: 600;
@@ -337,13 +337,13 @@ watch([json, schemaText, mode], () => {
 
 .s-errors li {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   padding: 3px 0;
 }
 
 .s-path {
   flex: 0 0 auto;
-  padding: 1px 6px;
+  padding: 1px var(--sp-1);
   border-radius: 4px;
   background: var(--card);
   color: var(--primary);

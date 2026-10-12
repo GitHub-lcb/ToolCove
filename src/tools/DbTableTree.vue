@@ -1,7 +1,7 @@
 <script setup>
 // 表结构树（DbTool 拆出）：只读展示 + 交互委托给父组件（父持有 meta/展开态等状态）
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { quoteIdent } from "../db.js";
 
 const { t } = useI18n();
@@ -101,10 +101,10 @@ const emit = defineEmits(["update:tableFilter"]);
 </template>
 
 <style scoped>
-.meta-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; border-top: 1px solid var(--border); padding-top: 12px; }
+.meta-pane { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; flex: 1; border-top: 1px solid var(--border); padding-top: var(--sp-4); }
 /* Navicat 式分组：表 / 视图，分组标题 + 计数胶囊 */
-.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
-.nav-group-title { display: flex; align-items: center; gap: 5px; padding: 2px 6px; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); letter-spacing: 0.3px; user-select: none; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-1); }
+.nav-group-title { display: flex; align-items: center; gap: 5px; padding: 2px var(--sp-1); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); letter-spacing: 0.3px; user-select: none; }
 .nav-group-title .icon { color: var(--faint); }
 .nav-group-cnt { margin-left: auto; padding: 0 7px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); background: var(--well); border-radius: var(--r-pill); line-height: 1.6; }
 .meta-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: auto; scrollbar-color: var(--border-strong) transparent; }
@@ -114,10 +114,10 @@ const emit = defineEmits(["update:tableFilter"]);
 .meta-tree { display: flex; flex-direction: column; gap: 1px; min-height: 0; }
 .tree-item { border-radius: var(--r-xs); transition: background 0.15s; }
 .tree-item:hover { background: var(--well); }
-.tree-row { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: var(--r-xs); transition: background 0.15s; }
+.tree-row { display: flex; align-items: center; gap: 4px; padding: 4px var(--sp-1); border-radius: var(--r-xs); transition: background 0.15s; }
 .tree-row:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 /* 表名过滤框（与全局 search-mini 同语言） */
-.table-filter { width: 100%; padding: 6px 10px; margin-bottom: 4px; border: 1px solid transparent; border-radius: var(--r-sm); font-size: var(--fs-sm); font-family: inherit; background: color-mix(in srgb, var(--text-weak) 9%, transparent); color: var(--text); outline: none; transition: background 0.15s, border-color 0.15s; box-sizing: border-box; }
+.table-filter { width: 100%; padding: var(--sp-1) var(--sp-3); margin-bottom: 4px; border: 1px solid transparent; border-radius: var(--r-sm); font-size: var(--fs-sm); font-family: inherit; background: color-mix(in srgb, var(--text-weak) 9%, transparent); color: var(--text); outline: none; transition: background 0.15s, border-color 0.15s; box-sizing: border-box; }
 .table-filter::placeholder { color: var(--muted); }
 .table-filter:focus { background: var(--card); border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .tree-caret { display: grid; place-items: center; width: 16px; height: 16px; flex-shrink: 0; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; transition: all 0.15s; }
@@ -130,21 +130,21 @@ const emit = defineEmits(["update:tableFilter"]);
 /* 类型徽标：表 = teal 胶囊，视图 = 紫胶囊 */
 .tree-kind { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 600; padding: 0 7px; border-radius: var(--r-pill); background: var(--teal-soft); color: var(--teal-deep); line-height: 1.7; }
 .tree-kind.view { background: var(--accent-soft); color: var(--accent-deep); }
-.tree-cols { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--border); }
-.tree-col { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--fs-xs); cursor: copy; transition: background 0.15s; }
+.tree-cols { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 var(--sp-1) 18px; padding-left: var(--sp-2); border-left: 1px solid var(--border); }
+.tree-col { display: flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-1); border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--fs-xs); cursor: copy; transition: background 0.15s; }
 .tree-col:hover { background: var(--primary-soft); }
 .col-pk { flex-shrink: 0; font-size: var(--fs-xs); line-height: 1.5; padding: 0 4px; border-radius: 3px; color: transparent; border: 1px solid transparent; }
 .col-pk.on { color: var(--warn); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: rgba(217, 119, 6, 0.08); }
 .col-name { flex-shrink: 0; color: var(--text); white-space: nowrap; }
 .col-type { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .col-comment { flex-shrink: 0; max-width: 70px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
-.meta-tip { padding: 2px 6px; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
+.meta-tip { padding: 2px var(--sp-1); font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 .meta-tip.err { color: var(--danger); }
 
-.pane-head { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; }
+.pane-head { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--sp-1); }
 .pane-head b { font-size: var(--fs-md); font-weight: 700; }
-.pane-ops { display: inline-flex; align-items: center; gap: 6px; }
-.mini-btn { display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; font-size: var(--fs-sm); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
+.pane-ops { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.mini-btn { display: inline-flex; align-items: center; gap: 3px; padding: 4px var(--sp-2); font-size: var(--fs-sm); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .mini-btn:hover { color: var(--primary); border-color: var(--primary); }
 /* 纯图标按钮：padding 0 + grid 居中，避免 UA 默认 padding 偏移 */
 .mini-btn.icon { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; }

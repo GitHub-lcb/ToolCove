@@ -6,16 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <script>
+      // 首帧主题：必须在样式表与 JS 之前跑，否则手动选深色的用户会先看到一帧浅色。
+      // 与 src/theme.js 的 applyThemeAttribute 是同一套规则，两道保险：
+      //   themeMode = system → 不加 data-theme，交给 CSS 媒体查询
+      //   themeMode = light/dark → 显式写 data-theme
+      // 密度同理挂到 <html>（旧实现绑在 .shell 上，独立工具窗口拿不到）。
       (() => {
-        const mode = localStorage.getItem("themeMode") || "system";
-        const dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.bootTheme = dark ? "dark" : "light";
-        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        try {
+          const root = document.documentElement;
+          const mode = localStorage.getItem("themeMode");
+          if (mode === "dark" || mode === "light") root.setAttribute("data-theme", mode);
+          root.style.colorScheme = mode === "dark" || mode === "light" ? mode : "light dark";
+          if (localStorage.getItem("density") === "comfort") root.setAttribute("data-density", "comfort");
+        } catch {
+          /* localStorage 不可用（隐私模式）：跟随系统即可 */
+        }
       })();
     </script>
     <style>
-      html, body, #app { min-height: 100%; margin: 0; background: var(--bg, #f6f8fa); }
-      html[data-boot-theme="dark"], html[data-boot-theme="dark"] body, html[data-boot-theme="dark"] #app { background: #0d1117; }
+      /* 样式表加载前的兜底背景，避免白闪。值必须与 tokens.css 的 --bg 一致。 */
+      html, body, #app { min-height: 100%; margin: 0; background: #f6f8fa; }
+      html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] #app { background: #0d1117; }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme="light"]), html:not([data-theme="light"]) body, html:not([data-theme="light"]) #app { background: #0d1117; }
+      }
     </style>
     <title>ToolCove</title>
   </head>

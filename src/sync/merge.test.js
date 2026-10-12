@@ -91,7 +91,7 @@ describe("collectPushes / pruneTombstones", () => {
     expect(pushes.map((p) => p.record ? p.record.id : p.id)).toEqual(["b", "d"]);
   });
 
-  it("ISO 时间戳与毫秒数字可比（tasks.js 写的是 ISO）", () => {
+  it("ISO 时间戳与毫秒数字可比（iterations.js 写的是 ISO）", () => {
     // Number("2026-09-10T08:00:00.000Z") = NaN → 旧实现一律 || 0，这条记录会被判成最旧：
     // 远端必赢（本机改动被覆盖）、而且永远进不了推送清单。
     const iso = new Date(1500).toISOString();

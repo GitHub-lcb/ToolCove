@@ -202,7 +202,7 @@ watch([input, mode, xpath], () => {
 .tool-xml {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
 }
@@ -211,7 +211,7 @@ watch([input, mode, xpath], () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .x-spacer {
@@ -226,7 +226,7 @@ watch([input, mode, xpath], () => {
 }
 
 .x-seg button {
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 0;
   background: var(--card);
   color: var(--muted);
@@ -240,7 +240,7 @@ watch([input, mode, xpath], () => {
 }
 
 .x-btn {
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -262,7 +262,7 @@ watch([input, mode, xpath], () => {
 .x-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--sp-3);
   flex: 1;
   min-height: 0;
 }
@@ -277,14 +277,14 @@ watch([input, mode, xpath], () => {
 .x-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   font-size: 0.8rem;
   color: var(--muted);
 }
 
 .x-xpath {
   flex: 1;
-  padding: 3px 8px;
+  padding: 3px var(--sp-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -296,7 +296,7 @@ watch([input, mode, xpath], () => {
 .x-text {
   flex: 1;
   min-height: 240px;
-  padding: 10px;
+  padding: var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -310,7 +310,7 @@ watch([input, mode, xpath], () => {
 .x-back {
   flex: 1;
   min-height: 80px;
-  padding: 8px;
+  padding: var(--sp-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--soft);
@@ -321,7 +321,7 @@ watch([input, mode, xpath], () => {
 
 .x-err {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 6px;
   background: var(--danger-soft);
   color: var(--danger);
@@ -330,7 +330,7 @@ watch([input, mode, xpath], () => {
 
 .x-ok {
   margin: 0;
-  padding: 6px 10px;
+  padding: var(--sp-1) var(--sp-3);
   border-radius: 6px;
   background: var(--ok-soft);
   color: var(--ok);

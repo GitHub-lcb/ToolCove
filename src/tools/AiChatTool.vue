@@ -2,7 +2,7 @@
 // AI 对话工具：多会话管理 + 流式对话（可停止）+ 图片输入 + 提示词预设 + Markdown 渲染。
 // 会话与预设持久化走 toolboxStore（chat / chatPresets）；图片落盘 images/ 目录（JSON 只存文件名，显示 URL 见 platform/image.js）。
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import MarkdownRender from "./MarkdownRender.vue";
 import { aiChatStream, isAIConfigured } from "../ai.js";
 import { payloadText } from "../agent/timeline.js";
@@ -16,7 +16,7 @@ import {
   trimMessages,
   buildContextMessages,
 } from "../chatSession.js";
-import { askConfirm } from "../confirm.js";
+import { askConfirm } from "../ui/confirm.js";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { imageSrc } from "../platform/image.js";
@@ -483,31 +483,31 @@ function removePreset(p) {
   grid-template-columns: 240px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  gap: 14px;
+  gap: var(--sp-5);
 }
-.mode-bar { display:flex; gap:4px; padding:6px 10px; border-bottom:1px solid var(--border); }
-.mode-bar button, .agent-history button { border:1px solid var(--border); background:var(--card); color:var(--text-dim); border-radius:6px; padding:4px 8px; cursor:pointer; }
+.mode-bar { display:flex; gap:4px; padding:var(--sp-1) var(--sp-3); border-bottom:1px solid var(--border); }
+.mode-bar button, .agent-history button { border:1px solid var(--border); background:var(--card); color:var(--text-dim); border-radius:6px; padding:4px var(--sp-2); cursor:pointer; }
 .mode-bar button.cur { background:var(--primary-soft); color:var(--primary); border-color:var(--primary); }
-.agent-history { display:flex; gap:6px; align-items:center; padding:5px 10px; font-size:12px; color:var(--text-dim); overflow:auto; }
+.agent-history { display:flex; gap:var(--sp-1); align-items:center; padding:5px var(--sp-3); font-size:12px; color:var(--text-dim); overflow:auto; }
 .agent-history button { white-space:nowrap; }
 /* Agent 任务模式：紧凑只读时间线 + 内联确认（完整视图在 Agent 工作台） */
-.agent-run { display:flex; flex-direction:column; gap:8px; padding:10px 12px; }
+.agent-run { display:flex; flex-direction:column; gap:var(--sp-2); padding:var(--sp-3) var(--sp-4); }
 .agent-empty { margin:0; font-size:12px; color:var(--text-dim); }
-.agent-step { display:flex; flex-direction:column; gap:4px; padding:8px 10px; font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
+.agent-step { display:flex; flex-direction:column; gap:4px; padding:var(--sp-2) var(--sp-3); font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
 .agent-step b { color:var(--text-dim); font-weight:600; }
 .agent-step code { color:var(--primary); }
-.agent-step pre { margin:0; padding:6px 8px; max-height:180px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
+.agent-step pre { margin:0; padding:var(--sp-1) var(--sp-2); max-height:180px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
 .agent-step .error { color:var(--danger); }
-.agent-confirm { display:flex; flex-direction:column; gap:6px; padding:10px; font-size:12px; background:var(--card); border:1px solid var(--primary); border-radius:6px; }
-.agent-confirm pre { margin:0; padding:6px 8px; max-height:140px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
-.ac-actions { display:flex; gap:6px; justify-content:flex-end; }
-.agent-answer { padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
+.agent-confirm { display:flex; flex-direction:column; gap:var(--sp-1); padding:var(--sp-3); font-size:12px; background:var(--card); border:1px solid var(--primary); border-radius:6px; }
+.agent-confirm pre { margin:0; padding:var(--sp-1) var(--sp-2); max-height:140px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
+.ac-actions { display:flex; gap:var(--sp-1); justify-content:flex-end; }
+.agent-answer { padding:var(--sp-3) var(--sp-4); background:var(--card); border:1px solid var(--border); border-radius:6px; }
 .side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   min-height: 0;
-  padding: 12px;
+  padding: var(--sp-4);
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
@@ -517,7 +517,7 @@ function removePreset(p) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1);
   padding: 7px 0;
   font-weight: 600;
   color: #fff;
@@ -542,7 +542,7 @@ function removePreset(p) {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 7px 8px;
+  padding: 7px var(--sp-2);
   border-radius: var(--r-sm);
   cursor: pointer;
   transition: background 0.15s;
@@ -593,7 +593,7 @@ function removePreset(p) {
 .rename-input {
   flex: 1;
   min-width: 0;
-  padding: 2px 6px;
+  padding: 2px var(--sp-1);
   font-size: var(--fs-md);
   color: var(--text);
   background: var(--well);
@@ -602,7 +602,7 @@ function removePreset(p) {
   outline: none;
 }
 .side-empty {
-  margin: 8px 0;
+  margin: var(--sp-2) 0;
   font-size: var(--fs-sm);
   color: var(--muted);
   text-align: center;
@@ -610,15 +610,15 @@ function removePreset(p) {
 .preset-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 .preset-btn {
   flex: 1;
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--text-soft);
   background: var(--well);
@@ -639,7 +639,7 @@ function removePreset(p) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px;
+  padding: var(--sp-1);
   background: var(--card);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -650,7 +650,7 @@ function removePreset(p) {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 6px 8px;
+  padding: var(--sp-1) var(--sp-2);
   background: transparent;
   border: none;
   border-radius: var(--r-xs);
@@ -677,7 +677,7 @@ function removePreset(p) {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 .msgs {
   flex: 1;
@@ -685,7 +685,7 @@ function removePreset(p) {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   padding: 4px 2px;
 }
 .msgs-empty {
@@ -704,7 +704,7 @@ function removePreset(p) {
 }
 .bubble {
   max-width: 82%;
-  padding: 9px 12px;
+  padding: 9px var(--sp-4);
   border-radius: var(--r-md);
   font-size: var(--fs-md);
   line-height: var(--lh-body);
@@ -725,7 +725,7 @@ function removePreset(p) {
 .msg-imgs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1);
   margin-bottom: 4px;
 }
 .msg-img,
@@ -746,8 +746,8 @@ function removePreset(p) {
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
@@ -755,7 +755,7 @@ function removePreset(p) {
 .img-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .pick-img {
   position: relative;
@@ -777,7 +777,7 @@ function removePreset(p) {
 }
 .input {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   font-family: inherit;
   font-size: var(--fs-md);
   color: var(--text);
@@ -794,13 +794,13 @@ function removePreset(p) {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .act {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
+  padding: 5px var(--sp-4);
   font-size: var(--fs-sm);
   border-radius: var(--r-sm);
   cursor: pointer;
@@ -843,7 +843,7 @@ function removePreset(p) {
 .preset-dlg {
   width: 480px;
   max-width: 90vw;
-  padding: 14px;
+  padding: var(--sp-5);
   background: var(--card);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -852,7 +852,7 @@ function removePreset(p) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
 }
 .dlg-head .x {
   display: grid;
@@ -873,15 +873,15 @@ function removePreset(p) {
 .dlg-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
   max-height: 50vh;
   overflow-y: auto;
 }
 .preset-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-xs);
 }
 .preset-row:hover {
@@ -918,15 +918,15 @@ function removePreset(p) {
 }
 .preset-add {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--card-border);
 }
 .preset-add input {
   flex: 1;
   min-width: 0;
-  padding: 5px 8px;
+  padding: 5px var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--text);
   background: var(--well);
@@ -941,7 +941,7 @@ function removePreset(p) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 12px;
+  padding: 5px var(--sp-4);
   font-size: var(--fs-sm);
   font-weight: 600;
   color: #fff;

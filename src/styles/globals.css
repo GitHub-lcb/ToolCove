@@ -1,0 +1,361 @@
+/* ============================================================
+   ToolCove 全局样式（应用级）
+   ============================================================
+   这里只放**跨视图共享且不属于组件原语**的东西：
+     · <body> 基线与背景氛围
+     · 旧全局工具类的兼容别名（.btn-* / .modal / .st-chip / .skel-block）
+     · 应用外壳专属的全局件（右键菜单、ConfirmDialog 过渡）
+
+   为什么保留旧类名而不是直接换掉：审计实测 .btn-primary/.btn-outline/.btn-ghost
+   被 20+ 处引用、.modal-* 被 9 处引用、.st-chip 被 4 个视图引用。一次性改完这些
+   调用点是 50+ 处机械替换，混在"重建设计系统"这一轮里会让回归难以定位。
+   因此本文件把旧类名**映射到新原语的取值**（而不是各留一份定义），
+   于是"改一处、两边都变"，同时改造可以逐屏进行。
+
+   新代码请直接用 primitives.css 的 .tc-* 类；本文件的别名是过渡期产物，
+   价值在于让旧类名不再各写一套数值。
+   ============================================================ */
+
+/* ============================================================
+   <body> 基线
+   ============================================================ */
+* { box-sizing: border-box; }
+
+/* 表单控件 UA 默认不继承字体（按钮/输入框会渲染成 Arial），全局归一到应用字体栈 */
+button, input, select, textarea { font-family: inherit; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(rgba(31, 35, 40, 0.03) 1px, transparent 1.4px),
+    radial-gradient(900px 480px at 85% -6%, rgba(9, 105, 218, 0.06), transparent 60%),
+    radial-gradient(800px 460px at -4% 102%, rgba(56, 139, 253, 0.05), transparent 55%),
+    var(--bg-grad);
+  background-size: 22px 22px, auto, auto, auto;
+  background-attachment: fixed;
+}
+
+/* 深色下的背景氛围：光晕更收敛，专注内容 */
+@media (prefers-color-scheme: dark) {
+  body {
+    background:
+      radial-gradient(1200px 600px at 78% -8%, rgba(56, 139, 253, 0.13), transparent 60%),
+      radial-gradient(1000px 520px at 100% 105%, rgba(88, 166, 255, 0.09), transparent 55%),
+      var(--bg-grad);
+  }
+}
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 600px at 78% -8%, rgba(56, 139, 253, 0.13), transparent 60%),
+    radial-gradient(1000px 520px at 100% 105%, rgba(88, 166, 255, 0.09), transparent 55%),
+    var(--bg-grad);
+}
+
+/* 滚动条：细、低对比，避免在密集面板里抢注意力 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-steel) transparent;
+}
+
+/* ============================================================
+   兼容别名：旧按钮体系 → 新原语取值
+   ============================================================ */
+.btn-primary,
+.btn-outline,
+.btn-ghost,
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.btn-primary:active, .btn-outline:active, .btn-ghost:active, .icon-btn:active { transform: translateY(1px); }
+.btn-primary:disabled, .btn-outline:disabled, .btn-ghost:disabled, .icon-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary:focus-visible, .btn-outline:focus-visible, .btn-ghost:focus-visible, .icon-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.btn-primary {
+  padding: 9px var(--sp-6);
+  background: var(--primary);
+  color: var(--text-invert);
+  border: none;
+  font-size: var(--fs-base);
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-primary.sm { padding: 7px var(--sp-4); font-size: var(--fs-md); }
+
+.btn-outline {
+  padding: var(--sp-2) var(--sp-5);
+  background: var(--card);
+  color: var(--primary);
+  border: 1px solid var(--border-blue);
+  font-size: var(--fs-md);
+}
+.btn-outline:hover:not(:disabled) { background: var(--primary-soft); }
+.btn-outline.lg { padding: var(--sp-3) 18px; font-size: var(--fs-base); }
+.btn-outline.danger { color: var(--danger); border-color: var(--border-danger); }
+.btn-outline.danger:hover:not(:disabled) { background: var(--danger-soft); }
+
+.btn-ghost {
+  padding: 7px 11px;
+  background: var(--ghost);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: var(--fs-md);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--well-hover); }
+.btn-ghost.sm { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); }
+.btn-ghost.xs { padding: 4px var(--sp-2); font-size: var(--fs-xs); }
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: var(--card);
+  color: var(--text-dim);
+  border: 1px solid var(--border-strong);
+}
+.icon-btn:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+.icon-btn:disabled:hover { color: var(--text-dim); border-color: var(--border-strong); background: var(--card); }
+.icon-btn.xs { width: 24px; height: 24px; border-radius: var(--r-xs); }
+
+/* ============================================================
+   兼容别名：弹窗 → 新原语取值
+   ============================================================ */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-7);
+  background: var(--overlay);
+}
+.modal {
+  width: 540px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px;
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop);
+}
+.modal h2 { margin: 0 0 var(--sp-7); font-size: var(--fs-xl); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-2); }
+
+/* ============================================================
+   状态胶囊 .st-chip / 类型胶囊 .tc-chip
+   ============================================================
+   取值全部改走状态层 token（--run/--wait/--done/--fail），
+   于是同一个语义在浅色与深色下由**同一处**决定，不再各写一遍覆盖。
+   ============================================================ */
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.st-chip.sm { padding: 2px var(--sp-2); font-size: var(--fs-xs); flex-shrink: 0; }
+.st-plan    { color: var(--run-deep);  background: var(--run-soft); }
+.st-dev     { color: var(--primary);   background: var(--primary-soft); }
+.st-test    { color: var(--sky-deep);  background: var(--sky-soft); }
+.st-pending { color: var(--wait-deep); background: var(--wait-soft); }
+.st-wait    { color: var(--sky-deep);  background: var(--sky-soft); }
+.st-live    { color: var(--done-deep); background: var(--done-soft); }
+.st-done    { color: var(--done-deep); background: var(--done-soft); }
+.st-fail    { color: var(--fail-deep); background: var(--fail-soft); }
+
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tc-chip.sm { padding: 3px 9px; font-size: var(--fs-xs); }
+.tc-danger  { color: var(--fail-deep);  background: var(--fail-soft); }
+.tc-primary { color: var(--primary);    background: var(--primary-soft); }
+.tc-amber   { color: var(--wait-deep);  background: var(--wait-soft); }
+.tc-neutral { color: var(--text-soft);  background: var(--well); }
+.tc-teal    { color: var(--teal-deep);  background: var(--teal-soft); }
+.tc-sky     { color: var(--sky-deep);   background: var(--sky-soft); }
+.tc-accent  { color: var(--accent-hover); background: var(--accent-soft); }
+.tc-note    { color: var(--wait-deep);  background: var(--wait-soft); }
+
+/* ============================================================
+   兼容别名：工具面板 → 新原语取值
+   ============================================================
+   `.panel` / `.panel-head` 此前在 8–12 个工具文件里同值重复
+   （`.panel-head` 那一条在 10 个文件里**逐字相同**）。各工具仍保留自己
+   scoped 的子元素规则（`.panel-head b` / `.panel-head span` 各不相同），
+   但底座——外框、圆角、标题条的底色与分隔线——收敛到这一处。
+   ============================================================ */
+.panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.panel-head {
+  flex-shrink: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--card-soft);
+}
+
+/* ============================================================
+   关于 `.field`：这里**刻意不做**全局别名
+   ============================================================
+   审计统计 `.field` 出现在 18 个文件里，但它们其实是**两个不同的东西**：
+     A. 工具面板里的纵向表单字段（7 个工具逐字相同：
+        flex column + gap --sp-1）→ 已由 primitives.css 的 `.tc-field` 覆盖
+     B. 工作台视图里的裸标签容器（`display:block; margin-bottom`）→ 各视图自有
+
+   同名不同义。若图省事统一成一个全局 `.field`，两套布局会互相污染
+   （A 的 flex 会毁掉 B 里依赖块级换行的排版）。所以这里**不提供**全局别名：
+   需要共用时显式改用 `.tc-field`，把语义写进类名里。
+   ============================================================ */
+
+/* ============================================================
+   骨架屏
+   ============================================================ */
+.skel-block {
+  background: linear-gradient(90deg, var(--well) 25%, var(--well-hover) 37%, var(--well) 63%);
+  background-size: 400% 100%;
+  animation: skelShimmer 1.4s ease infinite;
+  border-radius: var(--r-md);
+}
+@keyframes skelShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ============================================================
+   全局右键菜单（应用外壳专属）
+   ============================================================ */
+.ctx-menu {
+  position: fixed;
+  z-index: 400;
+  min-width: 168px;
+  padding: var(--sp-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-pop);
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 7px var(--sp-3);
+  border: none;
+  background: none;
+  border-radius: var(--r-xs);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.ctx-item:hover { background: var(--primary-soft); color: var(--primary); }
+.ctx-item.danger:hover { background: var(--danger-soft); color: var(--danger-deep); }
+
+/* 右键菜单 / ConfirmDialog 淡入淡出（全局定义；ConfirmDialog 的 scoped 同名类不受影响） */
+.cf-fade-enter-active, .cf-fade-leave-active { transition: opacity var(--dur-base) var(--ease-out); }
+.cf-fade-enter-from, .cf-fade-leave-to { opacity: 0; }
+
+/* ============================================================
+   兼容别名：空状态 → 新原语取值
+   ============================================================
+   审计实测「空状态」这一件事在**9 个文件里各写一遍**，其中 7 份逐字相同
+   （`.empty` + `.empty-ico` + h2 + p 的组合）。各视图自己的 `.empty` 定义
+   留在 scoped 块里不动——它们只差 padding，而 scoped 优先级更高；
+   但下面这条把**共有的那部分**（居中、间距、图标底、文字层级）收敛到一处，
+   于是"空状态该长什么样"只有一个真相，各视图只在真正不同处覆盖。
+
+   作用域说明：这些旧类名只出现在 src/ 根级视图与 src/tools/ 的局部块里，
+   不会泄漏到手机端（mobile/app 用自己的 shell.css，互不引用）。
+   ============================================================ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 56px 20px 是各视图空态沿用了很久的取值（7 个文件逐字相同），
+     迁移时保持不变，避免"抽公共样式"顺带改了观感。 */
+  gap: var(--sp-3);
+  padding: 56px var(--sp-7);
+  text-align: center;
+  color: var(--muted);
+}
+.empty h2,
+.empty h3 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  color: var(--text);
+}
+.empty p {
+  margin: 0;
+  max-width: 420px;
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
+}
+.empty-ico {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+/* 小尺寸空态（WorkOverview 的卡片内空态） */
+.empty.sm .empty-ico,
+.empty-ico.sm { width: 44px; height: 44px; }
+
+/* ============================================================
+   兼容别名：加载指示 → 新原语取值
+   ============================================================
+   `@keyframes spin` 此前在 **10 个文件里各写一份**（DomainView / PoolStatus /
+   PoolPublish / IterationView / RequirementBoardView / ReleaseView /
+   CryptoTool / DbTool / FileTool / NetworkTool），`.spin` 也有 6 份。
+   这里给出全局的一份，各视图的 scoped 定义仍可覆盖尺寸，但**关键帧本身只有一处**。
+   ============================================================ */
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+.spin { animation: tc-spin 0.9s linear infinite; }
+.spin.slow { animation-duration: 1.4s; }

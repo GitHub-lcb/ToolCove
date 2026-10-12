@@ -4,7 +4,7 @@
 // SettingsView 通过本模块做 创建/加入/重生成/吊销 等元操作，并订阅状态事件。
 import { invoke } from "../platform/invoke.js";
 import { createSyncEngine } from "./engine.js";
-import { normalizeSync } from "../settingsConfig.js";
+import { normalizeSync } from "../app/settingsConfig.js";
 import { encryptValue, decryptValue } from "../secure.js";
 import { cachedDerive } from "./crypto.js";
 import { KINDS, load as loadKind, applyRemote } from "../data/repository.js";

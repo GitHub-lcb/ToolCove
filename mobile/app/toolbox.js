@@ -7,6 +7,68 @@
 //
 // `ready` 为 false 的条目在界面上**如实标注「迁移中」**，而不是画一个点不动的入口——
 // 这是从旧悬浮面板学到的：看起来能用但点了没反应，比明确说没做更糟。
+//
+// 图标：这里维护一份精简映射，**不**从 src/toolboxTools.js 引。
+//
+// 试过直接复用桌面注册表（那才是真正���一真相），但那条路走不通：
+// `src/toolboxTools.js` 顶部 import 了 `i18n/index.js`，而后者 import JSON 词条。
+// 而 `e2e/helpers.js:579` 会用 **原生 Node 的 ESM loader** 直接 import 本文件
+// （断言桌面工具清单与手机端一致），Node 不认 Vite 的 JSON 插件，于是整个
+// Playwright 套件在「收集用例」阶段就崩掉（Total: 0 tests in 0 files）。
+//
+// 所以取舍是：图标映射在本文件里显式写死，代价是桌面改图标时要同步改这里——
+// 由 toolboxIcons.test.js 的「key 必须存在于桌面注册表」与 parity 断言兜底。
+const DESKTOP_ICON = Object.freeze({
+  json: "braces",
+  xml: "layers",
+  schema: "layout",
+  markdown: "note",
+  table: "table",
+  convert: "repeat",
+  diff: "text",
+  time: "clock",
+  crypto: "shield",
+  generator: "dice",
+  db: "database",
+  request: "send",
+  downloader: "download",
+  network: "network",
+  file: "folder",
+  image: "image",
+  pdf: "file",
+  label: "printer",
+  chat: "chat",
+  checkin: "check",
+  prompt: "wand",
+  netcapture: "search",
+  screenshot: "crop",
+  disk: "hard-drive",
+  rail: "train",
+  interview: "book-open",
+});
+
+const DESKTOP_GROUP_ICON = Object.freeze({
+  data: "braces",
+  network: "network",
+  file: "folder",
+  development: "wrench",
+  ai: "sparkles",
+  game: "train",
+  arcade: "target",
+});
+
+/** 桌面端没有该工具时的兜底图形（键名不认识时不该画空白） */
+const FALLBACK_ICON = "wrench";
+
+/** 工具图标名（与桌面端注册表一致，取值抄自 src/toolboxTools.js） */
+export function iconOfTool(tool) {
+  return DESKTOP_ICON[tool?.key] || FALLBACK_ICON;
+}
+
+/** 分组图标名 */
+export function iconOfGroup(group) {
+  return DESKTOP_GROUP_ICON[group?.key] || FALLBACK_ICON;
+}
 
 /** 工具分组（key 与桌面端 toolboxTools.js 的 category 同名，便于对照）。 */
 export const TOOL_GROUPS = Object.freeze([

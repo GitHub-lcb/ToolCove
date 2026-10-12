@@ -8,7 +8,7 @@
 //
 // settings.agent 是用户可改的 JSON，永不信任：maxSteps / retries / requireConfirmation
 // 都在这里重算，越界值落回默认，防止手改配置绕过运行时的受控边界。
-import { AGENT_CONFIRM_POLICIES, AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../settingsConfig.js";
+import { AGENT_CONFIRM_POLICIES, AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../app/settingsConfig.js";
 import { isDesktop } from "../platform/env.js";
 import { AGENT_TOOL_CATALOG, AGENT_TOOL_NAMES, AGENT_TOOL_BY_NAME } from "./catalog.js";
 import { createToolRegistry } from "./runtime.js";

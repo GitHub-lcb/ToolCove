@@ -461,14 +461,14 @@ onUnmounted(() => session?.stop());
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--text-invert); }
 .btn.danger { color: var(--danger); border-color: var(--border-danger); }
 .nc-conn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--r-xs); padding: var(--fs-sm); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }
-.nc-field { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.nc-field { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); }
 .nc-field.grow { flex: 1; min-width: 180px; }
-.nc-field input { flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); }
+.nc-field input { flex: 1; min-width: 0; padding: 3px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); }
 .nc-hint { flex-basis: 100%; font-size: var(--fs-xs); color: var(--text-weak); }
 .nc-field-wide { flex: 1 1 100%; align-items: flex-start; }
-.nc-field-wide textarea { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); resize: vertical; }
+.nc-field-wide textarea { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 3px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); resize: vertical; }
 .nc-hint-inline { flex-basis: auto; }
-.nc-mark { margin-left: auto; padding: 1px 6px; font-size: var(--fs-xs); border: 1px solid var(--border); border-radius: var(--r-xs); background: transparent; color: var(--text-weak); cursor: pointer; }
+.nc-mark { margin-left: auto; padding: 1px var(--sp-1); font-size: var(--fs-xs); border: 1px solid var(--border); border-radius: var(--r-xs); background: transparent; color: var(--text-weak); cursor: pointer; }
 .nc-mark.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .nc-status { margin: 0; font-size: var(--fs-sm); color: var(--text-weak); }
 .nc-status[data-tone="ok"] { color: var(--success); }
@@ -476,7 +476,7 @@ onUnmounted(() => session?.stop());
 .nc-status[data-tone="bad"] { color: var(--danger); }
 .nc-note { font-size: var(--fs-xs); color: var(--text-weak); }
 .nc-note summary { cursor: pointer; }
-.nc-note ul { margin: 6px 0 0; padding-left: 18px; line-height: var(--lh-body); }
+.nc-note ul { margin: var(--sp-1) 0 0; padding-left: 18px; line-height: var(--lh-body); }
 .nc-list-head { display: flex; align-items: center; gap: var(--r-xs); }
 .nc-count { font-size: var(--fs-xs); color: var(--text-weak); font-family: var(--font-num); }
 .nc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -501,5 +501,5 @@ onUnmounted(() => session?.stop());
 .nc-warns { margin: 0; padding-left: 18px; color: var(--warn); font-size: var(--fs-xs); line-height: var(--lh-body); }
 .nc-logs { font-size: var(--fs-xs); color: var(--text-weak); }
 .nc-logs summary { cursor: pointer; }
-.nc-logs ul { margin: 6px 0 0; padding-left: 18px; }
+.nc-logs ul { margin: var(--sp-1) 0 0; padding-left: 18px; }
 </style>

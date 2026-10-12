@@ -8,6 +8,8 @@
 // Phase 2 只接入「记录」；工作台 / 工具箱 / Agent / 设置按后续 Phase 逐个替换占位页。
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import Icon from "../../src/ui/Icon.vue";
+import { NAV_MODULES } from "../../src/app/navConfig.js";
 import RecordsView from "./RecordsView.vue";
 import WorkView from "./WorkView.vue";
 import ToolboxView from "./ToolboxView.vue";
@@ -23,17 +25,20 @@ const props = defineProps({
 
 const { t } = useI18n();
 
-/** 标签定义：key 与桌面端导航同名（nav.*），方便后续把同一模块的桌面视图移动端化。 */
-const TABS = [
-  { key: "records", labelKey: "nav.records", icon: "☰", ready: true },
-  { key: "work", labelKey: "nav.work", icon: "▤", ready: true },
-  { key: "toolbox", labelKey: "nav.toolbox", icon: "⚒", ready: true },
-  { key: "agent", labelKey: "nav.agent", icon: "✦", ready: true },
-  { key: "settings", labelKey: "nav.settings", icon: "⚙", ready: true },
-];
+/**
+ * 标签直接**复用桌面端的导航表**（src/app/navConfig.js 的 NAV_MODULES），不再各写一份。
+ *
+ * 为什么：此前手机端自己硬编码了标签与图标（icon 是文本字符 ☰ ▤ ⚒ ✦ ⚙），
+ * 于是同一个模块在两端是两套名字、两套图形，桌面加一个标签手机就得手动跟一次。
+ * NAV_MODULES 本身就是纯数据（无 Vue 依赖、单测覆盖），手机端多一个「设置」标签排在末尾。
+ */
+const TABS = computed(() => [
+  ...NAV_MODULES.map((m) => ({ key: m.key, labelKey: m.labelKey, icon: m.icon, ready: true })),
+  { key: "settings", labelKey: "nav.settings", icon: "settings", ready: true },
+]);
 
 const tab = ref("records");
-const current = computed(() => TABS.find((x) => x.key === tab.value) || TABS[0]);
+const current = computed(() => TABS.value.find((x) => x.key === tab.value) || TABS.value[0]);
 
 /**
  * 各页暴露的"返回上一层"能力（见下面的系统返回键处理）。
@@ -110,7 +115,7 @@ const platform = computed(() => {
         :class="{ on: tab === item.key, todo: !item.ready }"
         @click="tab = item.key"
       >
-        <span class="m-tab-ico" aria-hidden="true">{{ item.icon }}</span>
+        <span class="m-tab-ico"><Icon :name="item.icon" :size="21" /></span>
         <span class="m-tab-label">{{ t(item.labelKey) }}</span>
       </button>
     </nav>

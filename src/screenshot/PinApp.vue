@@ -7,7 +7,7 @@ import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { getCurrentWindow } from "../platform/window.js";
 import { save } from "../platform/dialog.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { base64ToBytes, bytesToBlobUrl } from "./png.js";
 
 const { t } = useI18n();
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
   background: #0b0e14;
 }
 .pin-image { width: 100%; height: 100%; display: block; object-fit: fill; -webkit-user-drag: none; }
-.pin-error { padding: 12px; color: #f85149; font-size: 12px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+.pin-error { padding: var(--sp-4); color: #f85149; font-size: 12px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 
 .pin-menu {
   position: fixed;
@@ -178,8 +178,8 @@ onBeforeUnmount(() => {
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 9px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 9px;
   border: none;
   border-radius: 6px;
   background: none;

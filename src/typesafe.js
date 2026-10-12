@@ -10,7 +10,7 @@
 import { invoke } from "./platform/invoke.js";
 import { isDesktop } from "./platform/env.js";
 import { decryptValue } from "./secure.js";
-import { normalizeTypeSafe } from "./settingsConfig.js";
+import { normalizeTypeSafe } from "./app/settingsConfig.js";
 import { i18n } from "./i18n/index.js";
 
 const t = (key, params) => i18n.global.t(key, params);

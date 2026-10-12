@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import ImagePreview from "./ImagePreview.vue";
 import { formatFileSize } from "../fileTool.js";
 import { aiComplete, isAIConfigured } from "../ai.js";
@@ -833,8 +833,6 @@ onBeforeUnmount(() => {
 .workspace { flex: 1; min-height: 0; }
 .single-layout, .edit-layout { display: grid; grid-template-columns: minmax(245px, 0.68fr) minmax(420px, 1.32fr); gap: var(--sp-3); }
 .edit-layout { grid-template-columns: minmax(285px, 0.76fr) minmax(400px, 1.24fr); }
-.panel { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
-.panel-head { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .controls-panel, .preview-panel, .info-panel { display: flex; flex-direction: column; }

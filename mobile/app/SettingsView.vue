@@ -11,7 +11,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { AI_PRESETS, testAI } from "../../src/ai.js";
-import { mergeSettingsSnapshot } from "../../src/settingsConfig.js";
+import { mergeSettingsSnapshot } from "../../src/app/settingsConfig.js";
 import { decryptValue, encryptValue } from "../../src/secure.js";
 import { invoke } from "../../src/platform/invoke.js";
 import { applyLocale } from "../../src/i18n/index.js";

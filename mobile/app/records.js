@@ -1,7 +1,7 @@
 // 手机端记录页的纯逻辑：排序、过滤、摘要。
 //
 // 为什么单独抽出来：这里全是可测的纯函数，界面只负责渲染——手机端的 UI 会频繁重排，
-// 把规则放在组件里会让每次改样式都可能动到行为。桌面端也是同样的分层（tasks.js / snippets.js / requirementMetrics.js）。
+// 把规则放在组件里会让每次改样式都可能动到行为。桌面端也是同样的分层（iterations.js / snippets.js / requirementMetrics.js）。
 //
 // 字段口径与数据层一致（见 src/data/repository.js 的 KINDS）：
 //   snippets: { id, title, category, content, fields[], images[], pinned, createdAt, updatedAt }

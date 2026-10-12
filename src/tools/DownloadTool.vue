@@ -9,7 +9,7 @@
 // 进度条互相跳，用户反而看不出哪个快。用户要并行可以用多个窗口。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { invoke } from "../platform/invoke.js";
 import { listen } from "../platform/events.js";
 import { open as openDialog } from "../platform/dialog.js";
@@ -493,7 +493,7 @@ onBeforeUnmount(() => {
 }
 
 .count-chip {
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   border-radius: var(--r-pill);
   background: var(--primary-soft);
   color: var(--primary);
@@ -768,7 +768,7 @@ code {
 
 .state-chip {
   flex-shrink: 0;
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   border-radius: var(--r-pill);
   background: var(--ghost);
   color: var(--text-weak);

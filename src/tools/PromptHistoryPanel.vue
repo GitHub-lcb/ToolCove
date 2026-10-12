@@ -5,8 +5,8 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
-import { askConfirm } from "../confirm.js";
-import Icon from "../Icon.vue";
+import { askConfirm } from "../ui/confirm.js";
+import Icon from "../ui/Icon.vue";
 import { downloadOutput } from "../comfyClient.js";
 import { mediaName, normalizeExt } from "../promptGen.js";
 import { normalizeComfyBase } from "../comfy.js";
@@ -160,7 +160,7 @@ async function removeRecord(record) {
 .hist-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
   min-width: 0;
 }
 .empty {
@@ -178,9 +178,9 @@ async function removeRecord(record) {
 .head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: none;
   background: transparent;
   color: var(--text);
@@ -194,7 +194,7 @@ async function removeRecord(record) {
 .badge {
   flex-shrink: 0;
   font-size: var(--fs-xs);
-  padding: 2px 6px;
+  padding: 2px var(--sp-1);
   border-radius: var(--r-pill, 999px);
   background: var(--well);
   color: var(--text-weak);
@@ -235,10 +235,10 @@ async function removeRecord(record) {
 }
 .detail {
   border-top: 1px solid var(--card-border);
-  padding: 10px;
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .line {
   margin: 0;
@@ -250,16 +250,16 @@ async function removeRecord(record) {
 }
 .label {
   color: var(--text-weak);
-  margin-right: 8px;
+  margin-right: var(--sp-2);
 }
 .media-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .ghost {
   display: inline-flex;
@@ -269,7 +269,7 @@ async function removeRecord(record) {
   border-radius: var(--r-sm, 8px);
   background: transparent;
   color: var(--text);
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   font-size: var(--fs-sm);
   cursor: pointer;
 }

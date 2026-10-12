@@ -1,7 +1,7 @@
 <script setup>
 // 数据库连接编辑弹窗（DbTool 拆出）：表单数据由父组件持有，嵌套字段直接双向绑定
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { DB_TYPES } from "../db.js";
 
 const { t } = useI18n();
@@ -116,26 +116,26 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
 
 <style scoped>
 .db-conn-modal { width: 560px; }
-.db-conn-modal .fld { margin-bottom: 12px; }
+.db-conn-modal .fld { margin-bottom: var(--sp-4); }
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld > span { font-size: var(--fs-xs); color: var(--muted); }
-.fld input, .fld select { width: 100%; padding: 6px 9px; font-size: var(--fs-md); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); border-radius: var(--r-sm); outline: none; transition: border-color 0.15s; }
+.fld input, .fld select { width: 100%; padding: var(--sp-1) 9px; font-size: var(--fs-md); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); border-radius: var(--r-sm); outline: none; transition: border-color 0.15s; }
 .fld input:focus, .fld select:focus { border-color: var(--primary); }
-.fld-row { display: flex; gap: 6px; }
+.fld-row { display: flex; gap: var(--sp-1); }
 .fld-row input { flex: 1; min-width: 0; }
-.fld-2 { display: flex; gap: 8px; }
+.fld-2 { display: flex; gap: var(--sp-2); }
 .fld-2 .fld { flex: 1; min-width: 0; }
 .fld-2 .w60 { flex: 0 0 88px; }
-.fld.check { flex-direction: row; align-items: center; gap: 6px; }
+.fld.check { flex-direction: row; align-items: center; gap: var(--sp-1); }
 .fld.check span { font-size: var(--fs-sm); color: var(--text); }
 .form-tip { margin: 0; font-size: var(--fs-xs); color: var(--warn); line-height: var(--lh-body); }
 .form-tip.danger { color: var(--danger); }
-.driver-install { display: flex; flex-direction: column; gap: 6px; }
+.driver-install { display: flex; flex-direction: column; gap: var(--sp-1); }
 
-.mini-btn { display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px; font-size: var(--fs-sm); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
+.mini-btn { display: inline-flex; align-items: center; gap: 3px; padding: 4px var(--sp-2); font-size: var(--fs-sm); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .mini-btn:hover { color: var(--primary); border-color: var(--primary); }
 
-.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; font-size: var(--fs-md); font-weight: 600; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px var(--sp-5); font-size: var(--fs-md); font-weight: 600; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
 .btn.primary { background: var(--primary); color: var(--text-invert); }
 .btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
 .btn.primary:disabled { opacity: 0.55; cursor: default; }

@@ -348,7 +348,16 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
       unregisterCallback: (id) => {
         delete window[`_${id}`];
       },
-      convertFileSrc: (p) => p,
+      // 真实 Tauri 的 convertFileSrc 返回的是 **WebView 真正能加载的 URL**
+      // （asset 协议，形如 http://asset.localhost/<编码后的绝对路径>），不是裸路径。
+      // 原先这里写成 `(p) => p`，于是桌面端任何走 asset 协议的 <img src>
+      // 拿到的都是 "C:\media\x.png" 这种字面量——浏览器既不会报错也不会加载，
+      // 只是静默显示裂图。断言一旦细到 src 的取值，就会看到这个裸路径。
+      // 现在按真机器的行为返回 asset URL。
+      convertFileSrc: (p) => {
+        const path = String(p).replace(/\\/g, "/").replace(/^\/+/, "");
+        return `http://asset.localhost/${path}`;
+      },
       metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
     };
   });

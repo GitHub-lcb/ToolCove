@@ -9,7 +9,7 @@
 // 所有解析/转换/清洗逻辑都在 src/tableTool.js（纯函数，三端共用，54 条单测）。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { saveToolbox, loadToolbox } from "../toolboxStore.js";
 import {
   DELIMITERS,
@@ -471,7 +471,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tool-table {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
 }
@@ -480,14 +480,14 @@ const shownError = computed(() => parsed.value.parseError || error.value);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .tt-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -515,14 +515,14 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tt-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: 0.85rem;
   color: var(--muted);
 }
 
 .tt-field select,
 .tt-field input {
-  padding: 4px 8px;
+  padding: 4px var(--sp-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -532,7 +532,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tt-input,
 .tt-output {
   width: 100%;
-  padding: 10px;
+  padding: var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -551,14 +551,14 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tt-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: var(--sp-5);
   font-size: 0.82rem;
   color: var(--muted);
 }
 
 .tt-err {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 6px;
   background: var(--danger-soft);
   color: var(--danger);
@@ -575,8 +575,8 @@ const shownError = computed(() => parsed.value.parseError || error.value);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--soft);
@@ -600,7 +600,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 
 .tt-table th,
 .tt-table td {
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
   text-align: left;
@@ -633,7 +633,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
    刻意用等宽数字并右对齐把握值，方便一眼扫出哪几条概率低、值得自己核。 */
 .tt-map-list {
   width: 100%;
-  margin: 6px 0 0;
+  margin: var(--sp-1) 0 0;
   padding: 0;
   list-style: none;
   display: grid;
@@ -642,7 +642,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tt-map-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   font-size: 0.8rem;
 }
 .tt-map-to {

@@ -12,7 +12,10 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { load as loadKind, onDataChanged } from "../../../src/data/repository.js";
 import { invoke } from "../../../src/platform/invoke.js";
-import { fmtDate, isWorkday } from "../../../src/shared.js";
+import { fmtDate, isWorkday } from "../../../src/shared/dates.js";
+import { collectDayLogs, sumHoursByDate } from "../../../src/shared/hours.js";
+// 迭代完成度的唯一实现：桌面概览、迭代页、手机概览都从这一处算
+import { iterationProgress } from "../../../src/requirementMetrics.js";
 
 const { t } = useI18n();
 
@@ -79,38 +82,32 @@ const today = fmtDate(new Date());
 const workday = isWorkday(today);
 
 /**
- * 最近活动：与桌面端同一口径——迭代子任务的工时 + 需求日志 + 问题日志，按日期倒序。
+ * 最近活动与今日工时：**与桌面端同一口径、同一个实现**（`shared.collectDayLogs`）。
  * 这**不是**一个独立数据键（我一开始按 activityLogs 读，那是不存在的键）。
+ *
+ * 此前这里第三份重写了遍历，有两处与桌面端不一致：
+ *   1) 同样缺 `subtasks[].logs` 明细分支（跨天登记的工时算错日）；
+ *   2) 没有按「我的」过滤——桌面概览只算自己的工时，手机把全组的工时都算进来，
+ *      于是两端同一个迭代显示两个数。现在传 displayName，与桌面一致。
  */
-const recentLogs = computed(() => {
-  const out = [];
-  iterations.value.forEach((iteration) => {
-    (iteration.items || []).forEach((requirement) => {
-      (requirement.subtasks || []).forEach((subtask) => {
-        const hours = Number(subtask.hours) || 0;
-        if (hours > 0 && subtask.date) {
-          out.push({ date: subtask.date, hours, note: subtask.name || "", src: requirement.name, from: iteration.title });
-        }
-      });
-      (requirement.logs || []).forEach((log) => {
-        out.push({ date: log.date || "", hours: Number(log.hours) || 0, note: log.note || "", src: requirement.name, from: iteration.title });
-      });
-    });
-  });
-  problems.value.forEach((problem) => {
-    (problem.logs || []).forEach((log) => {
-      out.push({ date: log.date || "", hours: Number(log.hours) || 0, note: log.note || "", src: problem.title, from: t("nav.problem") });
-    });
-  });
-  return out.filter((item) => item.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-});
+const mineName = computed(() => settings.value?.displayName || "");
+const dayEntries = computed(() => collectDayLogs(iterations.value, problems.value, mineName.value));
+const recentLogs = computed(() =>
+  dayEntries.value
+    .map((e) => ({
+      date: e.date || "",
+      hours: e.hours,
+      note: e.s ? e.s.name : e.note,
+      src: e.source === "problem" ? e.title : e.r?.name || "",
+      from: e.source === "problem" ? t("nav.problem") : e.it?.title || "",
+    }))
+    .filter((item) => item.date)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+);
 
-/** 迭代进度：已完成需求 / 总需求（与桌面端同一口径）。 */
+/** 迭代进度：已完成需求 / 总需求。百分比口径来自 requirementMetrics（桌面同一函数）。 */
 function progress(iteration) {
-  const requirements = iteration.items || iteration.requirements || [];
-  if (!requirements.length) return 0;
-  const done = requirements.filter((req) => req.status === "done" || req.status === "released").length;
-  return Math.round((done / requirements.length) * 100);
+  return iterationProgress(iteration).pct;
 }
 
 const activeIterations = computed(() => iterations.value.filter((item) => item.status !== "live"));
@@ -137,11 +134,9 @@ const weekIterations = computed(() => {
     .slice(0, 5);
 });
 
-/** 今日工时：从聚合出的活动里按日期汇总（与桌面端同源）。 */
-const todayHours = computed(() => {
-  const total = recentLogs.value.filter((item) => item.date === today).reduce((sum, item) => sum + item.hours, 0);
-  return Math.round(total * 10) / 10;
-});
+/** 今日工时：与桌面概览同一处合计（shared.sumHoursByDate）。 */
+const dayHoursMap = computed(() => sumHoursByDate(dayEntries.value));
+const todayHours = computed(() => Math.round((dayHoursMap.value[today] || 0) * 10) / 10);
 const targetHours = computed(() => Number(settings.value?.hoursReminder?.target) || 8);
 
 const topLogs = computed(() => recentLogs.value.slice(0, 6));

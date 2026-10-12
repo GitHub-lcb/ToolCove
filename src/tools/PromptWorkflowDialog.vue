@@ -4,7 +4,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { parseWorkflowGraph } from "../comfy.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -226,10 +226,10 @@ function save() {
   border: 1px solid var(--card-border);
   border-radius: var(--r-md, 10px);
   box-shadow: var(--shadow);
-  padding: 14px 16px;
+  padding: var(--sp-5) var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 .wf-head {
   display: flex;
@@ -272,17 +272,17 @@ function save() {
   background: var(--well);
   color: var(--text-weak);
   border-radius: var(--r-xs, 6px);
-  padding: 2px 6px;
+  padding: 2px var(--sp-1);
 }
 .map-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .file {
   display: none;
@@ -295,14 +295,14 @@ function save() {
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .primary {
   background: var(--primary);
   color: var(--text-invert);
   border: none;
   border-radius: var(--r-sm, 8px);
-  padding: 7px 16px;
+  padding: 7px var(--sp-6);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -315,7 +315,7 @@ function save() {
   border-radius: var(--r-sm, 8px);
   background: transparent;
   color: var(--text);
-  padding: 6px 12px;
+  padding: var(--sp-1) var(--sp-4);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -347,7 +347,7 @@ select {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-xs, 6px);
-  padding: 6px 8px;
+  padding: var(--sp-1) var(--sp-2);
   min-width: 0;
 }
 textarea {

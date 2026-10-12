@@ -1,7 +1,7 @@
 <script setup>
 // 集合树侧栏（RequestTool 拆出）：纯展示 + 交互委托给父组件
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const { t } = useI18n();
 
@@ -53,7 +53,7 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 
 <style scoped>
 /* 通用小标签：方法着色 */
-.mtag { flex-shrink: 0; padding: 1px 6px; font-size: var(--fs-xs); font-weight: 700; font-family: var(--font-mono); border-radius: var(--r-xs); }
+.mtag { flex-shrink: 0; padding: 1px var(--sp-1); font-size: var(--fs-xs); font-weight: 700; font-family: var(--font-mono); border-radius: var(--r-xs); }
 .m-get { color: var(--success); background: var(--success-tint); }
 .m-post { color: var(--warn); background: var(--warn-tint); }
 .m-put { color: var(--primary); background: var(--primary-soft); }
@@ -62,14 +62,14 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 .m-head, .m-options { color: var(--muted); background: color-mix(in srgb, var(--text) 6%, transparent); }
 
 /* 集合树 */
-.col-collection { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); overflow: hidden; }
-.new-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; font-size: var(--fs-md); font-weight: 600; color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; transition: filter 0.15s; }
+.col-collection { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; padding: var(--sp-4); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); overflow: hidden; }
+.new-btn { display: flex; align-items: center; justify-content: center; gap: var(--sp-1); padding: 9px; font-size: var(--fs-md); font-weight: 600; color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; transition: filter 0.15s; }
 .new-btn:hover { filter: brightness(1.08); }
 .cl-head { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
 .cl-count { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
 .cl-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
 .cl-group { display: flex; flex-direction: column; }
-.cl-gh { display: flex; align-items: center; gap: 5px; padding: 6px 6px; border-radius: var(--r-sm); cursor: pointer; transition: background 0.15s; }
+.cl-gh { display: flex; align-items: center; gap: 5px; padding: var(--sp-1) var(--sp-1); border-radius: var(--r-sm); cursor: pointer; transition: background 0.15s; }
 .cl-gh:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .cl-caret { color: var(--muted); transform: rotate(-90deg); transition: transform 0.15s; }
 .cl-caret.open { transform: rotate(0deg); }
@@ -80,8 +80,8 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 .cl-gh:hover .cl-mini, .cl-item:hover .cl-mini { display: inline-flex; }
 .cl-mini:hover { color: var(--accent-deep); background: var(--accent-soft); }
 .cl-del:hover { color: var(--danger); background: var(--danger-soft); }
-.cl-reqs { display: flex; flex-direction: column; gap: 1px; padding-left: 14px; }
-.cl-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--r-sm); cursor: pointer; transition: background 0.15s; }
+.cl-reqs { display: flex; flex-direction: column; gap: 1px; padding-left: var(--sp-5); }
+.cl-item { display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); cursor: pointer; transition: background 0.15s; }
 .cl-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .cl-item.on { background: var(--accent-soft); }
 .cl-name { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

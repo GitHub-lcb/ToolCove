@@ -61,7 +61,9 @@ describe("手机端与桌面端的功能对齐", () => {
   it("手机端调用的每个命令，要么桥实现了、要么能回退到浏览器实现", () => {
     const mobile = invokedCommands("mobile/app");
     const bridge = bridgeCommands();
-    const handlers = read("src/platform/invoke.js");
+    // 浏览器实现已从 invoke.js 抽到 platform/backends/browser.js（invoke.js 只管分发），
+    // 所以这里要读实现文件本身——读分发器会一个 handler 都找不到，用例会因为「找错地方」而红。
+    const handlers = read("src/platform/backends/browser.js");
 
     const needFallback = [...mobile].filter((cmd) => !bridge.has(cmd));
     // 每个桥没实现的命令，浏览器处理器里必须有对应实现——否则真机上点了就报错
@@ -74,8 +76,15 @@ describe("手机端与桌面端的功能对齐", () => {
   it("invoke 在手机端必须保留回退路径（否则桥不认的命令会直接失败）", () => {
     // 这条守的是一个已经发生过的致命 bug：写成 `if (mobileBridge) return mobileBridge.invoke(...)`
     // 会让桥不认的命令把错误直接抛给界面，真机上 load_data/save_data 全废。
+    //
+    // 形态变了、守卫不变：回退逻辑从 invoke() 内联分支抽成了 invokeMobile()，
+    // 所以这里改为盯住那个函数体，而不是「if (isMobile) 到 if (isDesktop) 之间」——
+    // 后者在抽取之后只剩一行转发，断言会静默失去意义（红不了，也守不住）。
     const source = read("src/platform/invoke.js");
-    const mobileBranch = source.slice(source.indexOf("if (isMobile)"), source.indexOf("if (isDesktop)"));
+    const start = source.indexOf("async function invokeMobile");
+    expect(start, "invoke.js 里应有 invokeMobile 回退函数").toBeGreaterThan(-1);
+    const end = source.indexOf("export async function invoke(");
+    const mobileBranch = source.slice(start, end > start ? end : undefined);
     expect(mobileBranch, "手机端分支里必须有 try/catch 回退").toMatch(/try\s*\{/);
     expect(mobileBranch, "回退时要落到 browserHandlers").toMatch(/browserHandlers\[command\]/);
     // 且只对"桥不认识"的命令回退（真实错误不该被掩盖）
@@ -86,7 +95,7 @@ describe("手机端与桌面端的功能对齐", () => {
     // 手机端把 work 的子模块做成工作台的分段（概览/迭代/领域/发布），
     // 速记/问题并入「记录」，所以按"是否有入口"比对：
     // 记录 / 工作台（含 4 个分段）/ 工具箱 / Agent / 设置 覆盖桌面端的全部模块。
-    const nav = read("src/navConfig.js");
+    const nav = read("src/app/navConfig.js");
     const desktopModules = [...nav.matchAll(/key:\s*"([a-z]+)",\s*\n?\s*labelKey:\s*"nav\./g)].map((m) => m[1]);
     const topLevel = ["records", "work", "toolbox", "agent", "settings"];
     // work 的子模块：手机端是工作台分段。domain 与 release 已补齐（见 DomainPanel/ReleasePanel）
@@ -105,6 +114,40 @@ describe("手机端与桌面端的功能对齐", () => {
     for (const [file, component] of [["mobile/app/work/DomainPanel.vue", "DomainPanel"], ["mobile/app/work/ReleasePanel.vue", "ReleasePanel"]]) {
       expect(() => read(file), `${file} 不存在`).not.toThrow();
       expect(workView, `WorkView 没有引用 ${component}`).toContain(component);
+    }
+  });
+
+  // 底部标签栏此前自己硬编码了一份「标签 + 图标」，而桌面端另有一份 navConfig.js，
+  // 于是同一个模块在两端可以悄悄不一致（图标还退化成了文本字符 ☰ ▤ ⚒ ✦ ⚙）。
+  // 现在 Shell.vue 直接复用 NAV_MODULES，所以这条守的是「别把它改回各自的清单」。
+  it("手机端标签栏复用桌面导航表，且图标走共享 Icon 组件", async () => {
+    const shell = read("mobile/app/Shell.vue");
+    expect(shell, "Shell.vue 应导入桌面导航表").toMatch(/import\s*\{[^}]*NAV_MODULES[^}]*\}\s*from\s*["'][^"']*navConfig\.js["']/);
+    expect(shell, "Shell.vue 应导入共享 Icon 组件").toMatch(/import\s+Icon\s+from\s*["'][^"']*Icon\.vue["']/);
+    // 标签用 <Icon :name> 渲染，而不是插值一个字符
+    expect(shell, "标签图标应由 Icon 组件渲染").toMatch(/<Icon[^>]*:name=/);
+    // 不该再有把图标当文本的写法（aria-hidden 的纯文本 span）
+    expect(shell, "不该再把图标当文本字符渲染").not.toMatch(/m-tab-ico[^>]*>\{\{/);
+
+    // 标签集合 = NAV_MODULES 的 key + settings，且顺序与桌面侧边栏一致
+    const { NAV_MODULES } = await import("../../src/app/navConfig.js");
+    expect(NAV_MODULES.length, "桌面导航表至少四项").toBeGreaterThanOrEqual(4);
+    expect(shell, "Shell.vue 的 TABS 应由 NAV_MODULES 展开而来").toMatch(/\.\.\.NAV_MODULES\.map\(/);
+    expect(shell, "Shell.vue 应在导航表之后追加 settings 标签").toMatch(/key:\s*"settings",\s*labelKey:\s*"nav\.settings"/);
+    // 每个桌面模块都必须有对应的手机端视图分支——
+    // 否则桌面上加一个模块，手机端会**静默渲染成空白页**（模板是 v-if/v-else-if 链，落不进任何分支）。
+    for (const module of [...NAV_MODULES, { key: "settings" }]) {
+      expect(shell, `Shell.vue 没有为模块 "${module.key}" 挂视图`).toMatch(
+        new RegExp(`current\\.key\\s*===\\s*['"]${module.key}['"]`)
+      );
+    }
+  });
+
+  it("手机端标签的图标名都在共享 Icon 组件里存在", async () => {
+    const { NAV_MODULES } = await import("../../src/app/navConfig.js");
+    const iconSource = read("src/ui/Icon.vue");
+    for (const module of [...NAV_MODULES, { icon: "settings" }]) {
+      expect(iconSource, `Icon.vue 里没有 icon 名 "${module.icon}"`).toContain(`name === '${module.icon}'`);
     }
   });
 });

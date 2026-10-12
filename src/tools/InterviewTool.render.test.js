@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
 import zh from "../i18n/zh-CN.json";
 import en from "../i18n/en-US.json";
 import { i18n } from "../i18n/index.js";
-import { CATEGORIES, DIFFICULTIES } from "./interviewBank.js";
-import { RATINGS } from "./interviewProgress.js";
+import { CATEGORIES, DIFFICULTIES } from "./interview/interviewBank.js";
+import { RATINGS } from "./interview/interviewProgress.js";
 import InterviewTool from "./InterviewTool.vue";
 
 const t = (key, params) => i18n.global.t(key, params);
@@ -111,7 +111,7 @@ describe("InterviewTool 的文案完整性", () => {
   });
 
   it("导入错误键与解析器真正返回的 error 值一致（缺一个就会渲染出裸键名）", () => {
-    const source = read("src/tools/interviewImport.js");
+    const source = read("src/tools/interview/interviewImport.js");
     const codes = [...new Set([...source.matchAll(/error: "([A-Za-z]+)"/g)].map((m) => m[1]))];
     expect(codes.length, "一个错误码都没扫到").toBeGreaterThan(3);
     for (const code of codes) {

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref } from "vue";
 import { invoke } from "../platform/invoke.js";
 import { save as saveDialog } from "../platform/dialog.js";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import {
   builtinTemplates,
   mockFieldTypes,
@@ -329,9 +329,7 @@ onBeforeUnmount(() => clearTimeout(copiedTimer));
 .workspace { flex: 1; min-height: 0; }
 .split-layout { display: grid; grid-template-columns: minmax(245px, 0.7fr) minmax(360px, 1.3fr); gap: var(--sp-3); }
 .column-layout, .mock-layout, .template-layout { display: flex; flex-direction: column; gap: var(--sp-3); }
-.panel { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
 .panel.invalid { border-color: var(--border-danger); }
-.panel-head { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-actions { margin-left: var(--sp-1); display: flex; gap: var(--sp-1); }

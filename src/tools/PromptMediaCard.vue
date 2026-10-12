@@ -9,7 +9,7 @@ import { isDesktop } from "../platform/env.js";
 import { fileAssetUrl } from "../platform/image.js";
 import { openPath, revealPath } from "../platform/shell.js";
 import { save as saveDialog } from "../platform/dialog.js";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -108,7 +108,7 @@ async function saveAs() {
   display: block;
 }
 .pm-missing {
-  padding: 24px 12px;
+  padding: 24px var(--sp-4);
   font-size: var(--fs-sm);
   color: var(--text-weak);
   text-align: center;
@@ -117,8 +117,8 @@ async function saveAs() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
 }
 .pm-name {
   font-size: var(--fs-sm);

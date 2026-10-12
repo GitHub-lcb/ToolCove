@@ -1,9 +1,21 @@
 import { createApp } from "vue";
-import App from "./App.vue";
+import App from "./app/App.vue";
 import { i18n, initLocale, warmFallbackLocale } from "./i18n/index.js";
-import { runMigrations } from "./migrate.js";
+import { runMigrations } from "./app/migrate.js";
+import { applyThemeAttribute, syncDensityAttribute } from "./app/theme.js";
+// 设计令牌与组件原语：此前内联在 App.vue 的非 scoped 块里（395 行，与全局工具类混在一起）。
+// 抽成独立 CSS 后，改主题不必碰组件文件，令牌缺口也能在一个屏幕内对照出来。
+// 顺序要紧：tokens 先（primitives 与 globals 都引用它），globals 最后（含旧类名兼容别名）。
+import "./styles/tokens.css";
+import "./styles/primitives.css";
+import "./styles/globals.css";
 
 const t = (key, params) => i18n.global.t(key, params);
+
+// 主题与密度属性必须落在首帧之前：否则手动选深色的用户会先看到一帧浅色。
+// 这里与 index.html 的内联脚本是同一件事的两道保险（内联脚本负责"JS 还没加载时"）。
+applyThemeAttribute();
+syncDensityAttribute();
 
 // 挂载前先落初始语言、跑一次数据迁移；失败也不阻断启动
 Promise.all([initLocale(), runMigrations()])

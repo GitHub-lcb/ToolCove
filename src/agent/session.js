@@ -3,7 +3,7 @@
 // 为什么必须是模块级 reactive 而不是 AgentView 的 ref：App.vue 用 :key="activeModule" 渲染视图，
 // 切模块会销毁视图。而首启用户必然要「跑到一半去设置页补 API Key」——运行态若挂在组件里就会当场死掉。
 // 异步 chunk 一旦加载模块就常驻，于是运行、pending 确认 Promise、时间线都能活过视图切换。
-// 先例：src/confirm.js、src/sync/index.js。
+// 先例：src/ui/confirm.js、src/sync/index.js。
 import { reactive } from "vue";
 import { loadToolbox, saveToolbox, saveToolboxNow } from "../toolboxStore.js";
 import { cloneJsonData } from "../jsonData.js";

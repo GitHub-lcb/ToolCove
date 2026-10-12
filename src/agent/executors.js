@@ -5,7 +5,7 @@
 // 运行期装配见 tools.js 的 buildAgentRegistry（动态 import 本模块）。
 import { parseJson, formatJson } from '../json.js';
 import { encodeBase64, decodeBase64 } from '../convert.js';
-import { yamlToJson } from '../tools/yaml.js';
+import { yamlToJson } from '../yaml.js';
 import { buildTextDiff } from '../textDiff.js';
 import { parseTimestamp } from '../timeTool.js';
 import { generateIdentifiers } from '../generatorTool.js';

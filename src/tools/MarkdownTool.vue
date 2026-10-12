@@ -1,15 +1,15 @@
 <script setup>
 // Markdown 工具（桌面端）：编辑 + 实时预览 + 目录/统计/检查 + 导出 HTML。
 //
-// 渲染**复用** src/shared.js 的 renderMarkdown（AI 回复也在用同一份），
+// 渲染**复用** src/shared/markdown.js 的 renderMarkdown（AI 回复也在用同一份），
 // 所以这里的预览与聊天里看到的必然一致——不重写第二份渲染器。
 // 围绕 Markdown 的处理（大纲/统计/表格对齐/规范化/检查）在 src/markdownTool.js（纯函数，52 条单测）。
 //
 // 与相邻工具的边界：不做通用文本处理（那是 text 工具）、不做 JSON/YAML（那是 json 工具）。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
-import { renderMarkdown } from "../shared.js";
+import Icon from "../ui/Icon.vue";
+import { renderMarkdown } from "../shared/markdown.js";
 import { loadToolbox, saveToolbox } from "../toolboxStore.js";
 import { formatTables, lint, normalize, outline, stats, toHtmlDocument, toToc } from "../markdownTool.js";
 
@@ -216,7 +216,7 @@ watch([input, view, title], () => {
   display: grid;
   grid-template-columns: 1fr 260px;
   grid-template-rows: auto 1fr;
-  gap: 10px;
+  gap: var(--sp-3);
   height: 100%;
   min-height: 0;
 }
@@ -226,7 +226,7 @@ watch([input, view, title], () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .md-spacer {
@@ -241,7 +241,7 @@ watch([input, view, title], () => {
 }
 
 .md-seg button {
-  padding: 5px 12px;
+  padding: 5px var(--sp-4);
   border: 0;
   background: var(--card);
   color: var(--muted);
@@ -258,7 +258,7 @@ watch([input, view, title], () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 10px;
+  padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -280,13 +280,13 @@ watch([input, view, title], () => {
 .md-field {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: 0.85rem;
   color: var(--muted);
 }
 
 .md-field input {
-  padding: 4px 8px;
+  padding: 4px var(--sp-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card);
@@ -297,7 +297,7 @@ watch([input, view, title], () => {
 .md-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--sp-3);
   min-height: 0;
 }
 
@@ -311,7 +311,7 @@ watch([input, view, title], () => {
   width: 100%;
   height: 100%;
   min-height: 300px;
-  padding: 12px;
+  padding: var(--sp-4);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -324,7 +324,7 @@ watch([input, view, title], () => {
 
 .md-preview {
   min-height: 300px;
-  padding: 12px 16px;
+  padding: var(--sp-4) var(--sp-6);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -336,14 +336,14 @@ watch([input, view, title], () => {
 .md-side {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 0;
 }
 
 .md-list {
   flex: 1;
   margin: 0;
-  padding: 8px;
+  padding: var(--sp-2);
   list-style: none;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -355,8 +355,8 @@ watch([input, view, title], () => {
 .md-list li {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-1);
   border-radius: 4px;
 }
 
@@ -385,7 +385,7 @@ watch([input, view, title], () => {
 
 .md-line {
   color: var(--muted);
-  margin-right: 6px;
+  margin-right: var(--sp-1);
   font-variant-numeric: tabular-nums;
 }
 

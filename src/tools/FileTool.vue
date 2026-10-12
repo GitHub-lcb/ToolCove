@@ -3,8 +3,8 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
-import Icon from "../Icon.vue";
-import { askConfirm } from "../confirm.js";
+import Icon from "../ui/Icon.vue";
+import { askConfirm } from "../ui/confirm.js";
 import {
   buildRenamePreview,
   convertLineEndings,
@@ -520,8 +520,6 @@ async function executeRename() {
 .workspace { flex: 1; min-height: 0; }
 .column-workspace { display: flex; flex-direction: column; gap: var(--sp-3); }
 .control-bar, .rename-toolbar { flex-shrink: 0; min-height: 40px; display: flex; align-items: flex-end; gap: var(--sp-3); }
-.panel { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
-.panel-head { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-head > button { margin-left: auto; }

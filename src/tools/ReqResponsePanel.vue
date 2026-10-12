@@ -1,7 +1,7 @@
 <script setup>
 // 响应面板（RequestTool 拆出）：只读展示 + 保存/复制/跳 JSON 工具委托给父组件
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const { t } = useI18n();
 
@@ -80,7 +80,7 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
 
 /* 响应 */
 .resp { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); overflow: hidden; }
-.resp-head { flex-shrink: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 42px; padding: 6px 12px; border-bottom: 1px solid var(--card-border); background: color-mix(in srgb, var(--text) 2%, transparent); }
+.resp-head { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 42px; padding: var(--sp-1) var(--sp-4); border-bottom: 1px solid var(--card-border); background: color-mix(in srgb, var(--text) 2%, transparent); }
 .resp-title { font-size: var(--fs-base); font-weight: 600; }
 .status { font-size: var(--fs-sm); font-weight: 700; font-family: var(--font-num); }
 .s-ok { color: var(--success); }
@@ -90,7 +90,7 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
 .s-other { color: var(--muted); }
 .meta { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
 .resp-tabs { display: flex; gap: 2px; }
-.rst { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: var(--fs-sm); color: var(--muted); background: none; border: none; border-radius: var(--r-sm); cursor: pointer; }
+.rst { display: inline-flex; align-items: center; gap: 5px; padding: 4px var(--sp-3); font-size: var(--fs-sm); color: var(--muted); background: none; border: none; border-radius: var(--r-sm); cursor: pointer; }
 .rst.on { color: var(--accent-deep); background: var(--accent-soft); font-weight: 600; }
 .dot { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-invert); background: var(--accent); border-radius: var(--r-pill); }
 .chk { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; }
@@ -99,27 +99,27 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
 .mini.save-binary { color: var(--accent-deep); border-color: var(--accent-border); background: var(--accent-soft); }
 
 /* 文件流（二进制）响应提示卡 */
-.bin-hint { display: flex; align-items: flex-start; gap: 10px; margin: 12px; padding: 14px; background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--r-md); }
+.bin-hint { display: flex; align-items: flex-start; gap: var(--sp-3); margin: var(--sp-4); padding: var(--sp-5); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--r-md); }
 .bin-ico { flex-shrink: 0; margin-top: 2px; color: var(--accent); }
 .bin-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .bin-info b { font-size: var(--fs-sm); color: var(--accent-deep); }
 .bin-info span { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body); word-break: break-all; }
-.bin-save { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
+.bin-save { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; padding: 7px var(--sp-5); font-size: var(--fs-sm); font-weight: 600; color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
 .bin-save:hover { filter: brightness(1.08); }
 
 .resp-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
-.resp-err { margin: 0; padding: 14px; font-size: var(--fs-sm); color: var(--danger); background: var(--danger-soft); font-family: var(--font-mono); word-break: break-word; }
-.ph { margin: 0; padding: 16px; font-size: var(--fs-sm); color: var(--muted); }
-.output { margin: 0; padding: 12px; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; color: var(--text); white-space: pre; }
+.resp-err { margin: 0; padding: var(--sp-5); font-size: var(--fs-sm); color: var(--danger); background: var(--danger-soft); font-family: var(--font-mono); word-break: break-word; }
+.ph { margin: 0; padding: var(--sp-6); font-size: var(--fs-sm); color: var(--muted); }
+.output { margin: 0; padding: var(--sp-4); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; color: var(--text); white-space: pre; }
 .lang-badge { position: absolute; top: 8px; right: 12px; z-index: 2; padding: 1px 7px; font-size: var(--fs-xs); font-weight: 700; border-radius: var(--r-xs); }
 .lb-json { color: var(--primary); background: var(--primary-soft); }
 .lb-html, .lb-xml { color: var(--warn); background: var(--warn-tint); }
 .lb-text { color: var(--muted); background: color-mix(in srgb, var(--text) 6%, transparent); }
 
-.hl-scroll { padding: 12px 0; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; }
+.hl-scroll { padding: var(--sp-4) 0; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; }
 .hrow { display: flex; min-width: max-content; }
-.hnum { position: sticky; left: 0; flex-shrink: 0; width: 44px; padding-right: 10px; text-align: right; color: var(--muted); background: var(--card); user-select: none; }
-.hcode { white-space: pre; padding-right: 12px; }
+.hnum { position: sticky; left: 0; flex-shrink: 0; width: 44px; padding-right: var(--sp-3); text-align: right; color: var(--muted); background: var(--card); user-select: none; }
+.hcode { white-space: pre; padding-right: var(--sp-4); }
 .tok-key { color: var(--accent-deep); }
 .tok-str { color: var(--success); }
 .tok-num { color: var(--primary); }
@@ -128,7 +128,7 @@ const emit = defineEmits(["update:respTab", "update:respPretty", "save", "copy",
 .tok-punct { color: var(--muted); }
 
 .rh-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-family: var(--font-mono); }
-.rh-table td { padding: 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent); vertical-align: top; word-break: break-all; }
+.rh-table td { padding: var(--sp-1) var(--sp-4); border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent); vertical-align: top; word-break: break-all; }
 .rh-k { width: 34%; color: var(--accent-deep); font-weight: 600; }
 .rh-v { color: var(--text); }
 </style>

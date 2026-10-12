@@ -1,7 +1,7 @@
 <script setup>
 // 环境变量管理弹窗（RequestTool 拆出）：变量键值直接绑定父组件数据，持久化经事件委托
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 
 const { t } = useI18n();
 
@@ -52,35 +52,35 @@ const emit = defineEmits(["close", "add", "use", "remove", "remove-var", "var-ed
 .spacer { flex: 1; }
 
 .env-mask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(17, 24, 39, 0.4); }
-.env-box { width: 640px; max-width: calc(100vw - 48px); max-height: calc(100vh - 96px); display: flex; flex-direction: column; padding: 20px; background: var(--card); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
-.env-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.env-box { width: 640px; max-width: calc(100vw - 48px); max-height: calc(100vh - 96px); display: flex; flex-direction: column; padding: var(--sp-7); background: var(--card); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
+.env-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
 .env-head b { font-size: var(--fs-base); font-weight: 700; }
 .env-hint { font-size: var(--fs-xs); color: var(--muted); }
 .env-hint code { padding: 1px 5px; font-family: var(--font-mono); color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--r-xs); }
-.env-add { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; font-size: var(--fs-sm); color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
+.env-add { display: inline-flex; align-items: center; gap: 5px; padding: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); color: var(--text-invert); background: var(--accent); border: none; border-radius: var(--r-sm); cursor: pointer; }
 .env-add:hover { filter: brightness(1.08); }
 .env-close { padding: 5px; border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
 .env-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
-.env-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.env-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); }
 .env-card { border: 1px solid var(--card-border); border-radius: var(--r-md); overflow: hidden; }
 .env-card.active { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-soft); }
-.env-card-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: color-mix(in srgb, var(--text) 3%, transparent); border-bottom: 1px solid var(--card-border); }
-.env-name { flex: 1; min-width: 0; padding: 5px 8px; font-size: var(--fs-md); font-weight: 600; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: var(--r-sm); outline: none; }
+.env-card-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: color-mix(in srgb, var(--text) 3%, transparent); border-bottom: 1px solid var(--card-border); }
+.env-name { flex: 1; min-width: 0; padding: 5px var(--sp-2); font-size: var(--fs-md); font-weight: 600; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: var(--r-sm); outline: none; }
 .env-name:hover { border-color: var(--card-border); }
 .env-name:focus { border-color: var(--primary); background: var(--card); }
-.env-use { flex-shrink: 0; padding: 5px 12px; font-size: var(--fs-sm); color: var(--muted); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; }
+.env-use { flex-shrink: 0; padding: 5px var(--sp-4); font-size: var(--fs-sm); color: var(--muted); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; }
 .env-use.on { color: var(--text-invert); background: var(--success); border-color: var(--success); font-weight: 600; }
 .env-remove { flex-shrink: 0; padding: 5px; border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
 .env-remove:hover { color: var(--danger); background: var(--danger-soft); }
-.env-empty { margin: 0; padding: 24px 8px; font-size: var(--fs-sm); color: var(--muted); text-align: center; line-height: var(--lh-body); }
+.env-empty { margin: 0; padding: 24px var(--sp-2); font-size: var(--fs-sm); color: var(--muted); text-align: center; line-height: var(--lh-body); }
 
 /* 键值表 */
 .kv { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.kv thead th { position: sticky; top: 0; padding: 8px 10px; text-align: left; font-weight: 600; color: var(--muted); background: color-mix(in srgb, var(--text) 3%, transparent); border-bottom: 1px solid var(--card-border); }
+.kv thead th { position: sticky; top: 0; padding: var(--sp-2) var(--sp-3); text-align: left; font-weight: 600; color: var(--muted); background: color-mix(in srgb, var(--text) 3%, transparent); border-bottom: 1px solid var(--card-border); }
 .kv th.th-ck, .kv td.td-ck { width: 34px; text-align: center; }
 .kv th.th-op, .kv td.td-op { width: 36px; text-align: center; }
-.kv td { padding: 2px 6px; border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent); }
-.cell { width: 100%; padding: 6px 4px; font-size: var(--fs-sm); font-family: var(--font-mono); border: none; background: transparent; color: var(--text); outline: none; }
+.kv td { padding: 2px var(--sp-1); border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent); }
+.cell { width: 100%; padding: var(--sp-1) 4px; font-size: var(--fs-sm); font-family: var(--font-mono); border: none; background: transparent; color: var(--text); outline: none; }
 .cell:focus { background: var(--accent-soft); border-radius: var(--r-xs); }
 .row-del { padding: 3px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: var(--r-xs); }
 .row-del:hover { color: var(--danger); background: var(--danger-soft); }

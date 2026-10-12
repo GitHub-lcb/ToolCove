@@ -1,4 +1,4 @@
-// 代码高亮：highlight.js 常用语言子集 + LRU 缓存（shared.js renderMarkdown 的 highlight 选项使用）。
+// 代码高亮：highlight.js 常用语言子集 + LRU 缓存（src/shared/markdown.js 的 renderMarkdown 在 highlight 选项下使用）。
 // 只注册 8 种常用语言控制体积；输入为原始代码文本（highlight.js 内部负责 HTML 转义）。
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";

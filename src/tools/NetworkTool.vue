@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { invoke } from "../platform/invoke.js";
 import { useI18n } from "vue-i18n";
-import Icon from "../Icon.vue";
+import Icon from "../ui/Icon.vue";
 import { analyzeCidr, parseUrl, parseUserAgent, rebuildUrl } from "../networkTool.js";
 
 const props = defineProps({
@@ -316,8 +316,6 @@ async function copyText(value, label = t("toolbox.network.copyDefaultLabel")) {
 .field.grow { flex: 1; }
 .field.wide { width: 100%; }
 .mono, code, pre { font-family: var(--font-mono); }
-.panel { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
-.panel-head { min-height: 38px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-4); border-bottom: 1px solid var(--border); background: var(--card-soft); }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-head > button { margin-left: auto; }
