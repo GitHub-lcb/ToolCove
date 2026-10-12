@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../Icon.vue";
 import { isDesktop } from "../platform/env.js";
@@ -202,6 +202,33 @@ async function runFileHash() {
     fileState.value = { loading: false, results: null, error: errorMessage(error) };
   }
 }
+
+// 兑现「或拖放文件到这里」：Tauri 会把系统文件拖入拦成原生事件（HTML5 的 File 拿不到路径），
+// 所以桌面端用 webview 的 drag-drop 事件取路径，与点击选择走同一条链路（字节不进 JS）。
+let unwatchDrop = null;
+async function pickDroppedPaths(paths) {
+  try {
+    const [info] = (await invoke("file_tool_inspect", { paths: [paths[0]] })) || [];
+    if (info?.isFile) selectFile({ path: info.path, name: info.name, size: info.size });
+  } catch (error) {
+    fileState.value = { loading: false, results: null, error: errorMessage(error) };
+  }
+}
+onMounted(() => {
+  if (!isDesktop) return;
+  import("../platform/dnd.js")
+    .then(({ watchFileDrop }) => watchFileDrop({
+      onActive: (active) => { draggingFile.value = active; },
+      onFiles: pickDroppedPaths,
+    }))
+    .then((unwatch) => { unwatchDrop = unwatch; })
+    .catch(() => {
+      /* 拖放只是增强能力，注册失败不能拖垮主流程 */
+    });
+});
+onBeforeUnmount(() => {
+  if (unwatchDrop) unwatchDrop();
+});
 
 const passwordOptions = ref({
   length: 20,

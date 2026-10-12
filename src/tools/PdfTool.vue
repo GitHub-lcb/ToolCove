@@ -141,7 +141,7 @@ function pdfInputOf(src) {
 }
 
 function createMergeItem(name, size) {
-  return { id: `${name}-${size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, size, bytes: null, path: null, pageCount: 0, invalid: "", decrypted: false, needPassword: false, lockedBytes: null, password: "", error: "", busy: false };
+  return { id: `${name}-${size}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, size, bytes: null, path: null, pageCount: 0, invalid: "", decrypted: false, needPassword: false, lockedBytes: null, password: "", decryptPassword: "", error: "", busy: false };
 }
 
 /**
@@ -255,7 +255,9 @@ async function unlockMergeItem(item) {
       item.pageCount = summary.pageCount;
       item.needPassword = false;
       item.decrypted = true;
-      // 桌面端保留密码：真正的解密发生在后续合并命令里
+      // 桌面端口令要留给后续合并命令（每次都在 Rust 侧解密）：挪进内部字段，输入框照例清空
+      item.decryptPassword = item.password || "";
+      item.password = "";
     } else {
       const plain = await decryptPdf(item.lockedBytes, item.password || "");
       const summary = await readPdfSummary(plain);
@@ -354,7 +356,7 @@ async function doMerge() {
       const target = await saveDialog({ title: t("toolbox.pdf.saveMerged"), defaultPath: name, filters: PDF_FILTER });
       if (!target) return;
       await invoke("pdf_merge", {
-        items: items.map((item) => ({ path: item.path, password: item.password || null })),
+        items: items.map((item) => ({ path: item.path, password: item.password || item.decryptPassword || null })),
         dest: target,
       });
       props.showToast(t("toolbox.pdf.doneSaved", { name }));
