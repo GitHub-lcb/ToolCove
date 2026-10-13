@@ -75,7 +75,7 @@ class AssetsServerTest {
      * CI 慢，正是这种差异）。真机上两次启动间隔以秒计，不存在这个窗口。
      * 端口被别的进程长期占着时也不会卡死：超时后照常继续，那种情况下两次绑定都会顺延到同一个候选。
      */
-    private fun awaitFreePort(target: Int, timeoutMs: Long = 2_000) {
+    private fun bindableWithin(target: Int, timeoutMs: Long = 2_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             try {
@@ -83,11 +83,17 @@ class AssetsServerTest {
                     probe.reuseAddress = true
                     probe.bind(InetSocketAddress("127.0.0.1", target))
                 }
-                return
+                return true
             } catch (_: Exception) {
                 Thread.sleep(20)
             }
         }
+        return false
+    }
+
+    /** 等到端口确实空闲再继续（超时也继续：那时两次绑定会顺延到同一个候选，断言照样成立）。 */
+    private fun awaitFreePort(target: Int, timeoutMs: Long = 2_000) {
+        bindableWithin(target, timeoutMs)
     }
 
     /** 对**指定端口**发请求：端口稳定性那几条用例要自己起服务，不能借用共享实例的端口。 */
@@ -245,12 +251,11 @@ class AssetsServerTest {
         val address = local.start()
         val localPort = address.substringAfterLast(':').toInt()
         local.stop()
-        // 停掉之后同端口应当能再绑上（说明 socket 真的关了）
-        java.net.ServerSocket().use { probe ->
-            probe.reuseAddress = true
-            probe.bind(InetSocketAddress("127.0.0.1", localPort))
-            assertTrue(probe.isBound)
-        }
+        // ⚠️ 端口释放是**异步**的：close() 之后还要等内核回收与 accept 线程退出。
+        // 以前这里断言"同一瞬间就能重绑"，在慢机器上会偶发 BindException: Address already in use
+        // （CI 上实测翻车，导致整个发版停在安卓单测这一步）。
+        // 真正要守的是"很快就能重新绑上"——用户重启 App 的间隔以秒计，这个窗口足够。
+        assertTrue("stop 之后端口应能很快重新绑上：$localPort", bindableWithin(localPort))
     }
 
     @Test
