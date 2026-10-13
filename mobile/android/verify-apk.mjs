@@ -117,7 +117,24 @@ if (badging) {
   else bad(`versionCode ${versionCode} 与推导值 ${expected} 不一致`);
 }
 
-// ── 3. 体积（只提示不拦截：这是给人看的参考值） ──────────────────────
+// ── 3. 签名指纹（只提示不拦截，但它决定"能不能覆盖安装"） ──────────────
+// 为什么值得打印：Android 只允许**同签名**的包覆盖安装。签名一变，用户必须卸载重装，
+// 而卸载会连带清掉 Keystore 加密的密钥与本机数据——这个代价应当一眼可见。
+// 历史上 CI 每个 runner 都会新生成一把 debug 密钥，于是每个包的指纹都不一样
+// （见 .github/workflows/mobile-release.yml 里的「固定 debug 签名密钥」）。
+const apksigner = join(here, ".toolchain", "android-sdk", "build-tools", "35.0.0", process.platform === "win32" ? "apksigner.bat" : "apksigner");
+try {
+  const certs = execFileSync(apksigner, ["verify", "--print-certs", apk], { encoding: "utf8" });
+  const digest = /Signer #1 certificate SHA-256 digest: ([0-9a-f]+)/.exec(certs)?.[1] || "";
+  if (digest) {
+    console.log(`  · 签名指纹 ${digest}`);
+    console.log("    （与上一个包不同则无法覆盖安装：先卸载一次。CI 现已固定这把密钥）");
+  }
+} catch {
+  console.log("  （找不到 apksigner 或包未签名，跳过指纹检查）");
+}
+
+// ── 4. 体积（只提示不拦截：这是给人看的参考值） ──────────────────────
 console.log(`  · APK 体积 ${Math.round(buf.length / 1024)} KB`);
 
 if (problems.length) {

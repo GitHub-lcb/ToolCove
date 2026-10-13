@@ -130,6 +130,21 @@ jobs:
           print("::error title=安卓桥单测失败::" + text.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
           PY
 
+      # 固定的 debug 签名：**让每次发的包签名一致**，否则手机上无法覆盖安装。
+      #
+      # 为什么需要它：AGP 在缺少 ~/.android/debug.keystore 时会**新生成一把随机密钥**，
+      # 而 GitHub 的 runner 每次都是干净的 → 每个 Release 的包签名都不同。
+      # 实测（2026-10-13）：1.3.2 与 1.3.4 的 debug 证书 SHA-256 完全不同
+      # （b3240cf1… / a226a328…），用户每次升级都必须先卸载——卸载还会连带清掉
+      # Keystore 加密的密钥与本机数据。
+      # 用缓存把第一把密钥固定住：缓存不在仓库里，也不随包分发；配了正式签名 Secrets 时
+      # 这一步无害（那时根本不读 debug keystore）。
+      - name: 固定 debug 签名密钥（缓存复用）
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.android/debug.keystore
+          key: toolcove-android-debug-keystore-v1
+
       - name: 配置正式签名（有 Secrets 时）
         id: signing
         env:
@@ -146,7 +161,9 @@ jobs:
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::未配置 ANDROID_KEYSTORE_BASE64，将使用 debug 签名（仅供侧载自用）"
+            # 说清后果：debug 签名由上面的缓存固定，但与**更早的包**（1.3.6 及以前）签名不同，
+            # 装第一个"固定签名"的包要先卸载一次；从那之后每次都能覆盖安装。
+            echo "::warning title=未配置签名 Secrets::使用 CI 缓存的 debug 签名。它与 1.3.6 及更早的包签名不同——首次安装需要先卸载旧包；之后每次都能覆盖安装。要长期稳定请配 ANDROID_KEYSTORE_BASE64 等 Secrets。"
           fi
 
       - name: 构建 APK
@@ -189,6 +206,16 @@ jobs:
           echo "产物 versionName=$actual 期望=$expected"
           if [ "$actual" != "$expected" ]; then echo "::error::APK 里的版本号 $actual 与 package.json 的 $expected 不一致"; exit 1; fi
 
+      # 把签名指纹写进 Release 说明：以后哪次"装不上"，看这里就能判断是不是签名变了。
+      - name: 记录签名指纹
+        id: fingerprint
+        run: |
+          apk=mobile/android/out/toolcove-release.apk
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          digest=$("$apksigner" verify --print-certs "$apk" | sed -n "s/^Signer #1 certificate SHA-256 digest: //p")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "签名指纹：$digest"
+
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -198,10 +225,11 @@ jobs:
             tag="apk-v$(node -p "require('./package.json').mobileVersion")"
           fi
           signed="${{ steps.signing.outputs.signed }}"
+          digest="${{ steps.fingerprint.outputs.digest }}"
           if [ "$signed" = "true" ]; then
-            note="正式签名构建。"
+            note="正式签名构建，签名指纹 \`$digest\`。可以直接覆盖安装。"
           else
-            note="**debug 签名，仅供侧载自用**（未配置签名 Secrets）。上架或长期分发请配置 ANDROID_KEYSTORE_BASE64 等 Secrets 后重跑。"
+            note="**debug 签名**（未配置签名 Secrets），签名指纹 \`$digest\`。CI 现在会固定这把密钥，因此**本包起往后都能覆盖安装**；但本包与 1.3.6 及更早的包签名不同，**首次安装要先卸载旧包**（卸载会清掉本机数据与 Keystore 里的密钥）。上架或长期分发请配置 ANDROID_KEYSTORE_BASE64 等 Secrets 后重跑。"
           fi
           cat > "$RUNNER_TEMP/notes.md" <<EOF
           ToolCove 安卓版 $tag（${{ steps.artifact.outputs.size_kb }} KB）

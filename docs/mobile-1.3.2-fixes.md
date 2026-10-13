@@ -80,3 +80,22 @@ Kotlin 侧删掉那个属性（多一个成员就是多一个攻击面）。
 2. **平台能力要按运行时判定，不要按构建期常量**。同一份产物可能跑在有壳/没壳两种环境里。
 3. **来源（origin）是数据的一部分**。凡是会变的端口/域名/协议，先问一句"存在它下面的东西还在吗"。
 4. **禁止保存要有出路**。任何"不让你操作"的门禁，都要给一条用户能自己走出来的路。
+
+## 追加：为什么"更新的 APK 装不上，要先卸载"（1.3.7）
+
+Android 只允许**同签名**的包覆盖安装。而 CI 用的 debug 签名是**每次构建新生成**的：
+AGP 在缺 `~/.android/debug.keystore` 时会随机生成一把，而 GitHub 的 runner 每次都是干净的。
+实测证据（`apksigner verify --print-certs`）：
+
+```
+apk-v1.3.2  Signer #1 certificate SHA-256: b3240cf1f11059f167cdf93688f15efd1a6b2df4d33deb9fc09bf4b6a7a6f3ca
+apk-v1.3.4  Signer #1 certificate SHA-256: a226a3280da0b83c9a13f009d6567acf09dd7aa29067cf890eabe44de1c75691
+```
+
+同一个应用、同一个版本线，两个包的签名完全不同——所以每次升级都要先卸载，
+而卸载会连带清掉 **Keystore 加密的密钥与本机数据**（这正是"AI Key 又要重填"的来源）。
+
+修法：CI 用 `actions/cache` 把 `~/.android/debug.keystore` 固定下来（缓存不在仓库里，也不随包分发），
+并把签名指纹写进 Release 说明；本地自检（`npm run verify:apk`）也打印指纹。
+要长期稳定（上架、换机器、清缓存都不受影响）请配 `ANDROID_KEYSTORE_BASE64` 等 Secrets——
+工作流原本就支持，配了就走正式签名。
