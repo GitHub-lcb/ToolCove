@@ -43,7 +43,7 @@ async function bodyBytes(body) {
  * 签名并发出一次请求。URL 与 canonical URI 用**同一份**未编码路径经同一函数编码，
  * 两条线没有分叉的可能（这是 SigV4 最容易错的地方）。
  */
-async function s3Request({ config, method, path, query = [], headers = {}, body, fetchImpl, now }) {
+export async function s3Request({ config, method, path, query = [], headers = {}, body, fetchImpl, now }) {
   const fetchFn = fetchImpl || globalThis.fetch;
   if (!fetchFn) throw new PhotoError("noFetch", "当前环境没有 fetch");
   const bytes = await bodyBytes(body);

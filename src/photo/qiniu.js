@@ -39,10 +39,10 @@ export function resetQiniuHostCache() {
 export async function resolveQiniuUploadHostDetailed({ accessKey, bucket, fetchImpl = null }) {
   const cacheKey = `${accessKey}|${bucket}`;
   const cached = uploadHostCache.get(cacheKey);
-  if (cached !== undefined) return { host: cached, reason: "", message: "" };
+  if (cached !== undefined) return { ...cached, reason: "", message: "" };
 
   const fetchFn = fetchImpl || globalThis.fetch;
-  if (!fetchFn) return { host: "", reason: "noFetch", message: "当前环境没有 fetch" };
+  if (!fetchFn) return { host: "", rsfHost: "", reason: "noFetch", message: "当前环境没有 fetch" };
   try {
     const url = `${QINIU_REGION_QUERY}?ak=${encodeURIComponent(accessKey)}&bucket=${encodeURIComponent(bucket)}`;
     const res = await fetchFn(url);
@@ -57,11 +57,14 @@ export async function resolveQiniuUploadHostDetailed({ accessKey, bucket, fetchI
       const message = String(json?.error || text || `HTTP ${res.status}`).slice(0, 200);
       return { host: "", reason: classifyQiniuQueryError(message), message };
     }
-    const up = json?.up || json?.data?.up;
-    const host = up?.acc?.main?.[0] || up?.src?.main?.[0] || "";
-    if (!host) return { host: "", reason: "unknown", message: "区域接口没有返回上传域名" };
-    uploadHostCache.set(cacheKey, host);
-    return { host, reason: "", message: "" };
+    // 上传域名与管理（rsf）域名都在这个响应里：acc 取不到就退到 src（与 Rust 的 qiniu_pick_hosts 一致）
+    const root = json?.data || json;
+    const pick = (service) => root?.[service]?.acc?.main?.[0] || root?.[service]?.src?.main?.[0] || "";
+    const host = pick("up");
+    const rsfHost = pick("rsf");
+    if (!host) return { host: "", rsfHost, reason: "unknown", message: "区域接口没有返回上传域名" };
+    uploadHostCache.set(cacheKey, { host, rsfHost });
+    return { host, rsfHost, reason: "", message: "" };
   } catch (e) {
     // 网络异常不该中断上传：走兜底域名继续试，但把原因带出去
     return { host: "", reason: "network", message: String(e?.message || e) };
@@ -113,7 +116,7 @@ export function urlsafeBase64(bytes, padded = false) {
   return padded ? b64 : b64.replace(/=+$/, "");
 }
 
-async function hmacSha1(secret, message) {
+export async function hmacSha1(secret, message) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(message)));
 }

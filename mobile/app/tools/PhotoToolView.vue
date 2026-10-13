@@ -17,6 +17,7 @@ import { fieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
+import { canSendAuthHeader, cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl } from "../../../src/photo/cloud.js";
 import { checkQiniuSpace, probeQiniuUpload } from "../../../src/photo/qiniu.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
 
@@ -166,6 +167,137 @@ async function saveConfig() {
   testResult.value = "";
   testError.value = "";
   await queue?.pump();
+}
+
+// ---------- 云端（直接读远程对象：列出 / 预览 / 改名 / 删除） ----------
+// 列的是「配置里那个前缀下」的对象，所以手机上传了什么、桌面上传了什么，这里看到的是同一份。
+const CLOUD_PAGE = 50;
+const cloudProvider = computed(() => cloudProviderOf(config.value));
+const cloud = ref({ items: [], marker: "", truncated: false, loaded: false });
+const cloudBusy = ref(false);
+const cloudError = ref("");
+const cloudNotice = ref("");
+const cloudUrls = ref({}); // key → 预览 URL（私有桶带 1 小时有效的下载令牌）
+const renaming = ref("");
+const renameDraft = ref("");
+const confirmingDelete = ref("");
+
+/** 给新到的对象签预览 URL（签过的不重复签：私有令牌的有效期不短，重复签只是浪费）。 */
+async function signCloudUrls(items) {
+  const next = { ...cloudUrls.value };
+  for (const item of items) {
+    if (next[item.key]) continue;
+    try {
+      next[item.key] = await objectPreviewUrl({ config: config.value, key: item.key });
+    } catch {
+      next[item.key] = "";
+    }
+  }
+  cloudUrls.value = next;
+}
+
+async function loadCloud({ append = false } = {}) {
+  if (!cloudProvider.value) {
+    cloudError.value = t("toolbox.photo.cloudUnsupported");
+    return;
+  }
+  cloudBusy.value = true;
+  cloudError.value = "";
+  cloudNotice.value = "";
+  try {
+    const page = await listCloudObjects({
+      config: config.value,
+      prefix: `${config.value.prefix}/`,
+      marker: append ? cloud.value.marker : "",
+      limit: CLOUD_PAGE,
+    });
+    cloud.value = {
+      items: append ? [...cloud.value.items, ...page.objects] : page.objects,
+      marker: page.nextMarker,
+      truncated: page.truncated,
+      loaded: true,
+    };
+    await signCloudUrls(page.objects);
+  } catch (e) {
+    cloudError.value = String(e?.message || e);
+  } finally {
+    cloudBusy.value = false;
+  }
+}
+
+function openCloud() {
+  listMode.value = "cloud";
+  if (!cloud.value.loaded) loadCloud();
+}
+
+function startRename(item) {
+  renaming.value = item.key;
+  renameDraft.value = item.key;
+}
+
+function cancelRename() {
+  renaming.value = "";
+  renameDraft.value = "";
+}
+
+/** 改名 = 改目录：对象 key 就是它的路径，改完桌面归档/设备分段都不受影响（纯服务端移动）。 */
+async function saveRename(item) {
+  const to = String(renameDraft.value || "").trim();
+  if (!to || to === item.key) {
+    cancelRename();
+    return;
+  }
+  cloudBusy.value = true;
+  cloudError.value = "";
+  try {
+    await moveCloudObject({ config: config.value, from: item.key, to });
+    cancelRename();
+    await loadCloud();
+    cloudNotice.value = t("toolbox.photo.cloudMoved", { to });
+  } catch (e) {
+    cloudError.value = String(e?.message || e);
+  } finally {
+    cloudBusy.value = false;
+  }
+}
+
+/**
+ * 删除：点两次（第二次才是确认），不弹系统 confirm——WebView 里那个框的样式与语言都不受控。
+ * 网页版读不到删除响应（七牛不给 CORS），所以**成败以"删完再列一次"为准**：
+ * 列不到了就是删掉了，还列得到就是没删掉。
+ */
+async function removeCloudObject(item) {
+  if (confirmingDelete.value !== item.key) {
+    confirmingDelete.value = item.key;
+    return;
+  }
+  confirmingDelete.value = "";
+  cloudBusy.value = true;
+  cloudError.value = "";
+  cloudNotice.value = "";
+  try {
+    let requestFailed = null;
+    try {
+      await deleteCloudObject({ config: config.value, key: item.key });
+    } catch (e) {
+      requestFailed = e;
+    }
+    await loadCloud();
+    const gone = !cloud.value.items.some((row) => row.key === item.key);
+    if (gone) {
+      cloudNotice.value = t("toolbox.photo.cloudDeleted", { name: item.name });
+    } else if (canSendAuthHeader()) {
+      throw requestFailed || new Error(t("toolbox.photo.cloudDeleteUnknown"));
+    } else if (requestFailed) {
+      throw requestFailed;
+    } else {
+      cloudError.value = t("toolbox.photo.cloudDeleteUnknown");
+    }
+  } catch (e) {
+    cloudError.value = String(e?.message || e);
+  } finally {
+    cloudBusy.value = false;
+  }
 }
 
 async function runTest() {
@@ -434,7 +566,7 @@ onBeforeUnmount(() => {
     <!-- 上传队列 / 已上传 -->
     <div class="m-card">
       <div class="m-card-head">
-        <b>{{ listMode === "queue" ? t("toolbox.photo.queueTitle") : t("toolbox.photo.stateDone") }}</b>
+        <b>{{ listMode === "queue" ? t("toolbox.photo.queueTitle") : listMode === "cloud" ? t("toolbox.photo.cloudTitle") : t("toolbox.photo.stateDone") }}</b>
         <span class="m-zone" data-role="queue-meta">{{ t("toolbox.photo.queueMeta", { done: stats.done, total: stats.total }) }}</span>
       </div>
       <div class="m-chips m-photo-tabs">
@@ -443,6 +575,9 @@ onBeforeUnmount(() => {
         </button>
         <button class="m-chip" :class="{ on: listMode === 'uploaded' }" data-role="tab-uploaded" @click="listMode = 'uploaded'">
           {{ t("toolbox.photo.stateDone") }}
+        </button>
+        <button class="m-chip" :class="{ on: listMode === 'cloud' }" data-role="tab-cloud" @click="openCloud">
+          {{ t("toolbox.photo.cloudTitle") }}
         </button>
       </div>
 
@@ -475,6 +610,69 @@ onBeforeUnmount(() => {
         </ul>
         <div v-if="queueItems.length" class="m-actions">
           <button v-if="stats.error" class="m-btn" data-role="retry-all" @click="retryAll">{{ t("toolbox.photo.retryAll") }}</button>
+        </div>
+      </template>
+
+      <!-- 云端：直接读远程对象。列的是配置里那个前缀下的东西，所以手机上/桌面上传的都在这里。 -->
+      <template v-else-if="listMode === 'cloud'">
+        <p class="m-hint-sm" data-role="cloud-hint">{{ t("toolbox.photo.cloudHint", { prefix: config.prefix }) }}</p>
+        <div class="m-actions">
+          <button class="m-btn sm" :disabled="cloudBusy" data-role="cloud-refresh" @click="loadCloud()">
+            {{ cloudBusy ? t("common.loading") : t("toolbox.photo.cloudRefresh") }}
+          </button>
+        </div>
+        <p v-if="cloudError" class="m-err" data-role="cloud-error">{{ cloudError }}</p>
+        <p v-else-if="cloudNotice" class="m-ok" data-role="cloud-notice">{{ cloudNotice }}</p>
+        <p v-else-if="cloud.loaded && !cloud.items.length" class="m-hint-sm" data-role="cloud-empty">{{ t("toolbox.photo.cloudEmpty") }}</p>
+        <ul v-if="cloud.items.length" class="m-photo-list">
+          <li v-for="item in cloud.items" :key="item.key" class="m-photo-row" data-state="done" :data-role="`cloud-${item.key}`">
+            <img
+              v-if="cloudUrls[item.key]"
+              :src="cloudUrls[item.key]"
+              class="m-photo-thumb"
+              alt=""
+              loading="lazy"
+              data-role="cloud-thumb"
+            />
+            <div class="m-photo-main">
+              <span class="m-photo-name">{{ item.name }}</span>
+              <span class="m-hint-sm m-photo-meta">{{ formatBytes(item.size) }}{{ item.lastModified ? ` · ${item.lastModified}` : "" }}</span>
+              <span class="m-mono m-photo-key" :title="item.key">{{ item.key }}</span>
+              <input
+                v-if="renaming === item.key"
+                v-model="renameDraft"
+                class="m-mono"
+                spellcheck="false"
+                data-role="cloud-rename-input"
+              />
+            </div>
+            <div class="m-photo-ops">
+              <template v-if="renaming === item.key">
+                <button class="m-btn sm primary" :disabled="cloudBusy" data-role="cloud-rename-save" @click="saveRename(item)">
+                  {{ t("common.confirm") }}
+                </button>
+                <button class="m-btn sm" data-role="cloud-rename-cancel" @click="cancelRename">{{ t("toolbox.photo.configCancel") }}</button>
+              </template>
+              <template v-else>
+                <button class="m-btn sm" :disabled="cloudBusy" data-role="cloud-rename" @click="startRename(item)">
+                  {{ t("toolbox.photo.cloudRename") }}
+                </button>
+                <button
+                  class="m-btn sm danger"
+                  :disabled="cloudBusy"
+                  :data-role="confirmingDelete === item.key ? 'cloud-delete-confirm' : 'cloud-delete'"
+                  @click="removeCloudObject(item)"
+                >
+                  {{ confirmingDelete === item.key ? t("toolbox.photo.cloudDeleteConfirm") : t("toolbox.photo.remove") }}
+                </button>
+              </template>
+            </div>
+          </li>
+        </ul>
+        <div v-if="cloud.truncated" class="m-actions">
+          <button class="m-btn sm" :disabled="cloudBusy" data-role="cloud-more" @click="loadCloud({ append: true })">
+            {{ t("toolbox.photo.cloudMore") }}
+          </button>
         </div>
       </template>
 
