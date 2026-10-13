@@ -210,9 +210,16 @@ jobs:
       - name: 记录签名指纹
         id: fingerprint
         run: |
+          set +e
           apk=mobile/android/out/toolcove-release.apk
-          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          digest=$("$apksigner" verify --print-certs "$apk" | sed -n "s/^Signer #1 certificate SHA-256 digest: //p")
+          # SDK 路径两种环境变量名都试（CI 上是 ANDROID_HOME，本地脚本里常见 ANDROID_SDK_ROOT），
+          # glob 不命中时不要留空——空指纹等于这一步白写（首版就撞上了）。
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          apksigner=$(ls "$sdk"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          [ -z "$apksigner" ] && apksigner=$(command -v apksigner)
+          digest=""
+          [ -n "$apksigner" ] && digest=$("$apksigner" verify --print-certs "$apk" 2>/dev/null | sed -n "s/^Signer #1 certificate SHA-256 digest: //p")
+          [ -z "$digest" ] && digest="(未取到：apksigner 不可用)"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "签名指纹：$digest"
 
