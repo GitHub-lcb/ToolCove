@@ -3665,6 +3665,8 @@
       "configTest": "Test connection",
       "configTesting": "Testing…",
       "configOk": "Connected ({n} photo(s) already in the cloud)",
+      "configUploadOk": "upload path verified",
+      "configUploadFail": "Upload self-check failed: {err}",
       "configTestDesktopOnly": "Connectivity test for this backend runs on the desktop (browser CORS limits); on the phone just upload one photo to verify",
       "fieldProvider": "Storage backend",
       "fieldDomain": "Access domain",

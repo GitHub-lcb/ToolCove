@@ -3665,6 +3665,8 @@
       "configTest": "测试连接",
       "configTesting": "正在测试…",
       "configOk": "连接成功（云端已有 {n} 张）",
+      "configUploadOk": "上传通道验证通过",
+      "configUploadFail": "上传自检失败：{err}",
       "configTestDesktopOnly": "该后端的连通性测试在桌面端进行（浏览器跨域限制），手机上直接传一张即可验证",
       "fieldProvider": "存储后端",
       "fieldDomain": "访问域名",

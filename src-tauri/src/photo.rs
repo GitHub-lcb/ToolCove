@@ -326,6 +326,12 @@ fn urlsafe_b64(bytes: &[u8]) -> String {
     URL_SAFE.encode(bytes)
 }
 
+/// 不带填充的 URL-safe Base64（官方 Python SDK 的风格；上传凭证两种风格服务端都收，
+/// 探针会两种都试一遍把这个结论钉死在真实服务上）。
+fn urlsafe_b64_unpadded(bytes: &[u8]) -> String {
+    URL_SAFE.encode(bytes).trim_end_matches('=').to_string()
+}
+
 /// 七牛管理凭证（Qiniu V2 签名）——rsf 列举等管理接口用。
 ///
 /// 签名串（官方 Go SDK collectDataV2 的实现）：
@@ -355,6 +361,87 @@ fn qiniu_download_token(config: &PhotoConfig, key: &str, deadline: i64) -> Strin
     let signed = format!("{}?e={deadline}", qiniu_base_url(config, key));
     let sign = urlsafe_b64(&hmac_sha1(config.secret_key.trim().as_bytes(), signed.as_bytes()));
     format!("{}:{sign}", config.access_key.trim())
+}
+
+// ---------- 七牛上传（自检探针） ----------
+
+/// 七牛表单上传入口（全局加速域名；官方 Go SDK 里它叫 CdnUpHosts，SrcUpHosts 是各区域 up-*.qiniup.com）。
+const QINIU_UPLOAD_HOST: &str = "upload.qiniup.com";
+/// 探针对象：藏在目录前缀下的点文件（列举时按"隐藏文件"过滤掉，不进归档列表）。
+const QINIU_PROBE_NAME: &str = ".toolcove-probe";
+const PROBE_BOUNDARY: &str = "----ToolCoveProbeBoundary7f3a";
+
+/// 七牛上传凭证：`AK:sign:policy_b64`，sign = HMAC-SHA1(SK, policy_b64)。
+/// 与手机端 `src/photo/qiniu.js` 的构造**逐字一致**（含 JSON 紧凑序列化），
+/// 这样"桌面自检通过但手机上传失败"就只能指向密钥/权限差异，而不是实现差异。
+/// padded=false 复刻 Python SDK / 我们 JS 的风格，true 复刻 Go SDK 风格。
+fn qiniu_upload_token(config: &PhotoConfig, key: &str, deadline: i64, padded: bool) -> String {
+    let policy = format!(
+        "{{\"scope\":\"{}:{}\",\"deadline\":{deadline}}}",
+        config.bucket.trim(),
+        key
+    );
+    let encode = |bytes: &[u8]| {
+        if padded {
+            urlsafe_b64(bytes)
+        } else {
+            urlsafe_b64_unpadded(bytes)
+        }
+    };
+    let policy_b64 = encode(policy.as_bytes());
+    let sign = encode(&hmac_sha1(config.secret_key.trim().as_bytes(), policy_b64.as_bytes()));
+    format!("{}:{sign}:{policy_b64}", config.access_key.trim())
+}
+
+/// 手写 multipart 表单（token/key/file 三段）。不引 reqwest 的 multipart feature——
+/// 这里只需要拼字节，加一个 feature 会连带一串依赖。
+fn multipart_body(boundary: &str, fields: &[(&str, &str)], file_name: &str, file: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, value) in fields {
+        out.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes(),
+        );
+    }
+    out.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    out.extend_from_slice(file);
+    out.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    out
+}
+
+/// 上传自检：往 <prefix>/.toolcove-probe 传 4 个字节（覆盖写，不产生垃圾堆积）。
+/// 返回实际通过的凭证风格（plain / padded）——服务端对两种风格的真实态度由此钉死。
+/// 只有 BadToken 类错误才换另一种风格重试；权限、空间不存在之类换了也一样。
+async fn qiniu_probe_upload(config: &PhotoConfig) -> Result<&'static str, String> {
+    let key = format!("{}/{}", normalize_prefix(&config.prefix), QINIU_PROBE_NAME);
+    let client = http_client()?;
+    let mut last_error = String::new();
+    for (padded, variant) in [(false, "plain"), (true, "padded")] {
+        let token = qiniu_upload_token(config, &key, unix_now() as i64 + 300, padded);
+        let body = multipart_body(PROBE_BOUNDARY, &[("token", &token), ("key", &key)], "probe.bin", b"probe");
+        let response = client
+            .post(format!("https://{QINIU_UPLOAD_HOST}/"))
+            .header("Content-Type", format!("multipart/form-data; boundary={PROBE_BOUNDARY}"))
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| format!("请求失败：{e}"))?;
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
+        if (200..300).contains(&status) {
+            return Ok(variant);
+        }
+        let brief = text.chars().take(160).collect::<String>();
+        last_error = format!("HTTP {status}: {brief}");
+        if !text.contains("BadToken") && !text.contains("bad token") {
+            break;
+        }
+    }
+    Err(last_error)
 }
 
 /// UNIX 秒 → `YYYY-MM-DDTHH:MM:SS.000Z`（与 S3 的 LastModified 形状一致，前端只用前 10 位取日期）。
@@ -576,6 +663,12 @@ fn is_dir_marker(key: &str) -> bool {
     trimmed.ends_with('/') || trimmed.ends_with('\\')
 }
 
+/// 隐藏条目：最后一段以 `.` 开头（上传自检探针 `.toolcove-probe`、.DS_Store 之类）。
+/// 照片场景里这些既不是照片也不该进归档——列表与下载都跳过（隐藏目录里的普通文件不算）。
+fn is_hidden_entry(key: &str) -> bool {
+    key.rsplit('/').next().map(|name| name.starts_with('.')).unwrap_or(false)
+}
+
 async fn list_objects(
     config: &PhotoConfig,
     prefix: &str,
@@ -588,7 +681,10 @@ async fn list_objects(
         _ => list_s3(config, prefix, continuation_token, max_keys).await?,
     };
     Ok((
-        objects.into_iter().filter(|object| !is_dir_marker(&object.key)).collect(),
+        objects
+            .into_iter()
+            .filter(|object| !is_dir_marker(&object.key) && !is_hidden_entry(&object.key))
+            .collect(),
         truncated,
         next,
     ))
@@ -842,7 +938,22 @@ fn webdav_key_of(config: &PhotoConfig, full_url: &str) -> String {
 pub async fn photo_test(config: PhotoConfig) -> Result<serde_json::Value, String> {
     let prefix = format!("{}/", normalize_prefix(&config.prefix));
     let (objects, _, _) = list_objects(&config, &prefix, None, 1).await?;
-    Ok(serde_json::json!({ "sampleCount": objects.len() }))
+    let mut result = serde_json::json!({ "sampleCount": objects.len() });
+    // 七牛：列表（管理凭证）与上传（上传凭证）是**两套签名、两套权限**——
+    // 只测列表会出现"测试通过但传不上去"。这里顺带把上传也真测一遍（4 字节探针，覆盖写）。
+    if config.provider.trim() == "qiniu" {
+        match qiniu_probe_upload(&config).await {
+            Ok(variant) => {
+                result["uploadOk"] = serde_json::json!(true);
+                result["uploadVariant"] = serde_json::json!(variant);
+            }
+            Err(error) => {
+                result["uploadOk"] = serde_json::json!(false);
+                result["uploadError"] = serde_json::json!(error);
+            }
+        }
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1303,8 +1414,8 @@ async fn run_archive(
             clear_task(&id);
             return;
         }
-        // 目录占位对象在列举时已被滤掉；这里是防陈旧界面把旧列表带进来的二次防护
-        if is_dir_marker(&item.key) {
+        // 目录占位对象 / 隐藏条目（探针等）在列举时已被滤掉；这里是防陈旧界面带入旧列表的二次防护
+        if is_dir_marker(&item.key) || is_hidden_entry(&item.key) {
             sink.skipped += 1;
             sink.done += 1;
             sink.emit(0, 0, true);
@@ -1625,6 +1736,45 @@ mod tests {
         assert!(!is_dir_marker("photos/2026/10/13/a.jpg"));
         assert!(!is_dir_marker("photos/a/b.jpg"));
         assert!(!is_dir_marker(""));
+    }
+
+    /// 上传凭证与手机端 JS 构造逐字一致（同一 Python 参考实现生成的两个风格向量）。
+    #[test]
+    fn qiniu_upload_token_matches_reference_both_styles() {
+        let config = PhotoConfig {
+            provider: "qiniu".into(),
+            access_key: "ak".into(),
+            secret_key: "sk".into(),
+            bucket: "b".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            qiniu_upload_token(&config, "photos/.toolcove-probe", 1_700_000_000, false),
+            "ak:c9zrAbjBm1yCvCN3sj2NoKvL3Mc:eyJzY29wZSI6ImI6cGhvdG9zLy50b29sY292ZS1wcm9iZSIsImRlYWRsaW5lIjoxNzAwMDAwMDAwfQ"
+        );
+        assert_eq!(
+            qiniu_upload_token(&config, "photos/.toolcove-probe", 1_700_000_000, true),
+            "ak:hwfSzofT272YEVQbwHKyA7YMPyA=:eyJzY29wZSI6ImI6cGhvdG9zLy50b29sY292ZS1wcm9iZSIsImRlYWRsaW5lIjoxNzAwMDAwMDAwfQ=="
+        );
+    }
+
+    #[test]
+    fn multipart_body_shape() {
+        let body = multipart_body("B", &[("token", "T"), ("key", "k")], "probe.bin", b"data");
+        let text = String::from_utf8(body).unwrap();
+        assert!(text.starts_with("--B\r\nContent-Disposition: form-data; name=\"token\"\r\n\r\nT\r\n"));
+        assert!(text.contains("name=\"key\"\r\n\r\nk\r\n"));
+        assert!(text.contains("name=\"file\"; filename=\"probe.bin\"\r\nContent-Type: application/octet-stream\r\n\r\ndata\r\n"));
+        assert!(text.ends_with("--B--\r\n"));
+    }
+
+    #[test]
+    fn hidden_entries_are_filtered_but_only_by_last_segment() {
+        assert!(is_hidden_entry("photos/2026/.toolcove-probe"));
+        assert!(is_hidden_entry(".DS_Store"));
+        assert!(!is_hidden_entry("photos/2026/a.jpg"));
+        // 隐藏目录里的普通文件不算隐藏条目（只按最后一段判断）
+        assert!(!is_hidden_entry("photos/.hidden-dir/a.jpg"));
     }
 
     #[test]

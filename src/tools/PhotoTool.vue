@@ -108,7 +108,16 @@ async function runTest() {
   try {
     if (desktopMode) {
       const result = await invoke("photo_test", { config: normalizePhotoConfig(config.value) });
-      testResult.value = t("toolbox.photo.configOk", { n: result?.sampleCount ?? 0 });
+      const base = t("toolbox.photo.configOk", { n: result?.sampleCount ?? 0 });
+      if (result?.uploadOk === true) {
+        testResult.value = `${base} · ${t("toolbox.photo.configUploadOk")}`;
+      } else if (result?.uploadOk === false) {
+        // 列表能通但上传不通，是"两套签名/两套权限"下的真实故障形态——分开如实报
+        testResult.value = base;
+        testError.value = t("toolbox.photo.configUploadFail", { err: String(result?.uploadError || "").slice(0, 300) });
+      } else {
+        testResult.value = base;
+      }
     } else {
       const result = await testPhotoConnection({ config: config.value });
       testResult.value = t("toolbox.photo.configOk", { n: result.sampleCount });
