@@ -20,7 +20,28 @@ const SOURCES = {
     return [["authorization", `Bearer ${token}`]];
   },
 
-  // TRAE Work CN：它的凭据不在标准 OSCrypt 里，是自己一层 "tc" 信封（见 trae_cn_auth.rs）。
+  // Qoder 国际版（Qoder IDE）：device token 同样是 dt- 前缀，目录与文件名都不同
+  // （com.qoder.app.stable\auth.v1.dat，而 CN 是 com.qodercn.app.stable\auth.v1.dat）。
+  //
+  // 国际版还必须带 umid 机器身份三件套（见 workbuddy_cn_auth.rs 之外的 qoder_intl_auth.rs）：
+  // campaigns 接口按机器身份下发每日签到轮次，**缺这组头时不报错，只回常驻的 VIEW_DETAILS 横幅**——
+  // 表现与「今天没有活动」一模一样，但那是假的。CN 版不受此门控，不需要这组头。
+  "qoder-intl-local": async () => {
+    const got = await invoke("qoder_intl_auth_token");
+    const token = String(got?.token || "");
+    if (!token) throw new Error("本地登录态里没有可用的 token");
+    const headers = [["authorization", `Bearer ${token}`]];
+    // 读不到机器身份时不抛错：让请求照发（行为退回「只看到横幅」），
+    // 好过把整个签到站点报成不可用——后者会让人以为要重装客户端。
+    if (got?.machineToken && got?.machineCode && got?.machineType) {
+      headers.push(["cosy-machineToken", String(got.machineToken)]);
+      headers.push(["cosy-machineCode", String(got.machineCode)]);
+      headers.push(["cosy-machineType", String(got.machineType)]);
+    }
+    return headers;
+  },
+
+  // TRAE CN：它的凭据不在标准 OSCrypt 里，是自己一层 "tc" 信封（见 trae_cn_auth.rs）。
   // scheme 也不是 Bearer，是 Cloud-IDE-JWT。
   "trae-cn-local": async () => {
     const got = await invoke("trae_cn_auth_token");

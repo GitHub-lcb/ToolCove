@@ -3,8 +3,12 @@ import { classifyCheckIn, classifyStatus, OUTCOME } from "./classify.js";
 import { BUILTIN_SITES, mergeBuiltinSites } from "./builtin.js";
 import { validateDescriptor } from "./descriptor.js";
 import { EXTRACT_ERROR, resolvePath } from "./extract.js";
+import { prepareSites } from "./store.js";
 
 const QODER = BUILTIN_SITES[0];
+
+// 与 store.js 的 loadSites 走同一条管线（解密那步与本用例无关，故从明文入参开始）。
+const loadSitesFrom = (stored) => prepareSites(stored);
 
 describe("内置站点描述", () => {
   it("每一个内置描述都必须自己校验得过", () => {
@@ -48,6 +52,17 @@ describe("内置站点描述", () => {
     expect(got.error).toBe(EXTRACT_ERROR.SELECTOR_NO_MATCH);
     expect(got.detail).toBe("empty-list");
   });
+
+  it("列表非空但没有 CLAIMABLE 时是 all-filtered，而不是「描述写错」", () => {
+    // 实测形态：campaigns 里常年有一个 VIEW_DETAILS 活动（不可领），数组非空。
+    // 这同样是「今天没有可领的」，上层必须与「配置写错」分开处理。
+    const got = resolvePath("/c/${campaignId}/claim", QODER.checkin.pathFrom, {
+      campaigns: [{ campaignId: "c1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" }],
+    });
+    expect(got.ok).toBe(false);
+    expect(got.error).toBe(EXTRACT_ERROR.SELECTOR_NO_MATCH);
+    expect(got.detail).toBe("all-filtered");
+  });
 });
 
 describe("Qoder CN 的两个响应形状共用一份 read", () => {
@@ -77,8 +92,13 @@ describe("Qoder CN 的两个响应形状共用一份 read", () => {
   });
 });
 
-describe("TRAE Work CN 内置条目", () => {
+describe("TRAE CN 内置条目", () => {
   const TRAE = BUILTIN_SITES.find((site) => site.key === "trae-cn");
+
+  it("显示名是 TRAE CN（key 保持不变，避免牵动存量签到记录）", () => {
+    expect(TRAE.label).toBe("TRAE CN");
+    expect(TRAE.key).toBe("trae-cn");
+  });
 
   it("两个动作都带 req_source:2（2=TRAE Work/lite，1=IDE；填错不报错，只是拿不到活动）", () => {
     for (const action of [TRAE.status, TRAE.checkin]) {
@@ -186,6 +206,102 @@ describe("WorkBuddy CN 内置条目", () => {
   });
 });
 
+describe("Qoder AI（国际版）内置条目", () => {
+  const QI = BUILTIN_SITES.find((site) => site.key === "qoder-ai");
+  const ok = (body, status = 200) => ({ ok: status < 300, status, text: JSON.stringify(body), error: "", retryAfterMs: 0 });
+
+  it("用的是国际版自己的基址：openapi.qoder.sh（IDE bundle 里的 api.qoder.com 实测 401）", () => {
+    expect(QI.baseUrl).toBe("https://openapi.qoder.sh");
+    expect(QI.baseUrl).not.toBe("https://api.qoder.com");
+  });
+
+  it("端点与 CN 版一致（实测两边响应结构相同，差的只是基址与登录态）", () => {
+    expect(QI.status.path).toBe("/sash/api/v1/me/campaigns");
+    expect(QI.checkin.path).toBe("/sash/api/v1/me/campaigns/${campaignId}/claim");
+  });
+
+  it("Cosy-ClientType 是 10（客户端里写死的 clientType:10，不是 IDE 版本号）", () => {
+    for (const action of [QI.status, QI.checkin]) {
+      expect(action.headers).toContainEqual(["Cosy-ClientType", "10"]);
+    }
+  });
+
+  it("不存凭据：token 与 umid 机器身份都由 credentialSource 当场给", () => {
+    expect(QI.credentialSource).toBe("qoder-intl-local");
+    for (const action of [QI.status, QI.checkin]) {
+      // umid 三件套必须走 credentialSource（与本机绑定、会变），不能写成静态 header。
+      const names = action.headers.map(([n]) => n.toLowerCase());
+      expect(names).not.toContain("authorization");
+      expect(names.some((n) => n.startsWith("cosy-machine"))).toBe(false);
+    }
+  });
+
+  it("查状态：CLAIM_BENEFIT 且 CLAIMED → 今日已签", () => {
+    const body = { showCampaign: true, claimable: false, campaigns: [{ actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMED" }] };
+    expect(classifyStatus(ok(body), QI.read).outcome).toBe(OUTCOME.ALREADY);
+  });
+
+  it("查状态：活动可领 → 绝不能判成已签（顶层 claimable 不可信，以活动自身状态为准）", () => {
+    const body = { showCampaign: true, claimable: false, campaigns: [{ actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" }] };
+    expect(classifyStatus(ok(body), QI.read).outcome).not.toBe(OUTCOME.ALREADY);
+  });
+
+  it("别的活动（VIEW_DETAILS）早已领过，不能把今天可领的算成已签", () => {
+    const body = {
+      showCampaign: true,
+      campaigns: [
+        { actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" },
+        { actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" },
+      ],
+    };
+    expect(classifyStatus(ok(body), QI.read).outcome).not.toBe(OUTCOME.ALREADY);
+  });
+
+  it("本机实测形状（showCampaign:true 但顶层 claimable:false）不能导致漏签", () => {
+    // 这就是这台机器真实返回的样子：顶层 claimable 给 false，活动本身却是 CLAIMABLE。
+    // 如果拿顶层 claimable 当幂等依据，明明天天可领也会被跳过一整天。
+    // 这里断言「绝不能判成已签」——这才是漏签的判定条件；
+    // 读成「无法判定」是可接受的保守结果（runner 随后仍会照 pathFrom 去领）。
+    const body = {
+      showCampaign: true,
+      claimable: false,
+      campaigns: [{ campaignId: "01a05bce-e800", actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" }],
+    };
+    expect(classifyStatus(ok(body), QI.read).outcome).not.toBe(OUTCOME.ALREADY);
+    // 关键：读不出状态也不能让签到停摆 —— pathFrom 仍取得到 id，请求照发。
+    expect(resolvePath(QI.checkin.path, QI.checkin.pathFrom, body).ok).toBe(true);
+  });
+
+  it("执行签到返回 {status:CLAIMED} → 判成成功", () => {
+    expect(classifyCheckIn(ok({ status: "CLAIMED" }), QI.read).outcome).toBe(OUTCOME.OK);
+  });
+
+  it("领取时 campaignId 取自 CLAIMABLE 的那条，而不是数组第一条", () => {
+    const body = {
+      campaigns: [
+        { campaignId: "already-claimed", actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMED" },
+        { campaignId: "today-open", actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" },
+      ],
+    };
+    expect(resolvePath(QI.checkin.path, QI.checkin.pathFrom, body)).toEqual({
+      ok: true,
+      path: "/sash/api/v1/me/campaigns/today-open/claim",
+    });
+  });
+
+  it("没有可领的活动时不发请求（empty-list 与 all-filtered 都算「没活动」，不是配置写错）", () => {
+    for (const body of [
+      { campaigns: [] },
+      { campaigns: [{ campaignId: "c1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" }] },
+    ]) {
+      const got = resolvePath(QI.checkin.path, QI.checkin.pathFrom, body);
+      expect(got.ok).toBe(false);
+      expect(got.error).toBe(EXTRACT_ERROR.SELECTOR_NO_MATCH);
+      expect(["empty-list", "all-filtered"]).toContain(got.detail);
+    }
+  });
+});
+
 describe("mergeBuiltinSites", () => {
   it("内置的是 CN 版：key 与 label 都要能和国际版区分开", () => {
     expect(QODER.key).toBe("qoder-cn");
@@ -215,5 +331,22 @@ describe("mergeBuiltinSites", () => {
   it("同版本的内置条目不被动过", () => {
     const asStored = { ...QODER, enabled: false };
     expect(mergeBuiltinSites([asStored])[0]).toBe(asStored);
+  });
+});
+
+describe("改名后遗留的旧内置条目", () => {
+  it("旧 key（qoder）的内置条目会被收走，不再挂在列表里当僵尸", () => {
+    // 界面上「Qoder / qoder / 内置」这一条：既不是当前内置条目（不给删除），
+    // 又确实是用户存储里的条目（不给不了删除），怎么都清不掉。
+    const stored = [{ key: "qoder", label: "Qoder", builtin: true, enabled: false }];
+    const merged = loadSitesFrom(stored);
+    expect(merged.map((s) => s.key)).not.toContain("qoder");
+    expect(merged.map((s) => s.key)).toContain("qoder-cn");
+  });
+
+  it("用户自己加的同名 qoder 站点必须留下（不能悄悄删别人的配置）", () => {
+    const mine = { key: "qoder", label: "我自己加的", baseUrl: "https://example.com" };
+    const merged = loadSitesFrom([mine]);
+    expect(merged.find((s) => s.key === "qoder")).toEqual(mine);
   });
 });

@@ -23,6 +23,17 @@ export const OUTCOME = Object.freeze({
   NETWORK: "network",
   BAD_DESCRIPTOR: "bad-descriptor",
   SKIPPED: "skipped",
+  /**
+   * 站点明确给出了「此刻没有可领的活动」（列表为空，或活动都在但没有可领的那一个）。
+   *
+   * 为什么不用 UNKNOWN：那是「读不出状态」——用户看到「无法判定」会以为工具坏了，
+   * 去检查网络和登录态。而这里事实是**知道的**：今天确实没有积分可领，这是既定结果。
+   * 两者混在一起，会让一个完全正常的日子看起来像故障。
+   *
+   * 为什么不算 DONE：签到工具的「今天做完了」指的是领到了积分。
+   * 这里什么也没领到，所以当天仍会在下一个时段重试——活动是会开的。
+   */
+  NO_ACTIVITY: "no-activity",
 });
 
 /** 界面上算「今天签到了」的两种：本次签成（ok）与本来就已签（already）。 */
@@ -151,11 +162,20 @@ function readCheckedIn(json, read) {
   // 没有这个口子，一次真的签成了会被读成「无法判定」，用户看到黄色警告去改一份
   // 根本没写错的描述。
   //
-  // 只看「字段是否存在」而**不看值**：出现即代表服务端认了这次请求，
+  // 只看「字段是否存在」而**不看真假**：出现即代表服务端认了这次请求，
   // 而值本身可能是 0（如 credit 为 0 的活动），按真值判断会把它误判成失败。
+  //
+  // 但**空容器不算「出现」**：data:[] 表示「此刻没有可领的活动」，
+  // 而 Qoder AI 国际版的状态响应里 data 就是一个数组——把它算成「已完成」的话，
+  // 没有活动的日子会被显示成「今日已签」，而真相是今天压根没有活动可领。
+  // 空数组说明这个信号不成立，正确做法是继续往下读、最终报「无法判定」。
   if (read.checkedInPresence) {
     const present = pickPath(json, read.checkedInPresence);
-    if (present !== undefined) return true;
+    if (Array.isArray(present)) {
+      if (present.length) return true;
+    } else if (present !== undefined) {
+      return true;
+    }
   }
   return undefined;
 }

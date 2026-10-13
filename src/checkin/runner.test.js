@@ -40,6 +40,27 @@ const SITE_WITH_STATUS = {
   status: { method: "GET", path: "/v1/status", headers: [] },
 };
 
+// 带 pathFrom 的站点：只有挑得到 campaignId 才会发签到请求。
+// read 照抄内置站点的两条规则：查状态读 **CLAIM_BENEFIT** 活动的 claimStatus
+// （必须按 actionType 收窄，否则 VIEW_DETAILS 这种不可领的活动也会被读成「已签」），
+// 执行签到读响应顶层的 status（两个响应形状不同，一份 read 要按顺序试）。
+const SITE_WITH_PATHFROM = {
+  ...SITE_WITH_STATUS,
+  checkin: {
+    method: "POST",
+    path: "/v1/campaigns/${campaignId}/claim",
+    headers: [],
+    pathFrom: { campaignId: { path: "campaigns", where: { claimStatus: "CLAIMABLE" }, pick: "campaignId", optional: true } },
+  },
+  read: {
+    checkedIn: [{ path: "campaigns", where: { actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMED" }, pick: "claimStatus" }, "status"],
+    points: "",
+    message: "",
+    code: "",
+    successCodes: null,
+  },
+};
+
 describe("描述文件无效时", () => {
   it("不发任何请求，直接 bad-descriptor", async () => {
     const { runner, calls } = harness();
@@ -194,5 +215,61 @@ describe("runAll", () => {
     const second = await runner.runAll([SITE], first.states, { trigger: TRIGGER.MANUAL });
     expect(second.states.wb.history.map((h) => h.points)).toEqual([2, 1]);
     expect(second.states.wb.points).toBe(2);
+  });
+});
+
+describe("没有可领的活动时", () => {
+  // 这是 Qoder 国际版每天的真实形状：campaigns 里常年躺着一个 VIEW_DETAILS 活动
+  // （不可领），于是**数组非空**、却没有 CLAIMABLE。原先这会被报成「描述无效」，
+  // 用户只能去改一份根本没写错的描述——而这条描述一个字都没错。
+  // 注意：这些用例要走到 pathFrom，前提是查状态**没有**判成「已签」，
+  // 所以数组里只能放不可领的 VIEW_DETAILS（actionType 不是 CLAIM_BENEFIT）。
+  const onlyViewDetails = (campaigns) => ok({ campaigns });
+
+  it("数组非空但没有可领的 → 报「暂无活动」，不是「描述无效」也不是「无法判定」", async () => {
+    const { runner, calls } = harness({ responses: [onlyViewDetails([{ campaignId: "c1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" }])] });
+    const result = await runner.runSite(SITE_WITH_PATHFROM, {}, { trigger: TRIGGER.MANUAL });
+    // 「今天没有可领的活动」是既定事实，不能显示成「无法判定」——那会让人以为工具坏了。
+    expect(result.outcome).toBe(OUTCOME.NO_ACTIVITY);
+    expect(result.outcome).not.toBe(OUTCOME.BAD_DESCRIPTOR);
+    expect(result.error).toBe("没有可领的活动");
+    // 只有查状态那一次请求；签到请求不该发出去（没有 id 可拼）
+    expect(calls).toHaveLength(1);
+  });
+
+  it("数组为空时同样报「暂无活动」（原本就支持的形态，别回归）", async () => {
+    const { runner, calls } = harness({ responses: [onlyViewDetails([])] });
+    const result = await runner.runSite(SITE_WITH_PATHFROM, {}, { trigger: TRIGGER.MANUAL });
+    expect(result.outcome).toBe(OUTCOME.NO_ACTIVITY);
+    expect(result.error).toBe("没有可领的活动");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("真的有 CLAIMABLE 时照常发起签到", async () => {
+    const withClaimable = ok({
+      campaigns: [
+        { campaignId: "c1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" },
+        { campaignId: "today", actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" },
+      ],
+    });
+    const { runner, calls } = harness({ responses: [withClaimable, ok({ status: "CLAIMED" })] });
+    const result = await runner.runSite(SITE_WITH_PATHFROM, {}, { trigger: TRIGGER.MANUAL });
+    expect(result.outcome).toBe(OUTCOME.OK);
+    expect(calls[1].url).toBe("https://api.example.com/v1/campaigns/today/claim");
+  });
+
+  it("没开 optional 时，挑不中仍然报「描述无效」（where 写错要能被发现）", async () => {
+    const strict = {
+      ...SITE_WITH_PATHFROM,
+      checkin: {
+        method: "POST",
+        path: "/v1/campaigns/${campaignId}/claim",
+        headers: [],
+        pathFrom: { campaignId: { path: "campaigns", where: { claimStatus: "CLAIMABLE" }, pick: "campaignId" } },
+      },
+    };
+    const { runner } = harness({ responses: [onlyViewDetails([{ campaignId: "c1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMED" }])] });
+    const result = await runner.runSite(strict, {}, { trigger: TRIGGER.MANUAL });
+    expect(result.outcome).toBe(OUTCOME.BAD_DESCRIPTOR);
   });
 });

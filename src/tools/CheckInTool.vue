@@ -49,6 +49,7 @@ const OUTCOME_LABEL = {
   network: "outcomeNetwork",
   "bad-descriptor": "outcomeBadDescriptor",
   skipped: "outcomeSkipped",
+  "no-activity": "outcomeNoActivity",
 };
 
 // 结果 → 徽章配色。只有 ok / already 走成功色；读不出状态一律中性色，不能给绿的。
@@ -65,6 +66,9 @@ const OUTCOME_TONE = {
   "bad-descriptor": "bad",
   unknown: "warn",
   skipped: "muted",
+  // 「今天没有可领的活动」是既定事实、不是失败，中性色即可；不能给 warn
+  // （那是「读不出状态」才用的，用户看到会去查网络）。
+  "no-activity": "muted",
 };
 
 function outcomeLabel(site) {

@@ -21,7 +21,9 @@ export const BUILTIN_SITES = [
     label: "Qoder CN",
     enabled: true,
     builtin: true,
-    revision: 4,
+    // 5 = pathFrom 的 campaignId 加 optional：实测 campaigns 非空但没有 CLAIMABLE
+    // （数组里是 VIEW_DETAILS）时，原来会被报成「描述无效」。
+    revision: 5,
     baseUrl: "https://openapi.qoder.com.cn",
     // 不存任何凭据：每次请求前由 credentialSource 当场读 Qoder CN 自己的登录态。
     credentialSource: "qoder-cn-local",
@@ -36,7 +38,7 @@ export const BUILTIN_SITES = [
       path: "/sash/api/v1/me/campaigns/${campaignId}/claim",
       headers: [["Cosy-ClientType", "10"]],
       pathFrom: {
-        campaignId: { path: "campaigns", where: { claimStatus: "CLAIMABLE" }, pick: "campaignId" },
+        campaignId: { path: "campaigns", where: { claimStatus: "CLAIMABLE" }, pick: "campaignId", optional: true },
       },
     },
     read: {
@@ -63,10 +65,13 @@ export const BUILTIN_SITES = [
   },
   {
     key: "trae-cn",
-    label: "TRAE Work CN",
+    label: "TRAE CN",
     enabled: true,
     builtin: true,
-    revision: 2,
+    // 2 = 显示名从「TRAE Work CN」改成「TRAE CN」。key 故意不动：它是内部标识，
+    // 一改就要迁移存量签到记录（见 store.js 的 RENAMED_SITE_KEYS），
+    // 而用户看到的只是 label，没必要为一次改名冒这个险。
+    revision: 3,
     // host 也存在 TRAE 自己的凭据里（实测 https://api.trae.cn）。这里写死是因为描述需要一个
     // 固定的 baseUrl；真要换域名，改这里和改 credentialSource 是同一件事。
     baseUrl: "https://api.trae.cn",
@@ -134,6 +139,55 @@ export const BUILTIN_SITES = [
       // 实测服务端返回的就是 10001，而 app 自己的错误映射函数只列了 1001/1002/1003
       // （落到 UnknownBizError）——所以以实测码为准，同时也把 1001 认下来。
       alreadyCodes: [10001, 1001],
+    },
+  },
+  {
+    key: "qoder-ai",
+    label: "Qoder AI",
+    enabled: true,
+    builtin: true,
+    // 4 = 2026-10-13 实测发现国际版 campaigns 端点**按 umid 机器身份门控**：
+    // 缺 Cosy-MachineToken/Code/Type 三个头时不报错，只回常驻的 VIEW_DETAILS 横幅，
+    // 表现与「今天没有活动」一模一样。带上之后当轮的 CLAIMABLE 活动就出现了（并实测领到 100 Credits）。
+    // 这三个头由 credentialSource 提供，不是静态 header——它们与本机绑定且会变。
+    revision: 4,
+    // 国际版与 CN 版**共用同一套 campaigns 接口与同一套响应结构**（实测：
+    // 两边都是 {showCampaign, claimable, campaigns:[{campaignId, actionType, claimStatus}]}），
+    // 差的只有基址与登录态。所以这里照搬 CN 那份描述，只换 baseUrl 与 credentialSource。
+    //
+    // 基址 `openapi.qoder.sh` 是**试出来的**：IDE bundle 里的 `api.qoder.com` /
+    // `qoder.com` 用真实 token 实测都是 401（前者 TOKEN_INVALID，后者要 cookie），
+    // 只有 openapi.qoder.sh 两个端点都返回 200。
+    baseUrl: "https://openapi.qoder.sh",
+    credentialSource: "qoder-intl-local",
+    // Cosy-ClientType 与 CN 一样是 10（客户端里那段是写死的 clientType:10，
+    // 不是 IDE 版本号 —— 我先前误从别处取了个 "qoder-ide"，那是另一个组件的参数）。
+    status: { method: "GET", path: "/sash/api/v1/me/campaigns", headers: [["Cosy-ClientType", "10"]] },
+    checkin: {
+      method: "POST",
+      path: "/sash/api/v1/me/campaigns/${campaignId}/claim",
+      headers: [["Cosy-ClientType", "10"]],
+      pathFrom: {
+        // optional：挑 CLAIMABLE 挑不到时，报「今天没有可领的活动」而不是「描述无效」。
+        // 这不是可选的礼貌——实测国际版 campaigns 里常年有一个 VIEW_DETAILS 活动
+        // （actionType 不是 CLAIM_BENEFIT），数组非空但永远没有 CLAIMABLE。
+        // 不开这个标志的话，这条内置站点**每一天**都会被判成「描述无效」，
+        // 而描述本身一个字都没错。CN 版也有同样的形状，同样受益。
+        campaignId: { path: "campaigns", where: { actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMABLE" }, pick: "campaignId", optional: true },
+      },
+    },
+    read: {
+      // 与 CN 完全相同：活动自己的 claimStatus 才是「今天签了没」的权威字段。
+      // 顶层 claimable 实测在明明可领时会给 false（国际版这台机今天就是
+      // showCampaign:true 却 claimable:false），照它判会静默漏签一整天。
+      checkedIn: [
+        { path: "campaigns", where: { actionType: "CLAIM_BENEFIT", claimStatus: "CLAIMED" }, pick: "claimStatus" },
+        "status",
+      ],
+      points: "",
+      message: "",
+      code: "",
+      successCodes: null,
     },
   },
 ];

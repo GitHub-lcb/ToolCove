@@ -3695,6 +3695,7 @@
     "outcomeNetwork": "network error",
     "outcomeBadDescriptor": "invalid descriptor",
     "outcomeSkipped": "skipped this round",
+    "outcomeNoActivity": "no activity available",
     "err": {
       "descriptorNotObject": "a site descriptor must be a JSON object",
       "fieldRequired": "required",

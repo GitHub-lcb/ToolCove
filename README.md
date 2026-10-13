@@ -136,11 +136,17 @@ mid-task.
 
 The check-in endpoints of these agent tools are not public and change without notice, so a site is a
 *descriptor*: which request to send, and how to read "already checked in today" out of the response.
-You can add your own, and three sites ship built in — **Qoder CN**, **TRAE Work CN** and
-**WorkBuddy CN** — which reuse the login state each desktop app already keeps on this machine, so
-there is no token to copy and nothing to re-capture when it rotates. The tool validates every
-descriptor, encrypts credentials (DPAPI on Windows), keeps its own per-day record so it never checks
-in twice, and reports the result exactly as the endpoint stated it.
+You can add your own, and four sites ship built in — **Qoder CN**, **TRAE CN**, **WorkBuddy CN** and
+**Qoder AI** (the international Qoder IDE, whose API is a different set of endpoints, not just another
+domain). Each one reuses the login state that app already keeps on this machine, so there is no token
+to copy and nothing to re-capture when it rotates. The tool validates every descriptor, encrypts
+credentials (DPAPI on Windows), keeps its own per-day record so it never checks in twice, and reports
+the result exactly as the endpoint stated it.
+
+**Not every product has a check-in to automate.** TRAE's international build grants credits
+automatically and ships no check-in endpoint at all, so there is deliberately no built-in entry for it:
+an entry that can never succeed would just show a permanent red badge. If a product adds one later,
+add it like any other descriptor.
 
 Built-in entries are still descriptors: they are merged into your list on load, you can disable one,
 and a newer revision in the code replaces a stale stored copy (keeping your on/off choice). Editing

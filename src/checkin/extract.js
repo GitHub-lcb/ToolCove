@@ -58,17 +58,32 @@ export function extractValue(source, selector) {
   if (!Array.isArray(list)) return fail(EXTRACT_ERROR.SELECTOR_NOT_ARRAY, String(path));
 
   // where 的每个键都要严格相等；类型也必须一致（"1" 不等于 1），避免误匹配。
-  const matches = list.find((item) => {
-    if (!item || typeof item !== "object") return false;
-    if (!where || typeof where !== "object") return true;
-    return Object.entries(where).every(([k, v]) => Object.prototype.hasOwnProperty.call(item, k) && item[k] === v);
-  });
-  // 没匹配上分两种，detail 要能区分开：数组本来就是空的（站点此刻就没有活动，
-  // 不是谁把配置写错了），还是数组有内容但条件对不上（那才是描述/条件的问题）。
-  if (!matches) return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, list.length ? JSON.stringify(where || {}) : "empty-list");
+  const matches = list.find((item) => matchesWhere(item, where));
+  // 没匹配上分三种，detail 必须能区分开，因为上层的处理完全不同：
+  //   empty-list      数组本身就是空的（站点此刻没有活动）
+  //   no-match        数组有内容，但没有一条满足条件（也可能是 where 写错了）
+  //   all-filtered    数组有内容，且**全部**被一个「可选过滤器」排除掉了，
+  //                   说明「今天没有可领的」是站点的正常状态，不是配置问题
+  if (!matches) {
+    // 空数组永远报 empty-list（它比「全部被过滤掉」更基础，也更早确定）；
+    // 否则 optional 选择器会把空数组也报成 all-filtered，上层就分不清
+    // 「站点此刻没有活动」和「有活动但都不可领」了。
+    if (!list.length) return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, "empty-list");
+    if (selector.optional === true && list.filter((item) => matchesWhere(item, where)).length === 0) {
+      return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, "all-filtered");
+    }
+    return fail(EXTRACT_ERROR.SELECTOR_NO_MATCH, JSON.stringify(where || {}));
+  }
 
   const value = pick ? pickPath(matches, pick) : matches;
   return checkValue(value, pick || String(path));
+}
+
+/** where 条件匹配；无 where 时任意对象元素都算命中。 */
+function matchesWhere(item, where) {
+  if (!item || typeof item !== "object") return false;
+  if (!where || typeof where !== "object") return true;
+  return Object.entries(where).every(([k, v]) => Object.prototype.hasOwnProperty.call(item, k) && item[k] === v);
 }
 
 function checkValue(value, where) {

@@ -147,7 +147,16 @@ function normalizePathFrom(input, field, errors) {
       errors.push(err(`${field}.${name}.pick`, "pathFromSyntax"));
       continue;
     }
-    out[name] = { path: String(path), ...(where ? { where } : {}), ...(pick ? { pick: String(pick) } : {}) };
+    // optional：这个过滤器挑不出东西时，算「此刻没有可领的」而不是「描述写错」。
+    // 只用于「活动按天变化、条件挑不中很正常」的站点（如按 claimStatus 挑今天可领的那个）。
+    // 不开这个标志时，挑不中仍然会被当成 where 条件写错——那条判断对多数站点是对的。
+    const optional = selector.optional === true;
+    out[name] = {
+      path: String(path),
+      ...(where ? { where } : {}),
+      ...(pick ? { pick: String(pick) } : {}),
+      ...(optional ? { optional: true } : {}),
+    };
   }
   return Object.keys(out).length ? out : undefined;
 }

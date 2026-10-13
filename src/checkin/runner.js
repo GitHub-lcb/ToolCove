@@ -113,13 +113,23 @@ export function createCheckInRunner(deps) {
     if (siteInput?.checkin?.pathFrom) {
       const resolved = resolvePath(siteInput.checkin.path, siteInput.checkin.pathFrom, statusJson);
       if (!resolved.ok) {
-        // 「取不到值」有两种：描述真的写错，和这次响应里活动列表本来就是空的。
-        // 后者不是配置问题，报成「描述无效」会让人去改一份没写错的描述。
-        // 只认「空列表」这一种：数组有内容却没匹配上，仍然更可能是 where 条件写错了。
-        const nothingToClaim = resolved.error === EXTRACT_ERROR.SELECTOR_NO_MATCH && resolved.detail === "empty-list";
+        // 「取不到值」有三种，处理方式不同：
+        //   empty-list   活动列表是空的 → 站点此刻没有活动，正常，不算错
+        //   all-filtered 列表有内容但**一条都不符合**过滤条件（且该过滤被声明为可选）
+        //                → 「今天没有可领的」同样是正常状态。这是 Qoder 国际版的常态：
+        //                campaigns 里常年躺着一个 VIEW_DETAILS 活动（不可领），数组非空
+        //                却没有 CLAIMABLE —— 原先会被报成「描述无效」，用户只能去改一份
+        //                根本没写错的描述。
+        //   其余          条件对不上，更可能是 where 写错了 → 才报 bad-descriptor
+        const nothingToClaim =
+          resolved.error === EXTRACT_ERROR.SELECTOR_NO_MATCH &&
+          (resolved.detail === "empty-list" || resolved.detail === "all-filtered");
         return {
           key,
-          outcome: nothingToClaim ? OUTCOME.UNKNOWN : OUTCOME.BAD_DESCRIPTOR,
+          // 报 no-activity 而不是 unknown：事实是「今天没有可领的活动」，
+          // 这是既定结果，不是「读不出状态」。用 unknown 会让一个正常的日子
+          // 显示成「无法判定」，用户以为工具坏了。
+          outcome: nothingToClaim ? OUTCOME.NO_ACTIVITY : OUTCOME.BAD_DESCRIPTOR,
           error: nothingToClaim ? "没有可领的活动" : `pathFrom:${resolved.error}${resolved.detail ? `(${resolved.detail})` : ""}`,
           trigger,
           at: now(),

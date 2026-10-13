@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runAction } from "./http.js";
 
 const response = { ok: true, status: 200, text: "{}", error: "", retryAfterMs: 0 };
@@ -96,5 +96,53 @@ describe("credentialSource 注入", () => {
     const got = await runAction(site({ credentialSource: "nope" }), "status", deps);
     expect(calls).toHaveLength(0);
     expect(got.errors.map((e) => e.code)).toContain("credentialSourceUnknown");
+  });
+});
+
+// 上面的用例注入的是**假的** resolveCredential，只验证 http 层怎么合并请求头，
+// 完全不经过 credentials.js 本身。umid 那组头正是在 credentials.js 里拼的，
+// 所以下面这组直接测真实的 resolveCredential。
+//
+// mock 点选在 @tauri-apps/api/core（终端 IPC 层）而不是 platform/invoke.js：
+// 本文件顶部已经 import 过 http.js → credentials.js，那个模块**早于** doMock 被求值并缓存，
+// 再 doMock 也拦不住（这正是下面第一条曾经假绿的原因）。
+// 顶层 vi.mock 是声明式的，会被提升到所有 import 之前，绕开这个时序问题。
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock, Channel: vi.fn() }));
+
+const { resolveCredential: realResolve } = await import("./credentials.js");
+
+const machineAuth = {
+  token: "dt-xxx",
+  machineToken: "P1gA...",
+  machineCode: "17bb5c13005160e526",
+  machineType: "a0a8d75f91d7887247",
+};
+const mapOf = (headers) => new Map(headers.map(([n, v]) => [n.toLowerCase(), v]));
+
+describe("凭据来源的真实取值", () => {
+  it("Qoder 国际版带上 umid 机器身份三件套（缺了接口只回横幅，当轮签到活动不出现）", async () => {
+    invokeMock.mockResolvedValue(machineAuth);
+    const map = mapOf(await realResolve("qoder-intl-local"));
+    expect(map.get("authorization")).toBe("Bearer dt-xxx");
+    expect(map.get("cosy-machinetoken")).toBe("P1gA...");
+    expect(map.get("cosy-machinecode")).toBe("17bb5c13005160e526");
+    expect(map.get("cosy-machinetype")).toBe("a0a8d75f91d7887247");
+  });
+
+  it("读不到机器身份时只给 token，不抛错（退化成只看到横幅，而不是整个站点不可用）", async () => {
+    // 抛错会把签到站点报成「不可用」，用户会去重装客户端——而真正的原因只是少了几个头。
+    invokeMock.mockResolvedValue({ token: "dt-xxx", machineToken: "" });
+    expect(await realResolve("qoder-intl-local")).toEqual([["authorization", "Bearer dt-xxx"]]);
+  });
+
+  it("国际版拿不到 token 时如实报错（而不是发一个空 token 的请求）", async () => {
+    invokeMock.mockResolvedValue({ token: "" });
+    await expect(realResolve("qoder-intl-local")).rejects.toThrow(/没有可用的 token/);
+  });
+
+  it("Qoder CN 不带 umid 头：CN 不受机器身份门控，多发反而可能干扰", async () => {
+    invokeMock.mockResolvedValue({ token: "dt-yyy" });
+    expect(await realResolve("qoder-cn-local")).toEqual([["authorization", "Bearer dt-yyy"]]);
   });
 });

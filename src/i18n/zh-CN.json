@@ -3695,6 +3695,7 @@
     "outcomeNetwork": "网络错误",
     "outcomeBadDescriptor": "描述无效",
     "outcomeSkipped": "本次跳过",
+    "outcomeNoActivity": "暂无活动",
     "err": {
       "descriptorNotObject": "站点描述必须是一个 JSON 对象",
       "fieldRequired": "必填项",
