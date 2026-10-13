@@ -120,7 +120,20 @@ jobs:
       - name: 构建 APK
         env:
           TC_SYSTEM_TOOLCHAIN: "1"
-        run: node mobile/android/build-apk.mjs --system-toolchain
+        run: |
+          set +e
+          node mobile/android/build-apk.mjs --system-toolchain > "$RUNNER_TEMP/apk.log" 2>&1
+          code=$?
+          cat "$RUNNER_TEMP/apk.log"
+          if [ $code -ne 0 ]; then
+            # 失败原因转成**注解**（Actions 注解是公开可读的，排障不必登录看日志）
+            tail_text=$(tail -c 1800 "$RUNNER_TEMP/apk.log")
+            tail_text=${tail_text//'%'/'%25'}
+            tail_text=${tail_text//$'\r'/}
+            tail_text=${tail_text//$'\n'/'%0A'}
+            echo "::error title=APK 构建失败（日志尾部）::${tail_text}"
+            exit 1
+          fi
 
       - name: 收集产物信息
         id: artifact

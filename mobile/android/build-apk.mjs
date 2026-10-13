@@ -66,6 +66,26 @@ log(`工具链（${runner === "system" ? "环境自带" : "项目自带"}）：J
 log(`        Gradle ${gradle || "（用 PATH 上的 gradle）"}`);
 log(`        SDK ${sdk}`);
 
+/** 打印一环版本（诊断用）。java -version 输出在 stderr，探测失败也尽量把已取到的内容带出来。 */
+function probeVersion(label, cmd, args, pick = (out) => out.split("\n")[0]) {
+  try {
+    const out = execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 });
+    log(`        ${label}: ${pick(String(out)) || "(空)"}`);
+  } catch (e) {
+    const text = String(e?.stdout || e?.stderr || e?.message || e);
+    log(`        ${label}: ${pick(text) || `探测失败（${e?.code ?? "?"}）`}`);
+  }
+}
+// 版本横幅：CI 失败时会随"日志尾部"注解一起带出去，一眼看清是哪个环节的版本不对
+probeVersion("node", process.execPath, ["--version"]);
+probeVersion("java", join(jdk, "bin", "java"), ["-version"]);
+probeVersion(
+  "gradle",
+  gradle ? join(gradle, "bin", process.platform === "win32" ? "gradle.bat" : "gradle") : "gradle",
+  ["--version"],
+  (out) => out.split("\n").find((line) => line.includes("Gradle")) || ""
+);
+
 // ── 2. 标签排版引擎（wasm）─────────────────────────────────────────────
 // 必须在 vite build **之前**：wasm 放在 mobile/public/ 下，Vite 会把它拷进产物。
 // 缺了它标签工具会加载失败（而且只有打开那个工具才暴露——所以这里主动检查）。
