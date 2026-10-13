@@ -29,26 +29,73 @@ export function resetQiniuHostCache() {
  * 响应形状兼容两种：`{ up: { acc: { main: [...] } } }`（直连 API）
  * 与 `{ data: { up: ... } }`（个别 SDK 包装）。
  */
-export async function resolveQiniuUploadHost({ accessKey, bucket, fetchImpl = null }) {
+/**
+ * 区域解析的**详细版**：除了域名，还给出"为什么没解析出来"。
+ *
+ * 为什么要详细：导航式上游把失败吞掉（只返回空串），调用方只能退回默认域名，
+ * 于是用户看到的是上传的 401 BadToken —— 而真实原因可能是 AK 填错、空间名填错、
+ * 或者网络根本没通。这三种原因的修法完全不同，不能都报成"上传失败"。
+ */
+export async function resolveQiniuUploadHostDetailed({ accessKey, bucket, fetchImpl = null }) {
   const cacheKey = `${accessKey}|${bucket}`;
   const cached = uploadHostCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) return { host: cached, reason: "", message: "" };
 
   const fetchFn = fetchImpl || globalThis.fetch;
-  let host = "";
+  if (!fetchFn) return { host: "", reason: "noFetch", message: "当前环境没有 fetch" };
   try {
     const url = `${QINIU_REGION_QUERY}?ak=${encodeURIComponent(accessKey)}&bucket=${encodeURIComponent(bucket)}`;
     const res = await fetchFn(url);
-    if (res.ok) {
-      const json = await res.json();
-      const up = json?.up || json?.data?.up;
-      host = up?.acc?.main?.[0] || up?.src?.main?.[0] || "";
+    const text = await res.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // 非 JSON：按原文报出去，比"解析失败"有用
     }
-  } catch {
-    // 解析失败不是致命错误：走调用方的兜底域名，真实错误会由上传本身报出来
+    if (!res.ok) {
+      const message = String(json?.error || text || `HTTP ${res.status}`).slice(0, 200);
+      return { host: "", reason: classifyQiniuQueryError(message), message };
+    }
+    const up = json?.up || json?.data?.up;
+    const host = up?.acc?.main?.[0] || up?.src?.main?.[0] || "";
+    if (!host) return { host: "", reason: "unknown", message: "区域接口没有返回上传域名" };
+    uploadHostCache.set(cacheKey, host);
+    return { host, reason: "", message: "" };
+  } catch (e) {
+    // 网络异常不该中断上传：走兜底域名继续试，但把原因带出去
+    return { host: "", reason: "network", message: String(e?.message || e) };
   }
-  if (typeof host === "string" && host) uploadHostCache.set(cacheKey, host);
-  return host;
+}
+
+export async function resolveQiniuUploadHost(args) {
+  return (await resolveQiniuUploadHostDetailed(args)).host;
+}
+
+/**
+ * 把区域接口的错误文案归成三类可操作的原因。
+ * 文案来自七牛：AK 不认识 → `app/accesskey is not found`；空间不存在 → `no such bucket` 一类。
+ */
+export function classifyQiniuQueryError(message) {
+  const text = String(message || "");
+  if (/accesskey|access key|app\/accesskey/i.test(text)) return "accessKey";
+  if (/no such bucket|bucket.*(not|不存在)/i.test(text)) return "bucket";
+  return "unknown";
+}
+
+/**
+ * 「测试连接」在网页/手机端唯一能做的一件事：问区域接口这套 AK + 空间名对不对。
+ *
+ * 为什么需要它：七牛的列举要走管理接口（需要额外签名，网页端做不了），
+ * 所以非桌面端原本**没有任何办法**验证凭据，用户只会在上传时拿到一句 401 BadToken。
+ * 这个接口免签名且带 CORS 头，浏览器直连可用，正好补上这个缺口。
+ * 返回 { ok, uploadHost, reason, message }；reason ∈ accessKey / bucket / network / unknown。
+ */
+export async function checkQiniuSpace({ accessKey, bucket, fetchImpl = null }) {
+  const result = await resolveQiniuUploadHostDetailed({ accessKey, bucket, fetchImpl });
+  return result.host
+    ? { ok: true, uploadHost: result.host, reason: "", message: "" }
+    : { ok: false, uploadHost: "", reason: result.reason, message: result.message };
 }
 
 /** URL-safe Base64（七牛凭证的编码约定：+→-、/→_、去填充）。 */
@@ -74,6 +121,27 @@ export async function qiniuUploadToken({ accessKey, secretKey, bucket, key, dead
   return `${accessKey}:${sign}:${policyB64}`;
 }
 
+/**
+ * 上传失败时的**归因**：把区域解析的结论拼进错误里。
+ *
+ * 401 BadToken 在七牛侧对应三种完全不同的原因，用户看到的却永远是同一句：
+ *   · 区域解析**成功**（拿到了上传域名）→ AK 与空间名都是真的，问题在 SK（签错了）或设备时钟；
+ *   · 区域解析说 accesskey 不对 → AK 填错，或这个空间不属于该账号；
+ *   · 区域解析说没有这个空间 → 空间名写错（常见：把 CDN 域名或完整桶名填进去）；
+ *   · 区域解析**请求本身**没通 → 网络/DNS 问题，此时退回默认上传域名，本来就是盲试。
+ * 这四种在真机上都出现过（用户只看到"BadToken"），所以必须区分开。
+ */
+export function diagnoseQiniuUploadFailure(body, resolved = {}) {
+  const text = String(body || "");
+  if (!/BadToken|bad token/i.test(text)) return "";
+  if (resolved.reason === "accessKey") return `（区域接口：${resolved.message} → AccessKey 不对，或这个空间不属于该账号）`;
+  if (resolved.reason === "bucket") return `（区域接口：${resolved.message} → 空间名不对，要填空间名而不是域名）`;
+  if (resolved.reason === "network" || resolved.reason === "noFetch") return `（区域解析也没通：${resolved.message} → 已退回默认上传域名，先查网络）`;
+  if (resolved.reason) return `（区域解析失败：${resolved.message}）`;
+  if (resolved.host) return `（空间已解析到 ${resolved.host}，AK 与空间名有效 → 更可能是 SecretKey 不对，或设备时钟偏差把凭证签成了过期）`;
+  return "";
+}
+
 /** 表单直传一个对象。成功返回七牛计算的 hash（内容 etag）。
  *  上传域名选择顺序：用户显式配置的域名（非默认值）＞ 区域解析 ＞ 默认全局域名。 */
 export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
@@ -86,8 +154,10 @@ export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
   const token = await qiniuUploadToken({ accessKey: cfg.accessKey, secretKey: cfg.secretKey, bucket: cfg.bucket, key, deadline });
 
   const explicitHost = cfg.uploadHost && cfg.uploadHost !== QINIU_DEFAULT_UPLOAD_HOST ? cfg.uploadHost : "";
-  const resolvedHost = explicitHost || (await resolveQiniuUploadHost({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl }));
-  const uploadHost = resolvedHost || cfg.uploadHost || QINIU_DEFAULT_UPLOAD_HOST;
+  const resolved = explicitHost
+    ? { host: explicitHost, reason: "", message: "" }
+    : await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
+  const uploadHost = resolved.host || cfg.uploadHost || QINIU_DEFAULT_UPLOAD_HOST;
 
   const form = new FormData();
   form.append("token", token);
@@ -97,7 +167,7 @@ export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
 
   const res = await fetchFn(`https://${uploadHost}/`, { method: "POST", body: form });
   const text = await res.text();
-  if (!res.ok) throw new PhotoError(`HTTP ${res.status}`, text.slice(0, 200));
+  if (!res.ok) throw new PhotoError(`HTTP ${res.status}`, `${text.slice(0, 200)}${diagnoseQiniuUploadFailure(text, resolved)}`);
   let json = null;
   try {
     json = JSON.parse(text);

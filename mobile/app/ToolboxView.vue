@@ -6,15 +6,62 @@
 // 「哪些还不能用的」由条目上的徽章就地说明（仅桌面端 / 待迁移）。
 // 顶栏原来有一条「已迁移 x/y」进度：那是**迁移工程自己的指标**，迁完之后它常年显示
 // 20/20，还和桌面端注册表的 23 个口径打架——对使用者没有任何信息量，所以撤掉。
-import { computed, defineAsyncComponent, ref } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../../src/ui/Icon.vue";
+import { loadToolbox, saveToolbox } from "../../src/toolboxStore.js";
+// 「常用工具」的排序规则**与桌面端同一份纯函数**（收藏 → 用得多 → 最近用过 → 注册表补位）。
+// 抄一遍到手机端迟早会漂移（桌面改权重、手机不改），而这条规则正是"用起来顺手"的来源。
+import { buildToolboxQuickList } from "../../src/toolboxViewState.js";
 import { TOOL_GROUPS, TOOLS, toolsOfGroup, iconOfTool, iconOfGroup, progressOf } from "./toolbox.js";
 
 const { t } = useI18n();
 
 const openKey = ref(""); // 空串 = 在列表页
 const current = computed(() => TOOLS.find((tool) => tool.key === openKey.value) || null);
+
+// ---------- 常用工具（与桌面端同一套口径） ----------
+// 存储键也用桌面端的：同一台设备上两个端各存各的库，但键名一致便于对照，
+// 将来若做"手机端偏好迁到桌面"的导入也少一层翻译。
+const QUICK_MAX = 6;
+const RECENT_MAX = 8;
+const recent = ref([]); // [{ key, ts }]
+const pinned = ref([]); // 收藏的工具 key，按收藏顺序
+const usage = ref({}); // { key: { count, ts } } —— 使用次数，才是"常用"的依据
+
+onMounted(async () => {
+  const [savedRecent, savedPinned, savedUsage] = await Promise.all([
+    loadToolbox("recent", []),
+    loadToolbox("pinned", []),
+    loadToolbox("toolUsage", {}),
+  ]);
+  // 目录里已经没有的工具（停用/改名）不进列表：否则会渲染出点不动的条目
+  recent.value = Array.isArray(savedRecent) ? savedRecent.filter((row) => TOOLS.some((tool) => tool.key === row?.key)) : [];
+  pinned.value = Array.isArray(savedPinned) ? savedPinned.filter((key) => TOOLS.some((tool) => tool.key === key)) : [];
+  usage.value = savedUsage && typeof savedUsage === "object" ? savedUsage : {};
+});
+
+const quickTools = computed(() => buildToolboxQuickList(TOOLS, pinned.value, recent.value, QUICK_MAX, usage.value));
+
+/** 用过就记一笔：最近使用（只留 8 条）+ 使用次数（"用得多但久没开"的工具靠它才进得了常用）。 */
+function recordUse(tool) {
+  const list = recent.value.filter((row) => row.key !== tool.key);
+  list.unshift({ key: tool.key, ts: Date.now() });
+  recent.value = list.slice(0, RECENT_MAX);
+  saveToolbox("recent", recent.value);
+  const stat = usage.value[tool.key] || {};
+  usage.value = { ...usage.value, [tool.key]: { count: (Number(stat.count) || 0) + 1, ts: Date.now() } };
+  saveToolbox("toolUsage", usage.value);
+}
+
+function isPinned(tool) {
+  return pinned.value.includes(tool.key);
+}
+
+function togglePin(tool) {
+  pinned.value = isPinned(tool) ? pinned.value.filter((key) => key !== tool.key) : [tool.key, ...pinned.value];
+  saveToolbox("pinned", pinned.value);
+}
 
 /**
  * 启动台数字：与桌面端启动台（ToolboxView.vue）同一套口径。
@@ -59,6 +106,8 @@ const VIEWS = {
 function open(tool) {
   if (!tool.ready || !VIEWS[tool.key]) return;
   openKey.value = tool.key;
+  // 打开即计数：用得多/最近用过的工具因此会自己浮到「常用」区，不需要用户手工整理
+  recordUse(tool);
 }
 
 /**
@@ -108,6 +157,28 @@ function close() {
         </div>
       </section>
 
+      <!-- 常用工具：与桌面端同一套排序（收藏 → 用得多 → 最近用过 → 注册表补位）。
+           手机上把它放在第一屏，是因为滑分组找工具正是手机端最烦的一步。 -->
+      <section v-if="quickTools.length" class="m-quick" data-role="quick">
+        <div class="m-quick-head">
+          <b>{{ t("toolbox.gallery.quickTitle") }}</b>
+          <span class="m-quick-sub">{{ t("toolbox.gallery.quickSubtitle") }}</span>
+        </div>
+        <div class="m-quick-row">
+          <button
+            v-for="tool in quickTools"
+            :key="tool.key"
+            class="m-quick-item"
+            :class="{ pinned: isPinned(tool) }"
+            :data-quick="tool.key"
+            @click="open(tool)"
+          >
+            <Icon :name="iconOfTool(tool)" :size="15" />
+            <span>{{ t(tool.labelKey) }}</span>
+          </button>
+        </div>
+      </section>
+
       <section v-for="group in TOOL_GROUPS" :key="group.key" class="m-group">
         <h3 class="m-group-title">
           <Icon :name="iconOfGroup(group)" :size="16" />
@@ -126,6 +197,16 @@ function close() {
                 </span>
                 <span v-if="tool.note" class="m-item-sub">{{ t(tool.note) }}</span>
               </span>
+            </button>
+            <!-- 收藏：收藏的工具固定排在常用区最前（与桌面端一致） -->
+            <button
+              class="m-item-pin"
+              :class="{ on: isPinned(tool) }"
+              :title="t('toolbox.gallery.pinTip')"
+              :data-role="`pin-${tool.key}`"
+              @click.stop="togglePin(tool)"
+            >
+              <Icon name="star" :size="16" />
             </button>
           </li>
         </ul>

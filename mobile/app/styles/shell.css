@@ -247,6 +247,71 @@ body,
   background: var(--m-primary-soft);
 }
 
+/* 常用工具（收藏 / 用得多 / 最近用过）：手机上放在第一屏，省掉滑分组找工具那一步。
+   排序规则来自 src/toolboxViewState.js —— 与桌面端同一份纯函数。 */
+.m-quick {
+  margin: 0 var(--m-pad) var(--m-gap);
+}
+
+.m-quick-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.m-quick-head b {
+  font-size: var(--fs-sm);
+  color: var(--m-text);
+}
+
+.m-quick-sub {
+  font-size: var(--fs-xs);
+  color: var(--m-muted);
+}
+
+.m-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.m-quick-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--m-border);
+  border-radius: 999px;
+  background: var(--m-card);
+  color: var(--m-text);
+  font-size: var(--fs-sm);
+}
+
+.m-quick-item.pinned {
+  border-color: var(--m-primary);
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+}
+
+.m-item-pin {
+  flex: 0 0 auto;
+  align-self: center;
+  width: var(--m-touch);
+  height: var(--m-touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--m-muted);
+}
+
+.m-item-pin.on {
+  color: var(--m-warn);
+}
+
 .m-list {
   list-style: none;
   margin: 0;
@@ -661,9 +726,15 @@ body,
   transition: width 0.25s ease;
 }
 
-/* 工具条目改成「图标 + 文字」横排。
-   只在工具箱内生效（.m-toolbox 作用域），记录页的 .m-item 保持原来的竖排。 */
+/* 工具条目改成「图标 + 文字」横排，右侧再挂一个收藏按钮。
+   只在工具箱内生效（.m-toolbox 作用域），记录页/工作台的 .m-item 保持原来的竖排。 */
+.m-toolbox .m-item {
+  display: flex;
+  align-items: stretch;
+}
 .m-toolbox .m-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
   flex-direction: row;
   align-items: center;
   gap: var(--m-gap);

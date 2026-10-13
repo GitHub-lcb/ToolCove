@@ -17,6 +17,7 @@ import { fieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
+import { checkQiniuSpace } from "../../../src/photo/qiniu.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
 
 const { t } = useI18n();
@@ -59,7 +60,10 @@ const draftProvider = computed(() => providers.value.find((p) => p.key === draft
 const draftFields = computed(() => fieldsOf(draft.value?.provider));
 // 浏览器形态只有 S3 系能直接探活（七牛的 rsf、WebDAV 的 PROPFIND 都不放行跨域）；
 // 其余后端的连通性验证在桌面端做（走 Rust，不受 CORS 约束）。
-const canBrowserTest = computed(() => config.value.provider === "s3");
+// 能在这台设备上直接自检的后端：S3 系列举即可；七牛用区域接口问"AK + 空间名对不对"
+// （七牛的列举要走管理接口，网页端做不了——这也是它过去只能靠上传失败来暴露问题的原因）。
+// WebDAV 仍然只能到桌面端测：它没有免签名的探活接口，只能用带 Authorization 的请求，受跨域限制。
+const canBrowserTest = computed(() => config.value.provider === "s3" || config.value.provider === "qiniu");
 const configSummary = computed(() => `${config.value.bucket || config.value.domain || config.value.endpoint} · ${config.value.prefix}/`);
 const stats = computed(() => {
   const by = (state) => items.value.filter((item) => item.status === state).length;
@@ -170,6 +174,18 @@ async function runTest() {
   testResult.value = "";
   testError.value = "";
   try {
+    if (config.value.provider === "qiniu") {
+      // 七牛：问区域接口这套 AK + 空间名对不对，并把解析到的上传域名亮出来。
+      // 上传失败时那句 401 BadToken 就是靠这一步归因的（见 src/photo/qiniu.js 的 diagnoseQiniuUploadFailure）。
+      const check = await checkQiniuSpace({ accessKey: config.value.accessKey, bucket: config.value.bucket });
+      if (!check.ok) {
+        const key = `toolbox.photo.qiniu_${check.reason || "unknown"}`;
+        testError.value = t(key, { message: check.message, default: t("toolbox.photo.qiniu_unknown", { message: check.message }) });
+        return;
+      }
+      testResult.value = t("toolbox.photo.qiniuOk", { host: check.uploadHost });
+      return;
+    }
     const result = await testPhotoConnection({ config: config.value });
     testResult.value = t("toolbox.photo.configOk", { n: result.sampleCount });
   } catch (e) {
