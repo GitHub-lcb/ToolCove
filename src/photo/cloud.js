@@ -41,6 +41,14 @@ export async function qiniuManagementAuth({ config, method, host, pathAndQuery, 
  *
  * 网页版把凭证放查询参数是**唯一**能让浏览器发出去的形式（自定义头会触发预检，而七牛不放行预检）。
  */
+/**
+ * 网页版（没有原生桥）只能把凭证塞进 access_token 查询参数发简单请求。
+ * 但七牛文档写得很明确：**管理请求必须在 HTTP 头里带 Authorization**，
+ * 而 rs/rsf 域名对浏览器预检不放行这个头——所以网页版这条路基本走不通，
+ * 失败时要给出可执行的指引，而不是把服务端的 "bad token" 原样甩给用户。
+ */
+const WEB_HINT = "（网页版调不动七牛管理接口：它要求 Authorization 头，而浏览器跨域预检不让发——请用安卓 App 的「云端」页查看/管理。）";
+
 export async function qiniuManagementRequest({ config, method, host, pathAndQuery, contentType = "application/x-www-form-urlencoded", http }) {
   const auth = await qiniuManagementAuth({ config, method, host, pathAndQuery, contentType });
   const withHeader = canSendAuthHeader();
@@ -56,7 +64,14 @@ export async function qiniuManagementRequest({ config, method, host, pathAndQuer
     timeoutMs: 20000,
   });
   const status = Number(result?.status || 0);
-  return { ok: status >= 200 && status < 300, status, body: String(result?.body ?? "") };
+  const body = String(result?.body ?? "");
+  const ok = status >= 200 && status < 300;
+  // 网页版的 401 几乎必然是"传法不被接受"，而不是凭据错——把这一点说出来，
+  // 否则用户会一直怀疑自己的 AK/SK（我们上一轮就是这么被带着跑的）。
+  if (!ok && !withHeader) {
+    return { ok, status, body: `${body}${body.includes("网页版调不动") ? "" : WEB_HINT}` };
+  }
+  return { ok, status, body };
 }
 
 /**
@@ -105,7 +120,12 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
   if (marker) pairs.push(["marker", marker]);
   const pathAndQuery = `/list?${pairs.map(([k, v]) => `${uriEncode(k, true)}=${uriEncode(String(v), true)}`).join("&")}`;
   const res = await qiniuManagementRequest({ config: cfg, method: "POST", host, pathAndQuery, http });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 200)}`);
+  if (!res.ok) {
+    // 把"用的哪台主机、怎么传的凭证、什么编码"一并报出来：这三种是排障的全部变量，
+    // 排一次就能定位，不必再来回问（这条链路已经因为看不到上下文多花了两轮）。
+    const how = canSendAuthHeader() ? "Authorization 头" : "access_token 查询参数";
+    throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 200)}（host=${host} · ${how} · 签名编码=padded）`);
+  }
   let parsed = null;
   try {
     parsed = JSON.parse(res.body);
