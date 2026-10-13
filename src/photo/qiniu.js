@@ -142,6 +142,38 @@ export function diagnoseQiniuUploadFailure(body, resolved = {}) {
   return "";
 }
 
+/**
+ * 真发一次上传来给配置"判死刑"：**这是唯一能把 BadToken 的三种原因分开的办法**。
+ *
+ * 为什么不能只验签名：七牛没有"既免签名又能验 SK"的接口——管理接口（rsf/rs）不给浏览器
+ * CORS（预检不放行 Authorization），而上传域名只认 POST。于是只有真发一次请求，三种原因才会现形：
+ *   · SK 不对 → 两种期限的凭证都被拒（BadToken）；
+ *   · 设备时钟偏差 → 正常期限的凭证被拒，但**一年期限**的凭证被接受；
+ *   · 区域/域名不对 → 两种都被拒，且区域解析那一步已经先报出来了。
+ *
+ * 探针对象 1 字节，放在 `toolcove-selftest/` 下，控制台里一眼能认出并删除。
+ * 返回 { ok, key, etag, clockSkew, reason, message }。
+ */
+export async function probeQiniuUpload({ config, fetchImpl = null, now = Date.now() } = {}) {
+  const cfg = normalizePhotoConfig(config);
+  const key = `toolcove-selftest/probe-${Date.now()}.txt`;
+  const body = new Blob([new Uint8Array([0x54])], { type: "text/plain" });
+  try {
+    const out = await putQiniuObject({ config: cfg, key, body, fetchImpl, now });
+    return { ok: true, key, etag: out.etag, clockSkew: false, reason: "", message: "" };
+  } catch (e) {
+    const message = String(e?.message || e);
+    if (!/BadToken|bad token/i.test(message)) return { ok: false, key, reason: "upload", message };
+    // 同样的内容再用"一年后过期"的凭证试一次：能过说明问题在设备时钟，不是密钥
+    try {
+      await putQiniuObject({ config: cfg, key, body, fetchImpl, now: now + 365 * 24 * 3600 * 1000 });
+      return { ok: false, key, clockSkew: true, reason: "clock", message };
+    } catch {
+      return { ok: false, key, clockSkew: false, reason: "secretKey", message };
+    }
+  }
+}
+
 /** 表单直传一个对象。成功返回七牛计算的 hash（内容 etag）。
  *  上传域名选择顺序：用户显式配置的域名（非默认值）＞ 区域解析 ＞ 默认全局域名。 */
 export async function putQiniuObject({ config, key, body, fetchImpl, now }) {

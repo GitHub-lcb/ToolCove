@@ -17,7 +17,7 @@ import { fieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
-import { checkQiniuSpace } from "../../../src/photo/qiniu.js";
+import { checkQiniuSpace, probeQiniuUpload } from "../../../src/photo/qiniu.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
 
 const { t } = useI18n();
@@ -183,7 +183,16 @@ async function runTest() {
         testError.value = t(key, { message: check.message, default: t("toolbox.photo.qiniu_unknown", { message: check.message }) });
         return;
       }
-      testResult.value = t("toolbox.photo.qiniuOk", { host: check.uploadHost });
+      // 区域解析只能证明 AK 与空间名；真正能把 BadToken 的三种原因分开的是下面这一次真传。
+      // 只解析不真传，用户拿到的结论还是"可能 SK、可能时钟"，等于没答。
+      const probe = await probeQiniuUpload({ config: config.value });
+      if (probe.ok) {
+        testResult.value = t("toolbox.photo.qiniuProbeOk", { key: probe.key });
+        return;
+      }
+      if (probe.reason === "secretKey") testError.value = t("toolbox.photo.qiniuSecretKey");
+      else if (probe.reason === "clock") testError.value = t("toolbox.photo.qiniuClock");
+      else testError.value = t("toolbox.photo.qiniuProbeFailed", { message: probe.message });
       return;
     }
     const result = await testPhotoConnection({ config: config.value });

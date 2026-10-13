@@ -4,7 +4,7 @@
 // 网络没通导致退回默认上传域名），而它们此前在界面上是**同一句话**——用户只能靠猜。
 // 这里锁死"哪种情况报哪种话"，因为这句话就是排障的全部依据。
 import { describe, expect, it } from "vitest";
-import { checkQiniuSpace, classifyQiniuQueryError, diagnoseQiniuUploadFailure, qiniuUploadToken } from "./qiniu.js";
+import { checkQiniuSpace, classifyQiniuQueryError, diagnoseQiniuUploadFailure, probeQiniuUpload, qiniuUploadToken } from "./qiniu.js";
 
 /** 最小 fetch 替身：按 URL 返回预置的 { status, body }。 */
 function fakeFetch({ status = 200, body = "{}" } = {}) {
@@ -85,5 +85,52 @@ describe("qiniuUploadToken（回归：形状没变）", () => {
     expect(sign).toMatch(/^[A-Za-z0-9_-]+$/);
     const decoded = JSON.parse(atob(policy.replace(/-/g, "+").replace(/_/g, "/")));
     expect(decoded).toEqual({ scope: "b:photos/a.jpg", deadline: 1_700_000_000 });
+  });
+});
+
+describe("probeQiniuUpload（真传一次来定因）", () => {
+  const CONFIG = { provider: "qiniu", bucket: "photos", accessKey: "ak", secretKey: "sk", domain: "cdn.example.com", prefix: "photos" };
+
+  /** 上传链路替身：按次数返回 200 或 401 BadToken，用来复现"两种期限都被拒 / 只有长期限被接受"。 */
+  function uploadFetch({ failFirst = 0, regionOk = true } = {}) {
+    let posts = 0;
+    return async (url) => {
+      if (url.includes("api.qiniu.com")) {
+        return { ok: regionOk, status: regionOk ? 200 : 612, text: async () => JSON.stringify(regionOk ? { up: { acc: { main: ["upload-z2.qiniup.com"] } } } : { error: "app/accesskey is not found" }) };
+      }
+      posts += 1;
+      const bad = posts <= failFirst;
+      return { ok: !bad, status: bad ? 401 : 200, text: async () => (bad ? '{"error":"bad token","error_code":"BadToken"}' : '{"hash":"FakeHash"}') };
+    };
+  }
+
+  it("能传上去：ok，并给出探针 key（1 字节，可删）", async () => {
+    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch(), now: Date.now() });
+    expect(out.ok).toBe(true);
+    expect(out.key).toMatch(/^toolcove-selftest\//);
+  });
+
+  it("两种期限都被拒 → secretKey（空间名与 AK 已由区域解析证明有效）", async () => {
+    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch({ failFirst: 2 }), now: Date.now() });
+    expect(out).toMatchObject({ ok: false, reason: "secretKey" });
+    expect(out.message).toContain("BadToken");
+  });
+
+  it("正常期限被拒、一年期限能过 → clock（设备时钟偏差，不是密钥问题）", async () => {
+    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch({ failFirst: 1 }), now: Date.now() });
+    expect(out).toMatchObject({ ok: false, reason: "clock", clockSkew: true });
+  });
+
+  it("非 BadToken 的失败原样透出（例如网络断了），不硬套密钥问题", async () => {
+    const out = await probeQiniuUpload({
+      config: CONFIG,
+      fetchImpl: async (url) => {
+        if (url.includes("api.qiniu.com")) return { ok: true, status: 200, text: async () => JSON.stringify({ up: { acc: { main: ["upload-z2.qiniup.com"] } } }) };
+        throw new Error("Failed to fetch");
+      },
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe("upload");
+    expect(out.message).toContain("Failed to fetch");
   });
 });
