@@ -30,7 +30,9 @@ export function canSendAuthHeader() {
 export async function qiniuManagementAuth({ config, method, host, pathAndQuery, contentType = "application/x-www-form-urlencoded" }) {
   const cfg = normalizePhotoConfig(config);
   const signing = `${method} ${pathAndQuery}\nHost: ${host}\nContent-Type: ${contentType}\n\n`;
-  const sign = urlsafeBase64(await hmacSha1(cfg.secretKey, signing));
+  // ⚠️ **必须带填充**（padded）：桌面端 Rust 的 urlsafe_b64 就是带填充的（urlsafe_b64("hello") == "aGVsbG8="），
+  // 而本账号/区域对去填充的凭证一律回 401 BadToken——上传凭证踩过一次，管理凭证又踩了一次。
+  const sign = urlsafeBase64(await hmacSha1(cfg.secretKey, signing), true);
   return `QBox ${cfg.accessKey}:${sign}`;
 }
 
@@ -57,9 +59,12 @@ export async function qiniuManagementRequest({ config, method, host, pathAndQuer
   return { ok: status >= 200 && status < 300, status, body: String(result?.body ?? "") };
 }
 
-/** 组织成管理接口要的 entry：`bucket:key` 再做 URL-safe base64。 */
+/**
+ * 组织成管理接口要的 entry：`bucket:key` 再做 URL-safe base64。
+ * 同样**带填充**——七牛文档里的示例就是 `delete/cWluaXU6dGVzdC5qcGc=`（末尾那个 = 就是填充）。
+ */
 export function qiniuEntry(bucket, key) {
-  return urlsafeBase64(encoder.encode(`${bucket}:${key}`));
+  return urlsafeBase64(encoder.encode(`${bucket}:${key}`), true);
 }
 
 /** 该后端能不能在手机上浏览云端。WebDAV 的列举要 PROPFIND 且各家 CORS 不一，暂不提供。 */

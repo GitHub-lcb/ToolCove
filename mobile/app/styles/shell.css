@@ -195,6 +195,9 @@ body,
 
 .m-tools {
   display: flex;
+  /* 「返回 + 标题」是两条不同高矮的东西：按钮是 44px 的触摸目标、标题只有一行文字。
+     默认的 align-items: stretch 会把标题拉成 44px 高，文字因此贴在顶边——看起来就是"箭头与标题没对齐"。 */
+  align-items: center;
   gap: 8px;
   margin-bottom: var(--m-gap);
 }
@@ -584,6 +587,7 @@ body,
 .m-h2 {
   flex: 1;
   margin: 0;
+  line-height: 1.3;
   font-size: 1.05rem;
   font-weight: 600;
   overflow: hidden;
@@ -592,6 +596,10 @@ body,
 }
 
 .m-back {
+  /* 显式居中：不同 WebView 对 button 的默认对齐并不一致 */
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
   width: var(--m-touch);
   min-height: var(--m-touch);
   border: 1px solid var(--m-border);

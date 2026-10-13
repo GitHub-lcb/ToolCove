@@ -30,12 +30,18 @@ describe("cloudProviderOf", () => {
 
 describe("qiniuEntry / 管理凭证", () => {
   it("entry 是 bucket:key 的 URL-safe base64（不填充）", () => {
+    // 7 字节以内可能不产生填充，所以特意用一个需要填充的 key：
+    // "b:k1" 是 4 字节 → base64 末尾有 ==（七牛文档的示例 entry 同样是带填充的）
+    expect(qiniuEntry("b", "k1")).toBe("YjprMQ==");
     expect(qiniuEntry("b", "k")).toBe("Yjpr");
   });
 
   it("凭证形如 QBox AK:sign，且签名串含 method/host/content-type（与 Rust 端逐字一致）", async () => {
     const auth = await qiniuManagementAuth({ config: CONFIG, method: "POST", host: "rsf.qbox.me", pathAndQuery: "/list?bucket=b&limit=1" });
     expect(auth.startsWith("QBox AK:")).toBe(true);
+    // 签名必须带填充：HMAC-SHA1 是 20 字节 → base64 一定以 = 结尾。
+    // 去填充的版本在本账号/区域会被拒（401 BadToken）——上传凭证踩过一次，管理凭证又踩了一次。
+    expect(auth.slice("QBox AK:".length).endsWith("=")).toBe(true);
     // 换 host 必须换签名：签名串里带 Host，这是最容易漏的一处
     const other = await qiniuManagementAuth({ config: CONFIG, method: "POST", host: "rsf-z2.qiniup.com", pathAndQuery: "/list?bucket=b&limit=1" });
     expect(other).not.toBe(auth);
