@@ -4,7 +4,7 @@
 
 Most agent products give you a chat box and a set of cloud tools. Most tool apps give you a pile of
 buttons. ToolCove is built on the observation that **you should not have to choose between the two**:
-the 26 built-in tools *are* the action space the agent plans over. Every tool you can click is a real
+the 27 built-in tools *are* the action space the agent plans over. Every tool you can click is a real
 action the planner can call — not a mock, not a thin wrapper around somebody's cloud API.
 
 So the same capability is reachable both ways. Describe the goal in natural language and the agent
@@ -33,14 +33,14 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   *skills* (up to 50; at most 3 are matched and injected per run, under a fixed token budget) —
   a skill is a hint about what worked last time, never a forced step. Bring your own
   OpenAI-compatible endpoint; nothing is sent anywhere until you ask for it.
-- **Toolbox** — 26 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
+- **Toolbox** — 27 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
   keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
 
   | Group | Tools |
   |-------|-------|
   | Data & Text | Data conversion (Base64 / URL / Unicode / Hex / JWT / JSON escape), Text processing (regex / replace / line ops / naming / stats, with a line & word diff tab), Table converter (CSV/TSV ↔ JSON / Markdown / SQL INSERT, clean & reshape), Markdown (outline / TOC / lint / format / HTML preview), Structured data (JSON / YAML validate-format-tree-convert), XML (validate / format / XML↔JSON / XPath), JSON Schema (infer / validate / sample / explain structure), Time & schedule (timestamp / timezone / Cron), Data generation (UUID / ULID / NanoID / mock / templates) |
   | Network & API | Network diagnostics (URL / CIDR / DNS / port / ping / route), API debugger (collections & environments), Multi-threaded downloader (chunked resume, batch queue), API capture (watch a local app's requests over CDP, turn one into a check-in site descriptor) |
-  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export), Screenshot (F1 freeze-and-annotate, F3 pin), Disk analyzer (parallel scan, treemap, recycle-bin delete, cross-drive junction moves) |
+  | File & Media | File processing (info / encoding / Base64 / line endings / batch rename), Image processing (convert / compress / resize / colors / icon generator / EXIF), Photo archive (shoot on the phone straight into your own object storage — S3-compatible / Qiniu / WebDAV — then the desktop pulls and archives in batches; see [`docs/photo-storage-setup.md`](docs/photo-storage-setup.md)), PDF toolkit (merge / split by range / extract or delete pages / rotate / decrypt), Label printing (TSPL layout, barcode/QR, live 203dpi preview, .prn export), Screenshot (F1 freeze-and-annotate, F3 pin), Disk analyzer (parallel scan, treemap, recycle-bin delete, cross-drive junction moves) |
   | Development | Crypto & checksum (digest / HMAC / AES / RSA / password generator), Database manager (connect, run SQL, browse tables) |
   | AI | AI chat (multi-session, image input, prompt presets), Prompts (prompt library + cloud image generation / local ComfyUI workflows, including video), Auto check-in (scheduled check-in for the daily-credit campaigns of AI agent tools, driven by site descriptors you fill in — see below) |
   | Game helpers | Rail Tycoon route solver (Lord of the Mysteries homestead trade run: enumerates every valid stop layout from the "next 3 stops" hints, locks the next stop and advises which card to take) |
@@ -109,7 +109,7 @@ generation against an endpoint you configured, the check-ins you schedule, and o
 ### What the agent can drive — and what it cannot
 
 Being honest about this is part of the positioning: the agent exposes **38 typed actions drawn from
-15 of the 26 tools** today, and the plan is to close that gap rather than pretend the toolbox is
+15 of the 27 tools** today, and the plan is to close that gap rather than pretend the toolbox is
 already one big action space.
 
 - **Agent-drivable now**: data conversion, text processing & diff, table, Markdown, XML, JSON + YAML,
@@ -190,6 +190,14 @@ OpenAI-compatible endpoint.
 - Download the latest Windows installer from [GitHub Releases](https://github.com/GitHub-lcb/ToolCove/releases).
 - The app checks for updates on startup and on demand (Settings → Check for updates).
   Updates are signed and verified against the built-in public key before installation.
+- **Android**: grab `toolcove-release.apk` from the newest `apk-v*` release (sideload — allow
+  "install unknown apps" once). After that first install the app updates itself in place
+  (Settings → Check for updates): it reads a small manifest (with a SHA-256 to verify the
+  download) from the dedicated `apk-latest` channel, so you never have to hunt the Releases
+  page again.
+- **iPhone / any phone browser**: open <https://github-lcb.github.io/ToolCove/> in Safari and
+  "Add to Home Screen" — that is the same mobile UI running as a PWA (camera capture works
+  there; uploads must stay in the foreground, the queue resumes automatically).
 - The Oracle JDBC driver used by the database tool is distributed separately
   ([tag: drivers](https://github.com/GitHub-lcb/ToolCove/releases/tag/drivers)) and downloaded
   on first use of the database tool.
@@ -322,7 +330,7 @@ Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). For secur
 ## 中文简介
 
 ToolCove（工具湾）是面向开发者的**智能体工作台**：本地优先、无账号、开源免费（MIT）。
-它和「一堆小工具合集」的差别在于：26 个内置工具同时是 Agent 的**动作空间**——你用自然语言说出目标，
+它和「一堆小工具合集」的差别在于：27 个内置工具同时是 Agent 的**动作空间**——你用自然语言说出目标，
 Agent 自己挑动作、串起来执行、每步实时可见，风险操作先给你看 diff 再确认。支持 **Windows 桌面端**
 （Tauri 2）、**浏览器端**（纯静态站点），安卓 App 正按「功能对齐桌面端」重做。
 
@@ -333,10 +341,10 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   大结果裁剪成 `spill:` 句柄供分段回读，而不是淹没上下文；成功的运行可以存成**技能**（上限 50 条，
   单次最多命中 3 条、注入预算固定），技能只是「上次这么做成了」的提示，不是强制步骤。
   模型走你自己配置的任意 OpenAI 兼容端点，你不发起就没有任何对外请求。
-  **目前 Agent 覆盖 26 个工具里的 15 个、共 38 个动作**，能做什么、不能做什么见下方专门说明。
-- **工具箱**：26 个内置工具——数据转换、文本处理（含文本对比）、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
+  **目前 Agent 覆盖 27 个工具里的 15 个、共 38 个动作**，能做什么、不能做什么见下方专门说明。
+- **工具箱**：27 个内置工具——数据转换、文本处理（含文本对比）、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
   JSON Schema、时间调度、数据生成、网络诊断、
-  API 调试、多线程下载、接口抓包、文件处理、图片处理、PDF 工具、标签打印、截图、磁盘分析、加密与校验、数据库管理、AI 对话、提示词、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
+  API 调试、多线程下载、接口抓包、文件处理、图片处理、照片存档（手机拍照直传自建对象存储，桌面端批量下载归档，见 [`docs/photo-storage-setup.md`](docs/photo-storage-setup.md)）、PDF 工具、标签打印、截图、磁盘分析、加密与校验、数据库管理、AI 对话、提示词、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
   其中网络诊断、文件处理、数据库管理、标签打印、截图、磁盘分析、多线程下载、接口抓包、自动签到、提示词这 10 个依赖原生能力，仅桌面端提供，浏览器端自动隐藏；
   PDF 工具（合并 / 拆分 / 提取删除页 / 旋转 / 去加密）纯前端实现：常规操作走 pdf-lib，
   遇到加密文件时才按需拉取 qpdf-wasm 去除加密（电子发票、银行回单这类权限加密无需密码）。

@@ -1,6 +1,6 @@
 // 手机端工具箱的目录：分组、可用性、后续接哪些。
 //
-// 桌面端有 26 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
+// 桌面端有 27 个工具（`src/toolboxTools.js`）。手机端不是简单照搬：
 //   · 双端通用（JSON/转换/时间/生成/请求/图片/PDF/加密/文本 diff）→ 逐个移动端化；
 //   · 平台独占（文件/数据库/标签打印/网络诊断）→ 按安卓现实降级或替换（见 docs/mobile-app-plan.md §1）；
 //   · 游戏辅助（铁路大亨）→ 求解逻辑在 src/tools/railTycoon.js，桌面端在用，手机端后续作为一个工具回归。
@@ -35,6 +35,7 @@ const DESKTOP_ICON = Object.freeze({
   network: "network",
   file: "folder",
   image: "image",
+  photo: "camera",
   pdf: "file",
   label: "printer",
   chat: "chat",
@@ -105,6 +106,7 @@ export const TOOLS = Object.freeze([
   { key: "network", group: "network", labelKey: "toolbox.registry.toolNetwork", ready: true, note: "mobile.noteNetwork" },
   { key: "file", group: "file", labelKey: "toolbox.registry.toolFile", ready: true, note: "mobile.noteFile" },
   { key: "image", group: "file", labelKey: "toolbox.registry.toolImage", ready: true },
+  { key: "photo", group: "file", labelKey: "toolbox.registry.toolPhoto", ready: true },
   { key: "pdf", group: "file", labelKey: "toolbox.registry.toolPdf", ready: true },
   { key: "label", group: "file", labelKey: "toolbox.registry.toolLabel", ready: true, note: "mobile.noteLabel" },
   { key: "chat", group: "ai", labelKey: "toolbox.registry.toolChat", ready: true },

@@ -4,10 +4,13 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.provider.MediaStore
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -15,6 +18,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
 import com.githublcb.toolcove.bridge.Bridge
+import com.githublcb.toolcove.bridge.PhotoCaptureKit
 
 /**
  * 唯一 Activity：全屏 WebView + 本地资源服务。
@@ -32,6 +36,12 @@ class MainActivity : Activity() {
     private var native: AndroidNative? = null
     /** 文件选择请求码：固定值即可，只有一处使用。 */
     private val pickFileRequest = 1001
+    /** 网页 `<input type="file">` 的请求码：与桥的 1001 分开，两条路径互不干扰。 */
+    private val webChooserRequest = 1002
+    /** 等待中的网页文件选择回调；同一时刻只允许一个（旧的回调必须先撤销，否则 WebView 会一直等）。 */
+    private var webChooserCallback: ValueCallback<Array<Uri>>? = null
+    /** 拍照落点（capture 路径专用）：相机把照片写进这个 URI，结果返回时还原成它。 */
+    private var captureTarget: Uri? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,6 +74,46 @@ class MainActivity : Activity() {
                 // 把前端日志转到 logcat，装机排查时不必连调试器
                 android.util.Log.i("ToolCoveWeb", "${message.message()} @${message.lineNumber()}")
                 return true
+            }
+
+            /**
+             * `<input type="file">` 的落点。此前没有实现这个回调，网页里的文件输入是**死的**——
+             * 照片工具的「拍照 / 从相册选」两个按钮点了没有任何反应，而 WebView 不会报错，
+             * 是最难从日志发现的一类失败。
+             *
+             * 两条路径：
+             *  · capture（`<input capture>`）：自己发 ACTION_IMAGE_CAPTURE，EXTRA_OUTPUT 指向
+             *    本应用缓存目录（PhotoCaptureProvider）。照片不经系统相册中转，原始字节直接
+             *    交给网页——与"选文件"的语义一致，也避免相册里多一份来源不明的副本。
+             *  · 其余：参数原样交给系统选择器（相册 / 文件管理器），多选由 WebView 自带。
+             */
+            override fun onShowFileChooser(
+                webView: WebView,
+                callback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
+            ): Boolean {
+                // 上一个请求还挂着就先撤销（连续点两次时 WebView 会复用同一个回调槽）
+                webChooserCallback?.onReceiveValue(null)
+                webChooserCallback = callback
+                captureTarget = null
+
+                val wantsCapture = Build.VERSION.SDK_INT >= 30 && fileChooserParams.isCaptureEnabled
+                if (wantsCapture) {
+                    val target = createCaptureTarget(fileChooserParams)
+                    if (target != null) {
+                        return try {
+                            captureTarget = target
+                            startActivityForResult(captureIntent(target), webChooserRequest)
+                            true
+                        } catch (e: Exception) {
+                            // 没有相机应用等：退回系统选择器，而不是让按钮点了没反应
+                            android.util.Log.w("ToolCove", "capture intent failed: $e")
+                            captureTarget = null
+                            launchSystemChooser(fileChooserParams, callback)
+                        }
+                    }
+                }
+                return launchSystemChooser(fileChooserParams, callback)
             }
         }
         view.webViewClient = WebViewClient()
@@ -125,6 +175,47 @@ class MainActivity : Activity() {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
     }
 
+    /** 交回空结果并撤下等待中的回调：页面表现为「取消」，而不是永远转圈。返回 false 给 WebView。 */
+    private fun failChooser(callback: ValueCallback<Array<Uri>>): Boolean {
+        webChooserCallback = null
+        callback.onReceiveValue(null)
+        return false
+    }
+
+    /** 交给系统选择器（相册 / 文件管理器）。 */
+    private fun launchSystemChooser(params: WebChromeClient.FileChooserParams, callback: ValueCallback<Array<Uri>>): Boolean {
+        return try {
+            startActivityForResult(params.createIntent(), webChooserRequest)
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("ToolCove", "file chooser failed: $e")
+            failChooser(callback)
+        }
+    }
+
+    /**
+     * 拍照落点（缓存目录内的 capture-<时间戳>.jpg）。返回 null 表示建不出来，调用方退回系统选择器。
+     * 顺手清理过期的拍照临时文件——上传与否都以时间为界，缓存不无限涨。
+     */
+    private fun createCaptureTarget(params: WebChromeClient.FileChooserParams): Uri? {
+        // 只接管"拍照取图"：视频录制落点是另一种文件形状，交给系统选择器，不在这里硬撑
+        val acceptsImages = params.acceptTypes.isEmpty() || params.acceptTypes.any { it.startsWith("image/") }
+        if (params.acceptTypes.any { it.startsWith("video/") } || !acceptsImages) return null
+        return runCatching {
+            val now = System.currentTimeMillis()
+            PhotoCaptureKit.pruneStale(cacheDir, now)
+            PhotoCaptureKit.captureDir(cacheDir)
+            Uri.parse("content://${PhotoCaptureKit.AUTHORITY}/capture/${PhotoCaptureKit.newCaptureName(now)}")
+        }.getOrNull()
+    }
+
+    /** capture 意图。clipData 授权是对部分 OEM 相机的兼容路径（只看 EXTRA_OUTPUT 会拿不到写权限）。 */
+    private fun captureIntent(target: Uri) = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+        putExtra(MediaStore.EXTRA_OUTPUT, target)
+        clipData = android.content.ClipData.newRawUri("capture", target)
+        addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
     /**
      * 系统安装页。授权 URI 只对这一次调用有效（不 grant 持久权限）：
      * 安装包是本 App 自己下的临时文件，给久了等于留一条长期可读的口子。
@@ -173,6 +264,21 @@ class MainActivity : Activity() {
      */
     @Deprecated("Deprecated in API 30+, startActivityForResult is still the simplest hook here")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == webChooserRequest) {
+            val callback = webChooserCallback ?: return
+            webChooserCallback = null
+            val target = captureTarget
+            captureTarget = null
+            val uris: Array<Uri>? = when {
+                // 拍照路径：相机把字节写进我们的 EXTRA_OUTPUT（data 里不带 URI），
+                // 空文件按"取消"处理——交回一个空 URI 会让网页拿到 0 字节照片。
+                target != null -> if (resultCode == RESULT_OK && captureHasBytes(target)) arrayOf(target) else null
+                else -> WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+            }
+            android.util.Log.i("ToolCove", "web chooser result: ${uris?.size ?: 0} file(s)")
+            callback.onReceiveValue(uris)
+            return
+        }
         if (requestCode == pickFileRequest) {
             val uri: Uri? = if (resultCode == RESULT_OK) data?.data else null
             if (uri != null) {
@@ -194,10 +300,20 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
     }
 
+    /** 相机是否真的写进了内容（有的相机 RESULT_OK 但文件为空）。 */
+    private fun captureHasBytes(target: Uri): Boolean {
+        val name = target.lastPathSegment ?: return false
+        return runCatching { PhotoCaptureKit.resolveCaptureFile(cacheDir, name).length() > 0L }.getOrDefault(false)
+    }
+
     override fun onDestroy() {
         // 让还在等选择器的请求立刻结束，避免线程白等到超时
         native?.cancelPending()
         native = null
+        // 网页侧等待中的文件选择同样要撤销，否则页面以为用户还没选完
+        webChooserCallback?.onReceiveValue(null)
+        webChooserCallback = null
+        captureTarget = null
         webView?.apply {
             loadUrl("about:blank")
             destroy()

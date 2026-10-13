@@ -1,0 +1,561 @@
+<script setup>
+// 照片存档（手机端）：拍照 / 相册 → 本地队列（IndexedDB）→ 直传你自己的对象存储。
+//
+// 与桌面端共用同一份纯逻辑 src/photo/（签名、命名、队列状态机），这里只做界面与编排。
+// 上传走浏览器 fetch 直发：安卓 App（WebView）、iPhone Safari、安卓浏览器是同一条代码路径。
+//
+// 三条界面语义刻意写死：
+//   1. 加照片不需要先配置——照片先安全落盘在队列里，配置好了再传，任何一步中断都不丢；
+//   2. 上传只能在前台完成（iOS 的硬限制），提示说清楚，队列负责"下次打开自动续传"；
+//   3. 明文直存（用户选择）——凭据的存储安全等级如实告知（网页版没有系统密钥库）。
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { formatBytes } from "../../../src/downloader.js";
+import { capabilities } from "../../../src/platform/env.js";
+import { PHOTO_PROVIDERS, defaultPhotoConfig, exportPhotoConfig, normalizePhotoConfig, parsePhotoConfigExport, validatePhotoConfig } from "../../../src/photo/config.js";
+import { fieldsOf } from "../../../src/photo/fields.js";
+import { generateDeviceId } from "../../../src/photo/keys.js";
+import { QUEUE_STATE } from "../../../src/photo/queue.js";
+import { createUploadQueue, filesFromInput, loadPhotoConfig, savePhotoConfig } from "../../../src/photo/session.js";
+import { testPhotoConnection } from "../../../src/photo/upload.js";
+
+const { t } = useI18n();
+
+const ERROR_KEYS = {
+  endpointEmpty: "toolbox.photo.errEndpointEmpty",
+  endpointBad: "toolbox.photo.errEndpointBad",
+  regionEmpty: "toolbox.photo.errRegionEmpty",
+  bucketEmpty: "toolbox.photo.errBucketEmpty",
+  bucketBad: "toolbox.photo.errBucketBad",
+  keyEmpty: "toolbox.photo.errKeyEmpty",
+  secretEmpty: "toolbox.photo.errSecretEmpty",
+  prefixBad: "toolbox.photo.errPrefixBad",
+  domainEmpty: "toolbox.photo.errDomainEmpty",
+  domainBad: "toolbox.photo.errDomainBad",
+  uploadHostEmpty: "toolbox.photo.errUploadHostBad",
+  uploadHostBad: "toolbox.photo.errUploadHostBad",
+  userEmpty: "toolbox.photo.errUserEmpty",
+  passEmpty: "toolbox.photo.errPassEmpty",
+};
+
+const config = ref(defaultPhotoConfig());
+const draft = ref(null);
+const configErrors = ref({});
+const editing = ref(false);
+const testing = ref(false);
+const testResult = ref("");
+const testError = ref("");
+const items = ref([]);
+const cameraInput = ref(null);
+const galleryInput = ref(null);
+
+let queue = null;
+const thumbs = new Map();
+
+const configured = computed(() => validatePhotoConfig(config.value).ok);
+const providers = computed(() => PHOTO_PROVIDERS.map((p) => ({ ...p, label: t(p.labelKey) })));
+const currentProvider = computed(() => providers.value.find((p) => p.key === config.value.provider) || providers.value[0]);
+const draftProvider = computed(() => providers.value.find((p) => p.key === draft.value?.provider) || currentProvider.value);
+const draftFields = computed(() => fieldsOf(draft.value?.provider));
+// 浏览器形态只有 S3 系能直接探活（七牛的 rsf、WebDAV 的 PROPFIND 都不放行跨域）；
+// 其余后端的连通性验证在桌面端做（走 Rust，不受 CORS 约束）。
+const canBrowserTest = computed(() => config.value.provider === "s3");
+const configSummary = computed(() => `${config.value.bucket || config.value.domain || config.value.endpoint} · ${config.value.prefix}/`);
+const stats = computed(() => {
+  const by = (state) => items.value.filter((item) => item.status === state).length;
+  return { pending: by(QUEUE_STATE.pending), uploading: by(QUEUE_STATE.uploading), done: by(QUEUE_STATE.done), error: by(QUEUE_STATE.error), total: items.value.length };
+});
+const sortedItems = computed(() => [...items.value].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+const busy = computed(() => stats.value.uploading > 0);
+const webSecretWarn = computed(() => !capabilities.secureStore);
+
+function stateLabel(item) {
+  if (item.status === QUEUE_STATE.pending) return t("toolbox.photo.statePending");
+  if (item.status === QUEUE_STATE.uploading) return t("toolbox.photo.stateUploading");
+  if (item.status === QUEUE_STATE.done) return t("toolbox.photo.stateDone");
+  return t("toolbox.photo.stateError");
+}
+
+function fieldError(name) {
+  const code = configErrors.value[name];
+  return code ? t(ERROR_KEYS[code] || code) : "";
+}
+
+/** 缩略图只在有本地二进制（待传/失败）时生成，上传成功后立即释放（不留占内存的 URL）。 */
+function thumbOf(item) {
+  if (!item.blob) return "";
+  if (!thumbs.has(item.id)) thumbs.set(item.id, URL.createObjectURL(item.blob));
+  return thumbs.get(item.id);
+}
+
+function releaseStaleThumbs() {
+  for (const [id, url] of thumbs) {
+    const item = items.value.find((row) => row.id === id);
+    if (!item || !item.blob) {
+      URL.revokeObjectURL(url);
+      thumbs.delete(id);
+    }
+  }
+}
+
+function refresh() {
+  items.value = [...(queue?.items || [])];
+  releaseStaleThumbs();
+}
+
+async function onPicked(event) {
+  const files = filesFromInput(event?.target?.files);
+  if (event?.target) event.target.value = ""; // 允许再次选同一张
+  if (!files.length || !queue) return;
+  await queue.addFiles(files, { config: config.value });
+  refresh();
+  await queue.pump();
+}
+
+function startEdit() {
+  draft.value = { ...config.value };
+  configErrors.value = {};
+  testResult.value = "";
+  testError.value = "";
+  editing.value = true;
+}
+
+function cancelEdit() {
+  draft.value = null;
+  editing.value = false;
+  configErrors.value = {};
+}
+
+async function saveConfig() {
+  const check = validatePhotoConfig(draft.value);
+  configErrors.value = check.errors;
+  if (!check.ok) return;
+  const cfg = normalizePhotoConfig({
+    ...check.config,
+    deviceId: /^[0-9a-f]{6}$/.test(config.value.deviceId) ? config.value.deviceId : generateDeviceId(),
+  });
+  config.value = cfg;
+  draft.value = null;
+  editing.value = false;
+  queue?.setConfig(cfg);
+  await savePhotoConfig(cfg);
+  testResult.value = "";
+  testError.value = "";
+  await queue?.pump();
+}
+
+async function runTest() {
+  if (!canBrowserTest.value) return;
+  testing.value = true;
+  testResult.value = "";
+  testError.value = "";
+  try {
+    const result = await testPhotoConnection({ config: config.value });
+    testResult.value = t("toolbox.photo.configOk", { n: result.sampleCount });
+  } catch (e) {
+    testError.value = String(e?.message || e);
+  } finally {
+    testing.value = false;
+  }
+}
+
+// ---- 配置的导出 / 导入（多设备快速配置） ----
+const transferMode = ref(""); // "" | "export" | "import"
+const transferText = ref("");
+const transferError = ref("");
+const transferOk = ref("");
+const copyState = ref(""); // "" | "ok" | "fail"
+
+const IMPORT_ERROR_KEYS = {
+  badJson: "toolbox.photo.importBadJson",
+  badKind: "toolbox.photo.importBadKind",
+  badVersion: "toolbox.photo.importBadVersion",
+  badProvider: "toolbox.photo.importBadProvider",
+};
+
+function openExport() {
+  transferMode.value = "export";
+  transferText.value = exportPhotoConfig(config.value);
+  transferError.value = "";
+  transferOk.value = "";
+  copyState.value = "";
+}
+
+function openImport() {
+  transferMode.value = "import";
+  transferText.value = "";
+  transferError.value = "";
+  transferOk.value = "";
+  copyState.value = "";
+}
+
+function closeTransfer() {
+  transferMode.value = "";
+  transferText.value = "";
+  transferError.value = "";
+  transferOk.value = "";
+  copyState.value = "";
+}
+
+function importErrorText(result) {
+  if (result.error === "invalid" && result.errors) {
+    // 指到第一个出问题的字段（与编辑表单同一套原因码 → 文案）
+    const first = Object.values(result.errors)[0];
+    return t(ERROR_KEYS[first] || first);
+  }
+  return t(IMPORT_ERROR_KEYS[result.error] || IMPORT_ERROR_KEYS.badJson);
+}
+
+async function applyImported() {
+  const result = parsePhotoConfigExport(transferText.value);
+  if (!result.ok) {
+    transferOk.value = "";
+    transferError.value = importErrorText(result);
+    return;
+  }
+  const cfg = normalizePhotoConfig({
+    ...result.config,
+    deviceId: /^[0-9a-f]{6}$/.test(config.value.deviceId) ? config.value.deviceId : generateDeviceId(),
+  });
+  config.value = cfg;
+  queue?.setConfig(cfg);
+  await savePhotoConfig(cfg);
+  transferText.value = "";
+  transferError.value = "";
+  transferOk.value = t("toolbox.photo.importOk");
+  await queue?.pump();
+}
+
+async function copyExport() {
+  try {
+    await navigator.clipboard.writeText(transferText.value);
+    copyState.value = "ok";
+  } catch {
+    copyState.value = "fail"; // 自动复制不可用（权限/旧 WebView）→ 提示手动长按复制
+  }
+}
+
+async function retryItem(id) {
+  await queue?.retry(id);
+  refresh();
+}
+
+async function removeItem(id) {
+  await queue?.remove(id);
+  refresh();
+}
+
+async function retryAll() {
+  await queue?.retryAllErrors();
+  refresh();
+}
+
+async function clearDone() {
+  await queue?.clearDone();
+  refresh();
+}
+
+function onOnline() {
+  queue?.pump();
+}
+
+onMounted(async () => {
+  config.value = await loadPhotoConfig();
+  queue = await createUploadQueue({ onUpdate: () => refresh() });
+  queue.setConfig(config.value);
+  refresh();
+  window.addEventListener("online", onOnline);
+  await queue.pump(); // 打开页面自动续传上次没传完的
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("online", onOnline);
+  for (const url of thumbs.values()) URL.revokeObjectURL(url);
+  thumbs.clear();
+});
+</script>
+
+<template>
+  <section class="m-tool" data-tool="photo">
+    <!-- 存储配置 -->
+    <div class="m-card">
+      <div class="m-card-head">
+        <b>{{ t("toolbox.photo.configTitle") }}</b>
+        <span class="m-zone">{{ currentProvider?.label }}</span>
+      </div>
+
+      <template v-if="!editing">
+        <p v-if="configured" class="m-hint-sm" data-role="config-summary">{{ configSummary }}</p>
+        <p v-else class="m-hint-sm" data-role="config-missing">{{ t("toolbox.photo.notConfigured") }}</p>
+        <div class="m-actions">
+          <button class="m-btn" data-role="config-edit" @click="startEdit">
+            {{ configured ? t("toolbox.photo.configEdit") : t("toolbox.photo.configOpen") }}
+          </button>
+          <button class="m-btn" :disabled="!configured || testing || !canBrowserTest" data-role="config-test" @click="runTest">
+            {{ testing ? t("toolbox.photo.configTesting") : t("toolbox.photo.configTest") }}
+          </button>
+          <button class="m-btn" data-role="config-export" @click="openExport">{{ t("toolbox.photo.exportBtn") }}</button>
+          <button class="m-btn" data-role="config-import" @click="openImport">{{ t("toolbox.photo.importBtn") }}</button>
+        </div>
+        <p v-if="!canBrowserTest" class="m-hint-sm" data-role="test-desktop-only">{{ t("toolbox.photo.configTestDesktopOnly") }}</p>
+        <p class="m-hint-sm" data-role="transfer-hint">{{ t("toolbox.photo.transferHint") }}</p>
+        <p v-if="testResult" class="m-ok" data-role="test-result">{{ testResult }}</p>
+        <p v-if="testError" class="m-err" data-role="test-error">{{ testError }}</p>
+
+        <!-- 导出 / 导入面板：同一套配置在多台设备间复制，不用逐字段重敲 -->
+        <div v-if="transferMode" class="m-photo-transfer" data-role="transfer-box">
+          <p class="m-hint-sm">{{ transferMode === "export" ? t("toolbox.photo.exportHint") : t("toolbox.photo.importHint") }}</p>
+          <textarea
+            v-model="transferText"
+            class="m-mono m-photo-transfer-text"
+            :readonly="transferMode === 'export'"
+            data-role="transfer-text"
+            spellcheck="false"
+          ></textarea>
+          <p v-if="transferError" class="m-err" data-role="transfer-error">{{ transferError }}</p>
+          <p v-if="transferOk" class="m-ok" data-role="transfer-ok">{{ transferOk }}</p>
+          <p v-if="copyState === 'fail'" class="m-err" data-role="copy-fail">{{ t("toolbox.photo.copyFail") }}</p>
+          <div class="m-actions">
+            <button v-if="transferMode === 'export'" class="m-btn primary" data-role="transfer-copy" @click="copyExport">
+              {{ copyState === "ok" ? t("toolbox.photo.copied") : t("toolbox.photo.copyBtn") }}
+            </button>
+            <button
+              v-else
+              class="m-btn primary"
+              data-role="transfer-apply"
+              :disabled="!transferText.trim()"
+              @click="applyImported"
+            >
+              {{ t("toolbox.photo.importApply") }}
+            </button>
+            <button class="m-btn" data-role="transfer-close" @click="closeTransfer">{{ t("toolbox.photo.closeBtn") }}</button>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <label class="m-field">
+          <span>{{ t("toolbox.photo.fieldProvider") }}</span>
+          <select v-model="draft.provider" data-role="provider">
+            <option v-for="item in providers" :key="item.key" :value="item.key">{{ item.label }}</option>
+          </select>
+        </label>
+        <p class="m-hint-sm" data-role="provider-hint">{{ t(draftProvider?.hintKey || "toolbox.photo.providerS3Hint") }}</p>
+        <p v-if="draft.provider === 'webdav'" class="m-photo-warn" data-role="webdav-warn">{{ t("toolbox.photo.providerWebdavBrowserWarn") }}</p>
+
+        <template v-for="f in draftFields" :key="f.key">
+          <label v-if="f.type === 'checkbox'" class="m-check">
+            <input v-model="draft[f.key]" type="checkbox" :data-role="`field-${f.kebab}`" />
+            <span>{{ t(f.labelKey) }}</span>
+          </label>
+          <label v-else class="m-field">
+            <span>{{ t(f.labelKey) }}</span>
+            <input
+              v-model="draft[f.key]"
+              :type="f.type === 'password' ? 'password' : 'text'"
+              :class="{ 'm-mono': f.mono }"
+              :data-role="`field-${f.kebab}`"
+              :placeholder="f.phKey ? t(f.phKey) : ''"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </label>
+          <p v-if="fieldError(f.key)" class="m-field-err" :data-role="`err-${f.kebab}`">{{ fieldError(f.key) }}</p>
+        </template>
+
+        <p v-if="webSecretWarn" class="m-photo-warn" data-role="secret-warn">{{ t("toolbox.photo.webSecretWarn") }}</p>
+        <div class="m-actions">
+          <button class="m-btn primary" data-role="config-save" @click="saveConfig">{{ t("toolbox.photo.configSave") }}</button>
+          <button class="m-btn" data-role="config-cancel" @click="cancelEdit">{{ t("toolbox.photo.configCancel") }}</button>
+        </div>
+      </template>
+    </div>
+
+    <!-- 拍照 / 相册 -->
+    <div class="m-card">
+      <div class="m-card-head">
+        <b>{{ t("toolbox.photo.captureTitle") }}</b>
+        <span v-if="busy" class="m-zone" data-role="uploading-hint">{{ t("toolbox.photo.uploadingHint") }}</span>
+      </div>
+      <div class="m-actions">
+        <button class="m-btn primary" data-role="take-photo" @click="cameraInput.click()">{{ t("toolbox.photo.takePhoto") }}</button>
+        <button class="m-btn" data-role="pick-photos" @click="galleryInput.click()">{{ t("toolbox.photo.pickPhotos") }}</button>
+      </div>
+      <input ref="cameraInput" class="m-file-hidden" type="file" accept="image/*" capture="environment" data-role="camera-input" @change="onPicked" />
+      <input ref="galleryInput" class="m-file-hidden" type="file" accept="image/*" multiple data-role="gallery-input" @change="onPicked" />
+      <p class="m-hint-sm" data-role="web-hint">{{ t("toolbox.photo.webHint") }}</p>
+    </div>
+
+    <!-- 上传队列 -->
+    <div class="m-card">
+      <div class="m-card-head">
+        <b>{{ t("toolbox.photo.queueTitle") }}</b>
+        <span class="m-zone" data-role="queue-meta">{{ t("toolbox.photo.queueMeta", { done: stats.done, total: stats.total }) }}</span>
+      </div>
+      <p v-if="!items.length" class="m-hint-sm" data-role="empty">{{ t("toolbox.photo.emptyQueue") }}</p>
+      <ul v-else class="m-photo-list">
+        <li v-for="item in sortedItems" :key="item.id" class="m-photo-row" :data-state="item.status" :data-role="`item-${item.id}`">
+          <img v-if="thumbOf(item)" :src="thumbOf(item)" class="m-photo-thumb" alt="" />
+          <div class="m-photo-main">
+            <span class="m-photo-name">{{ item.name }}</span>
+            <span class="m-hint-sm m-photo-meta">{{ formatBytes(item.size) }}</span>
+            <span class="m-mono m-photo-key" :title="item.key">{{ item.key }}</span>
+            <span v-if="item.error" class="m-err" data-role="item-error">{{ item.error }}</span>
+          </div>
+          <div class="m-photo-ops">
+            <span class="m-photo-chip" :data-state="item.status" data-role="item-state">{{ stateLabel(item) }}</span>
+            <button v-if="item.status === QUEUE_STATE.error" class="m-btn sm" data-role="item-retry" @click="retryItem(item.id)">
+              {{ t("toolbox.photo.retry") }}
+            </button>
+            <button
+              v-if="item.status !== QUEUE_STATE.uploading"
+              class="m-btn sm danger"
+              data-role="item-remove"
+              @click="removeItem(item.id)"
+            >
+              {{ t("toolbox.photo.remove") }}
+            </button>
+          </div>
+        </li>
+      </ul>
+      <div v-if="items.length" class="m-actions">
+        <button v-if="stats.error" class="m-btn" data-role="retry-all" @click="retryAll">{{ t("toolbox.photo.retryAll") }}</button>
+        <button v-if="stats.done" class="m-btn" data-role="clear-done" @click="clearDone">{{ t("toolbox.photo.clearDone") }}</button>
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.m-photo-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m-photo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--m-border);
+}
+
+.m-photo-row:first-child {
+  border-top: none;
+}
+
+.m-photo-thumb {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--m-border);
+  border-radius: 8px;
+  background: var(--m-soft);
+  object-fit: cover;
+}
+
+.m-photo-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.m-photo-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-photo-meta {
+  color: var(--m-muted);
+}
+
+.m-photo-key {
+  overflow: hidden;
+  color: var(--m-muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-photo-ops {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.m-photo-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--m-soft);
+  color: var(--m-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.m-photo-chip[data-state="uploading"] {
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+}
+
+.m-photo-chip[data-state="done"] {
+  background: var(--m-ok-soft);
+  color: var(--m-ok);
+}
+
+.m-photo-chip[data-state="error"] {
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.m-btn.sm {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+}
+
+.m-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+}
+
+.m-photo-warn {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--m-radius);
+  background: var(--m-warn-soft);
+  color: var(--m-warn);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.m-photo-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--m-border);
+}
+
+.m-photo-transfer-text {
+  width: 100%;
+  min-height: 160px;
+  padding: 8px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius);
+  background: var(--m-soft);
+  color: var(--m-text);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+</style>

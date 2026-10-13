@@ -57,7 +57,7 @@ aes-gcm = "0.10"
 # TRAE Work CN 的本地凭据信封是 AES-128-CBC（aes 原本只由 aes-gcm 间接引入，这里要显式依赖）
 aes = "0.8"
 # 截图工具的 PNG 编解码（纯 Rust，三端可编译；捕获/剪贴板依赖见下方 windows 段）
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # 磁盘分析：目录树扫描是 I/O 密集，按子目录并行递归（纯 Rust，三端可编译）
 rayon = "1"
 # 磁盘分析的「删除到回收站」：走系统回收站（可恢复）；本工具不提供永久删除

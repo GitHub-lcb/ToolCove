@@ -16,6 +16,7 @@
     "tool-crypto",
     "tool-file",
     "tool-image",
+    "tool-photo",
     "tool-generator",
     "tool-pdf",
     "tool-request",

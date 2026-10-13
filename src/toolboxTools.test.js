@@ -68,7 +68,7 @@ describe("searchToolboxTools", () => {
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
       ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
       ["network", "request", "downloader", "netcapture"],
-      ["file", "image", "screenshot", "disk", "pdf", "label"],
+      ["file", "image", "photo", "screenshot", "disk", "pdf", "label"],
       ["crypto", "db"],
       ["chat", "checkin", "prompt"],
       ["rail"],

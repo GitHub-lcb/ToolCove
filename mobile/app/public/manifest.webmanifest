@@ -1,0 +1,15 @@
+{
+  "name": "ToolCove",
+  "short_name": "ToolCove",
+  "description": "开源双端 Agent 工具箱：手机端拍照上传、桌面端批量归档等 27 件工具",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#2b6ad0",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

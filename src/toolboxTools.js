@@ -52,6 +52,17 @@ export const TOOLBOX_TOOLS = [
     keywordsKey: "toolbox.registry.kwImage",
     ready: true,
   },
+  // 照片存档不标 desktopOnly：手机端才是拍的一方（拍照直传），桌面端负责批量下载归档；
+  // 浏览器形态与手机同源（只做上传），所以三个平台都有可用入口。
+  {
+    key: "photo",
+    labelKey: "toolbox.registry.toolPhoto",
+    icon: "camera",
+    category: "file",
+    descKey: "toolbox.registry.toolPhotoDesc",
+    keywordsKey: "toolbox.registry.kwPhoto",
+    ready: true,
+  },
   // 截图独占桌面的硬理由：全局热键、整屏捕获、置顶贴图窗都是 Windows 原生能力，
   // 浏览器/手机端没有对等物（网页拿不到整屏，也钉不住悬浮窗）。
   {

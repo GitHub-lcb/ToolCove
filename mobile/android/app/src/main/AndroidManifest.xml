@@ -41,5 +41,14 @@
             android:authorities="com.githublcb.toolcove.apk"
             android:exported="true"
             android:grantUriPermissions="true" />
+
+        <!-- 相机拍网页 `<input capture>` 的照片：给相机一个可写的 content:// 落点。
+             exported=true 仅为 URI 授权放行（无授权的应用进不来），文件约束在
+             PhotoCaptureProvider 里做：只认 cache/camera/capture-<数字>.jpg 这一种名字。 -->
+        <provider
+            android:name=".PhotoCaptureProvider"
+            android:authorities="com.githublcb.toolcove.capture"
+            android:exported="true"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

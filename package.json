@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.14.1",
   "//mobileVersion": "手机端（安卓 App）的独立版本号：与桌面 version 各走各的发版线。改这里即可，app/build.gradle 的 versionName 会从它读取（单一真相源，避免两处手改不一致）。发版：推 apk-v<版本> 标签触发 mobile-release.yml。",
-  "mobileVersion": "1.1.0",
+  "mobileVersion": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -26,6 +26,7 @@
     "test:android": "node mobile/android/test-bridge.mjs",
     "verify:apk": "node mobile/android/verify-apk.mjs",
     "build:label-wasm": "node crates/label-core/build-wasm.mjs",
+    "pwa:icons": "node scripts/make-pwa-icons.mjs",
     "//bank:fetch": "从 GitHub 批量拉题，生成可导入的题库 JSON。产物默认落 tmp/（已 gitignore）——这些仓库的许可证各不相同，入库或随应用分发前请先确认（脚本头部有说明）。",
     "bank:fetch": "node scripts/build-interview-bank.mjs"
   },

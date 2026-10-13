@@ -1,0 +1,78 @@
+# 手机端网页版（iOS / 任意手机浏览器）发布到 GitHub Pages。
+#
+# 定位：安卓用户有 APK（mobile-release.yml），iOS 用户没有原生包可装——
+# 这个工作流把**手机端同一份产物**（dist/mobile/app）发布到 Pages，
+# iPhone 用 Safari 打开后「添加到主屏幕」即可当 App 用（PWA，见 mobile/app/index.html）。
+#
+# 两个关键前提，改动时不要破坏：
+#   1. 手机端构建的 base 是 "./"（相对路径）——因此可以直接挂在 /<repo>/ 子路径下，
+#      不需要为 Pages 改任何构建配置；
+#   2. 手机端产物依赖 label-core 的 wasm（随构建打进 assets），构建前必须先编 wasm，
+#      与 ci.yml / mobile-release.yml 同一套前置步骤。
+#
+# 一次性前置配置：仓库 Settings → Pages → Build and deployment → Source 选 "GitHub Actions"。
+# （公开仓库免费；私有仓库的 Pages 需要付费计划。）
+name: Pages（手机端网页版）
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "src/**"
+      - "crates/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只允许一个发布在跑；排队中的旧构建直接作废（新提交已覆盖它）
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建手机端产物
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: crates/label-core
+
+      - run: npm ci
+      # 排版引擎 wasm：编译产物、不入库，手机端构建要先有它（与 ci.yml 同步骤）
+      - run: npm run build:label-wasm
+      - run: npm run build:mobile
+
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: dist/mobile/app
+
+  deploy:
+    name: 发布到 Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

@@ -9,6 +9,7 @@ mod label;
 mod network;
 mod netcapture;
 mod pdf;
+mod photo;
 mod printer;
 mod prompt_media;
 mod qoder_cn_auth;
@@ -174,6 +175,13 @@ pub fn run() {
             downloader::downloader_cancel,
             downloader::downloader_discard,
             downloader::downloader_progress_of,
+            // 照片存档（桌面端）：探活 / 列举云端照片 / 批量下载归档 + 取消 + 读归档账本
+            photo::photo_test,
+            photo::photo_list,
+            photo::photo_download,
+            photo::photo_cancel,
+            photo::photo_manifest,
+            photo::photo_thumb,
             // 数据库工具
             db::db_test,
             db::db_connect,

@@ -17,6 +17,7 @@ export const TOOL_COMPONENTS = {
   crypto: defineAsyncComponent(() => import("./tools/CryptoTool.vue")),
   file: defineAsyncComponent(() => import("./tools/FileTool.vue")),
   image: defineAsyncComponent(() => import("./tools/ImageTool.vue")),
+  photo: defineAsyncComponent(() => import("./tools/PhotoTool.vue")),
   screenshot: defineAsyncComponent(() => import("./tools/ScreenshotTool.vue")),
   disk: defineAsyncComponent(() => import("./tools/DiskAnalyzerTool.vue")),
   pdf: defineAsyncComponent(() => import("./tools/PdfTool.vue")),
