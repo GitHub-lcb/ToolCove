@@ -100,7 +100,6 @@ export async function seedMobileBridge(page, { files = {}, pick = null, failPick
 
       window.__E2E_NATIVE_CALLS__ = [];
       window.ToolCove = {
-        isMobile: true,
         invoke(cmd, argsJson) {
           const args = argsJson ? JSON.parse(argsJson) : {};
           window.__E2E_NATIVE_CALLS__.push({ cmd, args });

@@ -3,6 +3,7 @@ package com.githublcb.toolcove
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -64,9 +65,12 @@ class AssetsServerTest {
         fun header(name: String) = headers[name.lowercase()]
     }
 
-    private fun request(method: String, path: String, host: String = "127.0.0.1"): Response {
+    private fun request(method: String, path: String, host: String = "127.0.0.1"): Response = requestOn(port, method, path, host)
+
+    /** 对**指定端口**发请求：端口稳定性那几条用例要自己起服务，不能借用共享实例的端口。 */
+    private fun requestOn(target: Int, method: String, path: String, host: String = "127.0.0.1"): Response {
         java.net.Socket().use { socket ->
-            socket.connect(InetSocketAddress("127.0.0.1", port), 3000)
+            socket.connect(InetSocketAddress("127.0.0.1", target), 3000)
             socket.soTimeout = 3000
             val out = socket.getOutputStream()
             out.write("$method $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n".toByteArray())
@@ -179,10 +183,13 @@ class AssetsServerTest {
 
     // ---------- 绑定与并发 ----------
     @Test
-    fun `只绑 127_0_0_1（外部网络不可达）`() {
+    fun `只绑 127_0_0_1，端口落在固定候选里（来源稳定 = 数据留得住）`() {
         assertTrue("基地址必须是 loopback", base.startsWith("http://127.0.0.1:"))
-        // 端口是随机的（0 让系统分配），不该是固定值
-        assertTrue("端口应在动态范围内", port in 1024..65535)
+        // ⚠️ 端口**必须**来自固定候选：端口是站点来源（origin）的一部分，随机端口会让每次启动
+        // 变成一个"新站点"，WebView 的 IndexedDB（记录/工作台/设置/AI Key/照片队列）全部读不到。
+        // 这条用例就是防着有人把它改回 ServerSocket(0)。
+        assertTrue("端口必须在固定候选里：$port", AssetsServer.PREFERRED_PORTS.toList().contains(port))
+        assertTrue("固定端口要如实标注来源稳定", server.stableOrigin)
     }
 
     @Test
@@ -277,6 +284,84 @@ class AssetsServerTest {
                 -1
             }
             assertEquals("超长请求行应被丢弃（不返回响应）", -1, read)
+        }
+    }
+
+    // ---------- 端口稳定性（端口 = 站点来源，见 AssetsServer.bindLoopback） ----------
+
+    /**
+     * 同进程内停掉再起，端口必须一模一样。真机上对应的场景是"杀掉 App 再打开"——
+     * 端口一变，IndexedDB 就换了站点，用户看到的是"数据全没了"。
+     */
+    @Test
+    fun `重启后端口不变（数据能留住的前提）`() {
+        server.stop()
+        val first = AssetsServer(readerOf(files))
+        val firstBase = first.start()
+        first.stop()
+        val second = AssetsServer(readerOf(files))
+        val secondBase = second.start()
+        try {
+            assertEquals("两次启动必须绑同一个端口，否则每次开 App 都是一本新账", firstBase, secondBase)
+            assertEquals(200, requestOn(secondBase.substringAfterLast(':').toInt(), "GET", "/").status)
+        } finally {
+            second.stop()
+        }
+    }
+
+    @Test
+    fun `首选端口被占时退到候选列表的下一个，而不是换随机端口`() {
+        server.stop()
+        val blocker = java.net.ServerSocket()
+        try {
+            blocker.reuseAddress = true
+            blocker.bind(InetSocketAddress("127.0.0.1", AssetsServer.PREFERRED_PORTS[0]))
+        } catch (_: Exception) {
+            // 该端口本来就被别的进程占着：这条用例的前提不成立，跳过而不是误报失败
+            blocker.close()
+            return
+        }
+        val local = AssetsServer(readerOf(files))
+        val address = local.start()
+        try {
+            val bound = address.substringAfterLast(':').toInt()
+            assertTrue("必须仍在固定候选里：$bound", AssetsServer.PREFERRED_PORTS.toList().contains(bound))
+            assertNotEquals("首选被占就该用下一个候选", AssetsServer.PREFERRED_PORTS[0], bound)
+            assertTrue("退到下一个候选仍算来源稳定", local.stableOrigin)
+        } finally {
+            local.stop()
+            blocker.close()
+        }
+    }
+
+    @Test
+    fun `候选端口全被占才退回系统分配（宁可换来源也不要白屏）`() {
+        server.stop()
+        val blockers = AssetsServer.PREFERRED_PORTS.toList().mapNotNull { candidate ->
+            try {
+                java.net.ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress("127.0.0.1", candidate))
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (blockers.size < AssetsServer.PREFERRED_PORTS.size) {
+            // 有候选没占住（被别的进程占了），前提不成立：跳过而不是误报
+            blockers.forEach { it.close() }
+            return
+        }
+        val local = AssetsServer(readerOf(files))
+        val address = local.start()
+        try {
+            val bound = address.substringAfterLast(':').toInt()
+            assertFalse("候选全占就该退回系统分配：$bound", AssetsServer.PREFERRED_PORTS.toList().contains(bound))
+            assertFalse("退回随机端口时来源不稳定，要如实标注", local.stableOrigin)
+            assertEquals("退回随机端口也必须能服务（不能白屏）", 200, requestOn(bound, "GET", "/").status)
+        } finally {
+            local.stop()
+            blockers.forEach { it.close() }
         }
     }
 

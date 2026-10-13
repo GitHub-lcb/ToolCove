@@ -32,12 +32,20 @@
 
 旧 HUD 必须打成**单文件 IIFE**，因为 `file:///android_asset/` 是 **opaque origin**：ESM 跨文件 import 被 CORS 拒，`crypto.subtle` 也可能不可用。
 
-新 App 改为：Kotlin 起一个**极小 HTTP 服务**（随机端口）→ WebView 加载 `http://127.0.0.1:<port>/`。收益：
+新 App 改为：Kotlin 起一个**极小 HTTP 服务**（**固定端口**，见下）→ WebView 加载 `http://127.0.0.1:<port>/`。收益：
 
 - **安全上下文**：`crypto.subtle` 可用（PDF 去加密、云同步端到端加密都依赖它）；
 - **不必打单文件**：可以懒加载 chunk 与 WASM（qpdf 1.2 MB 按需取），启动更快；
 - **标准 Vite 构建**：直接复用 `vite build`，不必为手机端维护一套 esbuild 脚本；
 - 代价：多一个本地服务实现（约 100 行 Kotlin，只绑 127.0.0.1）。
+
+> **端口必须固定（1.3.2 修正）**：原先写的是 `ServerSocket(0)`（每次启动随机端口），
+> 而端口是**站点来源（origin）的一部分**——随机端口意味着每次冷启动都换一个站点，
+> WebView 的 IndexedDB / localStorage 各自独立，于是记录、工作台、设置、AI Key、
+> 照片上传队列**每次重启都读不到**（数据还在旧来源里），照片工具承诺的"杀掉 App 也不丢"
+> 长期是空话；照片直传对象存储时桶的 CORS 白名单也认不出这台设备。
+> 现在绑固定候选端口（`AssetsServer.PREFERRED_PORTS`，首选 49731），全被占才退回系统分配。
+> 换取的代价是可预测性——服务只绑 127.0.0.1、只发 APK 内的静态资源、没有任何服务端逻辑。
 
 > 单文件方案作为**回退**保留：若本地服务在某些 ROM 上有问题，退回 `vite-plugin-singlefile` 出单文件 + `file://` 加载，代价是失去懒加载与 WebCrypto。
 
@@ -372,7 +380,8 @@ HEAD（body 空但长度真实）、OPTIONS 204、POST 405、**四种路径穿�
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | WebView 版本碎片（minSdk 26） | WASM/WebCrypto 老机型不可用 | 启动能力探测 + 明确降级提示；必要时提高 minSdk |
-| 本地 HTTP 服务被 ROM 杀/占用端口 | 白屏 | 随机端口 + 启动重试；保留单文件回退方案 |
+| 本地 HTTP 服务被 ROM 杀/占用端口 | 白屏 | **固定候选端口**（`PREFERRED_PORTS`）+ 被占则顺延；全占才退回系统分配；保留单文件回退方案 |
+| **本地服务端口漂移** | 每次启动换一个站点来源 → IndexedDB/localStorage 读不到，用户看到"数据全丢了"；对象存储 CORS 也认不出设备 | 端口固定（`AssetsServer.bindLoopback`），并由 JVM 用例锁死"重启后端口不变"；启动日志打印 `stableOrigin` |
 | SAF 与桌面「绝对路径」语义差异 | 文件类工具行为不一致 | 在 invoke 适配层翻译；UI 文案区分「选择文件」与「路径」 |
 | **桥存在与否走不同代码分支** | **只在真机出现的失败**（已实际发生：`load_data` 不可用，界面报"尚未实现该命令"） | `45-mobile-realdevice.spec.js` 把"桥存在"作为测试环境，桥只实现 Kotlin 侧真正实现的命令 |
 | **手机端清单/目录是手写的** | 漏一项没有任何报错（已实际发生：漏 `chat`、漏概览） | `mobile/app/parity.test.js` 以桌面端为基准做机器比对（工具清单、命令回退、导航归属） |

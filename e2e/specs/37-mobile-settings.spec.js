@@ -220,7 +220,9 @@ test.describe("手机端设置页", () => {
     const bridge = page.locator('[data-role="bridge-status"]');
     await expect(bridge).toHaveAttribute("data-on", "false");
     await expect(bridge).toContainText(/未接上|No native bridge/);
-    await expect(page.locator('[data-role="about"]')).toContainText("网页形态");
+    // 运行环境也要说清是哪一种"网页形态"：iPhone 的 PWA 与安卓 App 是同一份产物，
+    // 只差有没有原生桥——写"WebView"会让人以为浏览器里看到的就是手机上的样子。
+    await expect(page.locator('[data-role="about"]')).toContainText("手机网页版");
   });
 
   test("云同步：状态可见，入伙三要素缺一不可", async ({ page }) => {
@@ -261,5 +263,47 @@ test.describe("手机端设置页", () => {
     await expect(page.locator('[data-role="update-result"]')).toContainText(/网页版无需检查更新/, { timeout: 10_000 });
     expect(manifestCalls, "网页版不该去请求更新清单").toEqual([]);
     await expect(page.locator('[data-role="update-install"]')).toHaveCount(0);
+  });
+  /**
+   * 密钥解不出来时**不能把页面变成死结**。
+   *
+   * 背景：安卓的 Keystore 在"卸载重装 / 清应用数据 / 换签名重装"之后密钥会失效，
+   * 此时 decrypt_text 会真的报错（Kotlin 侧 native_error，不是"命令没实现"，所以不会回退成明文）。
+   * 早先的做法是把解密失败和"快照读失败"混在一起 → 禁止保存 → 用户连重填 API Key 的机会都没有。
+   */
+  test("密钥解不出来：如实提示，且仍能重填保存（不覆盖原值）", async ({ page }) => {
+    await seedData(page, { settings: { ai: { enabled: true, baseUrl: "https://api.deepseek.com/v1", apiKey: "enc:stale-cipher", model: "deepseek-chat" } } });
+    // 桥：只让 decrypt_text 失败（形状与真机一致，错误码不是 unsupported → 不会回退成明文）
+    await page.addInitScript(() => {
+      window.ToolCove = {
+        invoke(cmd) {
+          const ok = (value) => JSON.stringify(value);
+          if (cmd === "decrypt_text") return JSON.stringify({ __error: "密文校验失败（密钥库已重置）", __code: "native_error" });
+          if (cmd === "encrypt_text") return ok({ cipher: "fresh-cipher" });
+          return JSON.stringify({ __error: `E2E 桥未实现该命令：${cmd}`, __code: "unsupported" });
+        },
+      };
+    });
+
+    await page.goto(MOBILE);
+    await goSettings(page);
+
+    // 1) 如实提示 + 保存入口仍然可用（死结就是把这两条同时破坏掉）
+    await expect(page.locator('[data-role="key-error"]')).toContainText(/密钥读不出来/);
+    await expect(page.locator('[data-role="save"]')).toBeEnabled();
+    await expect(page.locator('[data-role="load-error"]')).toHaveCount(0);
+
+    // 2) 什么都不填直接保存：**原密文不能被覆盖成空**（用户可能只是来改模型）
+    await page.locator('[data-role="save"]').click();
+    await expect(page.locator('[data-role="save"]')).toBeEnabled({ timeout: 10_000 });
+    const kept = await readKv(page, "settings");
+    expect(kept?.ai?.apiKey, "留空保存不该把读不出来的密钥删掉").toBe("enc:stale-cipher");
+
+    // 3) 重新填一把：保存后落盘的是新密文，提示消失
+    await page.locator('[data-role="api-key"]').fill("sk-brand-new");
+    await page.locator('[data-role="save"]').click();
+    await expect(page.locator('[data-role="key-error"]')).toHaveCount(0, { timeout: 10_000 });
+    const saved = await readKv(page, "settings");
+    expect(saved?.ai?.apiKey).toBe("enc:fresh-cipher");
   });
 });

@@ -121,7 +121,8 @@ class MainActivity : Activity() {
         // 原生桥：命令名与桌面端 platform/invoke 完全同名（http_request / network_tcp_check /
         // encrypt_text / decrypt_text / file_pick / file_tool_read_text …），
         // 所以 src/ 里的 repository、sync、ai 一行都不用改。
-        // 只暴露两个成员（isMobile 与 invoke），且只服务本地页面——多一个成员就多一个攻击面。
+        // 只暴露 invoke 一个方法，且只服务本地页面——多一个成员就多一个攻击面。
+        // （此前多暴露的 isMobile "属性"其实是方法，JS 侧 === true 恒为假，把桥坑成了摆设。）
         // 三个"要弹系统界面"的动作都以回调形式注入原生能力层：桥的工作线程不是 UI 线程，
         // startActivity 必须回 UI 线程执行；返回 false 表示当前没有可用的 Activity（如已销毁）。
         // 写成具名参数而不是尾随 lambda：Kotlin 只允许一个尾随 lambda，三个只能具名。
@@ -142,7 +143,8 @@ class MainActivity : Activity() {
         }
         // 把 assets 的实际布局写进日志：装机后 `adb logcat -s ToolCove` 一眼能看出资源有没有打进包
         android.util.Log.i("ToolCove", "assets: ${server?.describeLayout()}")
-        android.util.Log.i("ToolCove", "serving at $base")
+        // 端口是否落在固定候选里要看得见：来源一变，WebView 里的旧数据就"看不见"了
+        android.util.Log.i("ToolCove", "serving at $base (stableOrigin=${server?.stableOrigin})")
         view.loadUrl("$base/index.html")
     }
 

@@ -47,7 +47,6 @@ test.describe("手机端设置（原生能力自检）", () => {
     await page.addInitScript(() => {
       const store = new Map();
       window.ToolCove = {
-        isMobile: true,
         invoke(cmd, argsJson) {
           const args = argsJson ? JSON.parse(argsJson) : {};
           const ok = (value) => JSON.stringify(value);
@@ -83,7 +82,6 @@ test.describe("手机端设置（原生能力自检）", () => {
     await seedData(page, { settings: {} });
     await page.addInitScript(() => {
       window.ToolCove = {
-        isMobile: true,
         invoke(cmd, argsJson) {
           const args = argsJson ? JSON.parse(argsJson) : {};
           const ok = (value) => JSON.stringify(value);

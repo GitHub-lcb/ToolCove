@@ -6,15 +6,24 @@
 //  3) **可在浏览器里独立测试**：桥不存在时就是普通网页（IndexedDB 存储 + fetch），
 //     所以移动视口的 E2E 不必等 APK 就能跑（见 e2e/specs/30-mobile-shell.spec.js）。
 //
-// 安卓侧约定（Kotlin 里用 @JavascriptInterface 暴露同名方法，参数为 JSON 字符串）：
+// 安卓侧约定（Kotlin 里用 @JavascriptInterface 暴露方法，参数为 JSON 字符串）：
 //   window.ToolCove.invoke(cmd, argsJson) -> 返回 JSON 字符串；抛错时返回 {"__error": "..."}
-//   window.ToolCove.isMobile === true
 import { invoke } from "../../../src/platform/invoke.js";
+import { detectNativeBridge } from "../../../src/platform/env.js";
 import { setMobileBridge, hasMobileBridge } from "../../../src/platform/backends/mobile.js";
 
-/** 安卓原生桥是否存在（浏览器里跑移动端前端时为 false）。 */
+/**
+ * 安卓原生桥是否存在。
+ *
+ * ⚠️ 判据是 `invoke` 是个**函数**——不要判某个布尔属性（如过去的 `isMobile === true`）。
+ * 真机教训（1.3.1 及以前）：Kotlin 的 `@get:JavascriptInterface val isMobile` 经 WebView
+ * 注入后在 JS 里是一个**方法**而不是布尔属性，`=== true` 恒为假——于是桥被静默判为
+ * "不存在"，整个 App 一直在跑浏览器降级路径（检查更新报 CORS 的 Failed to fetch、
+ * 密钥不加密、HTTP 走 fetch 受跨域限制），而所有测试都看不见：E2E 的桥替身恰好种了
+ * `isMobile: true` 这个**真机上不存在**的形状。现在替身已改成真机形状（只有 invoke）。
+ */
 export function nativeAvailable() {
-  return typeof window !== "undefined" && !!window.ToolCove && window.ToolCove.isMobile === true;
+  return detectNativeBridge();
 }
 
 /**

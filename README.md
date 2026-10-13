@@ -199,6 +199,9 @@ OpenAI-compatible endpoint.
 - **iPhone / any phone browser**: open <https://github-lcb.github.io/ToolCove/> in Safari and
   "Add to Home Screen" — that is the same mobile UI running as a PWA (camera capture works
   there; uploads must stay in the foreground, the queue resumes automatically).
+  It is the identical build as the APK, minus the native bridge: Settings → About lists exactly
+  what is and is not available there (no local SQLite, no SAF file picker, no system keystore —
+  credentials stay in the browser's local storage), and everything pure-web keeps working.
 - The Oracle JDBC driver used by the database tool is distributed separately
   ([tag: drivers](https://github.com/GitHub-lcb/ToolCove/releases/tag/drivers)) and downloaded
   on first use of the database tool.

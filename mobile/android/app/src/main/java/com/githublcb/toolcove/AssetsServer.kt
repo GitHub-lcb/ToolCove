@@ -11,7 +11,7 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
- * 把 APK 内置的前端产物用 **loopback HTTP** 托管，WebView 加载 http://127.0.0.1:<随机端口>/。
+ * 把 APK 内置的前端产物用 **loopback HTTP** 托管，WebView 加载 http://127.0.0.1:<固定端口>/。
  *
  * 为什么不直接 file:///android_asset/index.html —— 这是本工程的一个关键决定：
  *   · `file://` 是 **opaque origin**（不透明来源）：`crypto.subtle` 在部分 WebView 上不可用，
@@ -20,8 +20,11 @@ import kotlin.concurrent.thread
  *     单文件 IIFE（牺牲懒加载与 WASM 按需加载）；
  *   · 换成 http://127.0.0.1 后是**安全上下文**，ESM、WebCrypto、WASM 全部正常。
  *
- * 安全性：只绑 127.0.0.1（外部网络不可达）、端口随机、只服务 assets/web 下的文件、
- * 路径做了 `..` 穿越防护。不监听任何公网地址，也不提供服务端逻辑。
+ * 安全性：只绑 127.0.0.1（外部网络不可达）、只服务 assets/web 下的文件、路径做了 `..` 穿越防护。
+ * 不监听任何公网地址，也不提供服务端逻辑。
+ *
+ * ⚠️ 端口**固定**（见 [bindLoopback]）而不是随机——随机端口会让每次启动变成一个"新站点"，
+ * WebView 的 IndexedDB/localStorage 随之全部读不到（历史数据像丢了）。
  */
 /**
  * 资源读取的抽象：`path → 字节`，读不到返回 null。
@@ -61,6 +64,11 @@ class AssetsServer(private val reader: AssetReader) {
     })
 
     private var server: ServerSocket? = null
+    /** 绑上的端口是不是候选列表里的那个（false = 候选全被占，退回系统分配）。 */
+    @Volatile private var stable = false
+
+    /** 来源是否稳定（同一个端口）。诊断用：端口一变，旧数据就"看不见"了。 */
+    val stableOrigin: Boolean get() = stable
 
     /**
      * 处理线程池。
@@ -75,9 +83,9 @@ class AssetsServer(private val reader: AssetReader) {
     private val pool = Executors.newFixedThreadPool(16)
     @Volatile private var running = false
 
-    /** 启动并返回基地址（形如 http://127.0.0.1:34567）。失败时抛异常，让调用方如实报错。 */
+    /** 启动并返回基地址（形如 http://127.0.0.1:49731）。失败时抛异常，让调用方如实报错。 */
     fun start(): String {
-        val socket = ServerSocket(0, 64, InetAddress.getByName("127.0.0.1"))
+        val socket = bindLoopback()
         server = socket
         running = true
         thread(name = "toolcove-assets", isDaemon = true) {
@@ -91,6 +99,33 @@ class AssetsServer(private val reader: AssetReader) {
             }
         }
         return "http://127.0.0.1:${socket.localPort}"
+    }
+
+    /**
+     * 绑到 loopback 上的**固定候选端口**；候选全被占才退回系统分配。
+     *
+     * ⚠️ 端口是"站点来源"（origin）的一部分：`http://127.0.0.1:49731` 与 `…:51234` 在浏览器/
+     * WebView 眼里是**两个不同的站点**，IndexedDB 与 localStorage 各自独立。
+     * 之前这里写的是 `ServerSocket(0)`（每次启动换随机端口），后果不是"端口漂移"这么轻：
+     *   · 每次冷启动都换一个来源 → 记录、工作台、设置、AI Key、照片上传队列**全部像丢了**
+     *     （数据其实还在旧来源里，只是再也没人读得到它）；照片工具承诺的"杀掉 App 也不丢"
+     *     因此长期是空话；
+     *   · 照片直传对象存储时，桶的 CORS 白名单也认不出这台设备（Origin 头每次启动都变）。
+     * 固定端口的代价是"可预测"，但它只绑 127.0.0.1、只服务 APK 内的静态资源、不提供任何
+     * 服务端逻辑，本机上的其它应用即使猜到端口也拿不到额外的东西——换来的是数据真的能留住。
+     */
+    private fun bindLoopback(): ServerSocket {
+        val loopback = InetAddress.getByName("127.0.0.1")
+        for (port in PREFERRED_PORTS) {
+            try {
+                return ServerSocket(port, 64, loopback).also { stable = true }
+            } catch (_: Exception) {
+                // 端口被占（真机上极少见）：试下一个候选。**按固定顺序试**才能保证"只要那个端口空着，
+                // 来源就与上次一致"——所以这个列表只能追加，不要重排。
+            }
+        }
+        stable = false
+        return ServerSocket(0, 64, loopback)
     }
 
     fun stop() {
@@ -230,4 +265,12 @@ class AssetsServer(private val reader: AssetReader) {
     }
 
     private fun mimeOf(path: String): String = AssetPath.mimeOf(path)
+
+    companion object {
+        /**
+         * 首选端口：**必须固定**，别改回 `ServerSocket(0)`——理由见 [bindLoopback]。
+         * 取值落在动态/私有端口段（49152–65535），避免与系统或常见服务抢端口。
+         */
+        val PREFERRED_PORTS = intArrayOf(49731, 49732, 49733, 49734)
+    }
 }

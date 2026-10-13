@@ -43,7 +43,6 @@ async function seedRealisticBridge(page, { fallback = true } = {}) {
       window.__E2E_BRIDGE_CALLS__ = [];
       window.__E2E_FALLBACKS__ = [];
       window.ToolCove = {
-        isMobile: true,
         invoke(cmd, argsJson) {
           const args = argsJson ? JSON.parse(argsJson) : {};
           window.__E2E_BRIDGE_CALLS__.push({ cmd, args });

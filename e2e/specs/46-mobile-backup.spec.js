@@ -120,8 +120,11 @@ test.describe("手机端设置（备份与恢复）", () => {
     await expect(page.locator('[data-role="backup-notice"]')).toHaveCount(0);
   });
 
-  test("能力清单：可用的标「可用」，降级的给出原因（不是只标一个叉）", async ({ page }) => {
+  test("能力清单（安卓 App）：可用的标「可用」，降级的给出原因（不是只标一个叉）", async ({ page }) => {
     await seedData(page, { settings: {} });
+    // ⚠️ 必须**先种上原生桥**：sqlite / filePicker / secureStore / cloudSync 这几项由安卓壳提供，
+    // 没有桥时它们本该是 false——那条路径由下一条用例专门守着。
+    await seedMobileBridge(page);
     await page.goto(MOBILE);
     await page.locator(".m-tab[data-tab='settings']").click();
     await page.locator('.m-settings [data-nav="about"]').click();
@@ -141,5 +144,29 @@ test.describe("手机端设置（备份与恢复）", () => {
     await expect(print).toContainText(/RAW|prn/);
     // 词条不能渲染成 key
     await expect(list).not.toContainText("mobile.cap");
+  });
+
+  /**
+   * 手机**网页版**（iPhone 的 PWA / 手机浏览器）是同一份产物，但没有原生桥。
+   * 这里守的是 1.3.2 修掉的那个坑：当时只看构建期常量 __MOBILE__，于是网页版的能力矩阵
+   * 与安卓真机**一模一样**——本地数据库、SAF 选择器、密钥库、云同步全被标成"可用"，
+   * 点下去必然失败（用户看到的是"这个功能坏了"，而不是"这个形态没有"）。
+   */
+  test("能力清单（手机网页版，没有原生桥）：依赖原生桥的能力必须如实标「不可用」", async ({ page }) => {
+    await seedData(page, { settings: {} });
+    await page.goto(MOBILE);
+    await page.locator(".m-tab[data-tab='settings']").click();
+    await page.locator('.m-settings [data-nav="about"]').click();
+
+    const list = page.locator('[data-role="capabilities"]');
+    await expect(list).toBeVisible();
+    const cap = (key) => list.locator('[data-cap="' + key + '"]');
+    for (const key of ["sqlite", "filePicker", "secureStore", "cloudSync"]) {
+      await expect(cap(key), key + " 需要原生桥，网页版不能标成可用").toHaveAttribute("data-on", "false");
+    }
+    // 纯 Web 能力照常可用：网页版不是残废版，只是没有壳
+    for (const key of ["backup", "imageStore", "aiRequest"]) {
+      await expect(cap(key)).toHaveAttribute("data-on", "true");
+    }
   });
 });

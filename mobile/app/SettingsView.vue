@@ -134,7 +134,10 @@ const capabilityRows = computed(() =>
     note: capabilities[row.key] === true ? "" : t(`mobile.capNo_${row.key}`, t("mobile.capNo")),
   }))
 );
-const platformText = computed(() => (nativeReady ? "Android · WebView · 原生桥" : "WebView（网页形态）"));
+// 运行环境：**必须区分"手机网页版"与"安卓 App"**——两者是同一份前端产物（GitHub Pages 上给
+// iPhone 用的那份就是它），差别只在有没有原生桥。写成"WebView（网页形态）"会让人以为
+// 浏览器里看到的就是手机上的样子（这正是"装了 APK 却显示网页端"那类困惑的来源）。
+const platformText = computed(() => (nativeReady ? "Android · WebView · 原生桥" : "手机网页版（PWA）· 无原生桥"));
 
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi" },
@@ -146,6 +149,8 @@ const SECTIONS = [
 const section = ref("ai");
 const form = ref(emptySettings());
 const loadError = ref("");
+// 密钥解密失败单独记：它**不能**跟着 loadError 一起禁止保存，否则用户连重填的机会都没有
+const keyError = ref("");
 const errors = ref({});
 const saving = ref(false);
 const testing = ref(false);
@@ -233,14 +238,27 @@ async function downloadAndInstall() {
 
 async function load() {
   loadError.value = "";
+  keyError.value = "";
   try {
     const s = await invoke("load_data", { key: "settings" });
     // load_data 对缺失文件返回 []，只接受真正的对象作为快照基底
     const snapshot = s && typeof s === "object" && !Array.isArray(s) ? s : {};
     rawSnapshot.value = snapshot;
-    form.value = formFromSettings(snapshot, { decryptedKey: await decryptValue(snapshot.ai?.apiKey || "") });
+    // ⚠️ 密钥解密失败必须与"快照读失败"**分开处理**：
+    //   读失败 → 禁止保存（否则会把用户原配置覆盖成空，这条一直是对的）；
+    //   解不出来 → 只提示，**照常允许保存**——安卓上的 Keystore 在"卸载重装/清应用数据/
+    //   换签名重装"之后密钥会失效，若跟着一起禁止保存，用户就再也填不回 KEY，页面变死结。
+    let decryptedKey = "";
+    const storedKey = snapshot.ai?.apiKey || "";
+    if (storedKey) {
+      try {
+        decryptedKey = await decryptValue(storedKey);
+      } catch (e) {
+        keyError.value = e?.message || String(e);
+      }
+    }
+    form.value = formFromSettings(snapshot, { decryptedKey });
   } catch (e) {
-    // 读失败就禁止保存：宁可不让改，也不能把用户原配置覆盖成空
     loadError.value = e?.message || String(e);
   }
 }
@@ -346,16 +364,23 @@ async function save() {
   notice.value = "";
   try {
     // 以磁盘上的完整快照为基底合并：只覆盖表单渲染的 ai/ui，其余分组原样保留
+    // 密钥解不出来时输入框是空的（keyError 那条提示）。此时**不能**把原密文覆盖成空：
+    // 用户可能只是进来换个模型，覆盖等于把密钥悄悄删了。只有真的填了内容才重写。
+    const typedKey = form.value.ai.apiKey;
+    const storedKey = rawSnapshot.value?.ai?.apiKey || "";
+    const apiKey = !typedKey && keyError.value && storedKey ? storedKey : await encryptValue(typedKey);
     const payload = mergeSettingsSnapshot(JSON.parse(JSON.stringify(rawSnapshot.value || {})), {
       ai: {
         ...form.value.ai,
         baseUrl: normalizeBaseUrl(form.value.ai.baseUrl),
-        apiKey: await encryptValue(form.value.ai.apiKey),
+        apiKey,
       },
       ui: form.value.ui,
     });
     await invoke("save_data", { key: "settings", data: payload });
     rawSnapshot.value = payload;
+    // 真的写回了新密钥就把提示撤掉
+    if (typedKey) keyError.value = "";
     // 语言即时生效（字典是按需加载的，要先 await 取回字典再切，避免闪一堆词条 key）
     await applyLocale(form.value.ui.locale);
     notice.value = t("settings.saved");
@@ -490,6 +515,8 @@ async function renameDevice(event) {
         <span>{{ t("settings.aiKey") }}</span>
         <input v-model="form.ai.apiKey" type="password" spellcheck="false" data-role="api-key" />
         <span v-if="errors.apiKey" class="m-field-err" data-role="err-key">{{ t(errors.apiKey) }}</span>
+        <!-- 解不出来要说清怎么办，而不是只丢一句报错；留空保存不会覆盖原值（见 save()） -->
+        <span v-if="keyError" class="m-field-err" data-role="key-error">{{ t("mobile.setKeyUnreadable", { err: keyError }) }}</span>
       </label>
 
       <label class="m-field">
