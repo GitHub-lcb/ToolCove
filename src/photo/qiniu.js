@@ -98,11 +98,19 @@ export async function checkQiniuSpace({ accessKey, bucket, fetchImpl = null }) {
     : { ok: false, uploadHost: "", reason: result.reason, message: result.message };
 }
 
-/** URL-safe Base64（七牛凭证的编码约定：+→-、/→_、去填充）。 */
-export function urlsafeBase64(bytes) {
+/**
+ * URL-safe Base64（+→-、/→_）。
+ *
+ * ⚠️ `padded` 不是一个可以随便选的风格：**同一个空间、同一套密钥**，七牛可能只认其中一种。
+ * 真机实测（2026-10-13）：用户的 z2 空间对**去填充**的凭证一律回 401 BadToken，
+ * 而填充版能过——桌面端之所以一直正常，是因为 Rust 那份在上传被拒时会换一种编码重试
+ * （见 src-tauri/src/photo.rs 的 qiniu_probe_upload），手机端只发了一种，于是"桌面能传、手机传不上"。
+ */
+export function urlsafeBase64(bytes, padded = false) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const b64 = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_");
+  return padded ? b64 : b64.replace(/=+$/, "");
 }
 
 async function hmacSha1(secret, message) {
@@ -114,10 +122,10 @@ async function hmacSha1(secret, message) {
  * 生成上传凭证（三段式：AK:签名:策略）。deadline 为 UNIX 秒（七牛要求），
  * 调用方给足余量即可——凭证只在一次上传请求里用完即弃，不做缓存。
  */
-export async function qiniuUploadToken({ accessKey, secretKey, bucket, key, deadline }) {
+export async function qiniuUploadToken({ accessKey, secretKey, bucket, key, deadline, padded = false }) {
   const policy = JSON.stringify({ scope: `${bucket}:${key}`, deadline });
-  const policyB64 = urlsafeBase64(encoder.encode(policy));
-  const sign = urlsafeBase64(await hmacSha1(secretKey, policyB64));
+  const policyB64 = urlsafeBase64(encoder.encode(policy), padded);
+  const sign = urlsafeBase64(await hmacSha1(secretKey, policyB64), padded);
   return `${accessKey}:${sign}:${policyB64}`;
 }
 
@@ -138,7 +146,7 @@ export function diagnoseQiniuUploadFailure(body, resolved = {}) {
   if (resolved.reason === "bucket") return `（区域接口：${resolved.message} → 空间名不对，要填空间名而不是域名）`;
   if (resolved.reason === "network" || resolved.reason === "noFetch") return `（区域解析也没通：${resolved.message} → 已退回默认上传域名，先查网络）`;
   if (resolved.reason) return `（区域解析失败：${resolved.message}）`;
-  if (resolved.host) return `（空间已解析到 ${resolved.host}，AK 与空间名有效 → 更可能是 SecretKey 不对，或设备时钟偏差把凭证签成了过期）`;
+  if (resolved.host) return `（空间已解析到 ${resolved.host}，AK 与空间名有效，且两种凭证编码都试过了 → 更可能是 SecretKey 不对，或设备时钟偏差把凭证签成了过期）`;
   return "";
 }
 
@@ -183,7 +191,6 @@ export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
 
   const base = now instanceof Date ? now.getTime() : Number(now) || Date.now();
   const deadline = Math.floor(base / 1000) + 3600;
-  const token = await qiniuUploadToken({ accessKey: cfg.accessKey, secretKey: cfg.secretKey, bucket: cfg.bucket, key, deadline });
 
   const explicitHost = cfg.uploadHost && cfg.uploadHost !== QINIU_DEFAULT_UPLOAD_HOST ? cfg.uploadHost : "";
   const resolved = explicitHost
@@ -191,21 +198,42 @@ export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
     : await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
   const uploadHost = resolved.host || cfg.uploadHost || QINIU_DEFAULT_UPLOAD_HOST;
 
-  const form = new FormData();
-  form.append("token", token);
-  form.append("key", key);
   const fileName = String(key).split("/").pop() || "photo.jpg";
-  form.append("file", body instanceof Blob ? body : new Blob([body], { type: "application/octet-stream" }), fileName);
+  const filePart = body instanceof Blob ? body : new Blob([body], { type: "application/octet-stream" });
 
-  const res = await fetchFn(`https://${uploadHost}/`, { method: "POST", body: form });
-  const text = await res.text();
-  if (!res.ok) throw new PhotoError(`HTTP ${res.status}`, `${text.slice(0, 200)}${diagnoseQiniuUploadFailure(text, resolved)}`);
-  let json = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    // 非 JSON 响应按失败处理（网关页面之类），不给"看起来成功"留缝
+  // ⚠️ 两种 base64 编码都要试：同一个空间、同一套密钥，七牛可能只认其中一种
+  // （真机实测：z2 空间对去填充的凭证一律 401 BadToken，填充版能过）。
+  // 这正是"桌面端一直正常、手机/网页永远 401"的原因——Rust 那份会退到第二种，JS 这份此前不会。
+  let last = null;
+  for (const padded of [false, true]) {
+    const token = await qiniuUploadToken({ accessKey: cfg.accessKey, secretKey: cfg.secretKey, bucket: cfg.bucket, key, deadline, padded });
+    const form = new FormData();
+    form.append("token", token);
+    form.append("key", key);
+    form.append("file", filePart, fileName);
+
+    const res = await fetchFn(`https://${uploadHost}/`, { method: "POST", body: form });
+    const text = await res.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // 非 JSON 响应按失败处理（网关页面之类），不给"看起来成功"留缝
+    }
+    if (res.ok && json && !json.error) {
+      return { status: res.status, etag: String(json.hash || ""), variant: padded ? "padded" : "plain" };
+    }
+    if (res.ok) {
+      // 2xx 却不合格（网关页面冒充成功、或 200 带 error 字段）：换编码也不会变，就此停手。
+      // 错误码沿用原来的两种形状：服务端给了 error 就用它，否则 badResponse。
+      last = { status: res.status, text, code: json?.error || "badResponse" };
+      break;
+    }
+    last = { status: res.status, text };
+    // 只有"凭证被拒"才值得换一种编码重试；权限、空间不存在、配额之类换了也一样
+    if (!/BadToken|bad token/i.test(text)) break;
   }
-  if (!json || json.error) throw new PhotoError(json?.error || "badResponse", text.slice(0, 200));
-  return { status: res.status, etag: String(json.hash || "") };
+
+  const detail = `${last.text.slice(0, 200)}${diagnoseQiniuUploadFailure(last.text, resolved)}`;
+  throw new PhotoError(last.code || (last.status ? `HTTP ${last.status}` : "badResponse"), detail);
 }

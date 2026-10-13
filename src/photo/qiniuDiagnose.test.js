@@ -4,7 +4,7 @@
 // 网络没通导致退回默认上传域名），而它们此前在界面上是**同一句话**——用户只能靠猜。
 // 这里锁死"哪种情况报哪种话"，因为这句话就是排障的全部依据。
 import { describe, expect, it } from "vitest";
-import { checkQiniuSpace, classifyQiniuQueryError, diagnoseQiniuUploadFailure, probeQiniuUpload, qiniuUploadToken } from "./qiniu.js";
+import { checkQiniuSpace, classifyQiniuQueryError, diagnoseQiniuUploadFailure, probeQiniuUpload, putQiniuObject, qiniuUploadToken, urlsafeBase64 } from "./qiniu.js";
 
 /** 最小 fetch 替身：按 URL 返回预置的 { status, body }。 */
 function fakeFetch({ status = 200, body = "{}" } = {}) {
@@ -91,16 +91,29 @@ describe("qiniuUploadToken（回归：形状没变）", () => {
 describe("probeQiniuUpload（真传一次来定因）", () => {
   const CONFIG = { provider: "qiniu", bucket: "photos", accessKey: "ak", secretKey: "sk", domain: "cdn.example.com", prefix: "photos" };
 
-  /** 上传链路替身：按次数返回 200 或 401 BadToken，用来复现"两种期限都被拒 / 只有长期限被接受"。 */
-  function uploadFetch({ failFirst = 0, regionOk = true } = {}) {
-    let posts = 0;
-    return async (url) => {
+  /**
+   * 上传链路替身：按**凭证里的 deadline** 判定成败。
+   *
+   * 为什么不按"第几次 POST"判：一次 putQiniuObject 现在会试两种 base64 编码（见下面的编码用例），
+   * 用次数判会让探针的"时钟偏差"推断失真——而那个推断正是这个探针存在的理由。
+   */
+  function uploadFetch({ reject = () => false, regionOk = true } = {}) {
+    return async (url, init) => {
       if (url.includes("api.qiniu.com")) {
-        return { ok: regionOk, status: regionOk ? 200 : 612, text: async () => JSON.stringify(regionOk ? { up: { acc: { main: ["upload-z2.qiniup.com"] } } } : { error: "app/accesskey is not found" }) };
+        return {
+          ok: regionOk,
+          status: regionOk ? 200 : 612,
+          text: async () => JSON.stringify(regionOk ? { up: { acc: { main: ["upload-z2.qiniup.com"] } } } : { error: "app/accesskey is not found" }),
+        };
       }
-      posts += 1;
-      const bad = posts <= failFirst;
-      return { ok: !bad, status: bad ? 401 : 200, text: async () => (bad ? '{"error":"bad token","error_code":"BadToken"}' : '{"hash":"FakeHash"}') };
+      const token = String(init.body.get("token"));
+      const claims = JSON.parse(atob(token.split(":")[2].replace(/-/g, "+").replace(/_/g, "/")));
+      const bad = reject(claims.deadline);
+      return {
+        ok: !bad,
+        status: bad ? 401 : 200,
+        text: async () => (bad ? '{"error":"bad token","error_code":"BadToken"}' : '{"hash":"FakeHash"}'),
+      };
     };
   }
 
@@ -110,14 +123,19 @@ describe("probeQiniuUpload（真传一次来定因）", () => {
     expect(out.key).toMatch(/^toolcove-selftest\//);
   });
 
-  it("两种期限都被拒 → secretKey（空间名与 AK 已由区域解析证明有效）", async () => {
-    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch({ failFirst: 2 }), now: Date.now() });
+  it("怎么签都被拒 → secretKey（空间名与 AK 已由区域解析证明有效）", async () => {
+    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch({ reject: () => true }), now: Date.now() });
     expect(out).toMatchObject({ ok: false, reason: "secretKey" });
     expect(out.message).toContain("BadToken");
   });
 
   it("正常期限被拒、一年期限能过 → clock（设备时钟偏差，不是密钥问题）", async () => {
-    const out = await probeQiniuUpload({ config: CONFIG, fetchImpl: uploadFetch({ failFirst: 1 }), now: Date.now() });
+    const now = Date.now();
+    const out = await probeQiniuUpload({
+      config: CONFIG,
+      fetchImpl: uploadFetch({ reject: (deadline) => deadline < now / 1000 + 86400 }),
+      now,
+    });
     expect(out).toMatchObject({ ok: false, reason: "clock", clockSkew: true });
   });
 
@@ -132,5 +150,57 @@ describe("probeQiniuUpload（真传一次来定因）", () => {
     expect(out.ok).toBe(false);
     expect(out.reason).toBe("upload");
     expect(out.message).toContain("Failed to fetch");
+  });
+});
+
+describe("凭证编码：两种 base64 都要试（真机上就是这个把上传卡死的）", () => {
+  it("urlsafeBase64 默认去填充，padded=true 保留 =（同一份字节两种编码）", () => {
+    const bytes = new Uint8Array([0x61]); // "a" → YQ== / YQ
+    expect(urlsafeBase64(bytes)).toBe("YQ");
+    expect(urlsafeBase64(bytes, true)).toBe("YQ==");
+  });
+
+  it("第一种编码被拒 → 换填充版重发，成功后如实报告用的是哪一种", async () => {
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      if (url.includes("api.qiniu.com")) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ up: { acc: { main: ["upload-z2.qiniup.com"] } } }) };
+      }
+      const token = String(init.body.get("token"));
+      posts.push(token);
+      const padded = token.includes("=");
+      return padded
+        ? { ok: true, status: 200, text: async () => '{"hash":"HashOK"}' }
+        : { ok: false, status: 401, text: async () => '{"error":"bad token","error_code":"BadToken"}' };
+    };
+    const out = await putQiniuObject({
+      config: { provider: "qiniu", bucket: "photos", accessKey: "ak", secretKey: "sk", domain: "cdn.example.com", prefix: "photos" },
+      key: "photos/2026/10/13/a.png",
+      body: new Blob([new Uint8Array([1, 2, 3])]),
+      fetchImpl,
+      now: Date.now(),
+    });
+    expect(posts).toHaveLength(2);
+    expect(posts[0]).not.toContain("=");
+    expect(posts[1]).toContain("=");
+    expect(out).toMatchObject({ variant: "padded", etag: "HashOK" });
+  });
+
+  it("两种编码都被拒 → 抛错，并把「都试过了」写进归因（不再让人怀疑编码）", async () => {
+    const fetchImpl = async (url) => {
+      if (url.includes("api.qiniu.com")) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ up: { acc: { main: ["upload-z2.qiniup.com"] } } }) };
+      }
+      return { ok: false, status: 401, text: async () => '{"error":"bad token","error_code":"BadToken"}' };
+    };
+    await expect(
+      putQiniuObject({
+        config: { provider: "qiniu", bucket: "photos", accessKey: "ak", secretKey: "sk", domain: "cdn.example.com", prefix: "photos" },
+        key: "photos/a.png",
+        body: new Blob([new Uint8Array([1])]),
+        fetchImpl,
+        now: Date.now(),
+      })
+    ).rejects.toThrow(/两种凭证编码都试过了/);
   });
 });
