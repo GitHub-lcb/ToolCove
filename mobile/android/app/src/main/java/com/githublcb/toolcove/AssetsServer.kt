@@ -5,6 +5,7 @@ import com.githublcb.toolcove.bridge.AssetPath
 import java.io.BufferedOutputStream
 import java.io.InputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
@@ -118,14 +119,23 @@ class AssetsServer(private val reader: AssetReader) {
         val loopback = InetAddress.getByName("127.0.0.1")
         for (port in PREFERRED_PORTS) {
             try {
-                return ServerSocket(port, 64, loopback).also { stable = true }
+                // 显式开 SO_REUSEADDR 再 bind：关掉监听后立刻能绑回同一个端口（不依赖各 JDK 的默认值）。
+                // ⚠️ 它**不允许**两个监听同时占同一端口（那是 SO_REUSEPORT），所以"端口被占就顺延"的语义不变。
+                return ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(loopback, port), 64)
+                    stable = true
+                }
             } catch (_: Exception) {
                 // 端口被占（真机上极少见）：试下一个候选。**按固定顺序试**才能保证"只要那个端口空着，
                 // 来源就与上次一致"——所以这个列表只能追加，不要重排。
             }
         }
         stable = false
-        return ServerSocket(0, 64, loopback)
+        return ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(loopback, 0), 64)
+        }
     }
 
     fun stop() {

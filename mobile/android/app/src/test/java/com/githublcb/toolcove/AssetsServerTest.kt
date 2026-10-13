@@ -67,6 +67,29 @@ class AssetsServerTest {
 
     private fun request(method: String, path: String, host: String = "127.0.0.1"): Response = requestOn(port, method, path, host)
 
+    /**
+     * 轮询等到某个端口"确实能绑上"再放开（最多 2s）。
+     *
+     * 为什么需要它：共享实例刚 `stop()` 时，系统可能还没把端口还回来——此时第一次绑定会顺延到
+     * 下一个候选，于是"两次启动端口相同"的断言会因为**测试自己的时序**而偶发失败（本机快、
+     * CI 慢，正是这种差异）。真机上两次启动间隔以秒计，不存在这个窗口。
+     * 端口被别的进程长期占着时也不会卡死：超时后照常继续，那种情况下两次绑定都会顺延到同一个候选。
+     */
+    private fun awaitFreePort(target: Int, timeoutMs: Long = 2_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                java.net.ServerSocket().use { probe ->
+                    probe.reuseAddress = true
+                    probe.bind(InetSocketAddress("127.0.0.1", target))
+                }
+                return
+            } catch (_: Exception) {
+                Thread.sleep(20)
+            }
+        }
+    }
+
     /** 对**指定端口**发请求：端口稳定性那几条用例要自己起服务，不能借用共享实例的端口。 */
     private fun requestOn(target: Int, method: String, path: String, host: String = "127.0.0.1"): Response {
         java.net.Socket().use { socket ->
@@ -296,6 +319,7 @@ class AssetsServerTest {
     @Test
     fun `重启后端口不变（数据能留住的前提）`() {
         server.stop()
+        awaitFreePort(AssetsServer.PREFERRED_PORTS[0])
         val first = AssetsServer(readerOf(files))
         val firstBase = first.start()
         first.stop()

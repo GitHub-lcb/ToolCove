@@ -92,11 +92,43 @@ jobs:
       - name: 发布前单测（前端）
         run: npm test
 
-      # 桥的核心逻辑有 JVM 单测（编解码、命令分发、选择器时序），发版前同样要过
+      # 桥的核心逻辑有 JVM 单测（编解码、命令分发、选择器时序），发版前同样要过。
+      # 输出 tee 进文件：失败时要能从 **Actions 注解**里看到是哪条用例、断言说了什么，
+      # 而不是只看到一句 exit code 1（注解公开可读，排障不必登录看日志——与下面
+      # 「APK 构建失败」那一步是同一条思路）。
       - name: 发布前单测（安卓桥）
+        id: androidtest
         run: |
           cd mobile/android
-          gradle :app:testDebugUnitTest --no-daemon --console=plain
+          set +e
+          gradle :app:testDebugUnitTest --no-daemon --console=plain 2>&1 | tee "$RUNNER_TEMP/android-test.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: 安卓桥单测失败详情
+        if: failure() && steps.androidtest.outcome == 'failure'
+        run: |
+          cd mobile/android
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+
+          rows = []
+          for path in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      msg = " ".join((bad.get("message") or bad.text or "").split())[:300]
+                      rows.append(f"{case.get('classname')}.{case.get('name')} → {msg}")
+
+          tail = ""
+          log = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "android-test.log")
+          if os.path.exists(log):
+              with open(log, "r", errors="replace") as fh:
+                  tail = " ".join("".join(fh.readlines()[-15:]).split())[:700]
+
+          text = " | ".join(rows[:8]) or "没有失败用例条目（可能停在编译/配置阶段）"
+          if tail:
+              text += " ‖ 日志尾部：" + tail
+          print("::error title=安卓桥单测失败::" + text.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
 
       - name: 配置正式签名（有 Secrets 时）
         id: signing
