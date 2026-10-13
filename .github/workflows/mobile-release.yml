@@ -122,6 +122,10 @@ jobs:
           TC_SYSTEM_TOOLCHAIN: "1"
         run: |
           set +e
+          # 让 build-apk.mjs 的 Gradle 用 setup-gradle 缓存的那份 ~/.gradle：
+          # 它默认把 GRADLE_USER_HOME 指到临时目录（"仓库外"约束是 Windows 专用问题），
+          # Linux 上直接用家目录才能吃到缓存，第二次发版起快很多。
+          export TC_GRADLE_HOME="$HOME/.gradle"
           node mobile/android/build-apk.mjs --system-toolchain > "$RUNNER_TEMP/apk.log" 2>&1
           code=$?
           cat "$RUNNER_TEMP/apk.log"

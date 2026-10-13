@@ -51,13 +51,12 @@ async function resolveToolchain() {
 
   const jdk = process.env.JAVA_HOME || "";
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
-  const gradleHome = process.env.GRADLE_HOME || "";
   if (!jdk) throw new Error("--system-toolchain 需要设置 JAVA_HOME");
   if (!sdk) throw new Error("--system-toolchain 需要设置 ANDROID_HOME 或 ANDROID_SDK_ROOT");
-
-  // Gradle 优先用环境里的；没有就回退到 PATH 上的 gradle
-  const gradle = gradleHome && existsSync(gradleHome) ? gradleHome : "";
-  return { jdk, gradle, sdk, runner: "system" };
+  // 刻意**不认** GRADLE_HOME：GitHub runner 镜像预置了指向 /usr/share/gradle-9.x 的
+  // GRADLE_HOME（实测 9.8.0），而 AGP 8.11.1 与 Gradle 9 不兼容；发版流程用
+  // setup-gradle 把 8.14.5 钉在 PATH 上，系统模式的语义就是"用 PATH 上那一份"。
+  return { jdk, sdk, gradle: "", runner: "system" };
 }
 
 // ── 1. 工具链（幂等：已装好时只做几次 existsSync） ──────────────────
@@ -143,11 +142,18 @@ log(`  依赖缓存：${gradleHome}`);
 log("  （首次要下载 AGP / Kotlin 插件，可能要几分钟）");
 
 if (gradle) {
-  // 自带工具链：直接调它的 launcher（Windows 上是 gradle.bat，Linux/macOS 上是 gradle）
-  const { runBat } = await import("./setup-toolchain.mjs");
-  runBat(join(gradle, "bin", process.platform === "win32" ? "gradle.bat" : "gradle"), gradleArgs, { env, cwd: here });
+  // 自带工具链：直接调它的 launcher。runBat 是 Windows 专用（cmd.exe 包装），
+  // 非 Windows 平台直接 exec（这条分支以前只在 Windows 上跑过，Linux 上曾把
+  // cmd.exe 写死进去——CI 一跑就 ENOENT）。
+  const launcher = join(gradle, "bin", process.platform === "win32" ? "gradle.bat" : "gradle");
+  if (process.platform === "win32") {
+    const { runBat } = await import("./setup-toolchain.mjs");
+    runBat(launcher, gradleArgs, { env, cwd: here });
+  } else {
+    execFileSync(launcher, gradleArgs, { env, cwd: here, stdio: "inherit" });
+  }
 } else {
-  // 环境自带模式：用 PATH 上的 gradle（CI 的 runner 已装好）
+  // 系统自带模式：用 PATH 上的 gradle（CI 由 setup-gradle 钉死版本）
   log("  使用 PATH 上的 gradle");
   execFileSync("gradle", gradleArgs, { env, cwd: here, stdio: "inherit" });
 }
