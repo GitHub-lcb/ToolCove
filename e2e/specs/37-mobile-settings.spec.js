@@ -242,26 +242,15 @@ test.describe("手机端设置页", () => {
   // **不知道就说不知道**，绝不显示"已是最新"——后者会让人以为发版没生效而停在旧版本。
   const MANIFEST = "https://github.com/GitHub-lcb/ToolCove/releases/download/apk-latest/apk.json";
 
-  async function routeManifest(page, { status = 200, body = "" } = {}) {
-    await page.route(MANIFEST, async (route) => {
-      await route.fulfill({
-        status,
-        headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
-        body,
-      });
-    });
-  }
-
-  test("检查更新：清单有效但读不到当前版本时，如实说「无法判断」而不是「已是最新」", async ({ page }) => {
+  test("检查更新（网页形态）：不请求更新清单，如实说「刷新即最新」", async ({ page }) => {
     await seedData(page, { settings: {} });
-    await routeManifest(page, {
-      body: JSON.stringify({
-        version: "9.9.9",
-        versionCode: 90909,
-        url: "https://github.com/GitHub-lcb/ToolCove/releases/download/apk-v9.9.9/toolcove-release.apk",
-        sha256: "a".repeat(64),
-        size: 1500000,
-      }),
+    // 关键负向断言：网页形态**根本不该发这条跨域请求**——
+    // 真实环境里它会被 CORS 拦成 Failed to fetch（有用户实测报过），
+    // 之前用 mock 路由把清单喂成功，反倒把这条失败路径盖住了。
+    const manifestCalls = [];
+    await page.route(MANIFEST, async (route) => {
+      manifestCalls.push(route.request().url());
+      await route.fulfill({ status: 200, headers: { "content-type": "application/json", "access-control-allow-origin": "*" }, body: "{}" });
     });
     await page.goto(MOBILE);
     await goSettings(page);
@@ -269,23 +258,8 @@ test.describe("手机端设置页", () => {
 
     await expect(page.locator('[data-role="update-card"]')).toBeVisible();
     await page.locator('[data-role="update-check"]').click();
-    await expect(page.locator('[data-role="update-result"]')).toContainText(/读不到安装包版本|can't read its package version/, { timeout: 10_000 });
-    await expect(page.locator('[data-role="update-result"]')).not.toHaveText(/已是最新版本/);
-    // 判不出可用更新时不给"下载并安装"按钮
+    await expect(page.locator('[data-role="update-result"]')).toContainText(/网页版无需检查更新/, { timeout: 10_000 });
+    expect(manifestCalls, "网页版不该去请求更新清单").toEqual([]);
     await expect(page.locator('[data-role="update-install"]')).toHaveCount(0);
-  });
-
-  test("检查更新：清单取不到时报「清单不可用」，与「已是最新」区分开", async ({ page }) => {
-    await seedData(page, { settings: {} });
-    await routeManifest(page, { status: 404, body: "Not Found" });
-    await page.goto(MOBILE);
-    await goSettings(page);
-    await page.locator('[data-nav="about"]').click();
-
-    await page.locator('[data-role="update-check"]').click();
-    await expect(page.locator('[data-role="update-result"]')).toContainText(/清单不可用|manifest is unavailable/, { timeout: 10_000 });
-    // 负向断言要针对**那条具体文案**：invalid 的提示里本来就写着"这不是「已是最新」"，
-    // 用 not.toContainText("已是最新") 会被自己的文案措辞打挂（第一版就踩了）
-    await expect(page.locator('[data-role="update-result"]')).not.toHaveText(/已是最新版本/);
   });
 });

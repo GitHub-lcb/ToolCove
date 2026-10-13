@@ -175,7 +175,17 @@ async function checkUpdate() {
   updateBusy.value = true;
   updateMessage.value = "";
   try {
-    // 当前版本要一起取：浏览器形态没有包概念，这时如实显示"未知"而不是报"已是最新"
+    if (!nativeAvailable()) {
+      // 网页版（PWA / 手机浏览器）刷新即最新，**不去请求更新清单**——
+      // 那条请求在浏览器里会被 CORS 拦掉（GitHub 不放行该跨域），
+      // 报出来的 "Failed to fetch" 只会让人以为功能坏了。
+      updateState.value = "web";
+      updateTarget.value = "";
+      updateManifest = null;
+      updateMessage.value = t("mobile.setUpdate_web");
+      return;
+    }
+    // 当前版本要一起取：读不到时如实显示"未知"而不是报"已是最新"
     appVer.value = await currentVersion();
     updateManifest = await fetchManifest();
     const verdict = decideUpdate(updateManifest, appVer.value);
@@ -637,6 +647,7 @@ async function renameDevice(event) {
           {{ updateBusy ? t("mobile.setUpdateDownloading") : t("mobile.setUpdateInstall", { version: updateTarget }) }}
         </button>
         <p v-if="updateMessage" class="m-hint-sm" :class="{ 'm-ok': updateState === 'uptodate', 'm-err': updateState === 'invalid' || updateState === 'failed' }" data-role="update-result">{{ updateMessage }}</p>
+        <p v-if="updateState === 'failed'" class="m-hint-sm" data-role="update-hint">{{ t("mobile.setUpdateFailedHint") }}</p>
       </div>
 
       <!-- 能力清单：把"哪些能用、哪些在安卓上降级"直接摆在界面上。

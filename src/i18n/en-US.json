@@ -4369,6 +4369,8 @@
     "setUpdateNote": "Reads a fixed update manifest and compares versions; when a new build exists it is downloaded, verified, then handed to the system installer. Android has no silent updater like desktop, so the install confirmation still comes from the system.",
     "setUpdateCurrent": "Current version: {version}",
     "setUpdateUnknown": "unknown (web build)",
+    "setUpdate_web": "The web build always serves the latest version—just refresh the page. Installing or upgrading needs the Android app.",
+    "setUpdateFailedHint": "If this is a network error: the APK is downloaded from GitHub—check that the phone can reach GitHub, then retry later.",
     "setUpdateBtn": "Check for updates",
     "setUpdateChecking": "Checking…",
     "setUpdateDownloading": "Downloading and verifying…",

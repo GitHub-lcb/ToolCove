@@ -4369,6 +4369,8 @@
     "setUpdateNote": "读一个固定的更新清单，比对版本号；有新版本时下载并校验后再交给系统安装。安卓没有桌面端那套静默更新，安装确认那一步仍然由系统弹。",
     "setUpdateCurrent": "当前版本：{version}",
     "setUpdateUnknown": "未知（网页形态）",
+    "setUpdate_web": "网页版无需检查更新：刷新页面即是最新版；安装 / 升级请用安卓 App。",
+    "setUpdateFailedHint": "若为网络错误：安装包从 GitHub 下载，请确认手机网络能访问 GitHub，稍后重试。",
     "setUpdateBtn": "检查更新",
     "setUpdateChecking": "检查中…",
     "setUpdateDownloading": "下载并校验中…",

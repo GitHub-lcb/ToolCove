@@ -125,4 +125,57 @@ test.describe("真机环境（安卓桥存在）", () => {
       expect(fatal, `${tab} 页出现"未实现"类错误：${fatal.join(" | ")}`).toEqual([]);
     }
   });
+
+  /** 打桩更新依赖的两条原生命令（app_version / http_request 取清单），其余原样透传。 */
+  async function stubUpdate(page, manifestResponse) {
+    await page.addInitScript((manifest) => {
+      const original = window.ToolCove.invoke.bind(window.ToolCove);
+      window.ToolCove.invoke = (cmd, argsJson) => {
+        const args = argsJson ? JSON.parse(argsJson) : {};
+        if (cmd === "app_version") return JSON.stringify({ versionName: "1.2.0", versionCode: 10200 });
+        if (cmd === "http_request" && String(args.url || "").includes("apk.json")) return JSON.stringify(manifest);
+        return original(cmd, argsJson);
+      };
+    }, manifestResponse);
+  }
+
+  test("检查更新（App 形态）：清单可达时报出新版本，并给出下载安装入口", async ({ page }) => {
+    await seedRealisticBridge(page);
+    await stubUpdate(page, {
+      status: 200,
+      statusText: "OK",
+      headers: [],
+      durationMs: 1,
+      size: 160,
+      body: JSON.stringify({
+        version: "1.3.0",
+        versionCode: 10300,
+        url: "https://github.com/GitHub-lcb/ToolCove/releases/download/apk-v1.3.0/toolcove-release.apk",
+        sha256: "a".repeat(64),
+        size: 1782477,
+        channel: "apk-latest",
+      }),
+    });
+    await page.goto(MOBILE);
+    await page.locator(".m-tab[data-tab='settings']").click();
+    await page.locator('[data-nav="about"]').click();
+
+    await page.locator('[data-role="update-check"]').click();
+    await expect(page.locator('[data-role="update-result"]')).toContainText(/发现新版本 1.3.0/, { timeout: 10_000 });
+    await expect(page.locator('[data-role="update-install"]')).toBeVisible();
+  });
+
+  test("检查更新（App 形态）：清单取不到时报「清单不可用」，与「已是最新」区分开", async ({ page }) => {
+    await seedRealisticBridge(page);
+    await stubUpdate(page, { status: 404, statusText: "Not Found", headers: [], durationMs: 1, size: 9, body: "Not Found" });
+    await page.goto(MOBILE);
+    await page.locator(".m-tab[data-tab='settings']").click();
+    await page.locator('[data-nav="about"]').click();
+
+    await page.locator('[data-role="update-check"]').click();
+    await expect(page.locator('[data-role="update-result"]')).toContainText(/清单不可用/, { timeout: 10_000 });
+    // 负向断言针对**那条具体文案**（invalid 提示里本来就写着"这不是「已是最新」"）
+    await expect(page.locator('[data-role="update-result"]')).not.toHaveText(/已是最新版本/);
+    await expect(page.locator('[data-role="update-install"]')).toHaveCount(0);
+  });
 });
