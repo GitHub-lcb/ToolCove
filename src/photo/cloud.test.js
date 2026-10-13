@@ -36,12 +36,13 @@ describe("qiniuEntry / 管理凭证", () => {
     expect(qiniuEntry("b", "k")).toBe("Yjpr");
   });
 
-  it("凭证形如 QBox AK:sign，且签名串含 method/host/content-type（与 Rust 端逐字一致）", async () => {
+  it("凭证形如 Qiniu AK:sign，且签名串含 method/host/content-type（与 Rust 端逐字一致）", async () => {
     const auth = await qiniuManagementAuth({ config: CONFIG, method: "POST", host: "rsf.qbox.me", pathAndQuery: "/list?bucket=b&limit=1" });
-    expect(auth.startsWith("QBox AK:")).toBe(true);
+    // 前缀必须是 Qiniu（V2）——写成 QBox 会被服务端拒成 401 BadToken，真机上栽过
+    expect(auth.startsWith("Qiniu AK:")).toBe(true);
     // 签名必须带填充：HMAC-SHA1 是 20 字节 → base64 一定以 = 结尾。
     // 去填充的版本在本账号/区域会被拒（401 BadToken）——上传凭证踩过一次，管理凭证又踩了一次。
-    expect(auth.slice("QBox AK:".length).endsWith("=")).toBe(true);
+    expect(auth.slice("Qiniu AK:".length).endsWith("=")).toBe(true);
     // 换 host 必须换签名：签名串里带 Host，这是最容易漏的一处
     const other = await qiniuManagementAuth({ config: CONFIG, method: "POST", host: "rsf-z2.qiniup.com", pathAndQuery: "/list?bucket=b&limit=1" });
     expect(other).not.toBe(auth);

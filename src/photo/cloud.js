@@ -30,10 +30,12 @@ export function canSendAuthHeader() {
 export async function qiniuManagementAuth({ config, method, host, pathAndQuery, contentType = "application/x-www-form-urlencoded" }) {
   const cfg = normalizePhotoConfig(config);
   const signing = `${method} ${pathAndQuery}\nHost: ${host}\nContent-Type: ${contentType}\n\n`;
-  // ⚠️ **必须带填充**（padded）：桌面端 Rust 的 urlsafe_b64 就是带填充的（urlsafe_b64("hello") == "aGVsbG8="），
-  // 而本账号/区域对去填充的凭证一律回 401 BadToken——上传凭证踩过一次，管理凭证又踩了一次。
+  // 两处都不能照抄旧文档（各栽过一次）：
+  //  1) 前缀是 **`Qiniu `**（V2 形态），不是 `QBox `——旧 QBox 形态已被服务端拒绝，
+  //     实测对 rsf.qbox.me 一律 401 BadToken（见 src-tauri/src/photo.rs 的 qiniu_management_auth 注释）；
+  //  2) base64 **带填充**（Rust 的 urlsafe_b64 就是带填充的：urlsafe_b64("hello") == "aGVsbG8="）。
   const sign = urlsafeBase64(await hmacSha1(cfg.secretKey, signing), true);
-  return `QBox ${cfg.accessKey}:${sign}`;
+  return `Qiniu ${cfg.accessKey}:${sign}`;
 }
 
 /**
