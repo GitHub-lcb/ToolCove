@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.14.1",
   "//mobileVersion": "手机端（安卓 App）的独立版本号：与桌面 version 各走各的发版线。改这里即可，app/build.gradle 的 versionName 会从它读取（单一真相源，避免两处手改不一致）。发版：推 apk-v<版本> 标签触发 mobile-release.yml。",
-  "mobileVersion": "1.2.0",
+  "mobileVersion": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
