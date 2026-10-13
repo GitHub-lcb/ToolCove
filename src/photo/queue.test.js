@@ -16,7 +16,7 @@ const CONFIG = validatePhotoConfig({
 }).config;
 
 function makeFile(name = "IMG_0001.jpg", extra = {}) {
-  return { blob: new Uint8Array([1, 2, 3]), name, type: "image/jpeg", size: 3, capturedAt: Date.UTC(2026, 9, 13, 8, 30, 0), ...extra };
+  return { blob: new Uint8Array([1, 2, 3]), thumbBlob: new Uint8Array([9]), name, type: "image/jpeg", size: 3, capturedAt: Date.UTC(2026, 9, 13, 8, 30, 0), ...extra };
 }
 
 function makeQueue({ uploader, store = createMemoryStore(), maxDone } = {}) {
@@ -66,6 +66,8 @@ describe("PhotoQueue 基础流", () => {
       expect(row.status).toBe(QUEUE_STATE.done);
       expect(row.blob).toBeUndefined();
       expect(row.etag).toBe("etag-1");
+      // 原图释放，但本机预览小图要留下——「已上传」页回看全靠它
+      expect(row.thumbBlob).toBeTruthy();
     }
   });
 

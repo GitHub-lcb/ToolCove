@@ -112,6 +112,43 @@ test.describe("手机端（拍照上传）", () => {
     await expect(tool.locator('[data-role="transfer-error"]')).toContainText("不是有效的配置内容");
   });
 
+  test("已上传：七牛换后端后上传成功，可就地回看本机预览", async ({ page }) => {
+    await openPhoto(page);
+    const tool = page.locator('[data-tool="photo"]');
+
+    // 配好七牛（假密钥）并保存
+    await tool.locator('[data-role="config-edit"]').click();
+    await tool.locator('[data-role="provider"]').selectOption("qiniu");
+    await tool.locator('[data-role="field-bucket"]').fill("b");
+    await tool.locator('[data-role="field-access-key"]').fill("OK-ACCESS");
+    await tool.locator('[data-role="field-secret-key"]').fill("OK-SECRET");
+    await tool.locator('[data-role="field-domain"]').fill("cdn.example.com");
+    await tool.locator('[data-role="config-save"]').click();
+    await expect(tool.locator('[data-role="config-summary"]')).toBeVisible();
+
+    // 只把网络换掉：区域解析与表单上传仍走真实代码路径
+    await page.route("**/api.qiniu.com/**", (route) =>
+      route.fulfill({ json: { up: { acc: { main: ["upload-cn-east-2.qiniup.com"] } } } })
+    );
+    await page.route("https://upload-cn-east-2.qiniup.com/**", (route) => route.fulfill({ json: { key: "k", hash: "h" } }));
+
+    await tool.locator('[data-role="gallery-input"]').setInputFiles(FIXTURE);
+    // 传完自动从队列页消失
+    await expect(tool.locator('[data-role="empty"]')).toBeVisible({ timeout: 15_000 });
+
+    await tool.locator('[data-role="tab-uploaded"]').click();
+    await expect(tool.locator('[data-role="uploaded-hint"]')).toBeVisible();
+    const row = tool.locator('.m-photo-row[data-state="done"]').first();
+    await expect(row).toBeVisible();
+    await expect(row.locator(".m-mono")).toContainText("photos/");
+
+    // 点开预览 → 关闭
+    await row.locator(".m-photo-name").click();
+    await expect(tool.locator('[data-role="preview-img"]')).toBeVisible();
+    await tool.locator('[data-role="preview-close"]').click();
+    await expect(tool.locator('[data-role="preview"]')).toHaveCount(0);
+  });
+
   test("切到七牛：字段集随之切换，浏览器形态不给测试按钮", async ({ page }) => {
     await openPhoto(page);
     const tool = page.locator('[data-tool="photo"]');

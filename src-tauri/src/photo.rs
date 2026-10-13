@@ -354,6 +354,60 @@ fn qiniu_base_url(config: &PhotoConfig, key: &str) -> String {
     )
 }
 
+// ---------- 七牛区域解析（新机房空间必须走它） ----------
+
+/// 七牛表单上传的默认全局域名；新机房的空间**不认它**，区域解析失败时才兜底到这里。
+const QINIU_DEFAULT_UP_HOST: &str = "upload.qiniup.com";
+/// 七牛列表的默认全局域名（同上的兜底）。
+const QINIU_DEFAULT_RSF_HOST: &str = "rsf.qbox.me";
+/// 区域解析接口（免签名；官方浏览器 SDK qiniu-js 的上传前解析走的就是这条）。
+const QINIU_REGION_QUERY: &str = "https://api.qiniu.com/v2/query";
+
+/// 从区域查询响应里挑 (up_host, rsf_host)。纯函数便于单测。
+/// 响应形状：`{ "up": {"acc": {"main": [...]}, "src": {"main": [...]}}, "rsf": {...} }`。
+fn qiniu_pick_hosts(json: &str) -> (String, String) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return (String::new(), String::new());
+    };
+    let root = value.get("data").unwrap_or(&value);
+    let pick = |service: &str| {
+        let mut host = root
+            .pointer(&format!("/{service}/acc/main/0"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if host.is_empty() {
+            host = root
+                .pointer(&format!("/{service}/src/main/0"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+        }
+        host
+    };
+    (pick("up"), pick("rsf"))
+}
+
+/// 解析该空间的区域域名。失败返回空串（调用方兜底老域名）。
+/// **这步不能省**：新注册账号的空间常在新机房，旧全局域名对它们一律 401 BadToken（实测）。
+async fn qiniu_resolve_hosts(client: &reqwest::Client, config: &PhotoConfig) -> (String, String) {
+    let url = format!(
+        "{QINIU_REGION_QUERY}?ak={}&bucket={}",
+        uri_encode(config.access_key.trim(), true),
+        uri_encode(config.bucket.trim(), true)
+    );
+    let Ok(response) = client.get(&url).send().await else {
+        return (String::new(), String::new());
+    };
+    if !response.status().is_success() {
+        return (String::new(), String::new());
+    }
+    let Ok(text) = response.text().await else {
+        return (String::new(), String::new());
+    };
+    qiniu_pick_hosts(&text)
+}
+
 /// 七牛私有资源下载令牌。签名串是**完整 URL**（含 `https://` 与域名）+ `?e=<deadline>`——
 /// 官方 Python / Go SDK 都是这么签的（`Auth.private_download_url` / `MakePrivateURL`）。
 /// 只签 path 会被服务端判 401 BadToken（实测）。
@@ -365,8 +419,6 @@ fn qiniu_download_token(config: &PhotoConfig, key: &str, deadline: i64) -> Strin
 
 // ---------- 七牛上传（自检探针） ----------
 
-/// 七牛表单上传入口（全局加速域名；官方 Go SDK 里它叫 CdnUpHosts，SrcUpHosts 是各区域 up-*.qiniup.com）。
-const QINIU_UPLOAD_HOST: &str = "upload.qiniup.com";
 /// 探针对象：藏在目录前缀下的点文件（列举时按"隐藏文件"过滤掉，不进归档列表）。
 const QINIU_PROBE_NAME: &str = ".toolcove-probe";
 const PROBE_BOUNDARY: &str = "----ToolCoveProbeBoundary7f3a";
@@ -419,12 +471,26 @@ fn multipart_body(boundary: &str, fields: &[(&str, &str)], file_name: &str, file
 async fn qiniu_probe_upload(config: &PhotoConfig) -> Result<&'static str, String> {
     let key = format!("{}/{}", normalize_prefix(&config.prefix), QINIU_PROBE_NAME);
     let client = http_client()?;
+
+    // 上传域名：显式配置（非默认值）＞ 区域解析 ＞ 默认全局域名。与手机端 JS 同序。
+    let explicit = config.upload_host.trim().to_string();
+    let upload_host = if !explicit.is_empty() && explicit != QINIU_DEFAULT_UP_HOST {
+        explicit
+    } else {
+        let (resolved_up, _) = qiniu_resolve_hosts(&client, config).await;
+        if resolved_up.is_empty() {
+            QINIU_DEFAULT_UP_HOST.to_string()
+        } else {
+            resolved_up
+        }
+    };
+
     let mut last_error = String::new();
     for (padded, variant) in [(false, "plain"), (true, "padded")] {
         let token = qiniu_upload_token(config, &key, unix_now() as i64 + 300, padded);
         let body = multipart_body(PROBE_BOUNDARY, &[("token", &token), ("key", &key)], "probe.bin", b"probe");
         let response = client
-            .post(format!("https://{QINIU_UPLOAD_HOST}/"))
+            .post(format!("https://{upload_host}/"))
             .header("Content-Type", format!("multipart/form-data; boundary={PROBE_BOUNDARY}"))
             .body(body)
             .send()
@@ -718,13 +784,19 @@ async fn list_qiniu(
         .collect();
     let path_and_query = format!("/list?{}", query_pairs.join("&"));
 
-    // 签名串必须覆盖 method / Host / Content-Type（V2 格式），三处与实际请求逐字一致
-    const HOST: &str = "rsf.qbox.me";
+    // 列表域名同样要区域解析：新机房空间的 rsf 在老域名上会 401。
+    // 签名串包含 Host，先定 host 再签名——两处必须同一变量。
     const CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
-    let auth = qiniu_management_auth(config, "POST", HOST, &path_and_query, CONTENT_TYPE);
+    let (_, resolved_rsf) = qiniu_resolve_hosts(&client, config).await;
+    let rsf_host = if resolved_rsf.is_empty() {
+        QINIU_DEFAULT_RSF_HOST.to_string()
+    } else {
+        resolved_rsf
+    };
+    let auth = qiniu_management_auth(config, "POST", &rsf_host, &path_and_query, CONTENT_TYPE);
 
     let response = client
-        .post(format!("https://{HOST}{path_and_query}"))
+        .post(format!("https://{rsf_host}{path_and_query}"))
         .header("Authorization", auth)
         .header("Content-Type", CONTENT_TYPE)
         .send()
@@ -1756,6 +1828,24 @@ mod tests {
             qiniu_upload_token(&config, "photos/.toolcove-probe", 1_700_000_000, true),
             "ak:hwfSzofT272YEVQbwHKyA7YMPyA=:eyJzY29wZSI6ImI6cGhvdG9zLy50b29sY292ZS1wcm9iZSIsImRlYWRsaW5lIjoxNzAwMDAwMDAwfQ=="
         );
+    }
+
+    #[test]
+    fn qiniu_pick_hosts_reads_region_response() {
+        // 华东-浙江2 的真实形状（qiniu-js 的 mock 同款）
+        let json = r#"{"ttl":86400,"up":{"acc":{"main":["upload-cn-east-2.qiniup.com"],"backup":[]},"src":{"main":["up-cn-east-2.qiniup.com"]}},"rsf":{"acc":{"main":["rsf-cn-east-2.qiniuapi.com"]}}}"#;
+        let (up, rsf) = qiniu_pick_hosts(json);
+        assert_eq!(up, "upload-cn-east-2.qiniup.com");
+        assert_eq!(rsf, "rsf-cn-east-2.qiniuapi.com");
+        // acc 缺失时退回 src；rsf 缺失给空串（调用方兜底老域名）
+        let (up2, rsf2) = qiniu_pick_hosts(r#"{"up":{"src":{"main":["up-z2.qbox.me"]}}}"#);
+        assert_eq!(up2, "up-z2.qbox.me");
+        assert_eq!(rsf2, "");
+        // 个别包装形态
+        let (up3, _) = qiniu_pick_hosts(r#"{"data":{"up":{"acc":{"main":["upload-z0.qbox.me"]}}}}"#);
+        assert_eq!(up3, "upload-z0.qbox.me");
+        // 垃圾输入不炸、给空串
+        assert_eq!(qiniu_pick_hosts("not json"), (String::new(), String::new()));
     }
 
     #[test]

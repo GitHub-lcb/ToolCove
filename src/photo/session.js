@@ -65,3 +65,24 @@ export function filesFromInput(fileList) {
     capturedAt: file.lastModified || Date.now(),
   }));
 }
+
+/**
+ * 生成「本机预览小图」（最长边 320、JPEG）：上传成功后原图就释放了，没有它
+ * 「已上传」页没有任何东西可看。失败返回 undefined（该条只显示占位图标，不影响上传）。
+ */
+export async function makePhotoThumb(file) {
+  try {
+    if (typeof createImageBitmap !== "function") return undefined;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 320 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.75));
+    return blob || undefined;
+  } catch {
+    return undefined;
+  }
+}

@@ -16,7 +16,7 @@ import { PHOTO_PROVIDERS, defaultPhotoConfig, exportPhotoConfig, normalizePhotoC
 import { fieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
-import { createUploadQueue, filesFromInput, loadPhotoConfig, savePhotoConfig } from "../../../src/photo/session.js";
+import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
 
 const { t } = useI18n();
@@ -66,6 +66,13 @@ const stats = computed(() => {
   return { pending: by(QUEUE_STATE.pending), uploading: by(QUEUE_STATE.uploading), done: by(QUEUE_STATE.done), error: by(QUEUE_STATE.error), total: items.value.length };
 });
 const sortedItems = computed(() => [...items.value].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+/** 队列页只显示没传完的；传完的挪到「已上传」页回看（那里有本机预览小图）。 */
+const queueItems = computed(() => sortedItems.value.filter((item) => item.status !== QUEUE_STATE.done));
+const uploadedItems = computed(() =>
+  items.value.filter((item) => item.status === QUEUE_STATE.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0))
+);
+const listMode = ref("queue"); // queue | uploaded
+const previewItem = ref(null);
 const busy = computed(() => stats.value.uploading > 0);
 const webSecretWarn = computed(() => !capabilities.secureStore);
 
@@ -81,21 +88,32 @@ function fieldError(name) {
   return code ? t(ERROR_KEYS[code] || code) : "";
 }
 
-/** 缩略图只在有本地二进制（待传/失败）时生成，上传成功后立即释放（不留占内存的 URL）。 */
+/** 缩略图：优先本机预览小图（上传后仍保留），没有就用待传的原图；
+ *  两者都没有（且已传完）时不再占缓存。 */
 function thumbOf(item) {
-  if (!item.blob) return "";
-  if (!thumbs.has(item.id)) thumbs.set(item.id, URL.createObjectURL(item.blob));
+  const media = item?.thumbBlob || item?.blob;
+  if (!media) return "";
+  if (!thumbs.has(item.id)) thumbs.set(item.id, URL.createObjectURL(media));
   return thumbs.get(item.id);
 }
 
 function releaseStaleThumbs() {
   for (const [id, url] of thumbs) {
     const item = items.value.find((row) => row.id === id);
-    if (!item || !item.blob) {
+    if (!item || (!item.thumbBlob && !item.blob)) {
       URL.revokeObjectURL(url);
       thumbs.delete(id);
     }
   }
+}
+
+/** 完成时间「10-13 22:05」。 */
+function doneAtLabel(item) {
+  const ts = Number(item?.doneAt || 0);
+  if (!ts) return "";
+  const date = new Date(ts);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function refresh() {
@@ -107,6 +125,8 @@ async function onPicked(event) {
   const files = filesFromInput(event?.target?.files);
   if (event?.target) event.target.value = ""; // 允许再次选同一张
   if (!files.length || !queue) return;
+  // 逐张生成本机预览小图（上传成功后原图释放，「已上传」页回看全靠它）
+  for (const file of files) file.thumbBlob = await makePhotoThumb(file.blob);
   await queue.addFiles(files, { config: config.value });
   refresh();
   await queue.pump();
@@ -386,41 +406,88 @@ onBeforeUnmount(() => {
       <p class="m-hint-sm" data-role="web-hint">{{ t("toolbox.photo.webHint") }}</p>
     </div>
 
-    <!-- 上传队列 -->
+    <!-- 上传队列 / 已上传 -->
     <div class="m-card">
       <div class="m-card-head">
-        <b>{{ t("toolbox.photo.queueTitle") }}</b>
+        <b>{{ listMode === "queue" ? t("toolbox.photo.queueTitle") : t("toolbox.photo.stateDone") }}</b>
         <span class="m-zone" data-role="queue-meta">{{ t("toolbox.photo.queueMeta", { done: stats.done, total: stats.total }) }}</span>
       </div>
-      <p v-if="!items.length" class="m-hint-sm" data-role="empty">{{ t("toolbox.photo.emptyQueue") }}</p>
-      <ul v-else class="m-photo-list">
-        <li v-for="item in sortedItems" :key="item.id" class="m-photo-row" :data-state="item.status" :data-role="`item-${item.id}`">
-          <img v-if="thumbOf(item)" :src="thumbOf(item)" class="m-photo-thumb" alt="" />
-          <div class="m-photo-main">
-            <span class="m-photo-name">{{ item.name }}</span>
-            <span class="m-hint-sm m-photo-meta">{{ formatBytes(item.size) }}</span>
-            <span class="m-mono m-photo-key" :title="item.key">{{ item.key }}</span>
-            <span v-if="item.error" class="m-err" data-role="item-error">{{ item.error }}</span>
-          </div>
-          <div class="m-photo-ops">
-            <span class="m-photo-chip" :data-state="item.status" data-role="item-state">{{ stateLabel(item) }}</span>
-            <button v-if="item.status === QUEUE_STATE.error" class="m-btn sm" data-role="item-retry" @click="retryItem(item.id)">
-              {{ t("toolbox.photo.retry") }}
-            </button>
-            <button
-              v-if="item.status !== QUEUE_STATE.uploading"
-              class="m-btn sm danger"
-              data-role="item-remove"
-              @click="removeItem(item.id)"
-            >
+      <div class="m-chips m-photo-tabs">
+        <button class="m-chip" :class="{ on: listMode === 'queue' }" data-role="tab-queue" @click="listMode = 'queue'">
+          {{ t("toolbox.photo.queueTitle") }}
+        </button>
+        <button class="m-chip" :class="{ on: listMode === 'uploaded' }" data-role="tab-uploaded" @click="listMode = 'uploaded'">
+          {{ t("toolbox.photo.stateDone") }}
+        </button>
+      </div>
+
+      <template v-if="listMode === 'queue'">
+        <p v-if="!queueItems.length" class="m-hint-sm" data-role="empty">{{ t("toolbox.photo.emptyQueue") }}</p>
+        <ul v-else class="m-photo-list">
+          <li v-for="item in queueItems" :key="item.id" class="m-photo-row" :data-state="item.status" :data-role="`item-${item.id}`">
+            <img v-if="thumbOf(item)" :src="thumbOf(item)" class="m-photo-thumb" alt="" />
+            <div class="m-photo-main">
+              <span class="m-photo-name">{{ item.name }}</span>
+              <span class="m-hint-sm m-photo-meta">{{ formatBytes(item.size) }}</span>
+              <span class="m-mono m-photo-key" :title="item.key">{{ item.key }}</span>
+              <span v-if="item.error" class="m-err" data-role="item-error">{{ item.error }}</span>
+            </div>
+            <div class="m-photo-ops">
+              <span class="m-photo-chip" :data-state="item.status" data-role="item-state">{{ stateLabel(item) }}</span>
+              <button v-if="item.status === QUEUE_STATE.error" class="m-btn sm" data-role="item-retry" @click="retryItem(item.id)">
+                {{ t("toolbox.photo.retry") }}
+              </button>
+              <button
+                v-if="item.status !== QUEUE_STATE.uploading"
+                class="m-btn sm danger"
+                data-role="item-remove"
+                @click="removeItem(item.id)"
+              >
               {{ t("toolbox.photo.remove") }}
             </button>
           </div>
         </li>
-      </ul>
-      <div v-if="items.length" class="m-actions">
-        <button v-if="stats.error" class="m-btn" data-role="retry-all" @click="retryAll">{{ t("toolbox.photo.retryAll") }}</button>
-        <button v-if="stats.done" class="m-btn" data-role="clear-done" @click="clearDone">{{ t("toolbox.photo.clearDone") }}</button>
+        </ul>
+        <div v-if="queueItems.length" class="m-actions">
+          <button v-if="stats.error" class="m-btn" data-role="retry-all" @click="retryAll">{{ t("toolbox.photo.retryAll") }}</button>
+        </div>
+      </template>
+
+      <!-- 已上传：本机上传记录 + 本机预览小图（原图已释放，云端原图不在这里回看） -->
+      <template v-else>
+        <p v-if="!uploadedItems.length" class="m-hint-sm" data-role="uploaded-empty">{{ t("toolbox.photo.uploadedEmpty") }}</p>
+        <template v-else>
+          <p class="m-hint-sm" data-role="uploaded-hint">{{ t("toolbox.photo.uploadedHint") }}</p>
+          <ul class="m-photo-list">
+            <li v-for="item in uploadedItems" :key="item.id" class="m-photo-row" data-state="done" :data-role="`up-${item.id}`">
+              <img v-if="thumbOf(item)" :src="thumbOf(item)" class="m-photo-thumb" alt="" @click="previewItem = item" />
+              <div class="m-photo-main" @click="previewItem = item">
+                <span class="m-photo-name">{{ item.name }}</span>
+                <span class="m-hint-sm m-photo-meta">{{ formatBytes(item.size) }} · {{ doneAtLabel(item) }}</span>
+                <span class="m-mono m-photo-key" :title="item.key">{{ item.key }}</span>
+              </div>
+              <div class="m-photo-ops">
+                <button class="m-btn sm danger" data-role="up-remove" @click="removeItem(item.id)">{{ t("toolbox.photo.remove") }}</button>
+              </div>
+            </li>
+          </ul>
+          <div class="m-actions">
+            <button class="m-btn" data-role="clear-done" @click="clearDone">{{ t("toolbox.photo.clearDone") }}</button>
+          </div>
+        </template>
+      </template>
+    </div>
+
+    <!-- 本机预览：放大本机预览小图（不是云端原图，不占流量） -->
+    <div v-if="previewItem" class="m-photo-preview" data-role="preview" @click.self="previewItem = null">
+      <div class="m-photo-preview-card">
+        <img v-if="thumbOf(previewItem)" :src="thumbOf(previewItem)" alt="" data-role="preview-img" />
+        <p class="m-photo-name">{{ previewItem.name }}</p>
+        <p class="m-mono m-photo-key">{{ previewItem.key }}</p>
+        <p class="m-hint-sm" data-role="preview-note">{{ t("toolbox.photo.previewLocal") }}</p>
+        <div class="m-actions">
+          <button class="m-btn" data-role="preview-close" @click="previewItem = null">{{ t("toolbox.photo.closeBtn") }}</button>
+        </div>
       </div>
     </div>
   </section>
@@ -544,6 +611,42 @@ onBeforeUnmount(() => {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px dashed var(--m-border);
+}
+
+.m-photo-tabs {
+  margin: 0 0 10px;
+}
+
+/* 本机预览层：全屏遮罩 + 卡片；点遮罩空白处关闭 */
+.m-photo-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.m-photo-preview-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding: 14px;
+  border-radius: var(--m-radius);
+  background: var(--m-card);
+}
+
+.m-photo-preview-card img {
+  width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--m-soft);
 }
 
 .m-photo-transfer-text {

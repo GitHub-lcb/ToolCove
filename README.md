@@ -58,8 +58,9 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   (plus qpdf-wasm, lazily fetched only when a file turns out to be encrypted) — works in both builds.
 
   The gallery home has its own search (tool name, capability, or keyword), a quick-access row built
-  from your pinned and recently used tools, and collapsible groups whose tools render as two-column
-  cards on wide windows. Pinned tools and expanded groups are remembered locally.
+  from your pinned tools first, then the ones you actually use most (per-tool usage counts), then
+  recently used ones, and collapsible groups whose tools render as two-column cards on wide
+  windows. Pinned tools, usage counts and expanded groups are remembered locally.
 
   Homestead trade run: it treats each stop's "next 3 stops" hint as a constraint, enumerates every
   valid layout, marks the stops that are uniquely determined, and turns the inference into card
@@ -357,7 +358,7 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   「API 格式」工作流跑任意流程（含视频）。请求经 Rust 原生发出（ComfyUI 默认不发 CORS 头），
   进度用 ComfyUI 内置 WebSocket 报步进、以轮询 /history 为最终真值；生成结果流式落到本机 media 目录
   （刻意不进数据备份，设置页如实说明并可从结果卡「另存为」导出）。
-  首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏与最近使用排列，分类可同时展开、
+  首页支持按名称 / 能力 / 关键词检索，顶部「常用工具」按收藏 → 使用频率 → 最近使用排列，分类可同时展开、
   宽窗口下工具卡两列排布；收藏与展开状态本地记忆。
   铁路大亨站点推断（游戏辅助）面向《诡秘之主》家园「列车贸易」的挑战线路：把每站的「未来 3 站」
   提示当作约束，穷举全部合法排列后标出能被唯一确定的站点，并按推断结果给策略卡建议；

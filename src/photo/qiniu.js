@@ -5,12 +5,51 @@
 //   upToken = "<AK>:<urlsafe_b64(HMAC-SHA1(SK, policy_b64))>:<policy_b64>"  ← 三段，策略本身要随证带上
 // scope 钉到具体 key —— 这张凭证只能传这一个对象，泄露面比桶级凭证小。
 //
-// 上传走表单（multipart/form-data）：七牛的上传域名对浏览器跨域上传是放行的（官方 JS SDK 即此路径），
-// 所以手机直传在七牛上不需要用户额外配置 CORS（S3 系则需要，见 docs/photo-storage-setup.md）。
-import { normalizePhotoConfig, qiniuUploadUrl } from "./config.js";
+// **上传域名必须先做区域解析**（官方浏览器 SDK 同款）：新注册账号的空间常在新机房
+// （如华东-浙江2），旧的全局域名 upload.qiniup.com 不服务它们——直传会拿到 401 BadToken
+// （实测踩到，和密钥无关）。解析接口 api.qiniu.com/v2/query 免签名、对浏览器放行 CORS。
+import { QINIU_DEFAULT_UPLOAD_HOST, normalizePhotoConfig } from "./config.js";
 import { PhotoError } from "./errors.js";
 
 const encoder = new TextEncoder();
+
+/** 区域解析接口（qiniu-js 官方 SDK 用的就是它）。 */
+const QINIU_REGION_QUERY = "https://api.qiniu.com/v2/query";
+
+/** 会话内缓存 ak+bucket → 上传域名（区域解析一天内不会变，重传不必再问）。 */
+const uploadHostCache = new Map();
+
+/** 测试用：清空区域缓存。 */
+export function resetQiniuHostCache() {
+  uploadHostCache.clear();
+}
+
+/**
+ * 解析该空间的区域上传域名。失败返回空串（调用方兜底）。
+ * 响应形状兼容两种：`{ up: { acc: { main: [...] } } }`（直连 API）
+ * 与 `{ data: { up: ... } }`（个别 SDK 包装）。
+ */
+export async function resolveQiniuUploadHost({ accessKey, bucket, fetchImpl = null }) {
+  const cacheKey = `${accessKey}|${bucket}`;
+  const cached = uploadHostCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const fetchFn = fetchImpl || globalThis.fetch;
+  let host = "";
+  try {
+    const url = `${QINIU_REGION_QUERY}?ak=${encodeURIComponent(accessKey)}&bucket=${encodeURIComponent(bucket)}`;
+    const res = await fetchFn(url);
+    if (res.ok) {
+      const json = await res.json();
+      const up = json?.up || json?.data?.up;
+      host = up?.acc?.main?.[0] || up?.src?.main?.[0] || "";
+    }
+  } catch {
+    // 解析失败不是致命错误：走调用方的兜底域名，真实错误会由上传本身报出来
+  }
+  if (typeof host === "string" && host) uploadHostCache.set(cacheKey, host);
+  return host;
+}
 
 /** URL-safe Base64（七牛凭证的编码约定：+→-、/→_、去填充）。 */
 export function urlsafeBase64(bytes) {
@@ -35,7 +74,8 @@ export async function qiniuUploadToken({ accessKey, secretKey, bucket, key, dead
   return `${accessKey}:${sign}:${policyB64}`;
 }
 
-/** 表单直传一个对象。成功返回七牛计算的 hash（内容 etag）。 */
+/** 表单直传一个对象。成功返回七牛计算的 hash（内容 etag）。
+ *  上传域名选择顺序：用户显式配置的域名（非默认值）＞ 区域解析 ＞ 默认全局域名。 */
 export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
   const fetchFn = fetchImpl || globalThis.fetch;
   if (!fetchFn) throw new PhotoError("noFetch", "当前环境没有 fetch");
@@ -45,13 +85,17 @@ export async function putQiniuObject({ config, key, body, fetchImpl, now }) {
   const deadline = Math.floor(base / 1000) + 3600;
   const token = await qiniuUploadToken({ accessKey: cfg.accessKey, secretKey: cfg.secretKey, bucket: cfg.bucket, key, deadline });
 
+  const explicitHost = cfg.uploadHost && cfg.uploadHost !== QINIU_DEFAULT_UPLOAD_HOST ? cfg.uploadHost : "";
+  const resolvedHost = explicitHost || (await resolveQiniuUploadHost({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl }));
+  const uploadHost = resolvedHost || cfg.uploadHost || QINIU_DEFAULT_UPLOAD_HOST;
+
   const form = new FormData();
   form.append("token", token);
   form.append("key", key);
   const fileName = String(key).split("/").pop() || "photo.jpg";
   form.append("file", body instanceof Blob ? body : new Blob([body], { type: "application/octet-stream" }), fileName);
 
-  const res = await fetchFn(qiniuUploadUrl(cfg), { method: "POST", body: form });
+  const res = await fetchFn(`https://${uploadHost}/`, { method: "POST", body: form });
   const text = await res.text();
   if (!res.ok) throw new PhotoError(`HTTP ${res.status}`, text.slice(0, 200));
   let json = null;

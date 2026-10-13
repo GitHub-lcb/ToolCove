@@ -86,6 +86,8 @@ export class PhotoQueue {
         error: "",
         etag: "",
         blob: file.blob,
+        // 本机预览小图：上传成功后 blob 释放，但这张小图留着供「已上传」页回看
+        thumbBlob: file.thumbBlob,
       };
       await this.store.put(item);
       this.items.push(item);

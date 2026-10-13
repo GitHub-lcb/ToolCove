@@ -39,6 +39,27 @@ describe("buildToolboxQuickList", () => {
     expect(buildToolboxQuickList(tools, null, undefined, 2).map((tool) => tool.key)).toEqual(["json", "request"]);
   });
 
+  it("常用（用过 ≥2 次）排在仅最近使用的前面，按次数降序", () => {
+    const quick = buildToolboxQuickList(
+      tools,
+      [],
+      [{ key: "convert", ts: 50 }],
+      4,
+      { chat: { count: 5, ts: 10 }, json: { count: 2, ts: 20 }, convert: { count: 1, ts: 50 } }
+    );
+    // chat 次数最多 → json 次之 → convert 只有一次（仅"最近"）→ 注册表补位
+    expect(quick.map((tool) => tool.key)).toEqual(["chat", "json", "convert", "request"]);
+  });
+
+  it("收藏永远排第一，即使常用次数更低", () => {
+    const quick = buildToolboxQuickList(tools, ["convert"], [{ key: "chat", ts: 1 }], 3, { chat: { count: 99, ts: 9 } });
+    expect(quick.map((tool) => tool.key)).toEqual(["convert", "chat", "json"]);
+  });
+
+  it("没有 usage 数据时退回旧行为（最近使用 → 注册表）", () => {
+    expect(buildToolboxQuickList(tools, [], [{ key: "chat", ts: 10 }], 3).map((tool) => tool.key)).toEqual(["chat", "json", "request"]);
+  });
+
   it("真实注册表能补齐满额快捷入口", () => {
     const quick = buildToolboxQuickList(visibleToolboxTools(), [], [], 6);
     expect(quick).toHaveLength(6);

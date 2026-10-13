@@ -29,6 +29,10 @@ export const PHOTO_PROVIDERS = Object.freeze([
   },
 ]);
 
+/** 七牛表单上传的默认域名；但**新机房的空间不认这个全局域名**——上传前要用
+ * api.qiniu.com/v2/query 做区域解析（见 qiniu.js resolveQiniuUploadHost），它只是兜底。 */
+export const QINIU_DEFAULT_UPLOAD_HOST = "upload.qiniup.com";
+
 export function defaultPhotoConfig() {
   return {
     provider: "s3",
@@ -41,7 +45,7 @@ export function defaultPhotoConfig() {
     pathStyle: false,
     // 七牛专有
     domain: "",
-    uploadHost: "upload.qiniup.com",
+    uploadHost: QINIU_DEFAULT_UPLOAD_HOST,
     privateBucket: true,
     // WebDAV 专有
     username: "",
@@ -79,7 +83,7 @@ export function normalizePhotoConfig(input) {
     sessionToken: String(base.sessionToken ?? "").trim(),
     pathStyle: Boolean(base.pathStyle),
     domain: bareHost(base.domain),
-    uploadHost: bareHost(base.uploadHost) || "upload.qiniup.com",
+    uploadHost: bareHost(base.uploadHost) || QINIU_DEFAULT_UPLOAD_HOST,
     privateBucket: base.privateBucket !== false,
     username: String(base.username ?? "").trim(),
     password: String(base.password ?? ""),

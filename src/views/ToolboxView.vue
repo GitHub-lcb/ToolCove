@@ -124,19 +124,22 @@ watch(query, (value) => {
 const activeTool = ref(""); // "" = 画廊首页
 const recent = ref([]); // [{ key, ts }]
 const pinned = ref([]); // 收藏的工具 key，按收藏顺序保存
+const usage = ref({}); // { key: { count, ts } } 使用次数——「常用」排序的依据（与 recent 分开：那份只留 8 条）
 const expandedGroups = ref([]); // 允许同时展开多个大类
 
 let mounted = false;
 let disposed = false;
 onMounted(async () => {
-  const [savedRecent, savedPinned, savedExpanded] = await Promise.all([
+  const [savedRecent, savedPinned, savedExpanded, savedUsage] = await Promise.all([
     loadToolbox("recent", []),
     loadToolbox("pinned", []),
     loadToolbox("expanded-groups", []),
+    loadToolbox("toolUsage", {}),
   ]);
   if (disposed) return;
   recent.value = Array.isArray(savedRecent) ? savedRecent.filter((r) => TOOLS.some((t) => t.key === r.key)) : [];
   pinned.value = Array.isArray(savedPinned) ? savedPinned.filter((key) => TOOLS.some((t) => t.key === key)) : [];
+  usage.value = savedUsage && typeof savedUsage === "object" ? savedUsage : {};
   // 首次进入（无历史）默认展开第一个大类，避免首页只剩分类头
   const restored = normalizeExpandedGroups(savedExpanded, ALL_GROUPS);
   expandedGroups.value = restored.length ? restored : ALL_GROUPS[0] ? [ALL_GROUPS[0].key] : [];
@@ -151,8 +154,8 @@ onBeforeUnmount(() => {
 const recentList = computed(() =>
   recent.value.map((r) => ({ ...r, tool: TOOLS.find((t) => t.key === r.key) })).filter((r) => r.tool)
 );
-// 常用工具：收藏 → 最近使用 → 注册表顺序补位，保证入口始终可用
-const quickTools = computed(() => buildToolboxQuickList(TOOLS, pinned.value, recent.value, QUICK_MAX));
+// 常用工具：收藏 → 常用（用得多）→ 最近使用 → 注册表顺序补位，保证入口始终可用
+const quickTools = computed(() => buildToolboxQuickList(TOOLS, pinned.value, recent.value, QUICK_MAX, usage.value));
 // 最近使用记录的第一位即上次打开的工具，画廊里给它一个视觉焦点
 function isLastUsed(t) {
   return recent.value.length > 0 && recent.value[0].key === t.key;
@@ -187,6 +190,10 @@ function recordRecent(tool) {
   list.unshift({ key: tool.key, ts: Date.now() });
   recent.value = list.slice(0, RECENT_MAX);
   saveRecent();
+  // 使用次数单独记（recent 只留 8 条，用它数次数会把"用得多但久没开"的工具漏掉）
+  const stat = usage.value[tool.key] || {};
+  usage.value = { ...usage.value, [tool.key]: { count: (Number(stat.count) || 0) + 1, ts: Date.now() } };
+  saveToolbox("toolUsage", usage.value);
 }
 
 // 打开工具：Tauri 下开独立窗口（同工具单例，已开则聚焦）；浏览器或创建失败时降级为主窗口内嵌
