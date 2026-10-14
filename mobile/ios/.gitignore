@@ -1,0 +1,6 @@
+# 网页产物由 CI 从 dist/mobile/app 拷进来，不入库
+www/
+# XcodeGen 生成的工程与构建产物
+*.xcodeproj/
+build/
+DerivedData/

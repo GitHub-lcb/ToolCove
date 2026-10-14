@@ -1,0 +1,44 @@
+# iOS 壳工程的生成描述（XcodeGen）。
+#
+# 为什么不直接提交 .xcodeproj：pbxproj 是机器生成的巨型文件，手改必冲突；
+# 这里只留一份人能读的 YAML，CI 里 `xcodegen generate` 出工程再编译。
+#
+# 与安卓壳的对应关系：
+#   Kotlin AssetsServer  →  AssetServer.swift（回环 http 服务，固定端口保证 origin 稳定）
+#   ToolCoveBridge.kt    →  Bridge.swift（WKWebView 消息桥，命令名与桌面/安卓完全同名）
+#   MainActivity.kt      →  WebViewController.swift
+name: ToolCove
+options:
+  bundleIdPrefix: com.githublcb
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    # 未签名构建：CI 用 CODE_SIGNING_ALLOWED=NO 出包，使用者再用免费 Apple ID 重签
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    SWIFT_VERSION: "5.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+targets:
+  ToolCove:
+    type: application
+    platform: iOS
+    sources:
+      - path: ToolCove
+      # 网页产物以**文件夹引用**的形式进包：Bundle 里保留 www/ 的完整目录树，
+      # 资源服务才能按路径直接取文件（被拍平的话子目录全丢）。
+      - path: www
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.githublcb.toolcove
+        PRODUCT_NAME: ToolCove
+        INFOPLIST_FILE: ToolCove/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        MARKETING_VERSION: "1.3.12"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_BITCODE: "NO"

@@ -1,0 +1,153 @@
+# iOS 未签名包：GitHub 的 macOS runner 上跨编译，产出 .ipa 挂到 Release。
+#
+# 为什么是「未签名」：iOS 上没有"装一个没签名的 App"这回事——每个 App 都必须有签名才能运行。
+# 免费路线是：这里出未签名包 → 使用者用爱思助手 / Sideloadly 拿自己的免费 Apple ID 重签 → 安装
+# （免费 Apple ID 的签名 7 天过期，到期重签一次即可）。要长期免重签只能上 Apple Developer（$99/年）。
+#
+# 与安卓那条流水线的关系：同一个 package.json 的 mobileVersion 作为版本号，
+# 标签形如 ios-v1.3.12（与 apk-v1.3.12 平行，互不影响）。
+name: iOS 未签名包
+
+on:
+  push:
+    tags:
+      - "ios-v*"
+    # 开发期便利：改到 iOS 壳或前端就顺手编译一次（只是上传 artifact，不碰 Release）。
+    # 等壳稳定了可以删掉这三行，只留标签触发。
+    branches:
+      - main
+    paths:
+      - "mobile/ios/**"
+      - "mobile/app/**"
+      - "src/**"
+      - ".github/workflows/ios-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # macOS runner 自带 Xcode；arm64 机器直接产出 arm64 包。
+    runs-on: macos-14
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号一致性（标签 ↔ package.json 的 mobileVersion）
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#ios-v}"
+          pkg=$(node -p "require('./package.json').mobileVersion")
+          echo "标签=$tag package.json=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::标签 ios-v$tag 与 package.json 的 mobileVersion $pkg 不一致，请先改版本号再打标签"
+            exit 1
+          fi
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建网页产物
+        run: npm run build:mobile
+
+      - name: 把网页产物装进 iOS 工程
+        run: |
+          mkdir -p mobile/ios/www
+          rm -rf mobile/ios/www/*
+          cp -R dist/mobile/app/. mobile/ios/www/
+          ls mobile/ios/www | head -20
+
+      - name: 生成 Xcode 工程（XcodeGen）
+        working-directory: mobile/ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          ls -la
+
+      - name: 编译（不签名）
+        working-directory: mobile/ios
+        run: |
+          version=$(node -p "require('../../package.json').mobileVersion")
+          set -o pipefail
+          xcodebuild \
+            -project ToolCove.xcodeproj \
+            -target ToolCove \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CONFIGURATION_BUILD_DIR="$PWD/out" \
+            MARKETING_VERSION="$version" \
+            CURRENT_PROJECT_VERSION="1" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ENTITLEMENTS="" \
+            build | tail -60
+
+      - name: 校验产物并打包 ipa
+        working-directory: mobile/ios
+        run: |
+          set -e
+          app=out/ToolCove.app
+          test -d "$app" || { echo "::error::没有产出 ToolCove.app"; exit 1; }
+          test -f "$app/ToolCove" || { echo "::error::可执行文件缺失"; exit 1; }
+          test -f "$app/www/index.html" || { echo "::error::网页产物没有进包（www/index.html 缺失）"; exit 1; }
+          echo "架构：$(lipo -info "$app/ToolCove")"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist"
+          rm -rf Payload && mkdir Payload
+          cp -R "$app" Payload/
+          zip -qry ToolCove-unsigned.ipa Payload
+          ls -lh ToolCove-unsigned.ipa
+          "$GITHUB_WORKSPACE/mobile/ios/verify-ipa.sh" "$app" || true
+
+      - name: 保存产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolcove-ios-unsigned
+          path: mobile/ios/ToolCove-unsigned.ipa
+          if-no-files-found: error
+
+      - name: 挂到 Release
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag="ios-v$(node -p "require('./package.json').mobileVersion")"
+          version=$(node -p "require('./package.json').mobileVersion")
+          ipa="mobile/ios/ToolCove-unsigned.ipa"
+          size=$(du -h "$ipa" | cut -f1)
+          notes=$(cat <<EOF
+          ToolCove iOS 版 ios-v$version（$size，**未签名**）
+
+          ## 怎么装（免费 Apple ID，不需要开发者账号）
+          1. 下载下面的 `ToolCove-unsigned.ipa` 到电脑（Windows 即可）；
+          2. 用 **爱思助手**（i4Tools）或 **Sideloadly** 打开它，用你的 **Apple ID** 重新签名；
+          3. 工具会自动装进连接的 iPhone（首次要在设置里信任开发者：设置 → 通用 → VPN 与设备管理）。
+
+          ## 必读
+          - **未签名包不能直接安装**：iOS 不存在"无签名运行"，必须重签这一步；
+          - 免费 Apple ID 的签名 **7 天过期**，到期用同一个工具重签一次即可（不是重新装）；
+          - 想免重签只能加入 Apple Developer Program（约 $99/年）；
+          - 这个包与网页版**同一份前端代码**，原生能力目前覆盖：HTTP 请求、密钥加解密、
+            下载到「文件 App ▸ ToolCove」、拍照/相册选图；其余原生能力会在后续版本补齐
+            （未实现的命令会如实提示，网页能力照常可用）。
+
+          安装遇到问题请看 `docs/ios-build.md`。
+          EOF
+          )
+          gh release create "$tag" \
+            --title "ToolCove iOS $version（未签名）" \
+            --notes "$notes" \
+            --latest=false \
+            "$ipa" \
+          || gh release upload "$tag" "$ipa" --clobber
