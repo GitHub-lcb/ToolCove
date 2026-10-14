@@ -76,6 +76,20 @@ describe("listCloudObjects（七牛）", () => {
     expect(http.calls[0].url).toContain("prefix=photos%2F");
   });
 
+  it("原生分支必须把凭证发成**键值对数组**——传对象会被安卓桥整份丢掉，表现为 401", async () => {
+    // 这次真机上踩的坑：headers 传了对象，安卓桥 `for (h in args.arr("headers"))` 全部 continue，
+    // Authorization 与 Content-Type 一个都没出去 → 服务端看到未签名请求 → 401 BadToken，
+    // 而界面上完全看不出"头没发出去"这一层。约定是数组（Rust / 安卓桥 / 浏览器适配层三边一致）。
+    const http = fakeHttp({ status: 200, body: ITEMS });
+    await listCloudObjects({ config: CONFIG, prefix: "photos/", http, fetchImpl: offlineFetch });
+    const sent = http.calls[0];
+    expect(Array.isArray(sent.headers), "headers 必须是数组，不能是对象").toBe(true);
+    expect(sent.headers).toEqual([
+      ["Authorization", expect.stringContaining("Qiniu AK:")],
+      ["Content-Type", "application/x-www-form-urlencoded"],
+    ]);
+  });
+
   it("非 2xx 抛错时带上服务端原话（401 时只有它能说明问题）", async () => {
     const http = fakeHttp({ status: 401, body: '{"error":"bad token"}' });
     await expect(listCloudObjects({ config: CONFIG, http, fetchImpl: offlineFetch })).rejects.toThrow(/401/);

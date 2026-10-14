@@ -161,6 +161,23 @@ class BridgeTest {
         assertTrue(out.contains("\"open\":false"))
     }
 
+    // ---------- headers 形状 ----------
+    @Test
+    fun `headers 同时接受键值对数组与对象`() {
+        val asArray = JsonReader("""{"headers":[["Authorization","Qiniu AK:s"],["Content-Type","application/x-www-form-urlencoded"]]}""").parse()
+        assertEquals(
+            listOf("Authorization" to "Qiniu AK:s", "Content-Type" to "application/x-www-form-urlencoded"),
+            HttpNative.headerPairs(asArray),
+        )
+        // 对象形状也收：否则整份头被静默丢掉，原生端会变成"签了名却 401"
+        val asObject = JsonReader("""{"headers":{"Authorization":"Qiniu AK:s"}}""").parse()
+        assertEquals(listOf("Authorization" to "Qiniu AK:s"), HttpNative.headerPairs(asObject))
+        // 数组优先，同名不重复
+        val both = JsonReader("""{"headers":[["Authorization","A"]],"a":1}""").parse()
+        assertEquals(listOf("Authorization" to "A"), HttpNative.headerPairs(both))
+        assertEquals(emptyList<Pair<String, String>>(), HttpNative.headerPairs(JsonReader("""{}""").parse()))
+    }
+
     // ---------- 云端照片下载 ----------
     @Test
     fun `download_to_device 把签名头原样交给原生并回传落盘位置`() {

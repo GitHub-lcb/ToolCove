@@ -90,7 +90,10 @@ export async function qiniuManagementRequest({ config, method, host, pathAndQuer
     const result = await send({
       method,
       url: `https://${host}${pathAndQuery}`,
-      headers: { Authorization: auth, "Content-Type": contentType },
+      // ⚠️ `http_request` 的 headers 约定是**键值对数组**（Rust / 安卓桥 / 浏览器适配层三边一致），
+      // 传对象会被静默丢掉——安卓上表现为"凭证没发出去 → 401"，而是被丢掉还是发错
+      // 在界面上完全看不出来（这个坑真机上踩过一次）。
+      headers: [["Authorization", auth], ["Content-Type", contentType]],
       timeoutMs: 20000,
     });
     const status = Number(result?.status || 0);
@@ -104,7 +107,7 @@ export async function qiniuManagementRequest({ config, method, host, pathAndQuer
     payload = await send({
       method: "POST",
       url: relayUrl,
-      headers: { "Content-Type": "application/json" },
+      headers: [["Content-Type", "application/json"]],
       body: JSON.stringify({
         url: `https://${host}${pathAndQuery}`,
         method,

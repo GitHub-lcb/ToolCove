@@ -16,7 +16,13 @@ export async function browserHttpRequest(args = {}) {
 
   const method = String(args.method || "GET").toUpperCase();
   const headers = new Headers();
-  for (const item of Array.isArray(args.headers) ? args.headers : []) {
+  // 约定是键值对数组（与 Rust / 安卓桥一致）。这里**顺带兼容对象形状**：
+  // 少一个头在浏览器里往往"看着也对"，到原生端就变成 401 之类的怪错误，
+  // 与其让调用方各自踩一遍，不如在入口处一并收下。
+  const pairs = Array.isArray(args.headers)
+    ? args.headers
+    : Object.entries(args.headers || {});
+  for (const item of pairs) {
     const [key, value] = Array.isArray(item) ? item : [item?.name, item?.value];
     if (key && String(key).trim()) headers.set(String(key).trim(), String(value ?? ""));
   }

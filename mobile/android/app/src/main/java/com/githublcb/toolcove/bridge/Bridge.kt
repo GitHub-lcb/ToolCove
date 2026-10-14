@@ -422,10 +422,7 @@ class HttpNative(private val timeoutMs: Int = 30_000) : NativeOps {
             instanceFollowRedirects = true
             // 有些站按 UA 拒绝空 UA 的请求，给一个中性的
             setRequestProperty("User-Agent", "ToolCove/1.0 (Android)")
-            for (header in args.arr("headers")) {
-                val pair = (header as? JsonValue.JArr)?.items ?: continue
-                val name = pair.getOrNull(0)?.asStringOrNull() ?: continue
-                val value = pair.getOrNull(1)?.asStringOrNull() ?: ""
+            for ((name, value) in headerPairs(args)) {
                 setRequestProperty(name, value)
             }
         }
@@ -485,5 +482,27 @@ class HttpNative(private val timeoutMs: Int = 30_000) : NativeOps {
     companion object {
         /** 供测试与调试：把字节转 Base64（与前端 bodyBase64 的约定一致）。 */
         fun base64(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
+
+        /**
+         * 读 headers。约定是**键值对数组**（Rust / 安卓桥 / 浏览器适配层三边一致），
+         * 这里**顺带兼容对象形状**：调用方少写一层、整份头被静默丢掉，在原生端会变成
+         * "明明签了名却 401" 这种极难查的错（前端真踩过：Authorization 全丢）。
+         * 纯函数，公开给 JVM 单测。
+         */
+        fun headerPairs(args: JsonValue): List<Pair<String, String>> {
+            val pairs = mutableListOf<Pair<String, String>>()
+            for (item in args.arr("headers")) {
+                val pair = (item as? JsonValue.JArr)?.items ?: continue
+                val name = pair.getOrNull(0)?.asStringOrNull() ?: continue
+                pairs += name to (pair.getOrNull(1)?.asStringOrNull() ?: "")
+            }
+            val asObject = (args as? JsonValue.JObj)?.fields?.get("headers") as? JsonValue.JObj
+            asObject?.fields?.forEach { (name, value) ->
+                val text = value.asStringOrNull() ?: return@forEach
+                // 数组形状优先：同一名字不重复加
+                if (pairs.none { it.first.equals(name, ignoreCase = true) }) pairs += name to text
+            }
+            return pairs
+        }
     }
 }
