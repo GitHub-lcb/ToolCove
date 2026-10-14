@@ -37,6 +37,11 @@ class BridgeTest {
         }
         override fun encrypt(plain: String) = "enc:$plain"
         override fun decrypt(cipher: String) = cipher.removePrefix("enc:")
+        var lastDownload: Triple<String, Map<String, String>, String>? = null
+        override fun downloadToDevice(url: String, headers: Map<String, String>, fileName: String): Map<String, Any?> {
+            lastDownload = Triple(url, headers, fileName)
+            return mapOf("ok" to true, "name" to fileName, "location" to "下载/ToolCove/$fileName", "size" to 3)
+        }
     }
 
     private fun bridge(native: NativeOps = FakeNative()) = Bridge(native)
@@ -154,5 +159,31 @@ class BridgeTest {
         val out = Bridge(HttpNative()).dispatch("network_tcp_check", """{"host":"127.0.0.1","port":9,"timeoutMs":300}""")
         assertFalse("TCP 失败是检测结果，不该变成 __error：$out", out.contains("__error"))
         assertTrue(out.contains("\"open\":false"))
+    }
+
+    // ---------- 云端照片下载 ----------
+    @Test
+    fun `download_to_device 把签名头原样交给原生并回传落盘位置`() {
+        val native = FakeNative()
+        val json = bridge(native).dispatch(
+            "download_to_device",
+            """{"url":"https://s3-cn-south-1.qiniucs.com/luqian520/photos/a.jpg","headers":{"Authorization":"AWS4-HMAC-SHA256 x","x-amz-date":"20261014T000000Z"},"fileName":"a.jpg"}""",
+        )
+        val parsed = JsonReader(json).parse()
+        assertEquals(true, parsed.bool("ok"))
+        assertEquals("下载/ToolCove/a.jpg", parsed.str("location"))
+        val sent = native.lastDownload
+        assertEquals("https://s3-cn-south-1.qiniucs.com/luqian520/photos/a.jpg", sent?.first)
+        assertEquals("AWS4-HMAC-SHA256 x", sent?.second?.get("Authorization"))
+        assertEquals("20261014T000000Z", sent?.second?.get("x-amz-date"))
+        assertEquals("a.jpg", sent?.third)
+    }
+
+    @Test
+    fun `download_to_device 缺 headers 也不炸（空表）`() {
+        val native = FakeNative()
+        val json = bridge(native).dispatch("download_to_device", """{"url":"https://cdn.example.com/a.jpg","fileName":"a.jpg"}""")
+        assertEquals(true, JsonReader(json).parse().bool("ok"))
+        assertEquals(0, native.lastDownload?.second?.size)
     }
 }

@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl, qiniuEntry, qiniuManagementAuth } from "./cloud.js";
 import { isValidRelayUrl, validatePhotoConfig } from "./config.js";
-import { isFolderMarker, LOCAL_RELAY_URL } from "./cloud.js";
+import { cloudDownloadTarget, downloadCloudObject, isFolderMarker, LOCAL_RELAY_URL } from "./cloud.js";
 
 const CONFIG = {
   provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK",
@@ -317,5 +317,87 @@ describe("目录占位对象不显示（七牛的「创建目录」会写一个 
     expect(isFolderMarker("photos/2026/")).toBe(true);
     expect(isFolderMarker("photos/empty.png")).toBe(false);
     expect(isFolderMarker("")).toBe(false);
+  });
+});
+
+describe("下载：目标 URL 与头（浏览器自己 fetch，App 交给原生）", () => {
+  const REGION = JSON.stringify({ up: { acc: { main: ["upload-z2.qiniup.com"] } }, s3: { region_alias: "cn-south-1", src: { main: ["s3-cn-south-1.qiniucs.com"] } } });
+  const regionFetch = async (url) => {
+    if (String(url).includes("api.qiniu.com")) return { ok: true, status: 200, text: async () => REGION };
+    throw new Error("只该问区域接口");
+  };
+
+  it("S3：GET 必须带 SigV4 头，URL 是路径风格（含桶）", async () => {
+    const target = await cloudDownloadTarget({
+      config: { provider: "s3", endpoint: "s3.example.com", region: "us-east-1", bucket: "mybucket", accessKey: "AK", secretKey: "SK", pathStyle: true },
+      key: "photos/2026/10/a.jpg",
+      now: new Date("2026-10-14T00:00:00Z"),
+    });
+    expect(target.url).toBe("https://s3.example.com/mybucket/photos/2026/10/a.jpg");
+    expect(target.fileName).toBe("a.jpg");
+    expect(target.headers.Authorization.startsWith("AWS4-HMAC-SHA256 Credential=AK/")).toBe(true);
+    expect(target.headers["x-amz-date"]).toBe("20261014T000000Z");
+  });
+
+  it("七牛（浏览器/有 S3 端点）：也走签名 GET，私有空间不必再靠 1 小时令牌", async () => {
+    const target = await cloudDownloadTarget({
+      config: { provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK", domain: "cdn.example.com", privateBucket: true, prefix: "photos" },
+      key: "photos/a.jpg",
+      fetchImpl: regionFetch,
+      now: new Date("2026-10-14T00:00:00Z"),
+    });
+    expect(target.url).toBe("https://s3-cn-south-1.qiniucs.com/luqian520/photos/a.jpg");
+    expect(target.headers.Authorization).toContain("/cn-south-1/s3/aws4_request");
+  });
+
+  it("七牛（区域接口没给 S3 端点）：退回访问域名；私有空间自带下载令牌、无自定义头", async () => {
+    const target = await cloudDownloadTarget({
+      // 换个桶名：区域解析结果按 accessKey+bucket 在模块内缓存，沿用上面的桶会命中缓存、
+      // 就又走 S3 分支了（这条用例要验的恰恰是"解析不到 S3 端点时的退路"）
+      config: { provider: "qiniu", bucket: "fallback-only", accessKey: "AK", secretKey: "SK", domain: "cdn.example.com", privateBucket: true, prefix: "photos" },
+      key: "photos/a.jpg",
+      fetchImpl: async () => ({ ok: false, status: 500, text: async () => "{}" }),
+    });
+    expect(target.url.startsWith("https://cdn.example.com/photos/a.jpg?e=")).toBe(true);
+    expect(target.url).toContain("&token=AK:");
+    expect(Object.keys(target.headers)).toHaveLength(0);
+  });
+
+  it("WebDAV：Basic 头必须是**标准** base64（URL-safe 会把 +/ 换掉，服务端解不出来）", async () => {
+    const target = await cloudDownloadTarget({
+      config: { provider: "webdav", endpoint: "https://dav.example.com/remote.php/dav/files/u", username: "u\u00e9ser", password: "p@ss:word" },
+      key: "photos/a b.jpg",
+    });
+    const b64 = target.headers.Authorization.replace("Basic ", "");
+    expect(b64).not.toMatch(/[-_]/);
+    expect(Buffer.from(b64, "base64").toString("utf8")).toBe("u\u00e9ser:p@ss:word");
+    expect(target.url).toBe("https://dav.example.com/remote.php/dav/files/u/photos/a b.jpg");
+  });
+
+  it("浏览器形态：downloadCloudObject 取成 Blob 交回调用方", async () => {
+    const blob = { size: 3, type: "image/jpeg" };
+    const seen = [];
+    await (async () => {
+      vi.stubGlobal("__MOBILE__", true);
+      vi.stubGlobal("window", {});
+      vi.resetModules();
+      try {
+        const cloud = await import("./cloud.js");
+        const out = await cloud.downloadCloudObject({
+          config: { provider: "s3", endpoint: "s3.example.com", region: "us-east-1", bucket: "b", accessKey: "AK", secretKey: "SK", pathStyle: true },
+          key: "photos/a.jpg",
+          fetchImpl: async (url, init) => {
+            seen.push({ url: String(url), headers: init?.headers || {} });
+            return { ok: true, status: 200, blob: async () => blob };
+          },
+        });
+        expect(out).toMatchObject({ ok: true, native: false, fileName: "a.jpg" });
+        expect(out.blob).toBe(blob);
+      } finally {
+        vi.unstubAllGlobals();
+        vi.resetModules();
+      }
+    })();
+    expect(seen[0].headers.Authorization.startsWith("AWS4-HMAC-SHA256 ")).toBe(true);
   });
 });

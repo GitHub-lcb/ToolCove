@@ -17,7 +17,7 @@ import { visibleFieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
-import { canSendAuthHeader, cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl } from "../../../src/photo/cloud.js";
+import { canSendAuthHeader, cloudProviderOf, deleteCloudObject, downloadCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl } from "../../../src/photo/cloud.js";
 import { checkQiniuSpace, probeQiniuUpload } from "../../../src/photo/qiniu.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
 
@@ -263,6 +263,63 @@ async function saveRename(item) {
   }
 }
 
+const downloading = ref("");
+
+/**
+ * 把 Blob 交给浏览器落地。
+ *
+ * iPhone 优先走系统分享：Safari 对 Blob 的 `<a download>` 支持一向含糊，
+ * 而分享面板里就有「存储到图像」（相册）——用户要的正是那个动作。
+ * 其余平台用 `<a download>`：Chrome / Edge / 桌面浏览器都稳。
+ */
+async function saveBlobToDevice(blob, fileName) {
+  const file = typeof File === "function" ? new File([blob], fileName, { type: blob.type || "application/octet-stream" }) : null;
+  if (file && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return "share";
+    } catch {
+      // 用户取消分享不算失败，继续走下载链接这条更普适的路
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // 立刻 revoke 会让部分浏览器拿到空文件，留一分钟
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return "download";
+}
+
+/**
+ * 下载一张云端照片。
+ *
+ * 两条落地路径由 [downloadCloudObject] 自己挑：手机 App 交给原生写进系统「下载」目录，
+ * 浏览器取成 Blob 再保存/分享。
+ */
+async function downloadItem(item) {
+  if (downloading.value) return;
+  downloading.value = item.key;
+  cloudError.value = "";
+  cloudNotice.value = "";
+  try {
+    const out = await downloadCloudObject({ config: config.value, key: item.key });
+    if (out.native) {
+      cloudNotice.value = t("toolbox.photo.cloudDownloadedNative", { where: out.location || out.fileName });
+      return;
+    }
+    const how = await saveBlobToDevice(out.blob, out.fileName);
+    cloudNotice.value = how === "share" ? "" : t("toolbox.photo.cloudDownloaded", { name: out.fileName });
+  } catch (e) {
+    cloudError.value = t("toolbox.photo.cloudDownloadFailed", { msg: String(e?.message || e) });
+  } finally {
+    downloading.value = "";
+  }
+}
 /**
  * 删除：点两次（第二次才是确认），不弹系统 confirm——WebView 里那个框的样式与语言都不受控。
  * 网页版读不到删除响应（七牛不给 CORS），所以**成败以"删完再列一次"为准**：
@@ -656,6 +713,14 @@ onBeforeUnmount(() => {
                 <button class="m-btn sm" data-role="cloud-rename-cancel" @click="cancelRename">{{ t("toolbox.photo.configCancel") }}</button>
               </template>
               <template v-else>
+                <button
+                  class="m-btn sm"
+                  :disabled="cloudBusy || !!downloading"
+                  data-role="cloud-download"
+                  @click="downloadItem(item)"
+                >
+                  {{ downloading === item.key ? t("common.loading") : t("toolbox.photo.cloudDownload") }}
+                </button>
                 <button class="m-btn sm" :disabled="cloudBusy" data-role="cloud-rename" @click="startRename(item)">
                   {{ t("toolbox.photo.cloudRename") }}
                 </button>

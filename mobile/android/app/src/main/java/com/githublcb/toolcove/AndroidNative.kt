@@ -35,6 +35,7 @@ class AndroidNative(
     private val databases: DatabaseAccess = SqliteAccess(context)
     private val picker = PickerQueue()
     private val updates = UpdateNative(context, launchInstall, launchUnknownSources)
+    private val downloads = DownloadNative(context)
 
     override fun httpRequest(args: JsonValue) = http.httpRequest(args)
     override fun tcpCheck(args: JsonValue) = http.tcpCheck(args)
@@ -45,6 +46,8 @@ class AndroidNative(
     override fun appInfo() = updates.appInfo()
     override fun downloadApk(url: String, sha256: String) = updates.downloadApk(url, sha256)
     override fun installApk(path: String) = updates.installApk(path)
+    override fun downloadToDevice(url: String, headers: Map<String, String>, fileName: String) =
+        downloads.download(url, headers, fileName)
 
     /**
      * 弹选择器并等待用户操作。

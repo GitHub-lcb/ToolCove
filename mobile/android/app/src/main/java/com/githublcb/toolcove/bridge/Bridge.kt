@@ -236,6 +236,14 @@ interface NativeOps {
     fun downloadApk(url: String, sha256: String): Map<String, Any?>? = null
     /** 拉起系统安装页；null 表示不支持。 */
     fun installApk(path: String): Map<String, Any?>? = null
+    /**
+     * 下载一个 URL 到本机「下载」目录，返回 { name, location, size }；null 表示不支持。
+     *
+     * 走原生而不是让 WebView 自己下：WebView 里 `a[download]` 默认没人处理
+     * （要么毫无反应，要么把图片当网页打开），而照片动辄两三兆。
+     * 安全边界（地址策略、文件名净化）在 DownloadKit 里。
+     */
+    fun downloadToDevice(url: String, headers: Map<String, String>, fileName: String): Map<String, Any?>? = null
 }
 
 /**
@@ -276,6 +284,11 @@ class Bridge(private val native: NativeOps) {
                 "app_version" -> JsonValue.of(native.appInfo() ?: mapOf("versionName" to "", "versionCode" to 0)).toJson()
                 "update_download" -> JsonValue.of(unsupported(native.downloadApk(args.str("url"), args.str("sha256")))).toJson()
                 "update_install" -> JsonValue.of(unsupported(native.installApk(args.str("path")))).toJson()
+                // 云端照片落盘（手机端走 MediaStore.Downloads，见 DownloadNative）
+                "download_to_device" -> JsonValue.of(
+                    native.downloadToDevice(args.str("url"), headerMap(args), args.str("fileName"))
+                        ?: throw IllegalStateException("当前平台不支持下载到本机"),
+                ).toJson()
                 else -> error("unsupported", "手机端尚未实现该命令：$command")
             }
         } catch (e: Exception) {
@@ -292,6 +305,13 @@ class Bridge(private val native: NativeOps) {
 
     /** 自动更新能力在浏览器形态与 JVM 桩里不存在：明说"不支持"，而不是把 null 序列化出去。 */
     private fun <T> unsupported(value: T?): T = value ?: throw IllegalStateException("当前平台不支持自动更新")
+
+    /** 把 args.headers 这个 JSON 对象读成字符串表（只取字符串值，其余忽略）。 */
+    private fun headerMap(args: JsonValue): Map<String, String> =
+        ((args as? JsonValue.JObj)?.fields?.get("headers") as? JsonValue.JObj)?.fields
+            ?.mapNotNull { (name, value) -> value.asStringOrNull()?.let { name to it } }
+            ?.toMap()
+            ?: emptyMap()
 
     /**
      * 查询/执行 SQL，返回形状与桌面端一致：

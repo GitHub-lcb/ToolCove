@@ -9,11 +9,11 @@
 //     删/移即使真的执行了也读不到响应，所以**统一用「操作后重新列举」判定成败**——
 //     列表用的是放行 CORS 的 rsf，它的结果才是可信的。
 import { invoke } from "../platform/invoke.js";
-import { isDesktop, isNativeMobile } from "../platform/env.js";
-import { normalizePhotoConfig, photoObjectPath } from "./config.js";
+import { hasNativeBridge, isDesktop, isNativeMobile } from "../platform/env.js";
+import { normalizePhotoConfig, photoHost, photoObjectPath, webdavObjectUrl } from "./config.js";
 import { hmacSha1, resolveQiniuUploadHostDetailed, urlsafeBase64 } from "./qiniu.js";
 import { listObjects, s3Request } from "./upload.js";
-import { uriEncode } from "./sigv4.js";
+import { EMPTY_SHA256, signS3Request, uriEncode } from "./sigv4.js";
 
 const encoder = new TextEncoder();
 
@@ -336,6 +336,89 @@ export async function moveCloudObject({ config, from, to, http, fetchImpl } = {}
   return { ok: true, moved: true };
 }
 
+
+/** Basic 认证头用的**标准** base64（不能复用 URL-safe 那份：+/ 会被换成 -_，服务端解不出来）。 */
+function basicAuth(user, pass) {
+  const raw = `${user}:${pass}`;
+  if (typeof btoa === "function") {
+    let binary = "";
+    for (const byte of encoder.encode(raw)) binary += String.fromCharCode(byte);
+    return `Basic ${btoa(binary)}`;
+  }
+  return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
+}
+
+/**
+ * 下载一个云端对象的「目标」：URL + 需要的头（+ 落盘用的文件名）。
+ *
+ * 三种后端各一条路：
+ *   · 七牛/ S3：**SigV4 签名的 GET**（七牛的 S3 兼容端点已配桶级跨域，浏览器里能直接取到字节；
+ *     私有空间也不必再依赖 1 小时下载令牌）；
+ *   · 七牛但没有 S3 端点（区域接口没答上来）：退回访问域名的直链（私有空间带下载令牌）；
+ *   · WebDAV：直链 + Basic 认证头。
+ *
+ * 单独抽出来是因为**两种落地方式共用一个目标**：浏览器要自己 fetch 成 Blob，
+ * 安卓 App 则把 url+headers 交给原生去下载（不经过 JS，2.7MB 的照片不必过一遍 base64）。
+ */
+export async function cloudDownloadTarget({ config, key, fetchImpl, now } = {}) {
+  const cfg = normalizePhotoConfig(config);
+  const fileName = String(key).split("/").pop() || "photo";
+  if (cfg.provider === "webdav") {
+    return { url: webdavObjectUrl(cfg, key), headers: { Authorization: basicAuth(cfg.username, cfg.password) }, fileName };
+  }
+
+  let s3cfg = cfg.provider === "s3" ? cfg : null;
+  if (!s3cfg && cfg.provider === "qiniu") {
+    const resolved = await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
+    s3cfg = qiniuAsS3Config(cfg, resolved);
+    if (!s3cfg) {
+      // 区域接口没给出 S3 端点：退回访问域名（私有空间用下载令牌，1 小时有效）
+      return { url: await objectPreviewUrl({ config: cfg, key }), headers: {}, fileName };
+    }
+  }
+  if (!s3cfg) throw new Error("unavailable");
+
+  const path = photoObjectPath(s3cfg, key);
+  const signed = await signS3Request({
+    method: "GET",
+    host: photoHost(s3cfg),
+    path,
+    query: [],
+    headers: { "x-amz-content-sha256": EMPTY_SHA256 },
+    payloadHash: EMPTY_SHA256,
+    region: s3cfg.region,
+    accessKey: s3cfg.accessKey,
+    secretKey: s3cfg.secretKey,
+    sessionToken: s3cfg.sessionToken,
+    now,
+  });
+  return {
+    url: `https://${photoHost(s3cfg)}${uriEncode(path, false)}`,
+    headers: { "x-amz-content-sha256": EMPTY_SHA256, "x-amz-date": signed.amzDate, Authorization: signed.authorization },
+    fileName,
+  };
+}
+
+/**
+ * 下载一个云端对象。
+ *
+ *   · 安卓 App（有原生桥）：交给原生下载，直接落到系统的「下载」目录，返回保存位置；
+ *   · 浏览器（手机网页版/桌面网页版）：取成 Blob 交回调用方落地（<a download> 或系统分享）。
+ */
+export async function downloadCloudObject({ config, key, fetchImpl, now } = {}) {
+  const target = await cloudDownloadTarget({ config, key, fetchImpl, now });
+  if (hasNativeBridge && typeof invoke === "function") {
+    const result = await invoke("download_to_device", target);
+    const location = String(result?.location || "");
+    if (!result?.ok && !location) throw new Error(String(result?.message || "下载失败"));
+    return { ok: true, native: true, fileName: target.fileName, location };
+  }
+  const fetchFn = fetchImpl || globalThis.fetch;
+  if (!fetchFn) throw new Error("当前环境没有 fetch");
+  const res = await fetchFn(target.url, { headers: target.headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return { ok: true, native: false, fileName: target.fileName, blob: await res.blob() };
+}
 /**
  * 预览/下载用的 URL：公开空间直接裸链，私有空间带下载令牌。
  * 私有令牌的签名串是**完整 URL + ?e=deadline**（与桌面端 Rust 的 qiniu_download_token 一致）。
