@@ -18,7 +18,7 @@ import { isDesktop } from "../platform/env.js";
 import { formatBytes } from "../downloader.js";
 import { loadToolbox, saveToolbox } from "../toolboxStore.js";
 import { PHOTO_PROVIDERS, defaultPhotoConfig, exportPhotoConfig, normalizePhotoConfig, parsePhotoConfigExport, validatePhotoConfig } from "../photo/config.js";
-import { fieldsOf } from "../photo/fields.js";
+import { visibleFieldsOf } from "../photo/fields.js";
 import { generateDeviceId, parseObjectKey } from "../photo/keys.js";
 import { QUEUE_STATE } from "../photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, savePhotoConfig } from "../photo/session.js";
@@ -43,6 +43,7 @@ const ERROR_KEYS = {
   domainBad: "toolbox.photo.errDomainBad",
   uploadHostEmpty: "toolbox.photo.errUploadHostBad",
   uploadHostBad: "toolbox.photo.errUploadHostBad",
+  relayUrlBad: "toolbox.photo.errRelayUrlBad",
   userEmpty: "toolbox.photo.errUserEmpty",
   passEmpty: "toolbox.photo.errPassEmpty",
 };
@@ -63,7 +64,8 @@ const configured = computed(() => validatePhotoConfig(config.value).ok);
 const providers = computed(() => PHOTO_PROVIDERS.map((p) => ({ ...p, label: t(p.labelKey) })));
 const currentProvider = computed(() => providers.value.find((p) => p.key === config.value.provider) || providers.value[0]);
 const draftProvider = computed(() => providers.value.find((p) => p.key === draft.value?.provider) || currentProvider.value);
-const draftFields = computed(() => fieldsOf(draft.value?.provider));
+// 桌面 App 走 Rust（能发 Authorization 头）；浏览器形态不能，所以那时才显示转发地址
+const draftFields = computed(() => visibleFieldsOf(draft.value?.provider, { nativeRequest: desktopMode }));
 // 桌面端三种后端都能探活（走 Rust）；浏览器形态只有 S3 系能直连（另两家的列举接口不放行跨域）
 const canTest = computed(() => desktopMode || config.value.provider === "s3");
 const configSummary = computed(() => `${config.value.bucket || config.value.domain || config.value.endpoint} · ${config.value.prefix}/`);

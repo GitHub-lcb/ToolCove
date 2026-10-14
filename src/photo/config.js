@@ -19,7 +19,7 @@ export const PHOTO_PROVIDERS = Object.freeze([
     key: "qiniu",
     labelKey: "toolbox.photo.providerQiniu",
     hintKey: "toolbox.photo.providerQiniuHint",
-    fields: ["bucket", "accessKey", "secretKey", "domain", "uploadHost", "privateBucket", "prefix"],
+    fields: ["bucket", "accessKey", "secretKey", "domain", "uploadHost", "privateBucket", "relayUrl", "prefix"],
   },
   {
     key: "webdav",
@@ -47,6 +47,10 @@ export function defaultPhotoConfig() {
     domain: "",
     uploadHost: QINIU_DEFAULT_UPLOAD_HOST,
     privateBucket: true,
+    // 网页版的"补头转发"地址（可选）：七牛管理接口必须带 Authorization 头，
+    // 而它的域名对浏览器预检不放行——网页版只能经一个自建的转发补头。
+    // App 与桌面端走原生请求，永远不需要它。部署方式见 docs/photo-relay.md。
+    relayUrl: "",
     // WebDAV 专有
     username: "",
     password: "",
@@ -85,6 +89,8 @@ export function normalizePhotoConfig(input) {
     domain: bareHost(base.domain),
     uploadHost: bareHost(base.uploadHost) || QINIU_DEFAULT_UPLOAD_HOST,
     privateBucket: base.privateBucket !== false,
+    relayUrl: String(base.relayUrl ?? "").trim(),
+    // 转发地址保留完整 URL（含路径），只做协议校验；空串 = 未配置
     username: String(base.username ?? "").trim(),
     password: String(base.password ?? ""),
     prefix: normalizePrefix(base.prefix),
@@ -113,6 +119,7 @@ export function validatePhotoConfig(input) {
     else if (!HOST_RE.test(cfg.domain)) errors.domain = "domainBad";
     if (!cfg.uploadHost) errors.uploadHost = "uploadHostEmpty";
     else if (!HOST_RE.test(cfg.uploadHost)) errors.uploadHost = "uploadHostBad";
+    if (cfg.relayUrl && !/^https:\/\/[^\s/"']+(?:\/[^\s]*)?$/.test(cfg.relayUrl)) errors.relayUrl = "relayUrlBad";
   } else if (cfg.provider === "webdav") {
     if (!cfg.endpoint) errors.endpoint = "endpointEmpty";
     else if (!/^https?:\/\/[A-Za-z0-9.\-:]+(?:\/[^\s]*)?$/.test(cfg.endpoint)) errors.endpoint = "endpointBad";

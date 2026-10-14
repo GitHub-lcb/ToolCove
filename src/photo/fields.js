@@ -14,6 +14,7 @@ export const PHOTO_FIELDS = {
   domain: { labelKey: "toolbox.photo.fieldDomain", phKey: "toolbox.photo.fieldDomainPh", mono: true },
   uploadHost: { labelKey: "toolbox.photo.fieldUploadHost", phKey: "toolbox.photo.fieldUploadHostPh", mono: true },
   privateBucket: { labelKey: "toolbox.photo.fieldPrivateBucket", type: "checkbox" },
+  relayUrl: { labelKey: "toolbox.photo.fieldRelayUrl", phKey: "toolbox.photo.fieldRelayUrlPh", mono: true },
   username: { labelKey: "toolbox.photo.fieldUsername", mono: true },
   password: { labelKey: "toolbox.photo.fieldPassword", mono: true, type: "password" },
 };
@@ -21,6 +22,19 @@ export const PHOTO_FIELDS = {
 /** kebab-case：data-role 用（accessKey → access-key），e2e 选择器跟着稳定。 */
 export function fieldKebab(key) {
   return String(key).replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
+}
+
+/**
+ * 只在这一端有意义的字段才显示。
+ *
+ * 目前只有 `relayUrl`（补头转发地址）：它服务的是"浏览器发不出 Authorization 头"的形态
+ * （网页版），而 App 与桌面端走原生请求、永远不需要它——在它们那里显示只会让人以为配错了。
+ *
+ * @param {{nativeRequest?: boolean}} options nativeRequest=true 表示这一端能直接发 Authorization 头
+ */
+export function visibleFieldsOf(providerKey, { nativeRequest = true } = {}) {
+  const fields = fieldsOf(providerKey);
+  return nativeRequest ? fields.filter((field) => field.key !== "relayUrl") : fields;
 }
 
 /** 某个 provider 的字段描述列表（顺序 = PHOTO_PROVIDERS 里 fields 的顺序）。 */

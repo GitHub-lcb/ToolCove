@@ -1,7 +1,7 @@
 // 云端对象管理（src/photo/cloud.js）的单测：
 // 这里测的都是"错了就只会看到 401/403、看不出哪儿错"的东西——签名串形状、entry 编码、
 // 列举响应解析、私有预览 URL 的令牌。
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl, qiniuEntry, qiniuManagementAuth } from "./cloud.js";
 
 const CONFIG = {
@@ -116,5 +116,74 @@ describe("预览 URL", () => {
 
   it("没配访问域名：返回空串（界面据此不渲染 img，而不是显示裂图）", async () => {
     expect(await objectPreviewUrl({ config: { ...CONFIG, domain: "" }, key: "a.png" })).toBe("");
+  });
+});
+
+describe("网页版走自建转发（relayUrl）", () => {
+  const CONFIG = {
+    provider: "qiniu",
+    bucket: "luqian520",
+    accessKey: "AK",
+    secretKey: "SK",
+    domain: "cdn.example.com",
+    privateBucket: true,
+    prefix: "photos",
+    relayUrl: "https://relay.example.workers.dev/",
+  };
+
+  /**
+   * 网页形态：有手机产物标记但**没有原生桥** → canSendAuthHeader() 为假 → 必须走 relay。
+   * 这就是 github.io 上那份产物的真实形态。
+   */
+  async function withWebForm(testBody) {
+    vi.stubGlobal("__MOBILE__", true);
+    vi.stubGlobal("window", {});
+    vi.resetModules();
+    try {
+      return await testBody(await import("./cloud.js"));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  }
+
+  it("把签好的凭证交给转发器（POST JSON: url/method/headers），并解析转发器回的 {status, body}", async () => {
+    const calls = [];
+    await withWebForm(async (cloud) => {
+      const http = async (args) => {
+        calls.push(args);
+        return {
+          status: 200,
+          body: JSON.stringify({
+            status: 200,
+            body: JSON.stringify({ items: [{ key: "photos/a.png", fsize: 3, putTime: 17600000000000000, hash: "H" }], marker: "" }),
+          }),
+        };
+      };
+      const out = await cloud.listCloudObjects({ config: CONFIG, prefix: "photos/", http, fetchImpl: offlineFetch });
+      expect(out.objects.map((item) => item.key)).toEqual(["photos/a.png"]);
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://relay.example.workers.dev/");
+    const job = JSON.parse(calls[0].body);
+    expect(job.url).toContain("/list?bucket=luqian520");
+    expect(job.method).toBe("POST");
+    // 凭证由页面本地签好再交给转发器：转发器不接触 SK
+    expect(job.headers.Authorization.startsWith("Qiniu AK:")).toBe(true);
+  });
+
+  it("没配转发：一个请求都不发，直接给出可执行的指引", async () => {
+    let sent = 0;
+    await withWebForm(async (cloud) => {
+      const http = async () => {
+        sent += 1;
+        return { status: 200, body: "{}" };
+      };
+      await expect(
+        cloud.listCloudObjects({ config: { ...CONFIG, relayUrl: "" }, http, fetchImpl: offlineFetch })
+      ).rejects.toThrow(/网页转发地址/);
+    });
+    expect(sent, "没有转发就不该硬发——七牛不认查询参数凭证，发出去只会得到没法定位的 BadToken").toBe(0);
   });
 });

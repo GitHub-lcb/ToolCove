@@ -13,7 +13,7 @@ import { useI18n } from "vue-i18n";
 import { formatBytes } from "../../../src/downloader.js";
 import { capabilities } from "../../../src/platform/env.js";
 import { PHOTO_PROVIDERS, defaultPhotoConfig, exportPhotoConfig, normalizePhotoConfig, parsePhotoConfigExport, validatePhotoConfig } from "../../../src/photo/config.js";
-import { fieldsOf } from "../../../src/photo/fields.js";
+import { visibleFieldsOf } from "../../../src/photo/fields.js";
 import { generateDeviceId } from "../../../src/photo/keys.js";
 import { QUEUE_STATE } from "../../../src/photo/queue.js";
 import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, savePhotoConfig } from "../../../src/photo/session.js";
@@ -36,6 +36,7 @@ const ERROR_KEYS = {
   domainBad: "toolbox.photo.errDomainBad",
   uploadHostEmpty: "toolbox.photo.errUploadHostBad",
   uploadHostBad: "toolbox.photo.errUploadHostBad",
+  relayUrlBad: "toolbox.photo.errRelayUrlBad",
   userEmpty: "toolbox.photo.errUserEmpty",
   passEmpty: "toolbox.photo.errPassEmpty",
 };
@@ -58,7 +59,8 @@ const configured = computed(() => validatePhotoConfig(config.value).ok);
 const providers = computed(() => PHOTO_PROVIDERS.map((p) => ({ ...p, label: t(p.labelKey) })));
 const currentProvider = computed(() => providers.value.find((p) => p.key === config.value.provider) || providers.value[0]);
 const draftProvider = computed(() => providers.value.find((p) => p.key === draft.value?.provider) || currentProvider.value);
-const draftFields = computed(() => fieldsOf(draft.value?.provider));
+// 转发地址只在"这一端发不出 Authorization 头"时才有意义（网页版）
+const draftFields = computed(() => visibleFieldsOf(draft.value?.provider, { nativeRequest: canSendAuthHeader() }));
 // 浏览器形态只有 S3 系能直接探活（七牛的 rsf、WebDAV 的 PROPFIND 都不放行跨域）；
 // 其余后端的连通性验证在桌面端做（走 Rust，不受 CORS 约束）。
 // 能在这台设备上直接自检的后端：S3 系列举即可；七牛用区域接口问"AK + 空间名对不对"

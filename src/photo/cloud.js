@@ -49,30 +49,64 @@ export async function qiniuManagementAuth({ config, method, host, pathAndQuery, 
  * 而 rs/rsf 域名对浏览器预检不放行这个头——所以网页版这条路基本走不通，
  * 失败时要给出可执行的指引，而不是把服务端的 "bad token" 原样甩给用户。
  */
-const WEB_HINT = "（网页版调不动七牛管理接口：它要求 Authorization 头，而浏览器跨域预检不让发——请用安卓 App 的「云端」页查看/管理。）";
+/**
+ * 网页版（没有原生桥）的现状，写成一句话而不是一句服务端报错：
+ *  · 七牛管理接口**只认 Authorization 头**（官方 Go SDK 的 AddToken 只有这一种传法）；
+ *  · 七牛的数据域名对浏览器预检不放行这个头（实测 rsf/rs-z2 系列 OPTIONS 均无 Allow-Headers）；
+ *  · 所以网页版要么经用户自建的转发补头（relayUrl），要么用 App。
+ */
+const WEB_HINT_NO_RELAY =
+  "网页版无法直接调七牛管理接口：它要求 Authorization 头，而七牛的域名对浏览器预检不放行。" +
+  "两个办法：① 用安卓 App 的「云端」页查看/管理；② 在存储配置里填「网页转发地址」——自建一个十几行的转发" +
+  "（部署方式见 docs/photo-relay.md），密钥仍只留在本机浏览器里。";
 
 export async function qiniuManagementRequest({ config, method, host, pathAndQuery, contentType = "application/x-www-form-urlencoded", http }) {
   const auth = await qiniuManagementAuth({ config, method, host, pathAndQuery, contentType });
   const withHeader = canSendAuthHeader();
-  const separator = pathAndQuery.includes("?") ? "&" : "?";
-  const url = withHeader
-    ? `https://${host}${pathAndQuery}`
-    : `https://${host}${pathAndQuery}${separator}access_token=${encodeURIComponent(auth)}`;
   const send = http || ((args) => invoke("http_request", args));
-  const result = await send({
-    method,
-    url,
-    headers: withHeader ? { Authorization: auth, "Content-Type": contentType } : { "Content-Type": contentType },
-    timeoutMs: 20000,
-  });
-  const status = Number(result?.status || 0);
-  const body = String(result?.body ?? "");
-  const ok = status >= 200 && status < 300;
-  // 网页版的 401 几乎必然是"传法不被接受"，而不是凭据错——把这一点说出来，
-  // 否则用户会一直怀疑自己的 AK/SK（我们上一轮就是这么被带着跑的）。
-  if (!ok && !withHeader) {
-    return { ok, status, body: `${body}${body.includes("网页版调不动") ? "" : WEB_HINT}` };
+
+  let status = 0;
+  let body = "";
+  if (withHeader) {
+    // 安卓 / 桌面：原生请求不受 CORS 约束，凭证直接放头里（官方 SDK 的唯一传法）。
+    const result = await send({
+      method,
+      url: `https://${host}${pathAndQuery}`,
+      headers: { Authorization: auth, "Content-Type": contentType },
+      timeoutMs: 20000,
+    });
+    status = Number(result?.status || 0);
+    body = String(result?.body ?? "");
+  } else {
+    const cfg = normalizePhotoConfig(config);
+    if (!cfg.relayUrl) {
+      // 网页版不硬发：七牛不认查询参数凭证（真机验证过），发出去只会得到一句没法定位的 BadToken
+      return { ok: false, status: 0, body: WEB_HINT_NO_RELAY };
+    }
+    // 网页版：经用户自建的转发补上 Authorization 头。页面本地签名，转发器不接触 SK，部署见 docs/photo-relay.md
+    const result = await send({
+      method: "POST",
+      url: cfg.relayUrl,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: `https://${host}${pathAndQuery}`,
+        method,
+        headers: { Authorization: auth, "Content-Type": contentType },
+      }),
+      timeoutMs: 20000,
+    });
+    status = Number(result?.status || 0);
+    body = String(result?.body ?? "");
+    try {
+      const parsed = JSON.parse(body);
+      status = Number(parsed?.status || status);
+      body = String(parsed?.body ?? body);
+    } catch {
+      // 转发器返回的不是 JSON（多半是部署页的 HTML）：原样透出，用户一眼能看出配错了地址
+    }
   }
+
+  const ok = status >= 200 && status < 300;
   return { ok, status, body };
 }
 
@@ -125,7 +159,7 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
   if (!res.ok) {
     // 把"用的哪台主机、怎么传的凭证、什么编码"一并报出来：这三种是排障的全部变量，
     // 排一次就能定位，不必再来回问（这条链路已经因为看不到上下文多花了两轮）。
-    const how = canSendAuthHeader() ? "Authorization 头" : "access_token 查询参数";
+    const how = canSendAuthHeader() ? "Authorization 头（原生）" : normalizePhotoConfig(cfg).relayUrl ? "自建转发" : "未配置转发";
     throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 200)}（host=${host} · ${how} · 签名编码=padded）`);
   }
   let parsed = null;
