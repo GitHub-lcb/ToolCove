@@ -43,7 +43,13 @@ a testable module instead of a component.
   is **generated, not hand-written**: run `npm run gen:tools` and the contract aggregate
   (`src/contracts/index.generated.js`), the component loaders and the action table are rebuilt from
   the directory tree. That is what lets two people add two different tools on two branches without
-  fighting over a shared registration file. If a human has to be the one doing it, say so in the
+  fighting over a shared registration file. The tool's own **i18n entries live inside its package**
+  too — `src/tools/<key>/i18n.<locale>.json` (a nested fragment covering only that tool's subtree)
+  — and `gen:i18n` (`npm run gen:tools` runs it as well) merges every package's fragment into
+  `src/i18n/tools.generated.js`, so adding a tool no longer means editing the shared dictionaries.
+  `i18nFragments.test.js` enforces the two locales' key parity, single source of truth, and that
+  the merged key set stays identical to the pre-migration snapshot. If a human has to be the one
+  doing it, say so in the
   contract's `agentExempt` field instead (Screenshot, Rail Tycoon and Interview prep are the
   accepted exceptions; see "What the agent can drive — and what it cannot" in README).
   `contracts.test.js` enforces the admission rule (actions or a written exemption),

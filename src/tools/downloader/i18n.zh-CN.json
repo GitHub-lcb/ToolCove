@@ -1,0 +1,59 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolDownloader": "多线程下载",
+      "toolDownloaderDesc": "大文件分片并行下载、批量队列与断点续传",
+      "kwDownloader": [
+        "下载",
+        "多线程下载",
+        "分片下载",
+        "断点续传",
+        "批量下载",
+        "模型下载",
+        "权重下载",
+        "大文件",
+        "镜像",
+        "aria2",
+        "线程数"
+      ]
+    },
+    "downloader": {
+      "addTitle": "添加下载地址",
+      "urlLabel": "下载地址（每行一条）",
+      "urlPh": "https://hf-mirror.com/用户/仓库/resolve/main/文件.safetensors",
+      "addBtn": "加入队列",
+      "dirLabel": "保存到",
+      "dirPh": "选择文件夹，或直接粘贴路径",
+      "pickDir": "选择保存文件夹",
+      "connsLabel": "线程数",
+      "connsUnit": "线程",
+      "partsPreview": "将切成 {n} 个分片并行下载",
+      "queueTitle": "下载队列",
+      "queueMeta": "{done} / {total} 完成",
+      "startAll": "全部开始",
+      "pauseAll": "全部暂停",
+      "clearDone": "清除已完成",
+      "emptyTitle": "队列是空的",
+      "emptyHint": "粘贴下载地址后会先探测文件大小，再逐个下载；中断后可从断点继续。",
+      "stateWaiting": "等待中",
+      "stateRunning": "下载中",
+      "statePaused": "已暂停",
+      "stateDone": "已完成",
+      "stateError": "出错",
+      "resumableChip": "可续传",
+      "eta": "剩余 {time}",
+      "probing": "正在获取文件信息…",
+      "startOne": "开始下载",
+      "pauseOne": "暂停（保留断点）",
+      "resumeOne": "从断点继续",
+      "discardTitle": "丢弃断点分片，从头下载",
+      "removeTitle": "从队列移除",
+      "dirEmpty": "请先选择保存位置",
+      "dirRelative": "请填写绝对路径（如 D:\\models）",
+      "dirIllegal": "路径里不能包含 < > | \" * ? 这些字符",
+      "noUrl": "没有识别到可下载的地址（每行需以 http:// 或 https:// 开头）",
+      "deduped": "已跳过 {n} 个同名文件（会互相覆盖）",
+      "unknownError": "下载失败，详见日志"
+    }
+  }
+}

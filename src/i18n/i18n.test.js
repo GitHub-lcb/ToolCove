@@ -1,11 +1,17 @@
 // i18n 基建单测：字典键对齐 + 初始语言决议 + 语言偏好应用
 import { describe, it, expect } from "vitest";
-import zh from "./zh-CN.json";
-import en from "./en-US.json";
-import { flatKeys, resolveInitialLocale, applyLocale, i18n } from "./index.js";
+import { createI18n } from "vue-i18n";
+import zhRaw from "./zh-CN.json";
+import enRaw from "./en-US.json";
+import { flatKeys, mergeMessages, resolveInitialLocale, applyLocale, i18n } from "./index.js";
 import { TOOLBOX_GROUPS, TOOLBOX_TOOLS } from "../toolboxTools.js";
 import { AGENT_TOOL_CATALOG } from "../agent/catalog.js";
 import { ADVICE_KEYS } from "../tools/railTycoon.js";
+
+// 数据源是**合并后的消息**（手写字典 + 工具包片段），不是原始 JSON：
+// pdf 试点后其词条已搬进 src/tools/pdf/i18n.<locale>.json，字典里不再有这些键。
+const zh = mergeMessages("zh-CN", zhRaw);
+const en = mergeMessages("en-US", enRaw);
 
 describe("i18n 字典", () => {
   it("中英文字典键集合完全一致", () => {
@@ -25,17 +31,20 @@ describe("i18n 字典", () => {
   // 而且只在 t(key) 首次调用时爆——表现是「整块界面空白 / 点了没反应」，排查成本极高。
   // 需要输出字面量花括号写 {'{'} / {'}'}，需要输出反斜杠写 \\（单写 \ 会把后面的 { 转义掉）。
   // 例：`-d '{...}'` 必须写成 `-d '{'{'}...{'}'}'`。
+  // 用一个**专用实例**（而非全局 i18n）：两种语言的合并字典都真实装载后再编译，
+  // 否则 en 会因未装载而回退到 zh，等于只测了中文（早先的形态就有这个盲点）。
   it("所有词条都能通过消息编译器（裸花括号会在这里抛错）", () => {
-    const original = i18n.global.locale.value;
-    try {
-      for (const [locale, dict] of [["zh-CN", zh], ["en-US", en]]) {
-        i18n.global.locale.value = locale;
-        for (const key of flatKeys(dict)) {
-          expect(() => i18n.global.t(key), `${locale} ${key}`).not.toThrow();
-        }
+    const probe = createI18n({
+      legacy: false,
+      locale: "zh-CN",
+      fallbackLocale: "zh-CN",
+      messages: { "zh-CN": zh, "en-US": en },
+    });
+    for (const [locale, dict] of [["zh-CN", zh], ["en-US", en]]) {
+      probe.global.locale.value = locale;
+      for (const key of flatKeys(dict)) {
+        expect(() => probe.global.t(key), `${locale} ${key}`).not.toThrow();
       }
-    } finally {
-      i18n.global.locale.value = original;
     }
   });
 

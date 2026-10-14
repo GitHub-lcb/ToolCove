@@ -1,0 +1,17 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolChat": "AI Chat",
+      "toolChatDesc": "Multi-session AI chat with images & prompt presets",
+      "kwChat": [
+        "ai",
+        "chat",
+        "gpt",
+        "prompt",
+        "conversation",
+        "dialogue",
+        "qa"
+      ]
+    }
+  }
+}

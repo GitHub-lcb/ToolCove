@@ -10,12 +10,39 @@
 // 这样既省了一半字典，又不需要「先渲染 key 再补齐」那种闪烁方案。
 import { createI18n } from "vue-i18n";
 import zh from "./zh-CN.json";
+import { TOOL_MESSAGES } from "./tools.generated.js";
 
 export const LOCALES = ["zh-CN", "en-US"];
 export const DEFAULT_LOCALE = "zh-CN";
 
-// 静态包只有 zh-CN 是编译期常量；en-US 走动态 import（Vite 会切成独立 chunk，不进首屏）
-const staticPacks = { "zh-CN": zh };
+/**
+ * 深合并：把工具包的词条片段（overlay）并进手写字典（base）。
+ * 对象递归；数组与标量以 overlay 为准。冲突（标量 vs 子树）由生成器
+ * （scripts/gen-tool-i18n.mjs）与守卫（i18n/i18nFragments.test.js）在构建期拦掉，
+ * 这里只做机械合并——运行时不该为一个「本该在构建期发现」的问题抛错。
+ */
+export function deepMergeMessages(base, overlay) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(overlay || {})) {
+    const existing = out[k];
+    const objectLike = (x) => x && typeof x === "object" && !Array.isArray(x);
+    out[k] = objectLike(v) && objectLike(existing) ? deepMergeMessages(existing, v) : v;
+  }
+  return out;
+}
+
+/** 某语言的完整消息 = 手写字典 + 该语言的工具词条片段（TOOL_MESSAGES 是生成物，见 gen-tool-i18n.mjs）。 */
+export function mergeMessages(locale, base) {
+  return deepMergeMessages(base, TOOL_MESSAGES[locale] || {});
+}
+
+// 静态包只有 zh-CN 是编译期常量；它 = 手写字典 + 该语言的工具片段。
+// en-US 同样在它的动态 import 回调里合并（见下），不把英文工具词条也拉进首屏静态路径。
+//
+// 取舍：tools.generated.js 是**静态** import，因此它本身带两种语言的工具词条——这一份
+// 体积只随「已归包的工具」增长，当前仅 pdf（两语言各 ~96 个叶子键，几 KB），远小于整份字典。
+// 若将来工具词条膨胀到可观体量，再把生成物拆成每语言独立文件、让 en 与字典同走动态 import。
+const staticPacks = { "zh-CN": mergeMessages("zh-CN", zh) };
 
 /** 动态加载某个语言包；已加载过则直接返回。失败返回 null（调用方决定降级策略）。 */
 export async function loadLocaleMessages(locale) {
@@ -23,7 +50,8 @@ export async function loadLocaleMessages(locale) {
   try {
     const mod = locale === "en-US" ? await import("./en-US.json") : null;
     if (!mod) return null;
-    staticPacks[locale] = mod.default || mod;
+    // 合并发生在动态 import 回调里：英文工具词条只在真的需要英文时才拼进消息。
+    staticPacks[locale] = mergeMessages(locale, mod.default || mod);
     return staticPacks[locale];
   } catch {
     return null;
@@ -35,7 +63,7 @@ export const i18n = createI18n({
   locale: DEFAULT_LOCALE,
   // 回退语言刻意留空：字典是按需加载的，vue-i18n 会在需要时重新求值（见下方说明）
   fallbackLocale: DEFAULT_LOCALE,
-  messages: { "zh-CN": zh },
+  messages: { "zh-CN": staticPacks["zh-CN"] },
 });
 
 // 平铺嵌套字典为点分键列表（测试用于校验中英键对齐）

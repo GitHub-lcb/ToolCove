@@ -17,8 +17,15 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import zh from "./i18n/zh-CN.json";
-import en from "./i18n/en-US.json";
+import zhRaw from "./i18n/zh-CN.json";
+import enRaw from "./i18n/en-US.json";
+import { mergeMessages } from "./i18n/index.js";
+
+// 数据源是**合并后的消息**（手写字典 + 各工具包内的 i18n 片段），而不是原始 JSON：
+// pdf 试点后 toolbox.pdf.* / toolbox.registry.toolPdf* / agent.toolPdf* 已搬出字典、住
+// src/tools/pdf/i18n.<locale>.json。语义不变——仍是「源码里用到的键必须真实存在」，只是看合并结果。
+const zh = mergeMessages("zh-CN", zhRaw);
+const en = mergeMessages("en-US", enRaw);
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCAN_DIRS = ["src", "mobile"];

@@ -1,10 +1,16 @@
 // 截图三块界面（工具页 / 遮罩页 / 贴图窗）里的 i18n 键是字面量，缺一个就会把
 // "screenshot.xxx" 直接显示给用户。遮罩页与贴图窗在 Node 下只能渲染空壳（onMounted
 // 才取帧），文案断言覆盖不到，所以这里用一份键清单直接卡两个语言字典。
-// 直读 JSON（不经过 i18n.global）：en-US 是懒加载包，测试里还没加载。
+// 查的是**合并后**的消息（手写字典 + 各工具包片段）：截图工具词条已归包
+// （src/tools/screenshot/i18n.<locale>.json），直读裸 JSON 会查不到。仍不经过 i18n.global
+// ——en-US 是懒加载包，测试里还没加载；mergeMessages 是同步的。
 import { describe, expect, it } from "vitest";
-import zh from "../i18n/zh-CN.json";
-import en from "../i18n/en-US.json";
+import zhRaw from "../i18n/zh-CN.json";
+import enRaw from "../i18n/en-US.json";
+import { mergeMessages } from "../i18n/index.js";
+
+const zh = mergeMessages("zh-CN", zhRaw);
+const en = mergeMessages("en-US", enRaw);
 
 const TOOL_PAGE_KEYS = [
   "subtitle",

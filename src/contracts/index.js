@@ -2,10 +2,11 @@
 // src/contracts/index.generated.js 生成 —— **目录即注册**。
 //
 // 一个工具 = 一个自包含包（就像一份 skill / 一个 MCP server）：
-//   src/tools/<key>/contract.js   纯数据：ui + actions / agentExempt + order（零依赖）
-//   src/tools/<key>/logic.js      可选：纯逻辑，工具界面与 Agent 执行器共用
-//   src/tools/<key>/executor.js   可选：Agent 动作实现（重依赖只在执行那一刻 import）
-//   src/tools/<key>/View.vue      工具界面（懒加载，见 toolComponents.generated.js）
+//   src/tools/<key>/contract.js        纯数据：ui + actions / agentExempt + order（零依赖）
+//   src/tools/<key>/logic.js           可选：纯逻辑，工具界面与 Agent 执行器共用
+//   src/tools/<key>/executor.js        可选：Agent 动作实现（重依赖只在执行那一刻 import）
+//   src/tools/<key>/View.vue           工具界面（懒加载，见 toolComponents.generated.js）
+//   src/tools/<key>/i18n.<locale>.json 可选：本工具的词条片段（归包，见 scripts/gen-tool-i18n.mjs）
 //
 // 新增工具：加一个 src/tools/<key>/ 目录，跑 `npm run gen:tools` 重新生成注册表。
 // 因为注册是扫出来的，两个人在不同分支各加一个工具时不会争抢同一个登记点。

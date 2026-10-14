@@ -1,0 +1,59 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolDownloader": "Multi-Threaded Downloader",
+      "toolDownloaderDesc": "Parallel chunked downloads, batch queue and resume for large files",
+      "kwDownloader": [
+        "download",
+        "multi-threaded download",
+        "chunked download",
+        "resume",
+        "batch download",
+        "model download",
+        "weights",
+        "large file",
+        "mirror",
+        "aria2",
+        "threads"
+      ]
+    },
+    "downloader": {
+      "addTitle": "Add download URLs",
+      "urlLabel": "URLs (one per line)",
+      "urlPh": "https://hf-mirror.com/user/repo/resolve/main/file.safetensors",
+      "addBtn": "Add to queue",
+      "dirLabel": "Save to",
+      "dirPh": "Pick a folder, or paste a path",
+      "pickDir": "Choose destination folder",
+      "connsLabel": "Threads",
+      "connsUnit": "threads",
+      "partsPreview": "Will download as {n} parallel chunks",
+      "queueTitle": "Download queue",
+      "queueMeta": "{done} / {total} done",
+      "startAll": "Start all",
+      "pauseAll": "Pause all",
+      "clearDone": "Clear finished",
+      "emptyTitle": "The queue is empty",
+      "emptyHint": "Paste URLs to probe their size, then download one by one. Interrupted transfers resume where they stopped.",
+      "stateWaiting": "Waiting",
+      "stateRunning": "Downloading",
+      "statePaused": "Paused",
+      "stateDone": "Done",
+      "stateError": "Failed",
+      "resumableChip": "Resumable",
+      "eta": "{time} left",
+      "probing": "Reading file details…",
+      "startOne": "Start download",
+      "pauseOne": "Pause (keeps the resume point)",
+      "resumeOne": "Resume from checkpoint",
+      "discardTitle": "Discard downloaded chunks and start over",
+      "removeTitle": "Remove from queue",
+      "dirEmpty": "Choose a destination first",
+      "dirRelative": "Enter an absolute path (e.g. D:\\models)",
+      "dirIllegal": "The path cannot contain < > | \" * ?",
+      "noUrl": "No downloadable URL found (each line must start with http:// or https://)",
+      "deduped": "Skipped {n} duplicate file name(s) that would overwrite each other",
+      "unknownError": "Download failed, see the log"
+    }
+  }
+}

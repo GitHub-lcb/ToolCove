@@ -1,0 +1,63 @@
+{
+  "toolbox": {
+    "convert": {
+      "errInvalidUtf8": "{label} is not valid UTF-8 text",
+      "base64ResultLabel": "Base64 decode result",
+      "hexResultLabel": "Hex decode result",
+      "errInvalidBase64": "Please enter valid Base64 content",
+      "errInvalidUrlEncoded": "Please enter valid URL-encoded content",
+      "errUnicodeTruncated": "Unicode escape is truncated at the end",
+      "errInvalidUnicode": "Please enter a valid Unicode escape, e.g. \\u4e2d",
+      "errUnsupportedEscape": "Unsupported Unicode escape: \\\\{char}",
+      "errInvalidHex": "Please enter valid Hex content",
+      "errHexOdd": "Hex character count must be even",
+      "errInvalidJsonString": "Please enter valid JSON string escape content",
+      "errJwtNotBase64": "JWT {label} is not valid Base64URL",
+      "errJwtNotJson": "JWT {label} is not valid JSON",
+      "errJwtParts": "JWT must contain three parts separated by dots",
+      "modeJson": "JSON Escape",
+      "modeJwt": "JWT Parse",
+      "phBase64": "Enter text to encode",
+      "phUrl": "Enter URL components or params",
+      "phUnicode": "Enter text to convert",
+      "phHex": "Enter UTF-8 text to convert",
+      "phJson": "Enter JSON string content",
+      "phJwt": "Paste a JWT or Bearer token",
+      "resultPhJwt": "Parse result will show here",
+      "resultPh": "Conversion result will show here",
+      "navLabel": "Conversion type",
+      "dirLabel": "Conversion direction",
+      "encode": "Encode",
+      "decode": "Decode",
+      "jwtBadge": "Parsed locally, signature not verified",
+      "urlSafe": "URL-safe format",
+      "swapTitle": "Swap input and output",
+      "clear": "Clear",
+      "input": "Input",
+      "chars": "{count} chars",
+      "inputAria": "Content to convert",
+      "result": "Result",
+      "copyTitle": "Copy result",
+      "copyHeader": "Copy Header",
+      "copyPayload": "Copy Payload",
+      "convertFailed": "Cannot convert",
+      "copyEmpty": "Nothing to copy{label}",
+      "copied": "Copied{label}",
+      "copyFailed": "Copy failed: {err}",
+      "jwtEmpty": "(empty)",
+      "resultAria": "Conversion result"
+    },
+    "registry": {
+      "toolConvert": "Data Conversion",
+      "toolConvertDesc": "Base64, URL, Unicode, Hex, JWT & JSON escaping",
+      "kwConvert": [
+        "data processing",
+        "data conversion"
+      ]
+    }
+  },
+  "agent": {
+    "toolBase64Decode": "Decode Base64 into text",
+    "toolBase64Encode": "Encode text as Base64"
+  }
+}

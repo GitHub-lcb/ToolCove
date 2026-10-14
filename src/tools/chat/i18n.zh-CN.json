@@ -1,0 +1,17 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolChat": "AI 对话",
+      "toolChatDesc": "多会话 AI 对话，支持图片与提示词模板",
+      "kwChat": [
+        "AI",
+        "对话",
+        "Chat",
+        "聊天",
+        "GPT",
+        "提示词",
+        "智能问答"
+      ]
+    }
+  }
+}

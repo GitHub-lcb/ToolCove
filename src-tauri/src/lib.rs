@@ -340,7 +340,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 /// 托盘菜单文案：编译期嵌入前端 i18n 字典，按 settings.ui.locale 显式 en-US 选英文，其余用中文
 fn tray_labels(app: &tauri::AppHandle) -> [String; 4] {
-    let value = serde_json::from_str::<serde_json::Value>(embedded_dict(app)).unwrap_or_default();
+    let value = embedded_value(app);
     let get = |path: &str| {
         value
             .pointer(path)
@@ -351,11 +351,10 @@ fn tray_labels(app: &tauri::AppHandle) -> [String; 4] {
     [get("/tray/quickNote"), get("/tray/checkUpdate"), get("/tray/showMain"), get("/tray/quit")]
 }
 
-/// 前端 i18n 字典（编译期嵌入）：语言决议与前端 initLocale 对齐，
+/// 是否英文界面：语言决议与前端 initLocale 对齐，
 /// 显式偏好 en-US 用英文，其余（含跟随系统/缺失）按应用主语言中文。
-fn embedded_dict(app: &tauri::AppHandle) -> &'static str {
-    let english = app
-        .path()
+fn is_english(app: &tauri::AppHandle) -> bool {
+    app.path()
         .app_data_dir()
         .ok()
         .and_then(|dir| std::fs::read_to_string(dir.join("settings.json")).ok())
@@ -366,18 +365,65 @@ fn embedded_dict(app: &tauri::AppHandle) -> &'static str {
                 .and_then(|v| v.as_str())
                 .map(|locale| locale == "en-US")
         })
-        .unwrap_or(false);
-    if english {
+        .unwrap_or(false)
+}
+
+/// 前端手写字典（编译期嵌入）：语言决议与前端 initLocale 对齐。
+fn embedded_dict(app: &tauri::AppHandle) -> &'static str {
+    if is_english(app) {
         include_str!("../../src/i18n/en-US.json")
     } else {
         include_str!("../../src/i18n/zh-CN.json")
     }
 }
 
+/// 原生侧要用的工具词条片段（编译期嵌入）。
+///
+/// 工具词条已从手写字典搬进各工具包（src/tools/<key>/i18n.<locale>.json），而原生侧
+/// （截图通知、遮罩工具名）是直接读字典取文案的——所以这里必须把相关片段深合并回来，
+/// 否则 pointer 取不到键，只会落回硬编码兜底（英文界面会串成中文）。新增原生直接读的
+/// 工具命名空间时，在这里补上它的片段。
+fn embedded_fragments(app: &tauri::AppHandle) -> &'static [&'static str] {
+    const EN: &[&str] = &[include_str!("../../src/tools/screenshot/i18n.en-US.json")];
+    const ZH: &[&str] = &[include_str!("../../src/tools/screenshot/i18n.zh-CN.json")];
+    if is_english(app) {
+        EN
+    } else {
+        ZH
+    }
+}
+
+/// 深合并：把 overlay 递归并进 base（对象按 key 递归，其余整体覆盖）——与前端
+/// src/i18n/index.js 的 deepMergeMessages 同语义。
+fn deep_merge(base: &mut serde_json::Value, overlay: &serde_json::Value) {
+    if let (Some(base_map), Some(overlay_map)) = (base.as_object_mut(), overlay.as_object()) {
+        for (key, value) in overlay_map {
+            match base_map.get_mut(key) {
+                Some(existing) => deep_merge(existing, value),
+                None => {
+                    base_map.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    } else {
+        *base = overlay.clone();
+    }
+}
+
+/// 原生侧可用的完整消息：手写字典 + 工具词条片段。
+fn embedded_value(app: &tauri::AppHandle) -> serde_json::Value {
+    let mut value = serde_json::from_str::<serde_json::Value>(embedded_dict(app)).unwrap_or_default();
+    for &fragment in embedded_fragments(app) {
+        if let Ok(overlay) = serde_json::from_str::<serde_json::Value>(fragment) {
+            deep_merge(&mut value, &overlay);
+        }
+    }
+    value
+}
+
 /// 原生侧文案（托盘、系统通知等非 WebView 场景）：按 i18n 指针取当前语言文本
 pub(crate) fn localized_text(app: &tauri::AppHandle, pointer: &str) -> Option<String> {
-    let value = serde_json::from_str::<serde_json::Value>(embedded_dict(app)).ok()?;
-    value.pointer(pointer).and_then(|v| v.as_str()).map(String::from)
+    embedded_value(app).pointer(pointer).and_then(|v| v.as_str()).map(String::from)
 }
 
 #[cfg(test)]

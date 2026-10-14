@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import en from "../../i18n/en-US.json";
-import zh from "../../i18n/zh-CN.json";
+import enRaw from "../../i18n/en-US.json";
+import zhRaw from "../../i18n/zh-CN.json";
+import { mergeMessages } from "../../i18n/index.js";
 import {
   buildExportPayload,
   categoriesOf,
@@ -21,6 +22,10 @@ import {
   trimHistory,
   VAR_MAX_LEN,
 } from "./promptLib.js";
+
+// 提示词工具词条已归包（src/tools/prompt/i18n.<locale>.json）：查合并后的messages。
+const en = mergeMessages("en-US", enRaw);
+const zh = mergeMessages("zh-CN", zhRaw);
 
 const dictAt = (dict, path) => path.split(".").reduce((acc, key) => (acc == null ? acc : acc[key]), dict);
 

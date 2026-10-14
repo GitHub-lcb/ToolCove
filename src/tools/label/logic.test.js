@@ -6,13 +6,19 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import zh from "../../i18n/zh-CN.json";
-import en from "../../i18n/en-US.json";
+import zhRaw from "../../i18n/zh-CN.json";
+import enRaw from "../../i18n/en-US.json";
+import { mergeMessages } from "../../i18n/index.js";
 import {
   ALIGN_OPTIONS, DEFAULT_SETTINGS, ECC_OPTIONS, FONT_OPTIONS, ISSUE_CODES, LABEL_PRESETS, LIMITS,
   MEDIA_OPTIONS, SYMBOLOGY_OPTIONS, VALIGN_OPTIONS,
   formatBytes, issueKey, issueMessage, normalizeSettings, plainSettings, previewGeometry, printerLabel, sourceLines,
 } from "./logic.js";
+
+// 标签工具词条已归包（src/tools/label/i18n.<locale>.json）：这里查合并后的messages，
+// 否则动态拼接的 label 键（align_*/sym_*/issue.*）会「找不到」而假失败。
+const zh = mergeMessages("zh-CN", zhRaw);
+const en = mergeMessages("en-US", enRaw);
 
 function get(obj, path) {
   return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj);

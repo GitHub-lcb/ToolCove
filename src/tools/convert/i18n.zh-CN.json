@@ -1,0 +1,63 @@
+{
+  "toolbox": {
+    "convert": {
+      "errInvalidUtf8": "{label} 不是有效的 UTF-8 文本",
+      "base64ResultLabel": "Base64 解码结果",
+      "hexResultLabel": "Hex 解码结果",
+      "errInvalidBase64": "请输入有效的 Base64 内容",
+      "errInvalidUrlEncoded": "请输入有效的 URL 编码内容",
+      "errUnicodeTruncated": "Unicode 转义末尾缺少内容",
+      "errInvalidUnicode": "请输入有效的 Unicode 转义，如 \\u4e2d",
+      "errUnsupportedEscape": "不支持的 Unicode 转义：\\\\{char}",
+      "errInvalidHex": "请输入有效的 Hex 内容",
+      "errHexOdd": "Hex 字符数必须为偶数",
+      "errInvalidJsonString": "请输入有效的 JSON 字符串转义内容",
+      "errJwtNotBase64": "JWT {label} 不是有效的 Base64URL",
+      "errJwtNotJson": "JWT {label} 不是有效的 JSON",
+      "errJwtParts": "JWT 必须包含由英文句点分隔的三段内容",
+      "modeJson": "JSON 转义",
+      "modeJwt": "JWT 解析",
+      "phBase64": "输入要编码的文本",
+      "phUrl": "输入 URL 组件或参数",
+      "phUnicode": "输入要转换的文本",
+      "phHex": "输入要转换的 UTF-8 文本",
+      "phJson": "输入 JSON 字符串内容",
+      "phJwt": "粘贴 JWT 或 Bearer Token",
+      "resultPhJwt": "解析结果将在这里显示",
+      "resultPh": "转换结果将在这里显示",
+      "navLabel": "转换类型",
+      "dirLabel": "转换方向",
+      "encode": "编码",
+      "decode": "解码",
+      "jwtBadge": "仅本地解析，不验证签名",
+      "urlSafe": "URL 安全格式",
+      "swapTitle": "交换输入输出",
+      "clear": "清空",
+      "input": "输入",
+      "chars": "{count} 字符",
+      "inputAria": "待转换内容",
+      "result": "结果",
+      "copyTitle": "复制结果",
+      "copyHeader": "复制 Header",
+      "copyPayload": "复制 Payload",
+      "convertFailed": "无法转换",
+      "copyEmpty": "没有可复制的{label}",
+      "copied": "已复制{label}",
+      "copyFailed": "复制失败：{err}",
+      "jwtEmpty": "（空）",
+      "resultAria": "转换结果"
+    },
+    "registry": {
+      "toolConvert": "数据转换",
+      "toolConvertDesc": "Base64、URL、Unicode、Hex、JWT 与 JSON 转义",
+      "kwConvert": [
+        "数据处理",
+        "数据转换"
+      ]
+    }
+  },
+  "agent": {
+    "toolBase64Decode": "Base64 转文本",
+    "toolBase64Encode": "文本转 Base64"
+  }
+}

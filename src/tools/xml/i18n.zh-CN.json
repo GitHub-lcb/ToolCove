@@ -1,0 +1,73 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolXml": "XML 报文",
+      "toolXmlDesc": "格式化、压缩、转 JSON、XPath 查询、良构性校验与结构统计",
+      "kwXml": [
+        "XML",
+        "报文",
+        "格式化",
+        "压缩",
+        "转 JSON",
+        "XPath",
+        "校验",
+        "SOAP",
+        "WMS 报文"
+      ]
+    },
+    "xml": {
+      "modeFormat": "格式化",
+      "modeMinify": "压缩",
+      "modeJson": "转 JSON",
+      "modeXpath": "XPath",
+      "modeValidate": "校验",
+      "modeStats": "统计",
+      "input": "XML 报文",
+      "output": "结果",
+      "applyFormat": "格式化写回",
+      "copy": "复制",
+      "download": "下载",
+      "copied": "已复制。",
+      "copyFailed": "复制失败。",
+      "saved": "已下载。",
+      "noChange": "没有需要改动的地方。",
+      "formatted": "已格式化。",
+      "valid": "报文良构（well-formed）。",
+      "validHint": "报文良构。",
+      "xpathLabel": "XPath 表达式",
+      "xpathPh": "//item 或 //item/{'@'}sku",
+      "xpathNote": "XPath 是子集：支持 /a/b、//b、{'@'}attr、[n]、[{'@'}attr='v']、[child='v']、*；不支持函数、轴与 | 联合。位置 [n] 取结果列表的第 n 个（标准 XPath 的含义是每个父节点下的第 n 个）。",
+      "jsonBack": "转回 XML 验证往返",
+      "convertedBack": "已转回 XML。",
+      "statElements": "元素数",
+      "statAttributes": "属性数",
+      "statDepth": "最大深度",
+      "statNames": "不同元素名",
+      "statText": "文本长度",
+      "statNameList": "元素名列表",
+      "err_unclosedTag": "第 {line} 行第 {column} 列：标签没有闭合。",
+      "err_unclosedElement": "第 {line} 行第 {column} 列：元素 <{name}> 没有闭合。",
+      "err_mismatchedTag": "第 {line} 行第 {column} 列：标签不匹配——期望 </{expected}>，实际 </{actual}>。",
+      "err_strayEndTag": "第 {line} 行第 {column} 列：多余的结束标签 </{name}>。",
+      "err_multipleRoots": "第 {line} 行第 {column} 列：XML 只能有一个根元素（找到 {names}）。",
+      "err_emptyTagName": "第 {line} 行第 {column} 列：标签名为空。",
+      "err_invalidTagName": "第 {line} 行第 {column} 列：标签名不合法（{name}）。",
+      "err_invalidAttribute": "第 {line} 行第 {column} 列：属性写法不合法。",
+      "err_attributeWithoutValue": "第 {line} 行第 {column} 列：属性 {name} 没有值（XML 要求属性必须有值）。",
+      "err_attributeNotQuoted": "第 {line} 行第 {column} 列：属性 {name} 的值必须加引号。",
+      "err_unclosedAttribute": "第 {line} 行第 {column} 列：属性 {name} 的引号没有闭合。",
+      "err_ltInAttribute": "第 {line} 行第 {column} 列：属性 {name} 的值里有未转义的 <（应写成 &lt;）。",
+      "err_ltInText": "第 {line} 行第 {column} 列：文本里有未转义的 <（应写成 &lt;）。",
+      "err_unclosedComment": "第 {line} 行第 {column} 列：注释没有闭合（缺少 -->）。",
+      "err_unclosedCdata": "第 {line} 行第 {column} 列：CDATA 没有闭合（缺少 ]]>）。",
+      "err_unclosedPi": "第 {line} 行第 {column} 列：处理指令没有闭合（缺少 ?>）。",
+      "err_unclosedDoctype": "第 {line} 行第 {column} 列：DOCTYPE 没有闭合。",
+      "err_unknown": "第 {line} 行第 {column} 列：{message}"
+    }
+  },
+  "agent": {
+    "toolXmlFormat": "格式化 XML",
+    "toolXmlToJson": "XML 转 JSON",
+    "toolXmlValidate": "校验 XML 良构性"
+  }
+}

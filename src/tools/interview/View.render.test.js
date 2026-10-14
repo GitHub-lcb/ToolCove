@@ -9,12 +9,17 @@ import { resolve } from "node:path";
 import { createSSRApp, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 import { describe, expect, it } from "vitest";
-import zh from "../../i18n/zh-CN.json";
-import en from "../../i18n/en-US.json";
-import { i18n } from "../../i18n/index.js";
+import zhRaw from "../../i18n/zh-CN.json";
+import enRaw from "../../i18n/en-US.json";
+import { i18n, mergeMessages } from "../../i18n/index.js";
 import { CATEGORIES, DIFFICULTIES } from "./interviewBank.js";
 import { RATINGS } from "./interviewProgress.js";
 import InterviewTool from "./View.vue";
+
+// 工具词条已归包（src/tools/<key>/i18n.<locale>.json），查的是**合并后**的messages：
+// 手写字典 + 本包片段。语义不变——仍是「界面引用的键必须真实存在」，只是看生效的那份。
+const zh = mergeMessages("zh-CN", zhRaw);
+const en = mergeMessages("en-US", enRaw);
 
 const t = (key, params) => i18n.global.t(key, params);
 const get = (dict, key) => key.split(".").reduce((node, part) => (node ? node[part] : undefined), dict);

@@ -1,0 +1,73 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolXml": "XML",
+      "toolXmlDesc": "Format, minify, convert to JSON, run XPath queries, check well-formedness and structure",
+      "kwXml": [
+        "XML",
+        "message",
+        "format",
+        "minify",
+        "to JSON",
+        "XPath",
+        "validate",
+        "SOAP",
+        "WMS message"
+      ]
+    },
+    "xml": {
+      "modeFormat": "Format",
+      "modeMinify": "Minify",
+      "modeJson": "To JSON",
+      "modeXpath": "XPath",
+      "modeValidate": "Validate",
+      "modeStats": "Stats",
+      "input": "XML",
+      "output": "Result",
+      "applyFormat": "Format in place",
+      "copy": "Copy",
+      "download": "Download",
+      "copied": "Copied.",
+      "copyFailed": "Copy failed.",
+      "saved": "Downloaded.",
+      "noChange": "Nothing to change.",
+      "formatted": "Formatted.",
+      "valid": "The document is well-formed.",
+      "validHint": "Well-formed.",
+      "xpathLabel": "XPath expression",
+      "xpathPh": "//item or //item/{'@'}sku",
+      "xpathNote": "XPath is a subset: /a/b, //b, {'@'}attr, [n], [{'@'}attr='v'], [child='v'], * are supported; functions, axes and | are not. [n] picks the nth item of the result list (standard XPath means the nth child of each parent).",
+      "jsonBack": "Convert back to XML",
+      "convertedBack": "Converted back to XML.",
+      "statElements": "Elements",
+      "statAttributes": "Attributes",
+      "statDepth": "Max depth",
+      "statNames": "Distinct names",
+      "statText": "Text length",
+      "statNameList": "Element names",
+      "err_unclosedTag": "Line {line}, column {column}: tag is not closed.",
+      "err_unclosedElement": "Line {line}, column {column}: element <{name}> is not closed.",
+      "err_mismatchedTag": "Line {line}, column {column}: mismatched tags — expected </{expected}>, found </{actual}>.",
+      "err_strayEndTag": "Line {line}, column {column}: stray closing tag </{name}>.",
+      "err_multipleRoots": "Line {line}, column {column}: XML allows only one root element (found {names}).",
+      "err_emptyTagName": "Line {line}, column {column}: empty tag name.",
+      "err_invalidTagName": "Line {line}, column {column}: invalid tag name ({name}).",
+      "err_invalidAttribute": "Line {line}, column {column}: malformed attribute.",
+      "err_attributeWithoutValue": "Line {line}, column {column}: attribute {name} has no value (XML requires one).",
+      "err_attributeNotQuoted": "Line {line}, column {column}: the value of attribute {name} must be quoted.",
+      "err_unclosedAttribute": "Line {line}, column {column}: the quote of attribute {name} is not closed.",
+      "err_ltInAttribute": "Line {line}, column {column}: unescaped < in the value of attribute {name} (use &lt;).",
+      "err_ltInText": "Line {line}, column {column}: unescaped < in text (use &lt;).",
+      "err_unclosedComment": "Line {line}, column {column}: comment is not closed (missing -->).",
+      "err_unclosedCdata": "Line {line}, column {column}: CDATA is not closed (missing ]]>).",
+      "err_unclosedPi": "Line {line}, column {column}: processing instruction is not closed (missing ?>).",
+      "err_unclosedDoctype": "Line {line}, column {column}: DOCTYPE is not closed.",
+      "err_unknown": "Line {line}, column {column}: {message}"
+    }
+  },
+  "agent": {
+    "toolXmlFormat": "Format XML",
+    "toolXmlToJson": "Convert XML to JSON",
+    "toolXmlValidate": "Check XML well-formedness"
+  }
+}
