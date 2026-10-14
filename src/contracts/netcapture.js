@@ -1,6 +1,7 @@
 // 接口抓包工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "netcapture",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolNetcapture",
     icon: "search",

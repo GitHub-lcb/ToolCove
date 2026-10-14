@@ -1,6 +1,7 @@
 // 铁路大亨辅助工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "rail",
+  scope: "personal",
   ui: {
     labelKey: "toolbox.registry.toolRail",
     icon: "train",

@@ -3,6 +3,7 @@ import { schema, str } from "./kit.js";
 
 export default {
   key: "pdf",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolPdf",
     icon: "file",

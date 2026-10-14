@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "json",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolJson",
     icon: "braces",

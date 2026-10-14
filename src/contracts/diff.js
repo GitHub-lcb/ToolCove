@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "diff",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolDiff",
     icon: "text",

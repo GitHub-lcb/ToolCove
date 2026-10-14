@@ -3,6 +3,7 @@ import { schema, str, text } from "./kit.js";
 
 export default {
   key: "crypto",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolCrypto",
     icon: "shield",

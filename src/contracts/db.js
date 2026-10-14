@@ -3,6 +3,7 @@ import { schema, str } from "./kit.js";
 
 export default {
   key: "db",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolDb",
     icon: "database",

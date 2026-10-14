@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "xml",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolXml",
     icon: "layers",

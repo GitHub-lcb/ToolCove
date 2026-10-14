@@ -1,6 +1,7 @@
 // 提示词工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "prompt",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolPrompt",
     icon: "wand",

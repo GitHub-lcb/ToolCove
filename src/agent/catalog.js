@@ -74,8 +74,11 @@ const BUSINESS_ACTIONS = [
   },
 ];
 
+// 目录保持全量静态导出（首屏同步读取，不做版本过滤）；版本过滤在消费处
+// （agent/tools.js 的 buildAgentRegistry / listAgentTools）按 meta.scope 进行。
+// 所以投影动作时把契约的 scope 带到每个动作 meta 上——动作本身没有 scope 声明。
 export const AGENT_TOOL_CATALOG = Object.freeze([
-  ...TOOL_CONTRACTS.flatMap((contract) => contract.actions || []),
+  ...TOOL_CONTRACTS.flatMap((contract) => (contract.actions || []).map((action) => ({ ...action, scope: contract.scope }))),
   ...ENGINE_ACTIONS,
   ...BUSINESS_ACTIONS,
 ]);

@@ -34,7 +34,7 @@ vi.mock("../agent/session.js", () => ({
 }));
 
 import { i18n } from "../i18n/index.js";
-import AgentView from "./AgentView.vue";
+import AgentView, { filterRuns } from "./AgentView.vue";
 
 const t = (key, params) => i18n.global.t(key, params);
 
@@ -80,10 +80,55 @@ async function render(over = {}) {
 describe("AgentView 渲染", () => {
   it("空态渲染首屏与右栏能力清单", async () => {
     const html = await render();
-    for (const key of ["agent.emptyTimeline", "agent.capTitle", "agent.history", "agent.capManual", "agent.capSkills"]) {
+    for (const key of ["agent.emptyTimeline", "agent.capManual", "agent.capSkills"]) {
       expect(html, key).toContain(t(key));
     }
     expect(html).not.toContain("undefined");
+  });
+
+  it("三栏布局：左栏会话列表（带搜索框）出现，右栏 tab 切换条没了", async () => {
+    const html = await render();
+    expect(html).toContain("sessions");
+    expect(html).toContain(t("agent.sessionSearchPh"));
+    expect(html).not.toContain("rail-tabs");
+  });
+
+  it("会话搜索过滤：按 input 小写 includes 匹配，空串不过滤", () => {
+    const runs = [
+      { id: "r1", input: "合并两个 PDF 文件" },
+      { id: "r2", input: "Format this JSON" },
+      { id: "r3", input: "" },
+    ];
+    expect(filterRuns(runs, "")).toHaveLength(3);
+    expect(filterRuns(runs, "  ").map((r) => r.id)).toEqual(["r1", "r2", "r3"]);
+    expect(filterRuns(runs, "pdf").map((r) => r.id)).toEqual(["r1"]);
+    expect(filterRuns(runs, "FORMAT").map((r) => r.id)).toEqual(["r2"]);
+    expect(filterRuns(runs, "不存在")).toEqual([]);
+  });
+
+  it("终态渲染交付清单：状态 chip、工具统计、产物 chip（在工具中打开）", async () => {
+    const html = await render({
+      runStatus: "completed",
+      goal: "合并两个 PDF",
+      steps: [
+        { type: "tool_start", id: "c1", tool: "pdf.merge", args: { paths: ["a.pdf", "b.pdf"], output: "/tmp/out/merged.pdf" }, attempt: 1, ts: 1 },
+        { type: "tool_result", id: "c1", tool: "pdf.merge", result: { output: "/tmp/out/merged.pdf", files: 2, bytes: 1024 }, ts: 2 },
+        { type: "final", answer: "完成", ts: 3 },
+      ],
+    });
+    expect(html).toContain("sum-card");
+    expect(html).toContain(t("agent.summaryTitle"));
+    expect(html).toContain(t("agent.summaryTools"));
+    expect(html).toContain("pdf.merge");
+    expect(html).toContain("merged.pdf"); // 产物 chip（basename）
+    expect(html).toContain(t("agent.openInTool"));
+    // 词条缺失不该漏出 key 原文
+    expect(html).not.toMatch(/agent\.[a-zA-Z]+\.[a-zA-Z]/);
+  });
+
+  it("非终态不渲染交付清单", async () => {
+    const html = await render({ steps: [{ type: "final", answer: "完成", ts: 1 }] });
+    expect(html).not.toContain("sum-card");
   });
 
   it("时间线渲染工具卡、notice 与最终答复", async () => {

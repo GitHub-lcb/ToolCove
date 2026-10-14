@@ -10,6 +10,7 @@ import { TOOLBOX_GROUPS } from "./groups.js";
 import { TOOL_COMPONENTS } from "../toolComponents.js";
 
 const RISKS = ["read", "transform", "write", "database"];
+const SCOPES = ["personal", "enterprise", "both"];
 
 describe("工具契约的完整性", () => {
   it("key 唯一，且与工具组件映射一一对应（无孤儿、无缺件）", () => {
@@ -38,6 +39,12 @@ describe("工具契约的完整性", () => {
       const exempt = typeof c.agentExempt === "string" && c.agentExempt.trim().length > 0;
       expect(actions.length > 0 || exempt, `${c.key} 既无 Agent 动作也无豁免理由——没做完`).toBe(true);
       expect(actions.length > 0 && exempt, `${c.key} 同时声明了动作与豁免，自相矛盾`).toBe(false);
+    }
+  });
+
+  it("每个契约都标了版本 scope（个人版/企业版投影的依据，缺省等于对谁可见说不清）", () => {
+    for (const c of TOOL_CONTRACTS) {
+      expect(SCOPES, `${c.key} 缺 scope 或取值非法`).toContain(c.scope);
     }
   });
 

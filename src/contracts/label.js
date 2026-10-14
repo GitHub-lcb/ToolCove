@@ -1,6 +1,7 @@
 // 标签打印工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "label",
+  scope: "personal",
   ui: {
     labelKey: "toolbox.registry.toolLabel",
     icon: "printer",

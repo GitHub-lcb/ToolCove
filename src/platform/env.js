@@ -15,6 +15,23 @@ export const isMobile = typeof __MOBILE__ !== "undefined" && __MOBILE__ === true
 export const isDesktop = !isMobile && (typeof window === "undefined" || !!window.__TAURI_INTERNALS__);
 export const isBrowser = !isMobile && !isDesktop;
 
+// 版本（edition）判定：personal（个人版）/ enterprise（企业版），与上面的平台判定同构——
+// 契约的 scope 字段按它投影出两个版本（见 docs/agent-workspace-plan.md「契约加 scope」）。
+// 现在是常量开关：默认个人版；二期将从 settings 的企业服务器配置派生
+// （isEnterprise = !!企业服务器配置）。globalThis.__TOOLCOVE_EDITION__ 是给测试
+// 与二期企业配置留的钩子，用 typeof 判断，Node 单测环境（无 window）同样安全。
+export const edition = typeof globalThis.__TOOLCOVE_EDITION__ === "string" ? globalThis.__TOOLCOVE_EDITION__ : "personal";
+export const isEnterprise = edition === "enterprise";
+
+/**
+ * 版本过滤判据：个人版隐藏 enterprise 独占，企业版隐藏 personal 独占，both 两边都见。
+ * 判据只写这一份（同 detectNativeBridge 的教训），画廊与 Agent 目录两处消费。
+ * scope 缺省按 both 处理：引擎/业务数据动作（toolKey 为 agent/data）不属于任何工具契约。
+ */
+export function inEdition(scope) {
+  return isEnterprise ? scope !== "personal" : scope !== "enterprise";
+}
+
 /**
  * 探测原生桥。**唯一判据**是 `invoke` 是个函数——不要判某个布尔属性（曾经的 `isMobile === true`）。
  * Kotlin 的 `@get:JavascriptInterface` 成员经 WebView 注入后在 JS 里是**方法**（函数对象），

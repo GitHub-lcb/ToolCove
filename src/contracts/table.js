@@ -3,6 +3,7 @@ import { schema, str, text } from "./kit.js";
 
 export default {
   key: "table",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolTable",
     icon: "table",

@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "convert",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolConvert",
     icon: "repeat",

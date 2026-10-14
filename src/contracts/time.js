@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "time",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolTime",
     icon: "clock",

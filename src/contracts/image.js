@@ -3,6 +3,7 @@ import { schema, str } from "./kit.js";
 
 export default {
   key: "image",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolImage",
     icon: "image",

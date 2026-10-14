@@ -9,7 +9,7 @@
 // settings.agent 是用户可改的 JSON，永不信任：maxSteps / retries / requireConfirmation
 // 都在这里重算，越界值落回默认，防止手改配置绕过运行时的受控边界。
 import { AGENT_CONFIRM_POLICIES, AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../app/settingsConfig.js";
-import { isDesktop } from "../platform/env.js";
+import { isDesktop, inEdition } from "../platform/env.js";
 import { AGENT_TOOL_CATALOG, AGENT_TOOL_NAMES, AGENT_TOOL_BY_NAME } from "./catalog.js";
 import { createToolRegistry } from "./runtime.js";
 
@@ -62,9 +62,10 @@ export function resolveRunOptions(cfg) {
 // 建一个「用户开关」下的工具 registry。resume 守卫用同一个 registry 判定，
 // 所以试图续跑含已停用工具的历史会被既有 canResume 逻辑拒绝，无需额外代码。
 // 浏览器端额外剔除 desktopOnly 工具（依赖原生能力），保证规划器不会选中注定失败的工具。
+// 版本维度同理：按动作 meta.scope（契约投影而来）剔除当前版本不可见的工具。
 export async function buildAgentRegistry(cfg) {
   const disabled = disabledSet(cfg);
-  const tools = (await allTools()).filter((t) => !disabled.has(t.name) && (isDesktop || !t.desktopOnly));
+  const tools = (await allTools()).filter((t) => !disabled.has(t.name) && (isDesktop || !t.desktopOnly) && inEdition(t.scope));
   return createToolRegistry(tools);
 }
 
@@ -73,7 +74,7 @@ export async function buildAgentRegistry(cfg) {
 export function listAgentTools(cfg) {
   const disabled = disabledSet(cfg);
   return AGENT_TOOL_CATALOG
-    .filter((t) => isDesktop || !t.desktopOnly)
+    .filter((t) => (isDesktop || !t.desktopOnly) && inEdition(t.scope))
     .map((t) => ({
       name: t.name,
       risk: t.risk,

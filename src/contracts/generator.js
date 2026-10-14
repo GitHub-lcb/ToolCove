@@ -3,6 +3,7 @@ import { schema } from "./kit.js";
 
 export default {
   key: "generator",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolGenerator",
     icon: "dice",

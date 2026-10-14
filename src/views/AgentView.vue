@@ -1,3 +1,12 @@
+<script>
+// 会话搜索过滤抽成命名导出：渲染测试（SSR）模拟不了输入事件，纯函数才能直接断言过滤行为
+export function filterRuns(runs, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return runs;
+  return runs.filter((rec) => (rec.input || "").toLowerCase().includes(q));
+}
+</script>
+
 <script setup>
 // Agent 工作台：应用首屏。运行态在 src/agent/session.js 的模块级单例里，
 // 视图被 :key="activeModule" 销毁重建也不丢运行、pending 确认与时间线。
@@ -11,10 +20,12 @@ import { buildAgentRegistry, listAgentTools } from "../agent/tools.js";
 import { foldTimeline, payloadText, COLLAPSE_AT } from "../agent/timeline.js";
 import { describePreview, rowKind, rowText } from "../agent/preview.js";
 import { canResume, sanitizeRun } from "../agent/runStore.js";
+import { extractArtifacts } from "../agent/artifacts.js";
 import { visibleToolboxTools, findToolboxTool } from "../toolboxTools.js";
 import RunProgress from "./RunProgress.vue";
 import { askConfirm } from "../ui/confirm.js";
 import { openToolWindow, isTauriEnv } from "../app/toolWindow.js";
+import { setToolPrefill } from "../app/toolPrefill.js";
 import { track } from "../app/telemetry.js";
 import {
   agentSession,
@@ -44,11 +55,12 @@ const emit = defineEmits(["navigate"]);
 const { t } = useI18n();
 const openSettings = inject("openSettings", null);
 
-// payloadText 在模板里会被同一份数据反复调用，这里一次性算好挂到尝试上
+// payloadText 在模板里会被同一份数据反复调用，这里一次性算好挂到尝试上；
+// 产物同理一并算好（extractArtifacts 是纯函数，见 agent/artifacts.js）
 const timeline = computed(() =>
   foldTimeline(agentSession.steps).map((item) =>
     item.kind === "tool"
-      ? { ...item, attempts: item.attempts.map((a) => ({ ...a, argsText: payloadText(a.args), resultText: payloadText(a.result) })) }
+      ? { ...item, attempts: item.attempts.map((a) => ({ ...a, argsText: payloadText(a.args), resultText: payloadText(a.result), artifacts: extractArtifacts(a.result) })) }
       : item
   )
 );
@@ -57,7 +69,7 @@ const toolMeta = computed(() => new Map(listAgentTools(agentSession.cfg).map((x)
 // registry 只建一次：逐行调 canResume 会为 30 行历史重建 30 次 14 个工具定义。
 // 它必须是 await 出来的真 registry——buildAgentRegistry 是 async（工具实现层按需加载），
 // 直接把 Promise 交给 canResume 会在每次渲染历史列表时抛 "registry.get is not a function"。
-// 注意：建 registry 会把整套工具实现层拉进来，所以只在真要画历史列表时才建（见下面 railTab 的 watch）。
+// 注意：建 registry 会把整套工具实现层拉进来，所以只在真要画历史列表时才建（见下面 ensureAgentRegistry）。
 const agentRegistry = ref(null);
 const resumeMap = computed(() => {
   const registry = agentRegistry.value;
@@ -193,24 +205,31 @@ const capGroups = computed(() =>
 );
 const capEnabledCount = computed(() => capTools.value.filter((x) => x.enabled).length);
 const manualTools = visibleToolboxTools();
-const railTab = ref("caps");
 
-// registry 只在切到「最近任务」时建：buildAgentRegistry 会动态拉整套工具实现层
-// （executors + luxon/js-yaml 等，实测约 400KB），放在首屏就把工具箱的懒加载抵消掉了。
-watch(
-  [() => agentSession.cfg, railTab],
-  async ([cfg, tab]) => {
-    if (tab !== "history") return;
-    if (!cfg) {
-      agentRegistry.value = null;
-      return;
-    }
-    const registry = await buildAgentRegistry(cfg);
-    // 等待期间 cfg 又换过、或已经切走这个 tab，就不必再落这个结果
-    if (cfg === agentSession.cfg && railTab.value === "history") agentRegistry.value = registry;
-  },
-  { immediate: true }
-);
+// registry 的懒加载策略：buildAgentRegistry 会动态拉整套工具实现层
+// （executors + luxon/js-yaml 等，实测约 400KB），放首屏就把工具箱的懒加载抵消掉了。
+// 所以推迟到两个时机（都走同一个幂等入口）：启动约 1.2s 后若已有历史可续跑就建一次；
+// 或用户首次把指针移进左栏会话列表时再建。resumeMap 在 registry 未就绪时一律判
+// 「不可续跑」（按钮先灰后亮，比先亮后灭更少误导），逻辑不变。
+let registryFor = null; // 已建 registry 对应的 cfg：换了配置（如关停工具）要重建，否则续跑判定用的是旧开关
+let registryBuilding = false;
+async function ensureAgentRegistry() {
+  const cfg = agentSession.cfg;
+  if (!cfg || registryBuilding) return;
+  if (agentRegistry.value && registryFor === cfg) return;
+  registryBuilding = true;
+  const registry = await buildAgentRegistry(cfg);
+  registryBuilding = false;
+  // 等待期间 cfg 又换过就不落这个结果，下一次触发会按新 cfg 重建
+  if (cfg === agentSession.cfg) {
+    agentRegistry.value = registry;
+    registryFor = cfg;
+  }
+}
+
+// 左栏会话列表：runs 在 session.js 里用 unshift 落记录（最新在前），这里保持原序不翻转
+const sessionQuery = ref("");
+const filteredRuns = computed(() => filterRuns(agentSession.runs, sessionQuery.value));
 
 // 首启引导卡：纯本机 UI 状态而非用户数据，所以走 localStorage（先例：themeMode）
 const HINT_KEY = "tc.agent.hint";
@@ -239,6 +258,10 @@ const answerBox = ref(null);
 onMounted(async () => {
   await initAgentSession();
   if (agentSession.goal && !goal.value) goal.value = agentSession.goal;
+  // 有历史才值得提前建 registry（续跑按钮靠它判定）；没有就等左栏首次 pointerenter
+  setTimeout(() => {
+    if (agentSession.runs.length) ensureAgentRegistry();
+  }, 1200);
 });
 
 function goSettings(section) {
@@ -314,13 +337,25 @@ async function onToggleTool(tool) {
   }
 }
 
-function openManual(toolKey) {
+function openManual(toolKey, prefill) {
   const tool = findToolboxTool(toolKey);
   if (!tool) return;
   track("tool." + tool.key);
+  // 预填先落 localStorage 再走原流程：独立窗口与内嵌降级都在工具组件 onMounted 消费（见 app/toolPrefill.js）。
+  // 已知限制：同工具窗口已开着时 openToolWindow 只聚焦不重挂，预填不会被消费——一期限定「产物 → 新开窗口」场景。
+  if (prefill) setToolPrefill(tool.key, prefill);
   const fallback = () => emit("navigate", { module: "toolbox", id: tool.key });
   if (isTauriEnv()) openToolWindow(tool, { showToast: props.showToast, onFallback: fallback });
   else fallback();
+}
+
+// 「在工具中打开」：多产物（pdf.split 一次拆出一组文件）一期只接第一个，
+// 逐个打开 / 产物面板是二期的活。
+function openArtifact(toolName, artifacts) {
+  const toolKey = toolMeta.value.get(toolName)?.toolKey;
+  const first = artifacts?.[0];
+  if (!toolKey || !first) return;
+  openManual(toolKey, { kind: "open-file", path: first.path });
 }
 
 async function onCopy(text, okKey) {
@@ -419,6 +454,44 @@ const RUN_STATUS = {
 const runMeta = (rec) => RUN_STATUS[rec.status] || { cls: "tc-neutral", key: "agent.statusIdle" };
 const runLabel = (rec) => t(runMeta(rec).key);
 
+// ------- Summary 交付清单（纯派生，不改引擎） -------
+// 为什么是派生而不是引擎生成：一期不动 session.js 的收尾逻辑，视图从现有 steps 现算一份；
+// 把 summary 写进 run 记录落盘是二期的任务列表升级（见 docs/agent-workspace-plan.md）。
+const TERMINAL_STATUS = new Set(["completed", "failed", "cancelled", "max_steps"]);
+const runSummary = computed(() => {
+  const status = agentSession.runStatus;
+  if (!TERMINAL_STATUS.has(status) || !agentSession.steps.length) return null;
+  const counts = new Map();
+  const seen = new Set();
+  const artifacts = [];
+  for (const item of timeline.value) {
+    if (item.kind !== "tool") continue;
+    // 工具卡一张 = 一次调用（重试是卡内的多次尝试，不重复计数）
+    counts.set(item.tool, (counts.get(item.tool) || 0) + 1);
+    for (const a of item.attempts) {
+      if (a.status !== "ok") continue;
+      for (const art of a.artifacts || []) {
+        if (seen.has(art.path)) continue;
+        seen.add(art.path);
+        artifacts.push({ ...art, tool: item.tool });
+      }
+    }
+  }
+  // 遗留说明：只有非圆满终态才有话可说
+  let leftover = "";
+  if (status === "failed") leftover = errorText.value;
+  else if (status === "cancelled") leftover = t("agent.statusCancelled");
+  else if (status === "max_steps") leftover = t("agent.statusMaxSteps");
+  return {
+    goal: agentSession.goal,
+    statusKey: runMeta({ status }).key,
+    cls: runMeta({ status }).cls,
+    tools: [...counts].map(([name, count]) => ({ name, count })),
+    artifacts,
+    leftover,
+  };
+});
+
 // ------- 运行进度条的数据来源 -------
 // 全部是**派生**的，不改引擎：runStatus 反映已结束的运行，status 反映进行中的状态。
 const progressStatus = computed(() => agentSession.runStatus || agentSession.status || "");
@@ -484,7 +557,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
         <button v-for="n in 3" :key="n" class="hint-ex" @click="useExample('agent.example' + n)">{{ t("agent.example" + n) }}</button>
       </div>
       <div class="hint-foot">
-        <button class="link" @click="railTab = 'caps'">{{ t("agent.capTitle") }}</button>
         <button class="link" @click="dismissHint">{{ t("agent.hintDismiss") }}</button>
       </div>
     </section>
@@ -501,6 +573,48 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
     </section>
 
     <div class="body">
+      <!-- 左栏：会话列表（原右栏「最近任务」提升而来）。指针首次进入时触发 registry 懒加载 -->
+      <aside class="sessions" @pointerenter="ensureAgentRegistry">
+        <input
+          v-model="sessionQuery"
+          class="sess-search"
+          type="search"
+          :placeholder="t('agent.sessionSearchPh')"
+          :aria-label="t('agent.sessionSearchPh')"
+        />
+        <p v-if="!agentSession.runs.length" class="rail-desc">{{ t("agent.historyEmpty") }}</p>
+        <p v-else-if="!filteredRuns.length" class="rail-desc">{{ t("agent.sessionNoMatch") }}</p>
+        <article v-for="rec in filteredRuns" :key="rec.id" class="run-item" :class="{ cur: rec.id === agentSession.currentRunId }">
+          <div class="run-top">
+            <span class="run-status">
+              <span class="st-chip sm" :class="runMeta(rec).cls">{{ runLabel(rec) }}</span>
+              <!-- 进行中状态灯：当前 run 且引擎非 idle（waiting 在等人，也算活运行） -->
+              <span v-if="rec.id === agentSession.currentRunId && busy" class="run-live" :title="t('agent.statusRunning')"></span>
+            </span>
+            <span class="run-time">{{ relativeTime(rec.updatedAt || rec.createdAt) }}</span>
+          </div>
+          <p class="run-input" :title="rec.input">{{ rec.input }}</p>
+          <div class="run-meter">
+            {{ t("agent.stepsCount", { n: rec.steps?.length || 0 }) }} · {{ t("agent.tokensCount", { n: fmtNum(rec.usage?.totalTokens) }) }}
+          </div>
+          <div class="run-actions">
+            <button
+              class="link xs"
+              :disabled="busy || !resumeMap.get(rec.id)"
+              :title="resumeMap.get(rec.id) ? t('agent.resume') : t('agent.resumeBlocked')"
+              @click="onResume(rec)"
+            >
+              {{ t("agent.resume") }}
+            </button>
+            <button class="link xs" :disabled="busy" @click="onRerun(rec)">{{ t("agent.rerun") }}</button>
+            <button class="link xs" @click="onCopy(JSON.stringify(sanitizeRun(rec), null, 2), 'agent.copied')">
+              {{ t("agent.copyRun") }}
+            </button>
+            <button class="link xs danger" :disabled="busy" @click="discardRun(rec.id)">{{ t("agent.deleteRun") }}</button>
+          </div>
+        </article>
+      </aside>
+
       <!-- 运行画布 -->
       <div class="canvas">
         <div class="goal-box">
@@ -647,6 +761,14 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                         >
                           {{ openPayloads.has(item.id + "#" + a.n + "#result") ? t("agent.hideResult") : t("agent.showResult") }}
                         </button>
+                        <!-- 产物「在工具中打开」：结果里有落盘文件、且该动作挂了工具箱工具时出现 -->
+                        <button
+                          v-if="a.artifacts.length && toolMeta.get(item.tool)?.toolKey"
+                          class="link xs open-in-tool"
+                          @click="openArtifact(item.tool, a.artifacts)"
+                        >
+                          <Icon name="open" :size="12" />{{ t("agent.openInTool") }}
+                        </button>
                       </div>
                       <pre
                         class="pl-body"
@@ -715,20 +837,39 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <Icon name="alert" :size="15" />
             <pre class="err-text">{{ errorText }}</pre>
           </section>
+
+          <!-- Summary 交付清单：终态后给出「做了什么 / 产出了什么 / 遗留什么」（派生数据，见 script 注释） -->
+          <section v-if="runSummary" class="sum-card">
+            <div class="sum-head">
+              <Icon name="check" :size="14" />
+              <b>{{ t("agent.summaryTitle") }}</b>
+              <span class="st-chip sm" :class="runSummary.cls">{{ t(runSummary.statusKey) }}</span>
+            </div>
+            <p class="sum-goal" :title="runSummary.goal">{{ runSummary.goal }}</p>
+            <div v-if="runSummary.tools.length" class="sum-row">
+              <span class="sum-label">{{ t("agent.summaryTools") }}</span>
+              <span v-for="x in runSummary.tools" :key="x.name" class="tc-chip sm tc-neutral">{{ x.name }} × {{ x.count }}</span>
+            </div>
+            <div v-if="runSummary.artifacts.length" class="sum-row">
+              <span class="sum-label">{{ t("agent.summaryArtifacts") }}</span>
+              <button
+                v-for="art in runSummary.artifacts"
+                :key="art.path"
+                class="m-chip"
+                :title="art.path + ' · ' + t('agent.openInTool')"
+                @click="openArtifact(art.tool, [art])"
+              >
+                <Icon name="open" :size="12" />{{ art.label }}
+              </button>
+            </div>
+            <p v-if="runSummary.leftover" class="sum-leftover">{{ runSummary.leftover }}</p>
+          </section>
         </div>
       </div>
 
-      <!-- 右栏：能力清单 / 最近任务 -->
+      <!-- 右栏：能力清单（三栏化后「最近任务」在左栏，这里不再做 tab 切换） -->
       <aside class="rail">
-        <div class="rail-tabs">
-          <button :class="{ on: railTab === 'caps' }" @click="railTab = 'caps'">{{ t("agent.capTitle") }}</button>
-          <button :class="{ on: railTab === 'history' }" @click="railTab = 'history'">
-            {{ t("agent.history") }}
-            <span v-if="agentSession.runs.length" class="rail-n">{{ agentSession.runs.length }}</span>
-          </button>
-        </div>
-
-        <div v-if="railTab === 'caps'" class="rail-body">
+        <div class="rail-body">
           <p class="rail-desc">{{ t("agent.capDesc", { n: capEnabledCount }) }}</p>
           <section v-for="group in capGroups" :key="group.risk" class="cap-group">
             <h4 class="cap-head">
@@ -820,35 +961,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </button>
           </section>
         </div>
-
-        <div v-else class="rail-body">
-          <p v-if="!agentSession.runs.length" class="rail-desc">{{ t("agent.historyEmpty") }}</p>
-          <article v-for="rec in agentSession.runs" :key="rec.id" class="run-item" :class="{ cur: rec.id === agentSession.currentRunId }">
-            <div class="run-top">
-              <span class="st-chip sm" :class="runMeta(rec).cls">{{ runLabel(rec) }}</span>
-              <span class="run-time">{{ relativeTime(rec.updatedAt || rec.createdAt) }}</span>
-            </div>
-            <p class="run-input" :title="rec.input">{{ rec.input }}</p>
-            <div class="run-meter">
-              {{ t("agent.stepsCount", { n: rec.steps?.length || 0 }) }} · {{ t("agent.tokensCount", { n: fmtNum(rec.usage?.totalTokens) }) }}
-            </div>
-            <div class="run-actions">
-              <button
-                class="link xs"
-                :disabled="busy || !resumeMap.get(rec.id)"
-                :title="resumeMap.get(rec.id) ? t('agent.resume') : t('agent.resumeBlocked')"
-                @click="onResume(rec)"
-              >
-                {{ t("agent.resume") }}
-              </button>
-              <button class="link xs" :disabled="busy" @click="onRerun(rec)">{{ t("agent.rerun") }}</button>
-              <button class="link xs" @click="onCopy(JSON.stringify(sanitizeRun(rec), null, 2), 'agent.copied')">
-                {{ t("agent.copyRun") }}
-              </button>
-              <button class="link xs danger" :disabled="busy" @click="discardRun(rec.id)">{{ t("agent.deleteRun") }}</button>
-            </div>
-          </article>
-        </div>
       </aside>
     </div>
   </div>
@@ -893,8 +1005,12 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .noai p { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 .noai-actions { display: flex; gap: var(--sp-3); }
 
-/* ---------- 两栏 ---------- */
-.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: stretch; }
+/* ---------- 三栏：会话列表 / 运行画布 / 能力清单 ---------- */
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: stretch; }
+/* 三栏都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
+.sessions { width: 264px; flex-shrink: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3); padding-right: 2px; }
+.sess-search { flex-shrink: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); color: var(--text); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); outline: none; }
+.sess-search:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-4); }
 .scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-3); }
 
@@ -991,12 +1107,18 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .err-card { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); color: var(--danger-deep); background: var(--danger-soft); border: 1px solid var(--border-danger); border-radius: var(--r-md); }
 .err-text { flex: 1; min-width: 0; margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--danger-deep); white-space: pre-wrap; word-break: break-word; }
 
+/* ---------- Summary 交付清单 ---------- */
+.sum-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
+.sum-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--primary-hover); }
+.sum-head b { font-size: var(--fs-md); }
+.sum-head .st-chip { margin-left: auto; }
+.sum-goal { margin: 0; font-size: var(--fs-sm); color: var(--text-weak); line-height: var(--lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-sm); }
+.sum-label { flex-shrink: 0; color: var(--muted); font-size: var(--fs-xs); }
+.sum-leftover { margin: 0; font-size: var(--fs-sm); color: var(--warn-deep); line-height: var(--lh-body); }
+
 /* ---------- 右栏 ---------- */
 .rail { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
-.rail-tabs { flex-shrink: 0; display: flex; gap: var(--sp-1); padding: 3px; background: var(--well); border-radius: var(--r-sm); }
-.rail-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px var(--sp-2); font-size: var(--fs-md); font-weight: 600; color: var(--muted); background: transparent; border: none; border-radius: var(--r-xs); cursor: pointer; transition: all 0.15s; }
-.rail-tabs button.on { color: var(--primary-hover); background: var(--card); box-shadow: var(--shadow-tile); }
-.rail-n { padding: 0 5px; font-size: var(--fs-xs); font-family: var(--font-num); color: var(--text-invert); background: var(--primary); border-radius: var(--r-pill); }
 .rail-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: 2px; }
 .rail-desc { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 
@@ -1026,10 +1148,13 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .m-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
 .wide { width: 100%; }
 
-/* ---------- 运行历史 ---------- */
+/* ---------- 会话列表（左栏） ---------- */
 .run-item { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); }
 .run-item.cur { border-color: var(--border-blue); background: color-mix(in srgb, var(--primary) 2.5%, var(--card)); }
 .run-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.run-status { display: inline-flex; align-items: center; gap: 6px; }
+/* 进行中状态灯：复用时间线 .working .dot 的脉冲动画，语义一致（这个 run 还活着） */
+.run-live { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); animation: agentPulse 1.1s ease-in-out infinite; }
 .run-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
 .run-input { margin: 0; font-size: var(--fs-sm); color: var(--text); line-height: var(--lh-tight); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .run-meter { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
@@ -1050,6 +1175,13 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   .link:hover { color: var(--primary-bright); }
   .hint-ex { color: var(--primary-light); }
   .hint-ex:hover { color: var(--primary-bright); }
+}
+
+/* 小窗不挤：1080px 以下先藏左栏会话列表（历史不影响主流程，窄窗优先保住画布与能力清单）。
+   藏的同时要收回 grid 轨道——display:none 不会消灭显式定义的 264px 轨道，会留下一列空白 */
+@media (max-width: 1080px) {
+  .body { grid-template-columns: minmax(0, 1fr) 340px; }
+  .sessions { display: none; }
 }
 
 /* 窄窗口：右栏移到主列下方 */

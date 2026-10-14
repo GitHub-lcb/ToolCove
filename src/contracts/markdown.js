@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "markdown",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolMarkdown",
     icon: "note",

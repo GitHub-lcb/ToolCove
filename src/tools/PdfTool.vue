@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { save as saveDialog, open as openDialog } from "../platform/dialog.js";
@@ -7,6 +7,7 @@ import { downloadBlob } from "../platform/download.js";
 import { isDesktop } from "../platform/env.js";
 import { useDragSort } from "../ui/dragsort.js";
 import { formatFileSize } from "../fileTool.js";
+import { consumeToolPrefill } from "../app/toolPrefill.js";
 import Icon from "../ui/Icon.vue";
 import {
   buildSplitGroups,
@@ -415,6 +416,31 @@ function clearSingle() {
   source.value = null;
   resetSingle();
 }
+
+// —— Agent 产物「在工具中打开」：一次性预填（localStorage 交接，见 app/toolPrefill.js） ——
+onMounted(async () => {
+  const prefill = consumeToolPrefill("pdf");
+  if (!prefill || prefill.kind !== "open-file" || !prefill.path) return;
+  // 非桌面端没有按路径读文件的能力（字节只能来自 <input type=file> 或对话框），直接忽略
+  if (!isDesktop) return;
+  const path = String(prefill.path);
+  const name = path.split(/[\\/]/).pop() || "document.pdf";
+  busy.value = true;
+  // 镜像「打开对话框选中文件后」的加载路径（pickSinglePath）：先清单文件状态、
+  // 切到单文件默认模式（页面操作），再走同一条 readPath 成功路径写入 source
+  resetSingle();
+  selectMode("pages");
+  try {
+    source.value = { id: `${name}-${Date.now()}`, name, size: 0, ...(await readPath(path, name)) };
+  } catch (error) {
+    source.value = null;
+    // 需要口令：不报错，改为在面板里就地输入密码解锁；其余错误走组件现有提示，不崩
+    if (error?.code === "needPassword") unlock.value = { name, path };
+    else fail(pdfInvokeError(error));
+  } finally {
+    busy.value = false;
+  }
+});
 
 // —— 页面操作 ——
 function togglePage(index) {

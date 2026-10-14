@@ -1,6 +1,7 @@
 // AI 对话工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "chat",
+  scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolChat",
     icon: "chat",

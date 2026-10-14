@@ -1,6 +1,7 @@
 // 面试刷题工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "interview",
+  scope: "personal",
   ui: {
     labelKey: "toolbox.registry.toolInterview",
     icon: "book-open",
