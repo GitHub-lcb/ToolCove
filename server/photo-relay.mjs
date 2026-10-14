@@ -11,9 +11,19 @@ import { createServer } from "node:http";
 
 const port = Number(process.argv.includes("--port") ? process.argv[process.argv.indexOf("--port") + 1] : process.env.PORT) || 8127;
 
-// 只转发给七牛的域名（防开放代理）；方法只放 GET/POST/HEAD
-const ALLOWED_HOST = /(^|\.)qiniu(com|cs)?$|(^|\.)qbox\.me$|(^|\.)qiniuio\.com$|(^|\.)qiniucs\.com$/;
-const ALLOWED_METHOD = /^(GET|POST|HEAD)$/
+// 只转发给七牛的域名（防开放代理）；方法只放 GET/POST/HEAD。
+// ⚠️ 用【后缀列表】而不是一条塞满分支的正则：真实域名有
+//   rsf.qbox.me / rs-z2.qbox.me / rsf.qiniuapi.com / api.qiniu.com /
+//   upload-z2.qiniup.com / s3-cn-south-1.qiniucs.com
+// 早先那条正则漏了后三种，会把真实的七牛域名拦成 403（部署完立刻踩）。
+const ALLOWED_SUFFIXES = [".qbox.me", ".qiniu.com", ".qiniuapi.com", ".qiniup.com", ".qiniucs.com"];
+const ALLOWED_METHOD = /^(GET|POST|HEAD)$/;
+
+// 必须是【真后缀】：evil.com、qiniu.com.evil.com、rsf.qbox.me.evil.com 都不通过
+function isAllowedHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return ALLOWED_SUFFIXES.some((suffix) => host === suffix.slice(1) || host.endsWith(suffix));
+}
 
 const server = createServer((req, res) => {
   const cors = {
@@ -51,7 +61,7 @@ const server = createServer((req, res) => {
       return;
     }
     const method = String(job.method || "GET").toUpperCase();
-    if (!ALLOWED_HOST.test(target.hostname) || !ALLOWED_METHOD.test(method)) {
+    if (!isAllowedHost(target.hostname) || !ALLOWED_METHOD.test(method)) {
       res.writeHead(403, cors);
       res.end("forbidden");
       return;

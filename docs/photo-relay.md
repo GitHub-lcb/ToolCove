@@ -23,11 +23,20 @@ export default {
     }
     if (request.method !== "POST") return new Response("POST only", { status: 405, headers: cors() });
     const { url, method, headers } = await request.json();
-    // 只转发给七牛（防开放代理）；GET/POST/HEAD 之外不放行
+    // 只转发给七牛（防开放代理）；GET/POST/HEAD 之外不放行。
+    // ⚠️ 真实域名有：rsf.qbox.me / rs-z2.qbox.me / rsf.qiniuapi.com / api.qiniu.com /
+    //    upload-z2.qiniup.com / s3-cn-south-1.qiniucs.com —— 用后缀列表逐一匹配，
+    //    早期版本用一条塞满分支的正则漏掉了后三种，会被自己的转发器拦成 403。
     const target = new URL(url);
-    if (!/(^|\.)qiniu(com|cs|uap\.com)?$|(^|\.)qbox\.me$|(^|\.)qiniuio\.com$/.test(target.hostname)
-      || !["GET", "POST", "HEAD"].includes(method)) {
+    if (!isAllowedHost(target.hostname) || !["GET", "POST", "HEAD"].includes(method)) {
       return new Response("forbidden", { status: 403, headers: cors() });
+    }
+
+    // 必须是【真后缀】：evil.com、qiniu.com.evil.com、rsf.qbox.me.evil.com 都不通过
+    function isAllowedHost(hostname) {
+      const host = String(hostname || "").toLowerCase();
+      return [".qbox.me", ".qiniu.com", ".qiniuapi.com", ".qiniup.com", ".qiniucs.com"]
+        .some((suffix) => host === suffix.slice(1) || host.endsWith(suffix));
     }
     const upstream = await fetch(target.href, {
       method,
