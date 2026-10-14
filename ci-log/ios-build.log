@@ -1,0 +1,191 @@
+== 版本：1.3.12 ==
+Xcode: Xcode 16.4 Build version 16F6 
+[32m==>[0m [1mDownloading bottle manifests[0m
+✔︎ Bottle Manifest xcodegen (2.46.0)
+[34m==>[0m [1mWould install 1 formula:[0m
+xcodegen
+[32m==>[0m [1mFetching downloads for: [32mxcodegen[39m[0m
+✔︎ Bottle xcodegen (2.46.0)
+[34m==>[0m [1mPouring xcodegen--2.46.0.arm64_sequoia.bottle.1.tar.gz[0m
+🍺  /opt/homebrew/Cellar/xcodegen/2.46.0: 38 files, 7.5MB
+Version: 2.46.0
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+== 工程与资源 ==
+pbxproj objectVersion: objectVersion=77
+total 40
+drwxr-xr-x  10 runner  staff   320 Oct 14 03:24 .
+drwxr-xr-x   6 runner  staff   192 Oct 14 03:24 ..
+-rw-r--r--   1 runner  staff   143 Oct 14 03:24 .gitignore
+-rw-r--r--   1 runner  staff   688 Oct 14 03:24 build.log
+-rwxr-xr-x   1 runner  staff  2066 Oct 14 03:24 ci-build.sh
+-rw-r--r--   1 runner  staff  1635 Oct 14 03:24 project.yml
+drwxr-xr-x   7 runner  staff   224 Oct 14 03:24 ToolCove
+drwxr-xr-x   5 runner  staff   160 Oct 14 03:24 ToolCove.xcodeproj
+-rwxr-xr-x   1 runner  staff  1364 Oct 14 03:24 verify-ipa.sh
+drwxr-xr-x   6 runner  staff   192 Oct 14 03:24 www
+www 文件数：49
+== xcodebuild ==
++ xcodebuild -project ToolCove.xcodeproj -target ToolCove -configuration Release -sdk iphoneos CONFIGURATION_BUILD_DIR=/Users/runner/work/ToolCove/ToolCove/mobile/ios/out MARKETING_VERSION=1.3.12 CURRENT_PROJECT_VERSION=1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= CODE_SIGNING_ENTITLEMENTS= build
+Command line invocation:
+    /Applications/Xcode_16.4.app/Contents/Developer/usr/bin/xcodebuild -project ToolCove.xcodeproj -target ToolCove -configuration Release -sdk iphoneos CONFIGURATION_BUILD_DIR=/Users/runner/work/ToolCove/ToolCove/mobile/ios/out MARKETING_VERSION=1.3.12 CURRENT_PROJECT_VERSION=1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= CODE_SIGNING_ENTITLEMENTS= build
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = 
+    CODE_SIGNING_ALLOWED = NO
+    CODE_SIGNING_ENTITLEMENTS = 
+    CODE_SIGNING_REQUIRED = NO
+    CONFIGURATION_BUILD_DIR = /Users/runner/work/ToolCove/ToolCove/mobile/ios/out
+    CURRENT_PROJECT_VERSION = 1
+    MARKETING_VERSION = 1.3.12
+    SDKROOT = iphoneos18.5
+
+note: Using codesigning identity override: 
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'ToolCove' in project 'ToolCove' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: fe678ead8ccca52ecb38cd8b3e5ed099
+Build description path: /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/XCBuildData/fe678ead8ccca52ecb38cd8b3e5ed099.xcbuilddata
+CreateBuildDirectory /Users/runner/work/ToolCove/ToolCove/mobile/ios/out
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+    builtin-create-build-directory /Users/runner/work/ToolCove/ToolCove/mobile/ios/out
+
+CreateBuildDirectory /Users/runner/work/ToolCove/ToolCove/mobile/ios/build
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+    builtin-create-build-directory /Users/runner/work/ToolCove/ToolCove/mobile/ios/build
+
+ClangStatCache /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/com.apple.DeveloperTools/16.4-16F6/Xcode/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -o /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/com.apple.DeveloperTools/16.4-16F6/Xcode/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove-490ad8430910ab11f0a1ae6f1ba3bee0-VFS-iphoneos/all-product-headers.yaml
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove-490ad8430910ab11f0a1ae6f1ba3bee0-VFS-iphoneos/all-product-headers.yaml
+
+CreateBuildDirectory /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/EagerLinkingTBDs/Release-iphoneos
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove.xcodeproj
+    builtin-create-build-directory /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/EagerLinkingTBDs/Release-iphoneos
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.DependencyStaticMetadataFileList (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.DependencyMetadataFileList (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-project-headers.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-project-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-own-target-headers.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-generated-files.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-generated-files.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-target-headers.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-non-framework-target-headers.hmap (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove_const_extract_protocols.json (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftFileList (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftFileList
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftConstValuesFileList (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.LinkFileList (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.LinkFileList
+
+WriteAuxiliaryFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-OutputFileMap.json (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    write-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-OutputFileMap.json
+
+MkDir /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    /bin/mkdir -p /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app
+
+ProcessInfoPlistFile /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app/Info.plist /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/Info.plist (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    builtin-infoPlistUtility /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -requiredArchitecture arm64 -o /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app/Info.plist
+
+CpResource /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app/www /Users/runner/work/ToolCove/ToolCove/mobile/ios/www (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/runner/work/ToolCove/ToolCove/mobile/ios/www /Users/runner/work/ToolCove/ToolCove/mobile/ios/out/ToolCove.app
+
+SwiftDriver ToolCove normal arm64 com.apple.xcode.tools.swift.compiler (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    builtin-SwiftDriver -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name ToolCove -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -target arm64-apple-ios15.0 -g -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -F /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -c -num-threads 3 -Xcc -ivfsstatcache -Xcc /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/com.apple.DeveloperTools/16.4-16F6/Xcode/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -output-file-map /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.swiftmodule -validate-clang-modules-once -clang-build-session-file /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/org.llvm.clang/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-generated-files.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-own-target-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-project-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/out/include -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-Swift.h -working-directory /Users/runner/work/ToolCove/ToolCove/mobile/ios -no-emit-module-separately-wmo
+
+SwiftCompile normal arm64 Compiling\ AppDelegate.swift,\ AssetServer.swift,\ Bridge.swift,\ WebViewController.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AppDelegate.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AssetServer.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/Bridge.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift (in target 'ToolCove' from project 'ToolCove')
+
+CompileSwift normal arm64 (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    
+/Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AssetServer.swift:153:95: error: cannot convert value of type 'ObjCBool' to expected condition type 'Bool'
+        if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory {
+                                                                                              ^~~~~~~~~~~
+/Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift:70:38: error: 'WKOpenPanelParameters' is only available in iOS 18.4 or newer
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+                                     ^
+/Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift:68:10: note: add @available attribute to enclosing instance method
+    func webView(
+         ^
+/Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift:8:13: note: add @available attribute to enclosing class
+final class WebViewController: UIViewController, WKUIDelegate {
+            ^
+
+Failed frontend command:
+/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AppDelegate.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AssetServer.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/Bridge.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift -supplementary-output-file-map /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/supplementaryOutputs-1 -target arm64-apple-ios15.0 -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -I /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -F /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -no-color-diagnostics -g -debug-info-format\=dwarf -dwarf-version\=4 -swift-version 5 -enforce-exclusivity\=checked -O -serialize-debugging-options -const-gather-protocols-file /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove_const_extract_protocols.json -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/org.llvm.clang/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios -resource-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift -file-compilation-dir /Users/runner/work/ToolCove/ToolCove/mobile/ios -Xcc -ivfsstatcache -Xcc /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/com.apple.DeveloperTools/16.4-16F6/Xcode/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-generated-files.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-own-target-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-project-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/out/include -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources -module-name ToolCove -frontend-parseable-output -disable-clang-spi -target-sdk-version 18.5 -target-sdk-name iphoneos18.5 -external-plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins\#/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server -external-plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/local/lib/swift/host/plugins\#/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server -in-process-plugin-server-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins -plugin-path /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/local/lib/swift/host/plugins -enable-default-cmo -num-threads 3 -o /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/AppDelegate.o -o /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/AssetServer.o -o /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/Bridge.o -o /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/WebViewController.o -index-unit-output-path /ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/AppDelegate.o -index-unit-output-path /ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/AssetServer.o -index-unit-output-path /ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/Bridge.o -index-unit-output-path /ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/WebViewController.o
+SwiftDriver\ Compilation ToolCove normal arm64 com.apple.xcode.tools.swift.compiler (in target 'ToolCove' from project 'ToolCove')
+    cd /Users/runner/work/ToolCove/ToolCove/mobile/ios
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name ToolCove -O -whole-module-optimization -enforce-exclusivity\=checked @/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.SwiftFileList -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -target arm64-apple-ios15.0 -g -Xfrontend -serialize-debugging-options -swift-version 5 -I /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -F /Users/runner/work/ToolCove/ToolCove/mobile/ios/out -c -num-threads 3 -Xcc -ivfsstatcache -Xcc /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/com.apple.DeveloperTools/16.4-16F6/Xcode/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -output-file-map /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove.swiftmodule -validate-clang-modules-once -clang-build-session-file /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/C/org.llvm.clang/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-generated-files.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-own-target-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-all-target-headers.hmap -Xcc -iquote -Xcc /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/ToolCove-project-headers.hmap -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/out/include -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/DerivedSources -emit-objc-header -emit-objc-header-path /Users/runner/work/ToolCove/ToolCove/mobile/ios/build/ToolCove.build/Release-iphoneos/ToolCove.build/Objects-normal/arm64/ToolCove-Swift.h -working-directory /Users/runner/work/ToolCove/ToolCove/mobile/ios -no-emit-module-separately-wmo
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	CompileSwift normal arm64 (in target 'ToolCove' from project 'ToolCove')
+	SwiftCompile normal arm64 Compiling\ AppDelegate.swift,\ AssetServer.swift,\ Bridge.swift,\ WebViewController.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AppDelegate.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/AssetServer.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/Bridge.swift /Users/runner/work/ToolCove/ToolCove/mobile/ios/ToolCove/WebViewController.swift (in target 'ToolCove' from project 'ToolCove')
+(2 failures)
