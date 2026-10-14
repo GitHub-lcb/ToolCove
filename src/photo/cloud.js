@@ -171,10 +171,20 @@ function browserS3Config(cfg, resolved) {
   return canSendAuthHeader() ? null : qiniuAsS3Config(cfg, resolved);
 }
 
-/** 浏览器直连 S3 失败时最可能的原因就是桶没配跨域——把可执行的指引附上。 */
-const CORS_HINT =
-  "（浏览器直连七牛 S3 端点需要给桶配跨域：七牛控制台 → 空间设置 → 跨域资源共享；" +
-  "来源填 https://github-lcb.github.io，方法勾 GET/PUT/POST/DELETE/HEAD，允许头填 * ）";
+/**
+ * 浏览器直连 S3 失败时最可能的原因就是桶没配跨域（或来源填得和页面的 Origin 不一致）——
+ * 把**浏览器实际使用的 Origin** 写进提示里：跨域规则要比对的正是它，
+ * 而它取决于你从哪个地址打开页面（github.io、本地 dev 服务器、还是别的域名），
+ * 让人对着一个猜出来的地址改规则，是我们上一轮多花时间的原因之一。
+ */
+function corsHint() {
+  const origin = typeof location !== "undefined" && location.origin ? location.origin : "https://github-lcb.github.io";
+  return (
+    "（浏览器直连七牛 S3 端点需要给桶配跨域：七牛控制台 → 空间设置 → 跨域资源共享；" +
+    `来源填 ${origin} —— 这是本页实际的 Origin，必须与规则里的完全一致（不带路径、不带结尾斜杠）；` +
+    "方法勾 GET/PUT/POST/DELETE/HEAD，允许头填 * ）"
+  );
+}
 
 /**
  * 列出云端对象（按 key 升序）。
@@ -220,7 +230,7 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
         truncated: !!page.truncated,
       };
     } catch (error) {
-      throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+      throw new Error(`${error?.message || error}${corsHint()}`, { cause: error });
     }
   }
 
@@ -274,7 +284,7 @@ export async function deleteCloudObject({ config, key, http, fetchImpl } = {}) {
         await s3Request({ config: s3cfg, method: "DELETE", path: photoObjectPath(s3cfg, key), fetchImpl });
         return { ok: true, via: "s3" };
       } catch (error) {
-        throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+        throw new Error(`${error?.message || error}${corsHint()}`, { cause: error });
       }
     }
     const host = resolved.rsfHost || QINIU_DEFAULT_RSF_HOST;
@@ -307,7 +317,7 @@ export async function moveCloudObject({ config, from, to, http, fetchImpl } = {}
       await s3Request({ config: s3cfg, method: "DELETE", path: photoObjectPath(s3cfg, from), fetchImpl });
       return { ok: true, moved: true, via: "s3" };
     } catch (error) {
-      throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+      throw new Error(`${error?.message || error}${corsHint()}`, { cause: error });
     }
   }
   const host = resolved.rsfHost || QINIU_DEFAULT_RSF_HOST;
