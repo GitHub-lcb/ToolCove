@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "ToolCove 云同步服务端（零依赖）",
+  "description": "ToolCove 服务端（零依赖）：云同步 + 企业服务器",
   "scripts": {
     "start": "node sync-server.js",
-    "test": "node --test sync-server.test.js"
+    "start:sync": "node sync-server.js",
+    "start:enterprise": "node enterprise-server.js",
+    "test": "node --test sync-server.test.js enterprise-server.test.js"
   }
 }

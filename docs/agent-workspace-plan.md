@@ -126,6 +126,11 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
     不选域时提示词逐字节不变）。
   - **成员/席位管理待服务端**：账号体系、席位配额、令牌签发/吊销必须以服务端为权威来源，
     客户端无法也不应凭空维护名册；读写接口需与服务端一起定契约，故本期待定。
+- **服务端（企业）**：`server/enterprise-server.js`（零依赖 Node）已实现客户端契约
+  （`POST /v1/auth/ping` + `GET/PUT /v1/kv/<key>`，常数时间令牌比对、限流、体积上限、原子写），
+  首次启动自动签发管理员令牌；`server/enterprise-server.test.js`（5 例）与客户端
+  `src/platform/remoteStore.js` 的契约注释一一对应。部署与令牌表见 `server/README.md`。
+  成员/席位接口仍待定（需服务端账号语义）。
 
 ## 分期计划（原始规划）
 

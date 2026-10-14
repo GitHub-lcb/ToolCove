@@ -88,7 +88,8 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   same task / workspace / manual surfaces. Enterprise adds a **Admin** settings section (visible only
   in enterprise mode): per-tool access switches, a risk ceiling that caps what the agent may run,
   and an append-only **audit log** of every tool decision (allow/deny, by human or by policy) with
-  JSON export. Audit is recorded locally in both editions; the section just surfaces it.
+  JSON export. Audit is recorded locally in both editions; the section just surfaces it. The company
+  server is zero-dependency Node — `server/enterprise-server.js`, see [`server/README.md`](server/README.md).
 
 ### Delivery management (your own data)
 
@@ -475,7 +476,8 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   游戏 / 玩票类工具按 `scope: personal` 自动隐身。两个版本共用同一份任务面 / 工作面 / 手动面骨架。
   企业版多一个**「管理」设置段**（仅企业态可见）：按工具开关准入、用风险上限封顶 Agent 能跑的动作、
   以及一份只增不改的**操作审计日志**（每次工具决定都留痕：允许/拒绝、由人还是由策略），可导出 JSON；
-  审计在两个版本都本地记录，该段只负责展示。
+  审计在两个版本都本地记录，该段只负责展示。企业服务器是零依赖 Node 服务——
+  `server/enterprise-server.js`，用法见 [`server/README.md`](server/README.md)。
 
 ### 研发管理（你自己的交付数据）
 
