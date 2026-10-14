@@ -13,6 +13,8 @@
     "build:web": "vite build --mode web",
     "preview": "vite preview",
     "test": "vitest run",
+    "//gen:tools": "工具注册表生成器：扫 src/tools/<key>/（工具包）与 src/contracts/*.js（过渡期旧形态），生成契约聚合、组件加载器、动作实现三个产物。新增工具后必须重跑（registryGating.test.js 会把漏跑变成红灯）。",
+    "gen:tools": "node scripts/gen-tool-registry.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

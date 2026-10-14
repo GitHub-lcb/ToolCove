@@ -2,14 +2,14 @@
 //! 覆盖：摘要、合并、提取、删除、旋转、拆分。打开加密文件时自动尝试空口令
 //! （电子发票 / 银行回单那类权限加密无需用户输入），需要口令时返回结构化错误由 UI 收口令；
 //! 解密用 lopdf 内置的加密模块（RC4 / AES-128 / AES-256），写出即为未加密文档。
-//! 浏览器 / 手机端没有本地路径，保留 pdf-lib + qpdf-wasm（见 src/pdfTool.js / pdfDecrypt.js）。
+//! 浏览器 / 手机端没有本地路径，保留 pdf-lib + qpdf-wasm（见 src/tools/pdf/logic.js / decrypt.js）。
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
-/// 结构化错误：前端按 code 映射 i18n 文案（对齐 src/tools/PdfTool.vue 的 ERROR_KEYS）
+/// 结构化错误：前端按 code 映射 i18n 文案（对齐 src/tools/pdf/View.vue 的 ERROR_KEYS）
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfError {
@@ -74,7 +74,7 @@ pub struct PdfSplitPlan {
 // ---------- 载入与解密 ----------
 
 /// 解析失败时的归因：尾部 8KB 带 /Encrypt 就按「已加密」报，否则才说文件损坏。
-/// 与前端 pdfTool.js 的 looksEncryptedPdf 同一策略（宁可把损坏说成加密，不可反向误判）。
+/// 与前端 src/tools/pdf/logic.js 的 looksEncryptedPdf 同一策略（宁可把损坏说成加密，不可反向误判）。
 fn looks_encrypted(bytes: &[u8]) -> bool {
     if bytes.len() < 16 || !bytes.starts_with(b"%PDF-") {
         return false;

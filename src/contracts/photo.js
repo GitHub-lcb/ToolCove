@@ -1,6 +1,7 @@
 // 相册归档工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "photo",
+  order: 130,
   scope: "personal",
   ui: {
     labelKey: "toolbox.registry.toolPhoto",

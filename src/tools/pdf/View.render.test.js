@@ -4,8 +4,8 @@
 import { describe, it, expect } from "vitest";
 import { createSSRApp, h } from "vue";
 import { renderToString } from "vue/server-renderer";
-import { i18n } from "../i18n/index.js";
-import PdfTool from "./PdfTool.vue";
+import { i18n } from "../../i18n/index.js";
+import PdfTool from "./View.vue";
 
 const t = (key, params) => i18n.global.t(key, params);
 

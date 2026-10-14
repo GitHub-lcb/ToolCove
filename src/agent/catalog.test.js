@@ -147,9 +147,9 @@ describe("新接入的纯转换工具", () => {
   });
 });
 
-// PDF 是「契约化改造」第一个按准入规则补接的工具：元数据在 src/contracts/pdf.js 声明，
-// 实现在 executors.js（纯逻辑 mergePdfs/extractPages/splitPdf + 原生 Base64 桥）。
-// 这里锁元数据形状；字节级行为由 pdfTool 自己的测试与 e2e/fixtures 覆盖。
+// PDF 是「契约化改造」第一个按准入规则补接的工具，也是「工具包」模型的试点：
+// 元数据在 src/tools/pdf/contract.js，实现在同包的 executor.js（纯逻辑在 logic.js + 原生 Base64 桥在 src/nativeBinary.js）。
+// 这里锁元数据形状；字节级行为由 src/tools/pdf/ 自己的测试与 e2e/fixtures 覆盖。
 describe("新接入的 PDF 动作", () => {
   it("三个动作都是桌面独占的写操作（产出新文件），且带参数 Schema", () => {
     for (const name of ["pdf.merge", "pdf.extract_pages", "pdf.split"]) {

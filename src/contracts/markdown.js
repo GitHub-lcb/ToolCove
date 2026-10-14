@@ -3,6 +3,7 @@ import { schema, text } from "./kit.js";
 
 export default {
   key: "markdown",
+  order: 30,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolMarkdown",

@@ -1,7 +1,7 @@
 <script setup>
 // PDF 工具（手机端）：合并 / 拆分 / 页面操作（提取、删除、旋转）。
 //
-// 逻辑全部复用 src/pdfTool.js（桌面端同一模块，基于 pdf-lib）。挑文件走 File API，
+// 逻辑全部复用 src/tools/pdf/logic.js（桌面端同一模块，基于 pdf-lib）。挑文件走 File API，
 // 与图片工具同一条路径——手机端不需要原生桥。
 //
 // 两个刻意的取舍：
@@ -11,7 +11,7 @@
 //     两端命名一致。
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { extractPages, formatPageRanges, mergePdfs, parsePageRanges, pdfBaseName, pdfOutputName, readPdfSummary, removePages, rotatePages, splitPdf } from "../../../src/pdfTool.js";
+import { extractPages, formatPageRanges, mergePdfs, parsePageRanges, pdfBaseName, pdfOutputName, readPdfSummary, removePages, rotatePages, splitPdf } from "../../../src/tools/pdf/logic.js";
 
 const { t } = useI18n();
 

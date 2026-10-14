@@ -1,8 +1,9 @@
 // 图片处理工具契约：UI 元数据 + Agent 动作声明，单一真相源（聚合见 index.js）。
-import { schema, str } from "./kit.js";
+import { schema } from "./kit.js";
 
 export default {
   key: "image",
+  order: 120,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolImage",

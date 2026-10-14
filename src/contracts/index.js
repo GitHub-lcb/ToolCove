@@ -1,71 +1,20 @@
-// 工具契约聚合：27 个工具的唯一真相源——每个工具一个文件，同时声明
-//   ui      画廊/搜索/窗口所需的元数据（投影给 toolboxTools.js）
-//   actions Agent 可调用动作的声明（名称/描述/风险分级/参数 Schema，投影给 agent/catalog.js）
-//   agentExempt  刻意不接 Agent 的理由（与 actions 二选一，准入测试强制）
+// 工具契约聚合（对外稳定入口）：TOOL_CONTRACTS / CONTRACT_BY_KEY 的真实清单由
+// src/contracts/index.generated.js 生成 —— **目录即注册**。
 //
-// 准入规则（README「工具准入」一节的执行形态）：新工具如果 Agent 调不到，
-// 它要么是这里的 agentExempt 刻意例外，要么就是没做完——contracts.test.js 把这条变成红灯。
+// 一个工具 = 一个自包含包（就像一份 skill / 一个 MCP server）：
+//   src/tools/<key>/contract.js   纯数据：ui + actions / agentExempt + order（零依赖）
+//   src/tools/<key>/logic.js      可选：纯逻辑，工具界面与 Agent 执行器共用
+//   src/tools/<key>/executor.js   可选：Agent 动作实现（重依赖只在执行那一刻 import）
+//   src/tools/<key>/View.vue      工具界面（懒加载，见 toolComponents.generated.js）
 //
-// 分层约束：本目录所有文件必须是纯数据（只能互相导入或导入 kit.js），
-// 首屏同步读取、手机端对齐测试用原生 Node ESM 直接 import——实现层的重依赖
-// 永远走 agent/executors.js 按需装配，不许漏进这里（importBoundaries.test.js 守着）。
-import convert from "./convert.js";
-import table from "./table.js";
-import markdown from "./markdown.js";
-import xml from "./xml.js";
-import diff from "./diff.js";
-import schemaTool from "./schema.js";
-import time from "./time.js";
-import json from "./json.js";
-import network from "./network.js";
-import crypto from "./crypto.js";
-import file from "./file.js";
-import image from "./image.js";
-import photo from "./photo.js";
-import screenshot from "./screenshot.js";
-import disk from "./disk.js";
-import pdf from "./pdf.js";
-import generator from "./generator.js";
-import request from "./request.js";
-import downloader from "./downloader.js";
-import db from "./db.js";
-import chat from "./chat.js";
-import checkin from "./checkin.js";
-import prompt from "./prompt.js";
-import netcapture from "./netcapture.js";
-import label from "./label.js";
-import rail from "./rail.js";
-import interview from "./interview.js";
-
-// 顺序即画廊展示顺序（与 TOOLBOX_TOOLS 历史顺序一致，不要随手调整）。
-export const TOOL_CONTRACTS = Object.freeze([
-  convert,
-  table,
-  markdown,
-  xml,
-  diff,
-  schemaTool,
-  time,
-  json,
-  network,
-  crypto,
-  file,
-  image,
-  photo,
-  screenshot,
-  disk,
-  generator,
-  pdf,
-  request,
-  downloader,
-  db,
-  chat,
-  checkin,
-  prompt,
-  netcapture,
-  label,
-  rail,
-  interview,
-]);
-
-export const CONTRACT_BY_KEY = new Map(TOOL_CONTRACTS.map((contract) => [contract.key, contract]));
+// 新增工具：加一个 src/tools/<key>/ 目录，跑 `npm run gen:tools` 重新生成注册表。
+// 因为注册是扫出来的，两个人在不同分支各加一个工具时不会争抢同一个登记点。
+//
+// 分层约束（importBoundaries.test.js 守着）：契约文件必须是纯数据——只能互相导入或导入
+// 本目录的 kit.js。首屏要同步读它，手机端对齐测试要用**原生 Node ESM** 直接 import
+// （见 mobile/app/toolboxIcons.test.js）。所以聚合器只能是「静态 import + 数组」这种
+// 生成形态：import.meta.glob 是 Vite 特性、原生 Node 不认，用不了。
+//
+// 过渡期：还没搬进工具包的契约暂时仍住在本目录（生成器同时扫两处）；全部迁完后，
+// 本目录只剩 kit.js / groups.js / index.js / index.generated.js。
+export { TOOL_CONTRACTS, CONTRACT_BY_KEY } from "./index.generated.js";

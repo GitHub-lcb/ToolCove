@@ -6,10 +6,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
-import { decryptPdf } from "./pdfDecrypt.js";
-import { readPdfSummary, mergePdfs } from "./pdfTool.js";
+import { decryptPdf } from "./decrypt.js";
+import { readPdfSummary, mergePdfs } from "./logic.js";
 
-const fixture = (name) => new Uint8Array(readFileSync(new URL(`./fixtures/pdf/${name}`, import.meta.url)));
+const fixture = (name) => new Uint8Array(readFileSync(new URL(`../../fixtures/pdf/${name}`, import.meta.url)));
 const PASSWORD = "open123";
 
 // 初始化前摘掉 fetch：让 Emscripten 回落到 fs 读 wasm

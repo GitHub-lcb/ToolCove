@@ -48,6 +48,17 @@ describe("工具契约的完整性", () => {
     }
   });
 
+  it("每个契约都标了展示顺序 order（画廊顺序的单一真相源，生成器靠它排序）", () => {
+    // 顺序从「聚合数组里的位置」改成了「契约自带的字段」：注册表是扫出来的，
+    // order 必须跟着契约走（否则两个并行分支各加一个工具就会争抢同一个登记位置）。
+    const orders = TOOL_CONTRACTS.map((c) => c.order);
+    for (const [i, order] of orders.entries()) {
+      expect(Number.isInteger(order), `${TOOL_CONTRACTS[i].key} 缺 order 或不是整数`).toBe(true);
+      expect(order, `${TOOL_CONTRACTS[i].key} 的 order 应为正数`).toBeGreaterThan(0);
+    }
+    expect(new Set(orders).size, "order 必须唯一（重复就无法确定唯一展示顺序）").toBe(orders.length);
+  });
+
   it("动作声明齐全且归属于本工具", () => {
     for (const c of TOOL_CONTRACTS) {
       for (const action of c.actions || []) {

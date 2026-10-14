@@ -1,6 +1,7 @@
 // 自动签到工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "checkin",
+  order: 220,
   scope: "personal",
   ui: {
     labelKey: "toolbox.registry.toolCheckin",

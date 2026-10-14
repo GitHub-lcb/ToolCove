@@ -22,9 +22,9 @@ import { detectDelimiter, parseDelimited, stats as tableStats, toDelimited, toJs
 import { formatXml, validateXml, xmlToJson } from "../xmlTool.js";
 import { inferSchema, validateSchema } from "../jsonSchema.js";
 import { lint as lintMarkdown, normalize as normalizeMarkdown } from "../markdownTool.js";
-import { mergePdfs, extractPages, splitPdf, readPdfSummary, buildSplitGroups, parsePageRanges, pdfBaseName, pdfOutputName } from "../pdfTool.js";
 import { readSpillResult, readWindowResult } from "./readWindow.js";
 import { spillStore } from "./spillStoreInstance.js";
+import { TOOL_EXECUTORS } from "../toolExecutors.generated.js";
 
 const unwrap = (result, key) => {
   if (!result.ok) throw Error(result.error?.message || "数据格式错误");
@@ -40,37 +40,6 @@ function withWindow(result, offset, limit) {
   const window = readWindowResult(source, { offset, limit });
   const base = result && typeof result === "object" ? result : {};
   return { ...base, text: window.text, totalChars: window.totalChars, totalLines: window.totalLines, windowLine: window.windowLine, hasMore: window.hasMore, nextOffset: window.nextOffset, note: window.note };
-}
-
-const B64_CHUNK = 0x8000;
-
-/** Uint8Array → Base64（分块避免栈溢出；浏览器与 Node 都有 btoa/atob）。 */
-function bytesToBase64(bytes) {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += B64_CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + B64_CHUNK));
-  return btoa(bin);
-}
-
-function base64ToBytes(base64) {
-  const bin = atob(String(base64 || ""));
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** 原生 Base64 桥：读本地二进制文件（≤20MB，原生侧限制）。 */
-async function readBinary(path) {
-  const p = String(path || "").trim();
-  if (!p) throw Error("缺少文件路径");
-  const res = await desktopInvoke("file_tool_read_base64", { path: p });
-  return base64ToBytes(res?.base64);
-}
-
-/** 原生 Base64 桥：写本地二进制文件，返回写入字节数。 */
-async function writeBinary(path, bytes) {
-  const p = String(path || "").trim();
-  if (!p) throw Error("缺少输出路径");
-  return desktopInvoke("file_tool_write_base64", { path: p, content: bytesToBase64(bytes) });
 }
 
 /** 名字 → { execute }。与 catalog.js 的键集合必须一致（由 catalog.test.js 强制）。 */
@@ -130,49 +99,6 @@ export const BUILTIN_TOOL_IMPLS = Object.freeze({
     },
   },
   "file.list_directory": { execute: ({ path }) => desktopInvoke("file_tool_list_directory", { path }) },
-  // ── PDF（桌面独占；纯逻辑在 pdfTool.js，文件字节走原生 Base64 桥） ──
-  "pdf.merge": {
-    execute: async (args) => {
-      const paths = (Array.isArray(args?.paths) ? args.paths : []).map((p) => String(p || "").trim()).filter(Boolean);
-      if (paths.length < 2) throw Error("至少需要 2 个 PDF 路径");
-      const inputs = [];
-      for (const path of paths) inputs.push(await readBinary(path));
-      const merged = await mergePdfs(inputs);
-      const bytes = await writeBinary(args?.output, merged);
-      return { output: String(args?.output || "").trim(), files: paths.length, bytes };
-    },
-  },
-  "pdf.extract_pages": {
-    execute: async (args) => {
-      const bytes = await readBinary(args?.path);
-      const { pageCount } = await readPdfSummary(bytes);
-      const indices = parsePageRanges(args?.ranges, pageCount);
-      if (!indices.length) throw Error(`页码表达式没有命中任何页面：${args?.ranges}（共 ${pageCount} 页）`);
-      const out = await extractPages(bytes, indices);
-      const written = await writeBinary(args?.output, out);
-      return { output: String(args?.output || "").trim(), pages: indices.length, bytes: written };
-    },
-  },
-  "pdf.split": {
-    execute: async (args) => {
-      const path = String(args?.path || "").trim();
-      const bytes = await readBinary(path);
-      const { pageCount } = await readPdfSummary(bytes);
-      const groups = buildSplitGroups(args?.groups, pageCount);
-      if (!groups.length) throw Error(`拆分表达式没有命中任何页面：${args?.groups || "（空）"}（共 ${pageCount} 页）`);
-      const results = await splitPdf(bytes, groups);
-      const dir = String(args?.outputDir || "").trim().replace(/[\\/]+$/, "");
-      if (!dir) throw Error("缺少 outputDir 输出目录");
-      const base = pdfBaseName(path);
-      const files = [];
-      for (const result of results) {
-        const target = `${dir}/${pdfOutputName(base, result.token)}`;
-        const written = await writeBinary(target, result.bytes);
-        files.push({ path: target, pages: result.indices.length, bytes: written });
-      }
-      return { outputDir: dir, count: files.length, files };
-    },
-  },
   // ── 引擎自身 ───────────────────────────────────────────────
   "spill.read": {
     execute: async ({ key, offset, limit, keyword }) => {
@@ -213,4 +139,7 @@ export const BUILTIN_TOOL_IMPLS = Object.freeze({
       renderPlan: calculateRenderPlan(width, height, { cropRatio, rotation }),
     }),
   },
+  // 工具包自带的动作实现（生成物）：迁进 src/tools/<key>/ 的工具在这里并入，
+  // 手写区会随迁移逐块缩小、最终清空。
+  ...TOOL_EXECUTORS,
 });

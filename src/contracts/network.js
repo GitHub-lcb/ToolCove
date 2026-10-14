@@ -3,6 +3,7 @@ import { schema, str } from "./kit.js";
 
 export default {
   key: "network",
+  order: 90,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolNetwork",

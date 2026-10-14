@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 
-const wasmBytes = readFileSync(new URL("../node_modules/@jspawn/qpdf-wasm/qpdf.wasm", import.meta.url));
+const wasmBytes = readFileSync(new URL("../../../node_modules/@jspawn/qpdf-wasm/qpdf.wasm", import.meta.url));
 const requested = [];
 
 beforeAll(() => {
@@ -19,9 +19,9 @@ beforeAll(() => {
 
 describe("decryptPdf（浏览器装载路径）", () => {
   it("通过 fetch 取 wasm 并完成解密，结果与 Node 路径一致", async () => {
-    const { decryptPdf } = await import("./pdfDecrypt.js");
-    const { readPdfSummary } = await import("./pdfTool.js");
-    const locked = new Uint8Array(readFileSync(new URL("./fixtures/pdf/owner-only.pdf", import.meta.url)));
+    const { decryptPdf } = await import("./decrypt.js");
+    const { readPdfSummary } = await import("./logic.js");
+    const locked = new Uint8Array(readFileSync(new URL("../../fixtures/pdf/owner-only.pdf", import.meta.url)));
 
     const plain = await decryptPdf(locked);
     const summary = await readPdfSummary(plain);
@@ -31,8 +31,8 @@ describe("decryptPdf（浏览器装载路径）", () => {
   });
 
   it("需要密码的文件在该路径下同样能正确归因", async () => {
-    const { decryptPdf } = await import("./pdfDecrypt.js");
-    const locked = new Uint8Array(readFileSync(new URL("./fixtures/pdf/user-password.pdf", import.meta.url)));
+    const { decryptPdf } = await import("./decrypt.js");
+    const locked = new Uint8Array(readFileSync(new URL("../../fixtures/pdf/user-password.pdf", import.meta.url)));
     await expect(decryptPdf(locked)).rejects.toMatchObject({ code: "decryptionPasswordRequired" });
     const plain = await decryptPdf(locked, "open123");
     expect(plain.length).toBeGreaterThan(0);

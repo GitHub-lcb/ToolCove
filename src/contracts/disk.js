@@ -1,6 +1,7 @@
 // 磁盘分析工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "disk",
+  order: 150,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolDisk",

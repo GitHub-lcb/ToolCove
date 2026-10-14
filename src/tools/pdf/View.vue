@@ -1,14 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { invoke } from "../platform/invoke.js";
-import { save as saveDialog, open as openDialog } from "../platform/dialog.js";
-import { downloadBlob } from "../platform/download.js";
-import { isDesktop } from "../platform/env.js";
-import { useDragSort } from "../ui/dragsort.js";
-import { formatFileSize } from "../fileTool.js";
-import { consumeToolPrefill } from "../app/toolPrefill.js";
-import Icon from "../ui/Icon.vue";
+import { invoke } from "../../platform/invoke.js";
+import { save as saveDialog, open as openDialog } from "../../platform/dialog.js";
+import { downloadBlob } from "../../platform/download.js";
+import { isDesktop } from "../../platform/env.js";
+import { useDragSort } from "../../ui/dragsort.js";
+import { formatFileSize } from "../../fileTool.js";
+import { consumeToolPrefill } from "../../app/toolPrefill.js";
+import Icon from "../../ui/Icon.vue";
 import {
   buildSplitGroups,
   extractPages,
@@ -21,9 +21,9 @@ import {
   removePages,
   rotatePages,
   splitPdf,
-} from "../pdfTool.js";
+} from "./logic.js";
 // 去加密：qpdf-wasm 的胶水很小，但 wasm（约 1.3MB）只在首次真的遇到加密文件时才 fetch
-import { decryptPdf } from "../pdfDecrypt.js";
+import { decryptPdf } from "./decrypt.js";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },

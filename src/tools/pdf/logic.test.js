@@ -20,7 +20,7 @@ import {
   removePages,
   rotatePages,
   splitPdf,
-} from "./pdfTool.js";
+} from "./logic.js";
 
 async function makePdf(pageCount, { width = 595, height = 842, title, rotate = 0 } = {}) {
   const doc = await PDFDocument.create();
@@ -311,7 +311,7 @@ describe("looksEncryptedPdf（字节级加密归因）", () => {
   });
 
   it("不依赖 Buffer（浏览器端可用）", async () => {
-    const source = readFileSync(new URL("./pdfTool.js", import.meta.url), "utf8");
+    const source = readFileSync(new URL("./logic.js", import.meta.url), "utf8");
     const body = source.slice(source.indexOf("export function looksEncryptedPdf"), source.indexOf("/**", source.indexOf("export function looksEncryptedPdf")));
     expect(body).not.toContain("Buffer");
   });

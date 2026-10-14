@@ -1,38 +1,15 @@
-// 工具箱工具组件映射：ToolboxView（主窗口内嵌）与 ToolWindow（独立窗口）共用，
-// key 与 toolboxTools.js 注册表一一对应，避免多入口重复维护映射。
-// 工具组件体积大，用 defineAsyncComponent 切到才加载（入口处 Suspense/动态组件触发）。
+// 工具箱工具组件映射：ToolboxView（主窗口内嵌）与 ToolWindow（独立窗口）共用。
+//
+// 清单由 src/toolComponents.generated.js 生成（每个工具包自带 View.vue）；
+// 这里只负责两件事：包一层 defineAsyncComponent（切到才加载），以及「找不到就退回 JSON 工具」的兜底
+// ——注册表与组件映射由 registryGating.test.js 强制一一对应，兜底只是防御性最后一道。
 import { defineAsyncComponent } from "vue";
 import { i18n } from "./i18n/index.js";
+import { TOOL_COMPONENT_LOADERS } from "./toolComponents.generated.js";
 
-export const TOOL_COMPONENTS = {
-  convert: defineAsyncComponent(() => import("./tools/ConvertTool.vue")),
-  table: defineAsyncComponent(() => import("./tools/TableTool.vue")),
-  markdown: defineAsyncComponent(() => import("./tools/MarkdownTool.vue")),
-  xml: defineAsyncComponent(() => import("./tools/XmlTool.vue")),
-  schema: defineAsyncComponent(() => import("./tools/SchemaTool.vue")),
-  diff: defineAsyncComponent(() => import("./tools/TextTool.vue")),
-  time: defineAsyncComponent(() => import("./tools/TimeTool.vue")),
-  json: defineAsyncComponent(() => import("./tools/JsonTool.vue")),
-  network: defineAsyncComponent(() => import("./tools/NetworkTool.vue")),
-  crypto: defineAsyncComponent(() => import("./tools/CryptoTool.vue")),
-  file: defineAsyncComponent(() => import("./tools/FileTool.vue")),
-  image: defineAsyncComponent(() => import("./tools/ImageTool.vue")),
-  photo: defineAsyncComponent(() => import("./tools/PhotoTool.vue")),
-  screenshot: defineAsyncComponent(() => import("./tools/ScreenshotTool.vue")),
-  disk: defineAsyncComponent(() => import("./tools/DiskAnalyzerTool.vue")),
-  pdf: defineAsyncComponent(() => import("./tools/PdfTool.vue")),
-  generator: defineAsyncComponent(() => import("./tools/GeneratorTool.vue")),
-  request: defineAsyncComponent(() => import("./tools/RequestTool.vue")),
-  downloader: defineAsyncComponent(() => import("./tools/DownloadTool.vue")),
-  db: defineAsyncComponent(() => import("./tools/DbTool.vue")),
-  chat: defineAsyncComponent(() => import("./tools/AiChatTool.vue")),
-  checkin: defineAsyncComponent(() => import("./tools/CheckInTool.vue")),
-  prompt: defineAsyncComponent(() => import("./tools/PromptTool.vue")),
-  netcapture: defineAsyncComponent(() => import("./tools/NetCaptureTool.vue")),
-  label: defineAsyncComponent(() => import("./tools/LabelTool.vue")),
-  rail: defineAsyncComponent(() => import("./tools/RailTycoonTool.vue")),
-  interview: defineAsyncComponent(() => import("./tools/InterviewTool.vue")),
-};
+export const TOOL_COMPONENTS = Object.freeze(
+  Object.fromEntries(Object.entries(TOOL_COMPONENT_LOADERS).map(([key, loader]) => [key, defineAsyncComponent(loader)]))
+);
 
 export function getToolComponent(key) {
   const comp = TOOL_COMPONENTS[key];

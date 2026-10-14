@@ -7,7 +7,7 @@
 // 体积与加载：wasm 约 1.3MB，只在真的遇到加密 PDF 时才动态加载，普通打开不付这份代价。
 // 权限说明：qpdf 的 --decrypt 只能解开「用已知口令（含空口令）能打开」的文件，
 // 不猜密码；需要口令的文件必须由用户提供。
-import { looksEncryptedPdf, pdfError } from "./pdfTool.js";
+import { looksEncryptedPdf, pdfError } from "./logic.js";
 
 let modulePromise = null;
 // wasm 侧 printf 的输出缓冲：qpdf 会用它吐错误详情，下面按行收集后再归因。

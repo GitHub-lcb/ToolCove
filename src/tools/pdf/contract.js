@@ -1,8 +1,9 @@
 // PDF 工具契约：UI 元数据 + Agent 动作声明，单一真相源（聚合见 index.js）。
-import { schema, str } from "./kit.js";
+import { schema, str } from "../../contracts/kit.js";
 
 export default {
   key: "pdf",
+  order: 170,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolPdf",

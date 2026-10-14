@@ -74,10 +74,36 @@ describe("分层边界", () => {
     expect(violations((e) => e.from.startsWith("src/platform/") && upper.test(e.to))).toEqual([]);
   });
 
-  it("contracts/ 是纯数据层：不导入目录外的任何模块", () => {
+  it("contracts/ 是纯数据层：不导入目录外的任何模块（生成聚合器例外：只许 re-export 工具包契约）", () => {
     // 契约要同时被首屏（toolboxTools/catalog 投影）与手机端对齐测试（原生 Node ESM 直接 import）
     // 消费——一旦它开始 import i18n/平台/实现层，两边都会炸（见 toolboxIcons.test.js 记载的 ESM 坑）。
-    expect(violations((e) => e.from.startsWith("src/contracts/") && !e.to.startsWith("src/contracts/"))).toEqual([]);
+    // 唯一例外是生成的聚合器 src/contracts/index.generated.js：注册模型是「目录即注册」，
+    // 它必须 re-export 各工具包的 contract.js——放行 src/tools/<key>/contract.js 这一种目标。
+    const outsideContracts = (e) => e.from.startsWith("src/contracts/") && !e.to.startsWith("src/contracts/");
+    const generatedAggregator = (e) => e.from === "src/contracts/index.generated.js" && /^src\/tools\/[^/]+\/contract\.js$/.test(e.to);
+    expect(violations((e) => outsideContracts(e) && !generatedAggregator(e))).toEqual([]);
+  });
+
+  it("工具包的契约纯数据：只能导入本包内文件或 contracts/ 的共享小件", () => {
+    // 一个工具 = 一个包（src/tools/<key>/）。包内其他文件（logic/executor/View）可以有依赖，
+    // 但 contract.js 必须与旧的 contracts/ 契约同等纯净——它要能被原生 Node 直接 import。
+    const bad = edges
+      .filter((e) => {
+        const m = /^src\/tools\/([^/]+)\/contract\.js$/.exec(e.from);
+        if (!m) return false;
+        return !e.to.startsWith(`src/tools/${m[1]}/`) && !e.to.startsWith("src/contracts/");
+      })
+      .map((e) => `${e.from} → ${e.to}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("agent/ 不得导入工具包的界面或任何视图（只能经生成注册表消费工具包）", () => {
+    // 包模型下 agent → tools/<key>/executor.js 是**预期方向**（工具就是 Agent 的动作空间），
+    // 但 agent 永远不该碰界面层：那样会把整个 UI 依赖树拖进引擎的加载面。
+    const bad = edges
+      .filter((e) => e.from.startsWith("src/agent/") && (/^src\/tools\/[^/]+\/View\.vue$/.test(e.to) || e.to.startsWith("src/views/")))
+      .map((e) => `${e.from} → ${e.to}`);
+    expect(bad).toEqual([]);
   });
 
   it("tools/ 不导入应用视图（工具只依赖共享纯逻辑与 UI 原子）", () => {

@@ -18,7 +18,7 @@ const TARGETS = [
   "src/tools/CryptoTool.vue",
   "src/tools/ImageTool.vue",
   "src/tools/NetworkTool.vue",
-  "src/tools/PdfTool.vue",
+  "src/tools/pdf/View.vue",
   "src/tools/LabelTool.vue",
   "src/tools/ConvertTool.vue",
   "src/tools/DiffTool.vue",

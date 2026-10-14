@@ -1,6 +1,7 @@
 // 多线程下载工具契约：UI 元数据 + Agent 豁免声明，单一真相源（聚合见 index.js）。
 export default {
   key: "downloader",
+  order: 190,
   scope: "both",
   ui: {
     labelKey: "toolbox.registry.toolDownloader",
