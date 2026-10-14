@@ -138,6 +138,15 @@ export function qiniuEntry(bucket, key) {
   return urlsafeBase64(encoder.encode(`${bucket}:${key}`), true);
 }
 
+/**
+ * 目录占位对象：七牛（以及 S3 的「文件夹」）会写一个 key 以 `/` 结尾的 0 字节对象，
+ * 例如 `photos/`。它不是照片，列出来只会让人以为多了一个空文件（真机上就这么被问过），
+ * 所以一律过滤——注意只按"结尾斜杠"判定：真正的 0 字节文件（key 不以 / 结尾）仍然显示。
+ */
+export function isFolderMarker(key) {
+  return String(key || "").endsWith("/");
+}
+
 /** 该后端能不能在手机上浏览云端。WebDAV 的列举要 PROPFIND 且各家 CORS 不一，暂不提供。 */
 export function cloudProviderOf(config) {
   const provider = normalizePhotoConfig(config).provider;
@@ -219,7 +228,7 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
     try {
       const page = await listObjects({ config: s3cfg, prefix, maxKeys: limit, continuationToken: marker, fetchImpl });
       return {
-        objects: page.objects.map((item) => ({
+        objects: page.objects.filter((item) => !isFolderMarker(item.key)).map((item) => ({
           key: item.key,
           name: item.key.split("/").pop() || item.key,
           size: Number(item.size) || 0,
@@ -266,7 +275,7 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
         etag: String(item?.hash || ""),
       };
     })
-    .filter((item) => item.key);
+    .filter((item) => item.key && !isFolderMarker(item.key));
   const nextMarker = String(parsed?.marker || "");
   return { objects, nextMarker, truncated: !!nextMarker };
 }

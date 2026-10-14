@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl, qiniuEntry, qiniuManagementAuth } from "./cloud.js";
 import { isValidRelayUrl, validatePhotoConfig } from "./config.js";
-import { LOCAL_RELAY_URL } from "./cloud.js";
+import { isFolderMarker, LOCAL_RELAY_URL } from "./cloud.js";
 
 const CONFIG = {
   provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK",
@@ -158,7 +158,7 @@ describe("网页版走自建转发（relayUrl）", () => {
           status: 200,
           body: JSON.stringify({
             status: 200,
-            body: JSON.stringify({ items: [{ key: "photos/a.png", fsize: 3, putTime: 17600000000000000, hash: "H" }], marker: "" }),
+            body: JSON.stringify({ items: [{ key: "photos/", fsize: 0, putTime: 17600000000000000, hash: "D" }, { key: "photos/a.png", fsize: 3, putTime: 17600000000000000, hash: "H" }], marker: "" }),
           }),
         };
       };
@@ -253,6 +253,7 @@ describe("浏览器端走七牛 S3 兼容端点（桶配好跨域即可直连，
   });
   const LIST_XML =
     '<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>false</IsTruncated>' +
+    '<Contents><Key>photos/</Key><Size>0</Size><LastModified>2026-10-13T00:00:00.000Z</LastModified><ETag>"D"</ETag></Contents>' +
     '<Contents><Key>photos/a.png</Key><Size>3</Size><LastModified>2026-10-14T00:00:00.000Z</LastModified><ETag>"H"</ETag></Contents></ListBucketResult>';
 
   async function withBrowser(testBody) {
@@ -307,5 +308,14 @@ describe("浏览器端走七牛 S3 兼容端点（桶配好跨域即可直连，
     expect(put.url).toContain("s3-cn-south-1.qiniucs.com/luqian520/photos/2026/a.png");
     expect(put.headers["x-amz-copy-source"]).toBe("/luqian520/photos%2Fa.png");
     expect(del.url).toContain("/luqian520/photos/a.png");
+  });
+});
+
+describe("目录占位对象不显示（七牛的「创建目录」会写一个 key 以 / 结尾的 0 字节对象）", () => {
+  it("isFolderMarker 只按结尾斜杠判定：真 0 字节文件仍要显示", () => {
+    expect(isFolderMarker("photos/")).toBe(true);
+    expect(isFolderMarker("photos/2026/")).toBe(true);
+    expect(isFolderMarker("photos/empty.png")).toBe(false);
+    expect(isFolderMarker("")).toBe(false);
   });
 });
