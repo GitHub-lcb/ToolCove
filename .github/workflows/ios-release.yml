@@ -66,48 +66,24 @@ jobs:
           cp -R dist/mobile/app/. mobile/ios/www/
           ls mobile/ios/www | head -20
 
-      - name: 生成 Xcode 工程（XcodeGen）
+      - name: 生成工程并编译（不签名）
         working-directory: mobile/ios
         run: |
-          brew install xcodegen
-          xcodegen generate
-          ls -la
+          chmod +x ci-build.sh verify-ipa.sh
+          ./ci-build.sh
 
-      - name: 编译（不签名）
-        working-directory: mobile/ios
-        run: |
-          version=$(node -p "require('../../package.json').mobileVersion")
-          set -o pipefail
-          xcodebuild \
-            -project ToolCove.xcodeproj \
-            -target ToolCove \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CONFIGURATION_BUILD_DIR="$PWD/out" \
-            MARKETING_VERSION="$version" \
-            CURRENT_PROJECT_VERSION="1" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_ENTITLEMENTS="" \
-            build | tail -60
-
-      - name: 校验产物并打包 ipa
-        working-directory: mobile/ios
+      - name: 失败时把构建日志推到 ci/ios-log 分支
+        if: failure()
         run: |
           set -e
-          app=out/ToolCove.app
-          test -d "$app" || { echo "::error::没有产出 ToolCove.app"; exit 1; }
-          test -f "$app/ToolCove" || { echo "::error::可执行文件缺失"; exit 1; }
-          test -f "$app/www/index.html" || { echo "::error::网页产物没有进包（www/index.html 缺失）"; exit 1; }
-          echo "架构：$(lipo -info "$app/ToolCove")"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist"
-          rm -rf Payload && mkdir Payload
-          cp -R "$app" Payload/
-          zip -qry ToolCove-unsigned.ipa Payload
-          ls -lh ToolCove-unsigned.ipa
-          "$GITHUB_WORKSPACE/mobile/ios/verify-ipa.sh" "$app" || true
+          mkdir -p ci-log
+          cp mobile/ios/build.log ci-log/ios-build.log 2>/dev/null || echo "(没有生成 build.log)" > ci-log/ios-build.log
+          git config user.name "toolcove-ci"
+          git config user.email "ci@toolcove.local"
+          git checkout -B ci/ios-log
+          git add -f ci-log/ios-build.log
+          git commit -m "ci: iOS 构建日志（${{ github.sha }}）" || true
+          git push -f origin ci/ios-log
 
       - name: 保存产物
         uses: actions/upload-artifact@v4
