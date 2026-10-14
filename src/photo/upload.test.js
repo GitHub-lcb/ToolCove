@@ -168,3 +168,37 @@ describe("空体哈希常量", () => {
     expect(await sha256Hex(new Uint8Array(0))).toBe(EMPTY_SHA256);
   });
 });
+
+describe("listObjects 的路径形状（路径风格必须带桶）", () => {
+  const XML = '<?xml version="1.0"?><ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>';
+
+  function capture() {
+    const calls = [];
+    return {
+      calls,
+      fetch: async (url) => {
+        calls.push(String(url));
+        return { ok: true, status: 200, text: async () => XML, headers: { get: () => "" } };
+      },
+    };
+  }
+
+  it("路径风格（七牛 S3 / MinIO）：URL 里必须有 /<bucket>/ —— 少了它桶级 CORS 匹配不上", async () => {
+    const f = capture();
+    await listObjects({
+      config: { provider: "s3", endpoint: "s3-cn-south-1.qiniucs.com", region: "cn-south-1", bucket: "luqian520", accessKey: "AK", secretKey: "SK", pathStyle: true },
+      prefix: "photos/",
+      fetchImpl: f.fetch,
+    });
+    expect(f.calls[0]).toContain("https://s3-cn-south-1.qiniucs.com/luqian520/?list-type=2");
+  });
+
+  it("虚拟主机风格（COS / R2 / AWS）：桶在域名前缀里，路径仍是 /", async () => {
+    const f = capture();
+    await listObjects({
+      config: { provider: "s3", endpoint: "s3.example.com", region: "us-east-1", bucket: "mybucket", accessKey: "AK", secretKey: "SK", pathStyle: false },
+      fetchImpl: f.fetch,
+    });
+    expect(f.calls[0]).toContain("https://mybucket.s3.example.com/?list-type=2");
+  });
+});

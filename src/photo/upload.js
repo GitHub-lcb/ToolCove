@@ -127,7 +127,12 @@ export async function listObjects({ config, prefix = "", maxKeys = 1000, continu
   if (prefix) query.push(["prefix", prefix]);
   if (continuationToken) query.push(["continuation-token", continuationToken]);
 
-  const res = await s3Request({ config: cfg, method: "GET", path: "/", query, fetchImpl, now });
+  // ⚠️ 路径风格（MinIO、**七牛的 S3 兼容端点**）必须把桶写进路径：
+  // 它们的 CORS 规则是按桶匹配的——少了这一段，七牛连预检都回不了 CORS 头，
+  // 浏览器侧表现为一个看不出所以然的 "CORS 错误"（实测踩到）。
+  // 虚拟主机风格（COS / R2 / AWS 默认）才是 path = "/"，桶在域名前缀里。
+  const path = cfg.pathStyle ? `/${cfg.bucket}/` : "/";
+  const res = await s3Request({ config: cfg, method: "GET", path, query, fetchImpl, now });
   return parseListObjectsXml(await res.text());
 }
 
