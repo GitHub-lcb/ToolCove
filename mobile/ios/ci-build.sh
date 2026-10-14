@@ -17,11 +17,14 @@ exec > >(tee -a "$log") 2>&1
 version=$(node -p "require('../../package.json').mobileVersion" 2>/dev/null || echo 0.0.0)
 echo "== 版本：$version =="
 
+# 把工具链版本打在日志里：这类"格式太新/太旧"的失败，下次一眼能看出来
+echo "Xcode: $(xcodebuild -version | tr '\n' ' ')"
 command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
 xcodegen --version
 xcodegen generate
 
 echo "== 工程与资源 =="
+echo "pbxproj objectVersion: $(grep -m1 objectVersion ToolCove.xcodeproj/project.pbxproj | tr -d '\t ;' || echo 未知)"
 ls -la
 echo "www 文件数：$(find www -type f | wc -l | tr -d ' ')"
 

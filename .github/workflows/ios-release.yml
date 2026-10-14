@@ -29,7 +29,9 @@ permissions:
 jobs:
   build:
     # macOS runner 自带 Xcode；arm64 机器直接产出 arm64 包。
-    runs-on: macos-14
+    # macos-15 自带 Xcode 16：XcodeGen 2.46 生成的是 objectVersion 77（Xcode 16 格式），
+    # 在 macos-14（Xcode 15.4）上会直接报 'future Xcode project file format'。
+    runs-on: macos-15
     timeout-minutes: 40
 
     steps:
