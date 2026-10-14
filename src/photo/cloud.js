@@ -20,6 +20,15 @@ const encoder = new TextEncoder();
 /** 七牛管理接口的默认域名（区域解析失败时的兜底；新机房空间不认它）。 */
 export const QINIU_DEFAULT_RSF_HOST = "rsf.qbox.me";
 
+/**
+ * 本机转发器的默认地址（server/photo-relay.mjs 的默认监听）。
+ *
+ * 为什么默认就去试它：网页版最常见的用法就是"在跑转发器的这台电脑上打开"，
+ * 而浏览器把回环地址视为可信来源（https 页面请求它不算混合内容）——于是**一条命令、零配置**
+ * 就能让网页版跑通。连不上只是"没起"，不算错误，会退回带指引的提示。
+ */
+export const LOCAL_RELAY_URL = "http://127.0.0.1:8127/";
+
 /** 这一端能不能用 Authorization 头（否则只能走简单请求 + access_token 查询参数）。 */
 export function canSendAuthHeader() {
   return isDesktop || isNativeMobile;
@@ -60,33 +69,41 @@ const WEB_HINT_NO_RELAY =
   "两个办法：① 用安卓 App 的「云端」页查看/管理；② 在存储配置里填「网页转发地址」——自建一个十几行的转发" +
   "（部署方式见 docs/photo-relay.md），密钥仍只留在本机浏览器里。";
 
+/**
+ * 发一次管理接口请求（七牛的 rs/rsf）。
+ *
+ * 三个形态三条路：
+ *   · 安卓 App / 桌面 App：原生请求不受 CORS 约束，凭证直接放 Authorization 头（官方 SDK 的唯一传法）；
+ *   · 浏览器：七牛的数据域名对预检不放行 Authorization 头，所以要经「补头转发」——
+ *     优先用配置里的 relayUrl；没配就试本机默认端口（网页常常就跑在起了转发器的同一台电脑上，
+ *     浏览器把回环视为可信来源，https 页面请求它不算混合内容）；
+ *   · 连不上转发就**不硬发**：七牛不认查询参数凭证（真机上验证过），发出去只会得到一句
+ *     没法定位的 BadToken，不如直接给可执行的指引。
+ *
+ * 页面本地签名后才交给转发器，转发器不接触 SK（见 docs/photo-relay.md）。
+ */
 export async function qiniuManagementRequest({ config, method, host, pathAndQuery, contentType = "application/x-www-form-urlencoded", http }) {
   const auth = await qiniuManagementAuth({ config, method, host, pathAndQuery, contentType });
-  const withHeader = canSendAuthHeader();
   const send = http || ((args) => invoke("http_request", args));
 
-  let status = 0;
-  let body = "";
-  if (withHeader) {
-    // 安卓 / 桌面：原生请求不受 CORS 约束，凭证直接放头里（官方 SDK 的唯一传法）。
+  if (canSendAuthHeader()) {
     const result = await send({
       method,
       url: `https://${host}${pathAndQuery}`,
       headers: { Authorization: auth, "Content-Type": contentType },
       timeoutMs: 20000,
     });
-    status = Number(result?.status || 0);
-    body = String(result?.body ?? "");
-  } else {
-    const cfg = normalizePhotoConfig(config);
-    if (!cfg.relayUrl) {
-      // 网页版不硬发：七牛不认查询参数凭证（真机验证过），发出去只会得到一句没法定位的 BadToken
-      return { ok: false, status: 0, body: WEB_HINT_NO_RELAY };
-    }
-    // 网页版：经用户自建的转发补上 Authorization 头。页面本地签名，转发器不接触 SK，部署见 docs/photo-relay.md
-    const result = await send({
+    const status = Number(result?.status || 0);
+    return { ok: status >= 200 && status < 300, status, body: String(result?.body ?? "") };
+  }
+
+  const cfg = normalizePhotoConfig(config);
+  const relayUrl = cfg.relayUrl || LOCAL_RELAY_URL;
+  let payload = null;
+  try {
+    payload = await send({
       method: "POST",
-      url: cfg.relayUrl,
+      url: relayUrl,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: `https://${host}${pathAndQuery}`,
@@ -95,19 +112,22 @@ export async function qiniuManagementRequest({ config, method, host, pathAndQuer
       }),
       timeoutMs: 20000,
     });
-    status = Number(result?.status || 0);
-    body = String(result?.body ?? "");
-    try {
-      const parsed = JSON.parse(body);
-      status = Number(parsed?.status || status);
-      body = String(parsed?.body ?? body);
-    } catch {
-      // 转发器返回的不是 JSON（多半是部署页的 HTML）：原样透出，用户一眼能看出配错了地址
-    }
+  } catch (error) {
+    // 本机没起转发器时 fetch 直接抛（Connection refused）——这不是"出错"，是"还没配"
+    const where = cfg.relayUrl ? `转发地址 ${relayUrl} 连不上` : "本机 127.0.0.1:8127 没有转发器在听";
+    return { ok: false, status: 0, body: `${WEB_HINT_NO_RELAY}（${where}：${error?.message || error}）` };
   }
 
-  const ok = status >= 200 && status < 300;
-  return { ok, status, body };
+  let status = Number(payload?.status || 0);
+  let body = String(payload?.body ?? "");
+  try {
+    const parsed = JSON.parse(body);
+    status = Number(parsed?.status || status);
+    body = String(parsed?.body ?? body);
+  } catch {
+    // 转发器返回的不是 JSON（多半是部署页的 HTML）：原样透出，用户一眼能看出配错了地址
+  }
+  return { ok: status >= 200 && status < 300, status, body };
 }
 
 /**
@@ -123,6 +143,38 @@ export function cloudProviderOf(config) {
   const provider = normalizePhotoConfig(config).provider;
   return provider === "qiniu" || provider === "s3" ? provider : "";
 }
+
+/**
+ * 把七牛配置投影成 S3 兼容配置（端点与 region_alias 都来自区域接口的响应）。
+ *
+ * 为什么需要它：七牛自有的管理接口（rs/rsf）**永远不给浏览器跨域**（预检不放行 Authorization），
+ * 而它的 S3 兼容层是**标准的桶级 CORS**（文档确认 PUT/GET/DELETE Bucket cors 均兼容，
+ * 控制台 空间设置 → 跨域资源共享 也能配）——配好之后浏览器（含手机网页版）就能直连，
+ * 不需要任何转发器。
+ */
+export function qiniuAsS3Config(cfg, resolved = {}) {
+  if (!resolved?.s3Host) return null;
+  return normalizePhotoConfig({
+    provider: "s3",
+    endpoint: resolved.s3Host,
+    region: resolved.regionAlias || "",
+    bucket: cfg.bucket,
+    accessKey: cfg.accessKey,
+    secretKey: cfg.secretKey,
+    pathStyle: true, // 七牛的 S3 端点走路径风格（实测 /<bucket>/<key> 可用）
+    prefix: cfg.prefix,
+  });
+}
+
+/** 浏览器端可用时返回 S3 兼容配置，否则 null（原生端继续走 rs/rsf，无需任何配置）。 */
+function browserS3Config(cfg, resolved) {
+  return canSendAuthHeader() ? null : qiniuAsS3Config(cfg, resolved);
+}
+
+/** 浏览器直连 S3 失败时最可能的原因就是桶没配跨域——把可执行的指引附上。 */
+const CORS_HINT =
+  "（浏览器直连七牛 S3 端点需要给桶配跨域：七牛控制台 → 空间设置 → 跨域资源共享；" +
+  "来源填 https://github-lcb.github.io，方法勾 GET/PUT/POST/DELETE/HEAD，允许头填 * ）";
 
 /**
  * 列出云端对象（按 key 升序）。
@@ -148,8 +200,31 @@ export async function listCloudObjects({ config, prefix = "", marker = "", limit
     };
   }
 
-  // 七牛：列表域名同样要区域解析（新机房空间的 rsf 在老域名上会 401）
   const resolved = await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
+
+  // 浏览器（手机网页版也算）：优先走 S3 兼容端点——它的 CORS 是桶级可配的，
+  // 而 rs/rsf 那套无论怎么配都进不来。原生端继续用 rs/rsf（不用配任何东西）。
+  const s3cfg = browserS3Config(cfg, resolved);
+  if (s3cfg) {
+    try {
+      const page = await listObjects({ config: s3cfg, prefix, maxKeys: limit, continuationToken: marker, fetchImpl });
+      return {
+        objects: page.objects.map((item) => ({
+          key: item.key,
+          name: item.key.split("/").pop() || item.key,
+          size: Number(item.size) || 0,
+          lastModified: String(item.lastModified || "").slice(0, 10),
+          etag: String(item.etag || "").replace(/"/g, ""),
+        })),
+        nextMarker: page.nextToken || "",
+        truncated: !!page.truncated,
+      };
+    } catch (error) {
+      throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+    }
+  }
+
+  // 七牛自有管理接口：列表域名同样要区域解析（新机房空间的 rsf 在老域名上会 401）
   const host = resolved.rsfHost || QINIU_DEFAULT_RSF_HOST;
   const pairs = [["bucket", cfg.bucket], ["limit", String(limit)]];
   if (prefix) pairs.push(["prefix", prefix]);
@@ -193,6 +268,15 @@ export async function deleteCloudObject({ config, key, http, fetchImpl } = {}) {
   if (!provider) throw new Error("unavailable");
   if (provider === "qiniu") {
     const resolved = await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
+    const s3cfg = browserS3Config(cfg, resolved);
+    if (s3cfg) {
+      try {
+        await s3Request({ config: s3cfg, method: "DELETE", path: photoObjectPath(s3cfg, key), fetchImpl });
+        return { ok: true, via: "s3" };
+      } catch (error) {
+        throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+      }
+    }
     const host = resolved.rsfHost || QINIU_DEFAULT_RSF_HOST;
     const pathAndQuery = `/delete/${qiniuEntry(cfg.bucket, key)}`;
     const res = await qiniuManagementRequest({ config: cfg, method: "POST", host, pathAndQuery, http });
@@ -209,6 +293,23 @@ export async function moveCloudObject({ config, from, to, http, fetchImpl } = {}
   if (cloudProviderOf(cfg) !== "qiniu") throw new Error("unavailable");
   if (!to || to === from) return { ok: true, moved: false };
   const resolved = await resolveQiniuUploadHostDetailed({ accessKey: cfg.accessKey, bucket: cfg.bucket, fetchImpl });
+  const s3cfg = browserS3Config(cfg, resolved);
+  if (s3cfg) {
+    try {
+      // S3 没有 move：先复制到新 key（x-amz-copy-source 参与签名，且要求 URL 编码），再删源。
+      await s3Request({
+        config: s3cfg,
+        method: "PUT",
+        path: photoObjectPath(s3cfg, to),
+        headers: { "x-amz-copy-source": `/${s3cfg.bucket}/${uriEncode(String(from).replace(/^\/+/, ""), true)}` },
+        fetchImpl,
+      });
+      await s3Request({ config: s3cfg, method: "DELETE", path: photoObjectPath(s3cfg, from), fetchImpl });
+      return { ok: true, moved: true, via: "s3" };
+    } catch (error) {
+      throw new Error(`${error?.message || error}${CORS_HINT}`, { cause: error });
+    }
+  }
   const host = resolved.rsfHost || QINIU_DEFAULT_RSF_HOST;
   const pathAndQuery = `/move/${qiniuEntry(cfg.bucket, from)}/${qiniuEntry(cfg.bucket, to)}?force=true`;
   const res = await qiniuManagementRequest({ config: cfg, method: "POST", host, pathAndQuery, http });

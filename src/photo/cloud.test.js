@@ -3,6 +3,8 @@
 // 列举响应解析、私有预览 URL 的令牌。
 import { describe, expect, it, vi } from "vitest";
 import { cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl, qiniuEntry, qiniuManagementAuth } from "./cloud.js";
+import { isValidRelayUrl, validatePhotoConfig } from "./config.js";
+import { LOCAL_RELAY_URL } from "./cloud.js";
 
 const CONFIG = {
   provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK",
@@ -173,17 +175,137 @@ describe("网页版走自建转发（relayUrl）", () => {
     expect(job.headers.Authorization.startsWith("Qiniu AK:")).toBe(true);
   });
 
-  it("没配转发：一个请求都不发，直接给出可执行的指引", async () => {
-    let sent = 0;
+  it("没配转发地址时**自动试本机默认端口**（网页常常就跑在起了转发器的同一台电脑上）", async () => {
+    const urls = [];
     await withWebForm(async (cloud) => {
-      const http = async () => {
-        sent += 1;
-        return { status: 200, body: "{}" };
+      const http = async (args) => {
+        urls.push(args.url);
+        return {
+          status: 200,
+          body: JSON.stringify({ status: 200, body: JSON.stringify({ items: [{ key: "photos/a.png", fsize: 3, putTime: 17600000000000000, hash: "H" }], marker: "" }) }),
+        };
+      };
+      const out = await cloud.listCloudObjects({ config: { ...CONFIG, relayUrl: "" }, http, fetchImpl: offlineFetch });
+      expect(out.objects.map((item) => item.key)).toEqual(["photos/a.png"]);
+    });
+    expect(urls).toEqual([LOCAL_RELAY_URL]);
+  });
+
+  it("本机也没转发器：不硬发到七牛，给可执行的指引（并说清连不上的原因）", async () => {
+    let qiniuHits = 0;
+    await withWebForm(async (cloud) => {
+      const http = async (args) => {
+        if (!String(args.url).startsWith("http://127.0.0.1")) qiniuHits += 1;
+        throw new Error("Failed to fetch");
       };
       await expect(
         cloud.listCloudObjects({ config: { ...CONFIG, relayUrl: "" }, http, fetchImpl: offlineFetch })
-      ).rejects.toThrow(/网页转发地址/);
+      ).rejects.toThrow(/没有转发器在听/);
     });
-    expect(sent, "没有转发就不该硬发——七牛不认查询参数凭证，发出去只会得到没法定位的 BadToken").toBe(0);
+    expect(qiniuHits, "七牛不认查询参数凭证，发过去只会得到没法定位的 BadToken——所以一个都不发").toBe(0);
+  });
+});
+
+describe("转发地址的合法性（isValidRelayUrl）", () => {
+  const cases = [
+    ["https://relay.example.com/", true],
+    ["https://relay.example.com/photo-relay", true],
+    ["http://127.0.0.1:8127/", true],
+    ["http://localhost:8127", true],
+    ["http://127.0.0.1", true],
+    // http 的公网/局域网地址会被浏览器的混合内容拦掉，所以不接受——
+    // 放行它只会让人配好之后得到一个"Failed to fetch"，比直接报错更难查
+    ["http://192.168.1.10:8127/", false],
+    ["http://relay.example.com/", false],
+    ["ftp://relay.example.com/", false],
+    ["relay.example.com", false],
+    ["", false],
+  ];
+
+  it.each(cases)("%s → %s", (url, ok) => {
+    expect(isValidRelayUrl(url)).toBe(ok);
+  });
+
+  it("validatePhotoConfig 用同一条规则：回环地址算合法，局域网 http 报 relayUrlBad", () => {
+    const base = { provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK", domain: "cdn.example.com" };
+    expect(validatePhotoConfig({ ...base, relayUrl: "http://127.0.0.1:8127/" }).errors.relayUrl).toBeUndefined();
+    expect(validatePhotoConfig({ ...base, relayUrl: "http://192.168.1.10:8127/" }).errors.relayUrl).toBe("relayUrlBad");
+    // 不填也行：转发是可选的
+    expect(validatePhotoConfig(base).errors.relayUrl).toBeUndefined();
+  });
+});
+
+describe("浏览器端走七牛 S3 兼容端点（桶配好跨域即可直连，不需要转发）", () => {
+  const CONFIG = {
+    provider: "qiniu",
+    bucket: "luqian520",
+    accessKey: "AK",
+    secretKey: "SK",
+    domain: "cdn.example.com",
+    privateBucket: true,
+    prefix: "photos",
+  };
+  // 区域接口的真实形状：up 给上传域名，s3 给 S3 兼容端点与 region_alias
+  const REGION = JSON.stringify({
+    up: { acc: { main: ["upload-z2.qiniup.com"] } },
+    rsf: { acc: { main: ["rsf-z2.qbox.me"] } },
+    s3: { region_alias: "cn-south-1", src: { main: ["s3-cn-south-1.qiniucs.com"] } },
+  });
+  const LIST_XML =
+    '<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>false</IsTruncated>' +
+    '<Contents><Key>photos/a.png</Key><Size>3</Size><LastModified>2026-10-14T00:00:00.000Z</LastModified><ETag>"H"</ETag></Contents></ListBucketResult>';
+
+  async function withBrowser(testBody) {
+    vi.stubGlobal("__MOBILE__", true);
+    vi.stubGlobal("window", {}); // 没有原生桥 = 手机网页版
+    vi.resetModules();
+    try {
+      return await testBody(await import("./cloud.js"));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  }
+
+  it("列举改走 S3 端点（路径风格 /<bucket>/?list-type=2），不再碰 rsf 与转发", async () => {
+    const urls = [];
+    await withBrowser(async (cloud) => {
+      const fetchImpl = async (url) => {
+        urls.push(String(url));
+        if (String(url).includes("api.qiniu.com")) return { ok: true, status: 200, text: async () => REGION };
+        return { ok: true, status: 200, text: async () => LIST_XML };
+      };
+      const http = async () => {
+        throw new Error("浏览器端不该走管理接口或转发");
+      };
+      const out = await cloud.listCloudObjects({ config: CONFIG, prefix: "photos/", http, fetchImpl });
+      expect(out.objects.map((item) => item.key)).toEqual(["photos/a.png"]);
+    });
+    expect(urls.some((u) => u.includes("s3-cn-south-1.qiniucs.com") && u.includes("list-type=2"))).toBe(true);
+    expect(urls.some((u) => u.includes("rsf"))).toBe(false);
+  });
+
+  it("移动 = 复制（x-amz-copy-source 参与签名）再删源", async () => {
+    const calls = [];
+    await withBrowser(async (cloud) => {
+      const fetchImpl = async (url, init) => {
+        calls.push({ url: String(url), method: init?.method, headers: init?.headers || {} });
+        if (String(url).includes("api.qiniu.com")) return { ok: true, status: 200, text: async () => REGION };
+        return { ok: true, status: 200, text: async () => "", headers: { get: () => "" } };
+      };
+      const out = await cloud.moveCloudObject({
+        config: CONFIG,
+        from: "photos/a.png",
+        to: "photos/2026/a.png",
+        http: async () => { throw new Error("不该走管理接口"); },
+        fetchImpl,
+      });
+      expect(out).toMatchObject({ ok: true, moved: true, via: "s3" });
+    });
+    const put = calls.find((c) => c.method === "PUT");
+    const del = calls.find((c) => c.method === "DELETE");
+    expect(put.url).toContain("s3-cn-south-1.qiniucs.com/luqian520/photos/2026/a.png");
+    expect(put.headers["x-amz-copy-source"]).toBe("/luqian520/photos%2Fa.png");
+    expect(del.url).toContain("/luqian520/photos/a.png");
   });
 });

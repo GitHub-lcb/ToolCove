@@ -98,6 +98,20 @@ export function normalizePhotoConfig(input) {
   };
 }
 
+/**
+ * 转发地址是否合法。
+ *
+ * 规则：`https://` 任意主机；`http://` **只允许回环**（127.0.0.1 / localhost / [::1]）。
+ * 为什么要放行 http 回环：网页版很可能就在**运行转发器的同一台电脑**上打开，而浏览器把回环地址
+ * 视为可信来源——从 https 页面请求它不算混合内容，于是"本机一条命令"就能把网页版跑通，
+ * 不需要域名、证书、账号。公网地址仍然必须 https（否则页面会被混合内容拦掉）。
+ */
+export function isValidRelayUrl(value) {
+  const text = String(value ?? "").trim();
+  if (/^https:\/\/[^\s/"']+(?:\/[^\s]*)?$/.test(text)) return true;
+  return /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?(?:\/[^\s]*)?$/.test(text);
+}
+
 const HOST_RE = /^[A-Za-z0-9.\-:]+$/;
 
 /**
@@ -119,7 +133,7 @@ export function validatePhotoConfig(input) {
     else if (!HOST_RE.test(cfg.domain)) errors.domain = "domainBad";
     if (!cfg.uploadHost) errors.uploadHost = "uploadHostEmpty";
     else if (!HOST_RE.test(cfg.uploadHost)) errors.uploadHost = "uploadHostBad";
-    if (cfg.relayUrl && !/^https:\/\/[^\s/"']+(?:\/[^\s]*)?$/.test(cfg.relayUrl)) errors.relayUrl = "relayUrlBad";
+    if (cfg.relayUrl && !isValidRelayUrl(cfg.relayUrl)) errors.relayUrl = "relayUrlBad";
   } else if (cfg.provider === "webdav") {
     if (!cfg.endpoint) errors.endpoint = "endpointEmpty";
     else if (!/^https?:\/\/[A-Za-z0-9.\-:]+(?:\/[^\s]*)?$/.test(cfg.endpoint)) errors.endpoint = "endpointBad";

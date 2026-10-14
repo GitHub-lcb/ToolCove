@@ -86,6 +86,34 @@
 5. 手机端上传走表单直传，**不需要额外配置跨域**；桌面端的列举走管理接口（rsf），
    连不上时先在桌面端点「测试连接」。
 
+## 4.1 让手机网页版也能管理云端（配一次桶跨域，推荐）
+
+七牛**自有的管理接口**（列举/删除/移动走 `rsf.qbox.me` 这类域名）**不给浏览器跨域**：
+它要求 `Authorization` 头，而它对预检不回 `Access-Control-Allow-Headers`——手机上打开网页版必然 401。
+
+但七牛的 **S3 兼容层是标准的桶级 CORS**（官方文档里 `PUT/GET/DELETE Bucket cors` 均标注兼容），
+所以正解是：**给桶配一次跨域，工具在浏览器里会自动改走 S3 兼容端点**（原生 App/桌面端继续走自有接口，
+不需要任何配置）。
+
+**在七牛控制台配**：空间设置 → 跨域资源共享（不同版本叫法可能略有差异），填：
+
+| 项 | 值 |
+|---|---|
+| 来源 Origin | `https://github-lcb.github.io`（手机/电脑打开的就是这个页面） |
+| 方法 | GET、PUT、POST、DELETE、HEAD |
+| 允许的头 | `*` |
+| 暴露的头 | `ETag`、`x-amz-request-id` |
+| 缓存时间 | 600 秒 |
+
+配完刷新网页版即可（工具会自动解析出该空间的 S3 端点，如 `s3-cn-south-1.qiniucs.com`）。
+想验证是否生效：`curl -i -X OPTIONS -H 'Origin: https://github-lcb.github.io' \
+-H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization' \
+https://<你的 S3 端点>/<桶名>/` —— 配好前会看到 `CORSResponse: CORS is not enabled for this bucket`，
+配好后返回 200 并带 `Access-Control-Allow-Headers`。
+
+> 若控制台里没有这项，或配了不生效，可用 S3 的 `PUT Bucket cors`（aws-cli / s3cmd 均可）写入同一份规则；
+> 再不行才用备选方案：自建「补头转发」（见 [`docs/photo-relay.md`](photo-relay.md)）。
+
 ## 5. WebDAV（坚果云 / 群晖 / Nextcloud）
 
 - **坚果云**：账户 → 安全选项 → 添加**应用密码**（不要用登录密码）；地址填

@@ -62,9 +62,15 @@ export async function resolveQiniuUploadHostDetailed({ accessKey, bucket, fetchI
     const pick = (service) => root?.[service]?.acc?.main?.[0] || root?.[service]?.src?.main?.[0] || "";
     const host = pick("up");
     const rsfHost = pick("rsf");
-    if (!host) return { host: "", rsfHost, reason: "unknown", message: "区域接口没有返回上传域名" };
-    uploadHostCache.set(cacheKey, { host, rsfHost });
-    return { host, rsfHost, reason: "", message: "" };
+    // S3 兼容端点与它的 region_alias：**浏览器端全靠它**——七牛自有管理接口（rs/rsf）
+    // 不给浏览器跨域，而 S3 兼容层的桶级 CORS 是可以自己配的（控制台 空间设置 → 跨域资源共享，
+    // 或 S3 的 PUT Bucket cors）。配好之后浏览器就能直连，不需要任何转发。
+    const s3Section = root?.s3 || {};
+    const s3Host = s3Section?.acc?.main?.[0] || s3Section?.src?.main?.[0] || "";
+    const regionAlias = String(s3Section?.region_alias || "");
+    if (!host) return { host: "", rsfHost, s3Host, regionAlias, reason: "unknown", message: "区域接口没有返回上传域名" };
+    uploadHostCache.set(cacheKey, { host, rsfHost, s3Host, regionAlias });
+    return { host, rsfHost, s3Host, regionAlias, reason: "", message: "" };
   } catch (e) {
     // 网络异常不该中断上传：走兜底域名继续试，但把原因带出去
     return { host: "", reason: "network", message: String(e?.message || e) };
