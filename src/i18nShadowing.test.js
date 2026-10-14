@@ -47,6 +47,8 @@ const ALLOWED_SCRIPT_PARAM = new Set([
   // 界面用 useI18n 的 t、定时任务用 i18n.global.t，注入后才能纯测。
   "src/report/material.js:weekRange",
   "src/report/material.js:buildReportMaterial",
+  // 工作域上下文的提示行同样把 t 作为注入参数（界面注入 useI18n 的 t，单测注入桩）。
+  "src/agent/context.js:buildContextLine",
 ]);
 
 /**

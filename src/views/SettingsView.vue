@@ -4,9 +4,13 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
-import { capabilities } from "../platform/env.js";
+import { capabilities, isEnterprise } from "../platform/env.js";
 import { configureRemote, getRemoteConfig, remoteConfigured, remotePing } from "../platform/remoteStore.js";
 import { saveEnterpriseConfig, clearEnterpriseConfig, loadEnterpriseConfig } from "../app/enterpriseServer.js";
+import { getPolicySync, loadPolicy, setPolicy } from "../enterprise/policyStore.js";
+import { RISK_LEVELS } from "../enterprise/policy.js";
+import { clearAudit, loadAudit } from "../enterprise/audit.js";
+import { TOOLBOX_TOOLS, groupToolboxTools } from "../toolboxTools.js";
 import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import { relaunch } from "../platform/shell.js";
 import { openUrl } from "../platform/shell.js";
@@ -38,11 +42,14 @@ const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
   { key: "sync", labelKey: "settings.navSync", icon: "refresh", descKey: "settings.navSyncDesc" },
   { key: "enterprise", labelKey: "settings.navEnterprise", icon: "network", descKey: "settings.navEnterpriseDesc" },
+  // 管理面仅企业态出现（见下方 sections 过滤）：成员/席位管理依赖服务端，本次不做。
+  { key: "admin", labelKey: "settings.navAdmin", icon: "shield", descKey: "settings.navAdminDesc" },
   { key: "sponsor", labelKey: "settings.navSponsor", icon: "heart", descKey: "settings.navSponsorDesc" },
   { key: "general", labelKey: "settings.navGeneral", icon: "settings", descKey: "settings.navGeneralDesc" },
 ];
-// 云同步依赖原生代理（服务端未开 CORS 前浏览器直连不可用），浏览器端整节隐藏
-const sections = computed(() => SECTIONS.filter((s) => s.key !== "sync" || capabilities.cloudSync));
+// 云同步依赖原生代理（服务端未开 CORS 前浏览器直连不可用），浏览器端整节隐藏；
+// 管理面是企业独占，个人版整节隐藏（判据与投影同源：isEnterprise()）。
+const sections = computed(() => SECTIONS.filter((s) => (s.key !== "sync" || capabilities.cloudSync) && (s.key !== "admin" || isEnterprise())));
 const section = ref(SECTIONS.some((s) => s.key === props.section) ? props.section : "general");
 watch(
   () => props.section,
@@ -275,10 +282,73 @@ async function doEntDisconnect() {
   entErr.value = "";
   props.showToast(t("settings.enterpriseDisconnected"));
 }
+// ---------- 管理面（三期：企业权限门禁 + 操作审计留痕，仅企业态出现） ----------
+// 与 enterprise 段同款「即改即存、不走表单保存路径」：策略与审计是管理面数据，不是用户偏好，
+// 存 enterprise/policyStore 与 enterprise/audit（走 invoke 数据桥，企业态落服务器）。
+const RISK_KEY = { read: "agent.riskRead", transform: "agent.riskTransform", write: "agent.riskWrite", database: "agent.riskDatabase" };
+const policy = ref(getPolicySync());
+const policyGroups = computed(() => groupToolboxTools(TOOLBOX_TOOLS));
+const auditRows = ref([]);
+const riskLabelKey = (risk) => RISK_KEY[risk] || "agent.riskRead";
+const auditDecisionKey = (decision) => (decision === "deny" ? "settings.adminAuditDeny" : "settings.adminAuditAllow");
+const auditSourceKey = (source) => (source === "human" ? "settings.adminAuditSourceHuman" : "settings.adminAuditSourcePolicy");
+const fmtAuditTime = (ts) => new Date(Number(ts)).toLocaleString();
+function isToolAllowed(key) {
+  return !policy.value.disabledTools.includes(key);
+}
+// 工具准入：开=允许（移出禁用清单），关=禁用（进禁用清单）。setPolicy 同时刷新缓存并落盘。
+function toggleToolPolicy(key, allowed) {
+  const disabled = new Set(policy.value.disabledTools);
+  if (allowed) disabled.delete(key);
+  else disabled.add(key);
+  policy.value = setPolicy({ disabledTools: [...disabled], maxRisk: policy.value.maxRisk });
+  props.showToast(t("settings.adminPolicySaved"));
+}
+function changeMaxRisk(value) {
+  policy.value = setPolicy({ disabledTools: policy.value.disabledTools, maxRisk: value || null });
+  props.showToast(t("settings.adminPolicySaved"));
+}
+async function refreshAuditLog() {
+  auditRows.value = await loadAudit().catch(() => []);
+}
+async function clearAuditLog() {
+  const ok = await askConfirm({
+    title: t("settings.adminAuditConfirmTitle"),
+    message: t("settings.adminAuditConfirmMsg"),
+    okText: t("settings.adminAuditConfirmOk"),
+  });
+  if (!ok) return;
+  await clearAudit();
+  await refreshAuditLog();
+}
+// 导出沿用项目既有惯例：saveDialog 取目标 → invoke("export_file") 落盘（浏览器端转成下载）。
+async function exportAuditLog() {
+  const p = (n) => String(n).padStart(2, "0");
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  try {
+    const dest = await saveDialog({
+      title: t("settings.adminAuditExportDlg"),
+      defaultPath: `toolcove-audit-${stamp}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!dest) return;
+    await invoke("export_file", { path: dest, content: JSON.stringify(auditRows.value, null, 2) });
+    props.showToast(t("settings.adminAuditExportDone"));
+  } catch (e) {
+    props.showToast(t("settings.adminAuditExportFailed", { err: e }));
+  }
+}
 // 打开设置页时刷新 + 订阅状态（遥测与云同步都是桌面端专属，浏览器端跳过）
 onMounted(async () => {
   loadSettings();
   loadEnterprise();
+  // 管理面数据：企业态才需要（策略回填缓存的当前值、审计读回列表）。loadPolicy 顺带刷新缓存，
+  // 保证设置页展示的策略与投影处实际生效的策略是同一份。
+  if (isEnterprise()) {
+    policy.value = await loadPolicy();
+    refreshAuditLog();
+  }
   if (capabilities.telemetryUpload) loadTelemetryPref();
   if (!capabilities.cloudSync) return;
   await refreshSync();
@@ -817,6 +887,60 @@ async function restoreNow() {
           </div>
         </div>
 
+        <!-- ============ 管理（企业态专属：权限门禁 + 操作审计留痕） ============ -->
+        <div v-show="section === 'admin'" class="sect admin">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="shield" :size="15" class="sect-ico" /> {{ t("settings.adminToolsTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.adminToolsDesc") }}</p>
+          <div v-for="group in policyGroups" :key="group.key" class="admin-group">
+            <div class="admin-group-title">{{ t(group.labelKey) }}</div>
+            <label v-for="tool in group.tools" :key="tool.key" class="admin-tool-row">
+              <span class="admin-tool-name">{{ t(tool.labelKey) }}</span>
+              <span class="switch">
+                <input type="checkbox" :checked="isToolAllowed(tool.key)" @change="toggleToolPolicy(tool.key, $event.target.checked)" />
+                <span class="track"></span>
+              </span>
+            </label>
+          </div>
+
+          <div class="sect-head admin-sub">
+            <span class="sect-title"><Icon name="gauge" :size="15" class="sect-ico" /> {{ t("settings.adminRiskTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.adminRiskDesc") }}</p>
+          <label class="field">
+            <span>{{ t("settings.adminRiskLabel") }}</span>
+            <select class="select" :value="policy.maxRisk || ''" @change="changeMaxRisk($event.target.value)">
+              <option value="">{{ t("settings.adminRiskNone") }}</option>
+              <option v-for="risk in RISK_LEVELS" :key="risk" :value="risk">{{ t("settings.adminRiskUpTo", { level: t(riskLabelKey(risk)) }) }}</option>
+            </select>
+          </label>
+
+          <div class="sect-head admin-sub">
+            <span class="sect-title"><Icon name="archive" :size="15" class="sect-ico" /> {{ t("settings.adminAuditTitle") }}</span>
+            <div class="admin-audit-actions">
+              <button class="btn-ghost sm" :disabled="!auditRows.length" @click="exportAuditLog">
+                <Icon name="download" :size="14" /> {{ t("settings.adminAuditExport") }}
+              </button>
+              <button class="btn-danger" :disabled="!auditRows.length" @click="clearAuditLog">
+                <Icon name="trash" :size="14" /> {{ t("settings.adminAuditClear") }}
+              </button>
+            </div>
+          </div>
+          <p class="sect-desc">{{ t("settings.adminAuditDesc") }}</p>
+          <p v-if="!auditRows.length" class="sect-desc sub">{{ t("settings.adminAuditEmpty") }}</p>
+          <div v-else class="audit-list">
+            <div v-for="row in auditRows" :key="row.id" class="audit-row">
+              <span class="audit-time">{{ fmtAuditTime(row.ts) }}</span>
+              <span class="audit-goal" :title="row.goal">{{ row.goal }}</span>
+              <span class="audit-tool">{{ row.tool }}</span>
+              <span class="audit-risk">{{ t(riskLabelKey(row.risk)) }}</span>
+              <span class="audit-badge" :class="row.decision">{{ t(auditDecisionKey(row.decision)) }}</span>
+              <span class="audit-source">{{ t(auditSourceKey(row.source)) }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ 赞助与开源（全面免费，自愿支持） ============ -->
         <div v-show="section === 'sponsor'" class="sect sponsor">
           <div class="sect-head">
@@ -1160,4 +1284,26 @@ async function restoreNow() {
 .dev-tail { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); }
 .btn-danger { background: none; border: 1px solid var(--border-danger); color: var(--danger); border-radius: var(--r-sm); padding: 3px var(--sp-3); font-size: var(--fs-xs); cursor: pointer; }
 .btn-danger:hover { background: var(--danger-soft); }
+
+/* ============ 管理面（权限门禁 + 审计留痕）============ */
+.admin-sub { margin-top: var(--sp-6); }
+.admin-group { margin-bottom: var(--sp-5); }
+.admin-group-title { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); margin-bottom: var(--sp-2); }
+.admin-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.admin-tool-row:last-child { border-bottom: none; }
+.admin-tool-name { font-size: var(--fs-md); color: var(--text); }
+.admin-audit-actions { display: flex; align-items: center; gap: var(--sp-3); margin-left: auto; }
+.admin-audit-actions button { display: inline-flex; align-items: center; gap: 4px; }
+.admin-audit-actions button:disabled { opacity: 0.5; cursor: default; }
+.audit-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+.audit-row { display: grid; grid-template-columns: 150px minmax(120px, 1fr) 140px 56px 58px 70px; gap: var(--sp-3); align-items: center; padding: 5px var(--sp-2); font-size: var(--fs-xs); border-bottom: 1px solid var(--border); }
+.audit-row:last-child { border-bottom: none; }
+.audit-time { color: var(--muted); white-space: nowrap; }
+.audit-goal { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-tool { font-family: var(--font-mono); color: var(--text-weak); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-risk { color: var(--muted); }
+.audit-badge { font-weight: 600; text-align: center; border-radius: var(--r-pill); padding: 1px 6px; }
+.audit-badge.allow { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.audit-badge.deny { color: var(--danger); background: var(--danger-soft); }
+.audit-source { color: var(--faint); }
 </style>

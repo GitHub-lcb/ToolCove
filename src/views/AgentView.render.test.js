@@ -33,6 +33,23 @@ vi.mock("../agent/session.js", () => ({
   deleteSkill: spies.deleteSkill,
 }));
 
+// 假领域数据：AgentView 的 onServerPrefetch 会真的调用 repository.load，
+// SSR 渲染时能把它喂进域选择器——否则（真实运行时才跑的 onMounted）在 node 环境读不到数据。
+vi.mock("../data/repository.js", () => ({
+  load: vi.fn(async (kind) =>
+    kind === "domains"
+      ? [
+          { id: "d1", name: "云仓" },
+          { id: "d2", name: "云集" },
+        ]
+      : [
+          { id: "p1", domainId: "d1", name: "wms.api" },
+          { id: "p2", domainId: "d1", name: "wms.ui" },
+        ]
+  ),
+  create: vi.fn(async () => ({ id: "rec-1" })),
+}));
+
 import { i18n } from "../i18n/index.js";
 import AgentView from "./AgentView.vue";
 
@@ -65,6 +82,7 @@ function session(over = {}) {
     runs: [],
     skills: [],
     cfg: { maxSteps: 12, retries: 1, requireConfirmation: "risky", disabledTools: [], disabledSkills: [] },
+    contextDomain: "",
     pending: null,
     ...over,
   };
@@ -295,5 +313,49 @@ describe("AgentView 渲染", () => {
     expect(html).toContain(t("agent.capSkills"));
     expect(html).toContain("1");
     expect(html).not.toContain(skill.instructions);
+  });
+
+  it("最终答复卡给出「存为速记 / 存为问题」写回入口（知识沉淀）", async () => {
+    const html = await render({ runStatus: "completed", currentRunId: "run-1", steps: [{ type: "final", answer: "导出成功", ts: 1 }] });
+    expect(html).toContain(t("agent.saveToSnippet"));
+    expect(html).toContain(t("agent.saveToProblem"));
+    // 文案保持动词原样：不该暗示一种不存在的「已保存」状态
+    expect(html).not.toContain(t("agent.savedSnippet"));
+    expect(html).not.toContain(t("agent.savedProblem"));
+  });
+
+  it("域选择器：有领域时渲染下拉与「不指定」，选中后显示上下文预览", async () => {
+    const html = await render({ contextDomain: "d1" });
+    expect(html).toContain(t("agent.domain"));
+    expect(html).toContain(t("agent.domainNone"));
+    expect(html).toContain("云仓");
+    // 预览行走带 {name,n} 参数的词条（n = 该领域代码池数，这里 d1 有 2 个）
+    expect(html).toContain(t("agent.domainContext", { name: "云仓", n: 2 }));
+    expect(html).toContain(t("agent.domainClear"));
+  });
+
+  it("未选域时不显示上下文预览（默认零变化的界面侧）", async () => {
+    const html = await render();
+    expect(html).toContain(t("agent.domainNone"));
+    expect(html).not.toContain(t("agent.domainContext", { name: "云仓", n: 2 }));
+  });
+
+  it("回看历史时域选择器随之隐藏（它在目标输入卡内，历史只读）", async () => {
+    const html = await render(
+      {
+        runs: [
+          {
+            id: "r1",
+            input: "历史任务",
+            status: "completed",
+            steps: [{ type: "final", answer: "历史答案", ts: 1 }],
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        ],
+      },
+      { jumpId: { module: "agent", action: "view", runId: "r1", ts: 1 } }
+    );
+    expect(html).not.toContain(t("agent.domainNone"));
   });
 });

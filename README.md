@@ -31,7 +31,9 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   yours (`risky` / `always` / `never`). Large results are truncated to a `spill:` handle that the
   agent reads back in slices instead of flooding its context. Successful runs can be kept as
   *skills* (up to 50; at most 3 are matched and injected per run, under a fixed token budget) —
-  a skill is a hint about what worked last time, never a forced step. Bring your own
+  a skill is a hint about what worked last time, never a forced step. A finished answer can be saved
+  straight to a Snippet or a Problem, and the goal box can bind a run to one of your domains so the
+  agent starts with that context. Bring your own
   OpenAI-compatible endpoint; nothing is sent anywhere until you ask for it.
 - **Toolbox** — 27 built-in tools, each opens in its own draggable/resizable window (the title-bar pin
   keeps a window above all others, so a HUD-style tool can float over a game in borderless mode):
@@ -83,7 +85,10 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
   employee who knows your company" (desktop client pointed at a company server, data stays inside,
   one model gateway). Enter a server URL and token in Settings to switch: work data moves to the
   server, and game/hobby tools marked `scope: personal` hide themselves. Both editions share the
-  same task / workspace / manual surfaces.
+  same task / workspace / manual surfaces. Enterprise adds a **Admin** settings section (visible only
+  in enterprise mode): per-tool access switches, a risk ceiling that caps what the agent may run,
+  and an append-only **audit log** of every tool decision (allow/deny, by human or by policy) with
+  JSON export. Audit is recorded locally in both editions; the section just surfaces it.
 
 ### Delivery management (your own data)
 
@@ -356,6 +361,8 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   大结果裁剪成 `spill:` 句柄供分段回读，而不是淹没上下文；成功的运行可以存成**技能**（上限 50 条，
   单次最多命中 3 条、注入预算固定），技能只是「上次这么做成了」的提示，不是强制步骤。
   模型走你自己配置的任意 OpenAI 兼容端点，你不发起就没有任何对外请求。
+  跑完的结论可以一键存成速记或问题（顺手沉淀成你自己的知识）；目标框能绑定某个工作域，
+  让 Agent 带着「你在哪个项目上」的上下文起步。
   **目前 Agent 覆盖 27 个工具里的 16 个、共 41 个动作**，能做什么、不能做什么见下方专门说明。
 - **工具箱**：27 个内置工具——数据转换、文本处理（含文本对比）、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
   JSON Schema、时间调度、数据生成、网络诊断、
@@ -466,6 +473,9 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   （本地优先、无账号），企业版是「懂你们公司的员工」（桌面客户端连企业服务器、数据留在公司、
   统一模型网关）。在设置里填入企业服务器地址与令牌即切换为企业态：工作数据改存服务器，
   游戏 / 玩票类工具按 `scope: personal` 自动隐身。两个版本共用同一份任务面 / 工作面 / 手动面骨架。
+  企业版多一个**「管理」设置段**（仅企业态可见）：按工具开关准入、用风险上限封顶 Agent 能跑的动作、
+  以及一份只增不改的**操作审计日志**（每次工具决定都留痕：允许/拒绝、由人还是由策略），可导出 JSON；
+  审计在两个版本都本地记录，该段只负责展示。
 
 ### 研发管理（你自己的交付数据）
 

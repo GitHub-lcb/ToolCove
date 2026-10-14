@@ -9,8 +9,10 @@
 // 新增工具 = 在 src/contracts/ 加一个契约文件并在 index.js 登记，
 // 画廊/搜索/Agent 目录会同时出现它（准入规则由 contracts.test.js 强制）。
 import { i18n } from "./i18n/index.js";
-import { isDesktop, inEdition } from "./platform/env.js";
+import { isDesktop, inEdition, isEnterprise } from "./platform/env.js";
 import { TOOL_CONTRACTS } from "./contracts/index.js";
+import { applyPolicyToTools } from "./enterprise/policy.js";
+import { getPolicySync } from "./enterprise/policyStore.js";
 
 const t = (key, params) => i18n.global.t(key, params);
 
@@ -31,9 +33,15 @@ export function findToolboxTool(key, tools = TOOLBOX_TOOLS) {
   return tools.find((tool) => tool.key === key) || null;
 }
 
-/** 当前平台与版本可用的工具箱工具：浏览器端过滤掉依赖原生能力的工具，企业版过滤掉个人版独占工具。 */
+/**
+ * 当前平台 × 版本 × 企业策略可用的工具箱工具：
+ * 浏览器端过滤依赖原生能力的工具，企业版过滤个人版独占工具，
+ * 企业态再叠加权限门禁（按被禁用的工具 key 过滤，见 enterprise/policy）——
+ * 个人版不受策略影响（applyPolicyToTools 只在 isEnterprise() 时才应用）。
+ */
 export function visibleToolboxTools(tools = TOOLBOX_TOOLS) {
-  return tools.filter((tool) => (isDesktop || !tool.desktopOnly) && inEdition(tool.scope));
+  const visible = tools.filter((tool) => (isDesktop || !tool.desktopOnly) && inEdition(tool.scope));
+  return isEnterprise() ? applyPolicyToTools(getPolicySync(), visible) : visible;
 }
 
 export function groupToolboxTools(tools = TOOLBOX_TOOLS, groups = TOOLBOX_GROUPS) {

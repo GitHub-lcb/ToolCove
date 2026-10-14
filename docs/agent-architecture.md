@@ -202,6 +202,13 @@ Tool Adapters
   - **周报闭环**：`src/report/` 下素材抽取（`material.js`）、纯函数策略（`weeklyPolicy.js`）、装配式调度器
     （`schedule.js`）、真实装配（`index.js`）。定时生成只落 `pending` 草稿，确认动作经 `askConfirm` 门禁后
     归档速记——自动生成永不自动确认。
+  - **管理面**（2026-10-14）：`src/enterprise/policy.js`（`disabledTools` + `maxRisk` 纯规则）与
+    `policyStore.js`（同步缓存/持久化）在 `isEnterprise()` 时接进画廊与 Agent 注册表投影；`audit.js`
+    从 runtime 的 `approval_decided` 事件 1:1 派生审计条目（`runId:callId` 幂等、上限 500），个人版也留痕；
+    设置页「管理」段仅企业态可见。成员/席位待服务端。
+  - **知识写回与会话上下文**：`agent/answerDraft.js` 把最终答复映射成速记/问题草稿（复用同一写入口）；
+    `agent/context.js` 的 `buildContextLine` 经 `startAgentRun(goal, { contextLine })` 注入提示词，
+    照 `clarifyLine` 范式——不选域时提示词逐字节不变。
 - 工具：每个工具在 `src/contracts/<key>.js` 用一个契约文件同时声明 UI 元数据与 Agent 动作（单一真相源），`toolboxTools.js`（画廊投影 `ui` 字段）与 `catalog.js`（Agent 目录投影 `actions` 字段）都是契约的投影；实现层 `executors.js` 只做惰性装配（exceljs / hash-wasm / 原生桥等重依赖在动作真正执行时才 import）。16 个工具接入共 35 个动作（json / convert / table / markdown / xml / schema / diff / time / generator / network / crypto / file / image / pdf / request / db），其余 11 个在契约里用 `agentExempt` 写明豁免理由（截图、标签打印、AI 对话、照片存档、磁盘分析、多线程下载、接口抓包、提示词生成、自动签到、铁路大亨、面试刷题），准入规则由 `contracts.test.js` 强制（要么有动作、要么写明豁免）。文件、数据库、网络诊断与 PDF 动作带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `executors.js` 一起由 `tools.js` 装配；
   `AGENT_TOOL_NAMES` 在 `catalog.js` 汇总（契约动作 + 引擎动作 spill.read + 业务动作 data.*，停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，

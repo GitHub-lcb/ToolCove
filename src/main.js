@@ -3,6 +3,7 @@ import App from "./app/App.vue";
 import { i18n, initLocale, warmFallbackLocale } from "./i18n/index.js";
 import { runMigrations } from "./app/migrate.js";
 import { restoreEnterpriseConfig } from "./app/enterpriseServer.js";
+import { loadPolicy } from "./enterprise/policyStore.js";
 import { applyThemeAttribute, syncDensityAttribute } from "./app/theme.js";
 // 设计令牌与组件原语：此前内联在 App.vue 的非 scoped 块里（395 行，与全局工具类混在一起）。
 // 抽成独立 CSS 后，改主题不必碰组件文件，令牌缺口也能在一个屏幕内对照出来。
@@ -21,9 +22,11 @@ syncDensityAttribute();
 // 挂载前先落初始语言、跑一次数据迁移；失败也不阻断启动。
 // 企业服务器配置必须**最先**恢复：它决定数据桥往哪路由——initLocale/runMigrations
 // 都会 load_data("settings")，恢复晚于它们，首屏读到的就是本地而不是企业服务器上的数据。
+// 企业权限门禁同样在这里载入：投影是同步纯函数（不能 await 读盘），必须在界面开始投影前把
+// 策略填进内存缓存，否则企业态首帧会先按「不限制」渲染再跳变。
 restoreEnterpriseConfig()
   .catch(() => {})
-  .then(() => Promise.all([initLocale(), runMigrations()]))
+  .then(() => Promise.all([initLocale(), runMigrations(), loadPolicy()]))
   .catch((e) => console.error(t("common.bootFail", { err: e })))
   .finally(() => {
     createApp(App).use(i18n).mount("#app");

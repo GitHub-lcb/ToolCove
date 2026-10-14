@@ -54,6 +54,9 @@ function buildPrompt(input, history, tools, repairs, options = {}) {
   // 歧义预判（clarify.js）：只给方向、不给措辞——怎么问要贴着用户自己的说法，那是语言模型的判断。
   // 达门槛才会非空，所以这里不再叠一层条件；没开 TypeSafe 时它永远是空串。
   if (options.clarifyLine) lines.push(options.clarifyLine);
+  // 会话上下文（工作域绑定，三期）：与 clarifyLine 同范式——有才 push、无则不加，
+  // 保证「不选域」时提示词一字不变。内容由会话侧按选中的领域拼好透传（见 src/agent/context.js）。
+  if (options.contextLine) lines.push(options.contextLine);
   // 早期步骤折叠成摘要而不是直接丢弃：长任务里模型反复重试同一件事，
   // 往往就是因为第 3 步的失败原因已经被 slice(-8) 丢掉了（见 history.js）。
   lines.push(`历史：${historyPromptText(history, options.historyOptions || {})}`);
@@ -72,6 +75,9 @@ export function createAIPlanner(options = {}) {
     skills: Array.isArray(options.skills) ? options.skills : null,
     disabledSkills: Array.isArray(options.disabledSkills) ? options.disabledSkills : [],
     historyOptions: { keepTail: options.keepTail, summaryBudget: options.summaryBudget },
+    // 会话上下文行（工作域绑定）：收进 plannerOptions 即可一路到 buildPrompt；
+    // 默认空串 → buildPrompt 不加这一行，提示词与之前完全一致。
+    contextLine: typeof options.contextLine === "string" ? options.contextLine : "",
   };
   // TypeSafe 的旋钮来自配置（settings.typesafe），没配就用 skillSuggest.js 里的默认值。
   const tuning = options.typesafeTuning && typeof options.typesafeTuning === "object" ? options.typesafeTuning : {};

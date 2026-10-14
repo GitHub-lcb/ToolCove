@@ -20,6 +20,7 @@ import { loadSkills, removeSkill, saveSkills, upsertSkill } from "./skillStore.j
 import { invoke } from "../platform/invoke.js";
 import { buildTextDiff } from "../textDiff.js";
 import { accumulateUsage, emptyUsage, sanitizeRun } from "./runStore.js";
+import { appendAudit, auditFromRun } from "../enterprise/audit.js";
 
 export const RUNS_KEY = "agentRuns";
 export const RUNS_MAX = 30;
@@ -40,6 +41,10 @@ const INITIAL = () => ({
   runs: [],
   skills: [],
   cfg: null,
+  // 会话上下文（三期：工作域绑定）：当前选中的领域 id。**纯会话字段**——不写进 cfg、不落盘，
+  // 重启回到「不指定」。它是一次性上下文，与「工具开关 / 技能启停」这类长期偏好是两回事。
+  // 领域/代码池数据由视图（AgentView）持有并把 contextLine 拼好透传，引擎不查数据。
+  contextDomain: "",
   pending: null, // { kind:"tool"|"ask", tool, risk, question, args, resolve }
 });
 
@@ -208,10 +213,14 @@ async function handleRun(run) {
   agentSession.currentRunId = run.id;
   upsertRun(run);
   persistRuns();
+  // 审计留痕：**始终记录**（个人版也留痕）——本地审计对个人用户同样有价值，也避免「切到企业态
+  // 才突然开始记」留出时间空档；管理面只是企业态才**展示**它。幂等由 mergeAudit 保证：
+  // run 每次变化都会触发这里（每个事件一次），同一次运行的重复落盘不会产生重复条目。
+  await appendAudit(auditFromRun(run)).catch(() => {});
 }
 
 /** 预检 + 起运行。返回 false 表示未启动（空目标或已有运行在进行）。 */
-async function launch(input, resumeRun) {
+async function launch(input, resumeRun, extra = {}) {
   const goal = String(input ?? "").trim();
   if (!goal || agentSession.status !== "idle") return false;
   if (!agentSession.ready) await initAgentSession();
@@ -251,6 +260,9 @@ async function launch(input, resumeRun) {
       ...skillOptions,
       approvalPolicy,
       ...(resumeRun ? { resume: resumeRun } : {}),
+      // 会话上下文（工作域绑定）：视图拼好的 contextLine 原样透传，一路到规划器提示词。
+      // 为空（不选域）时**不加这个键**，规划器读到的仍是空 → 提示词零变化。
+      ...(extra.contextLine ? { contextLine: extra.contextLine } : {}),
       confirm: handleConfirm,
       // ask_user 要的是文本答案（路径、SQL、口令…），走单独入口，不复用布尔确认
       askUser: handleAskUser,
@@ -297,8 +309,8 @@ async function launch(input, resumeRun) {
   return true;
 }
 
-export async function startAgentRun(goal) {
-  return launch(goal, null);
+export async function startAgentRun(goal, extra = {}) {
+  return launch(goal, null, extra);
 }
 
 export async function resumeAgentRun(run) {

@@ -1,7 +1,7 @@
 <script setup>
 // Agent 工作台：应用首屏。运行态在 src/agent/session.js 的模块级单例里，
 // 视图被 :key="activeModule" 销毁重建也不丢运行、pending 确认与时间线。
-import { ref, reactive, computed, inject, nextTick, onMounted, watch } from "vue";
+import { ref, reactive, computed, inject, nextTick, onMounted, onServerPrefetch, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import MarkdownRender from "../tools/MarkdownRender.vue";
@@ -11,6 +11,9 @@ import { foldTimeline, payloadText, COLLAPSE_AT } from "../agent/timeline.js";
 import { describePreview, rowKind, rowText } from "../agent/preview.js";
 import { canResume } from "../agent/runStore.js";
 import { extractArtifacts } from "../agent/artifacts.js";
+import { answerToProblemDraft, answerToSnippetDraft } from "../agent/answerDraft.js";
+import { buildContextLine } from "../agent/context.js";
+import { create as createRecord, load as loadRepo } from "../data/repository.js";
 import { visibleToolboxTools, findToolboxTool } from "../toolboxTools.js";
 import RunProgress from "./RunProgress.vue";
 import { askConfirm } from "../ui/confirm.js";
@@ -297,6 +300,59 @@ onMounted(async () => {
   }, 1200);
 });
 
+// ------- 会话绑定当前工作域（三期：上下文） -------
+// 领域/代码池数据在**视图**里读、在这里把 contextLine 拼好传给运行——引擎保持无数据依赖
+// （session 只透传，见 src/agent/session.js）。选择本身是会话级状态（agentSession.contextDomain），
+// 不落 cfg：重启回到「不指定」，一次性上下文不该变成长期默认。
+const domains = ref([]);
+const pools = ref([]);
+// 选中领域（附代码池名）：空 id 或领域已被删都视为「未选」，绝不把失效上下文带进运行
+const selectedDomain = computed(() => {
+  const id = agentSession.contextDomain;
+  if (!id) return null;
+  const d = domains.value.find((x) => x.id === id);
+  if (!d) return null;
+  return { name: d.name, pools: pools.value.filter((p) => p && p.domainId === id).map((p) => p.name) };
+});
+// 预览行：让用户一眼看到「这次带上了什么上下文」，而不是默默生效
+const domainContextText = computed(() =>
+  selectedDomain.value ? t("agent.domainContext", { name: selectedDomain.value.name, n: selectedDomain.value.pools.length }) : ""
+);
+async function loadDomains() {
+  try {
+    const [ds, ps] = await Promise.all([loadRepo("domains"), loadRepo("pools")]);
+    domains.value = Array.isArray(ds) ? ds : [];
+    pools.value = Array.isArray(ps) ? ps : [];
+  } catch {
+    // 领域是可选上下文：读不到就不显示选择器，绝不拦住 Agent 主流程
+  }
+}
+// onMounted 是真实运行路径；onServerPrefetch 只服务 SSR 渲染测试（浏览器里是空操作），
+// 让渲染测试能把假 domains 真正喂进选择器断言（SSR 的 onMounted 不跑，见 render 测试顶部注释）。
+onMounted(loadDomains);
+onServerPrefetch(loadDomains);
+
+// ------- 结论写回记录（知识沉淀） -------
+// 把最终答复一键存成速记/问题：字段映射在 agent/answerDraft.js（纯函数、可单测）。
+// 取舍：同一条答复重复点击会创建多条——**有意为之**。速记/问题本就是「随手记」，
+// 用户主动点第二次是明确意图，不该被静默去重吞掉；按钮文案保持动词原样，不显示「已保存」。
+async function onSaveSnippet(answer) {
+  try {
+    await createRecord("snippets", answerToSnippetDraft(answer), { source: "agent" });
+    props.showToast(t("agent.savedSnippet"));
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
+}
+async function onSaveProblem(answer) {
+  try {
+    await createRecord("problems", answerToProblemDraft(answer), { source: "agent" });
+    props.showToast(t("agent.savedProblem"));
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+  }
+}
+
 function goSettings(section) {
   if (typeof openSettings === "function") openSettings(section);
   else emit("navigate", { module: "settings" });
@@ -310,7 +366,9 @@ async function startRun() {
     return goSettings("ai");
   }
   track("agent.run");
-  if (await startAgentRun(input)) {
+  // 域绑定：选中域时把领域上下文拼成一行提示，随运行透传（未选域 → 空串，提示词一字不变）
+  const contextLine = selectedDomain.value ? buildContextLine(selectedDomain.value, t) : "";
+  if (await startAgentRun(input, { contextLine })) {
     goal.value = "";
   }
 }
@@ -629,6 +687,16 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
         <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史 -->
         <div v-if="!viewRun" class="goal-box">
+          <!-- 域选择器（三期上下文）：没有领域数据时不显示；选定后给一行预览并可一键清除 -->
+          <div v-if="domains.length" class="goal-domain">
+            <label class="gd-label" :title="t('agent.domain')"><Icon name="layers" :size="13" />{{ t("agent.domain") }}</label>
+            <select v-model="agentSession.contextDomain" class="gd-select">
+              <option value="">{{ t("agent.domainNone") }}</option>
+              <option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}</option>
+            </select>
+            <span v-if="selectedDomain" class="gd-context">{{ domainContextText }}</span>
+            <button v-if="selectedDomain" class="link xs" @click="agentSession.contextDomain = ''">{{ t("agent.domainClear") }}</button>
+          </div>
           <textarea
             ref="goalBox"
             v-model="goal"
@@ -823,6 +891,10 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                   <Icon name="sparkles" :size="14" />
                   <b>{{ t("agent.stepFinal") }}</b>
                   <button class="link xs" @click="onCopy(item.answer, 'agent.copied')">{{ t("agent.copyAnswer") }}</button>
+                  <!-- 知识沉淀：把结论一键写回记录。重复点击会创建多条——有意为之（见 script 注释），
+                       文案保持动词原样、不显示「已保存」，避免暗示一种不存在的状态。 -->
+                  <button class="link xs" @click="onSaveSnippet(item.answer)">{{ t("agent.saveToSnippet") }}</button>
+                  <button class="link xs" @click="onSaveProblem(item.answer)">{{ t("agent.saveToProblem") }}</button>
                   <!-- 沉淀为技能：只有真的跑成功、且用过工具的运行才值得复用（引擎侧判定）；
                        回看历史时作用于被回看的那条 run -->
                   <button
@@ -1056,6 +1128,13 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .goal-actions { display: flex; align-items: center; gap: var(--sp-3); }
 .goal-hint { flex: 1; font-size: var(--fs-xs); color: var(--faint); }
 
+/* ---------- 域选择器（三段同色系小控件，与目标输入同卡） ---------- */
+.goal-domain { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.gd-label { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.gd-select { max-width: 220px; padding: 3px var(--sp-2); font-size: var(--fs-sm); color: var(--text); background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.gd-select:focus { outline: none; border-color: var(--primary); }
+.gd-context { font-size: var(--fs-xs); color: var(--primary-hover); background: var(--primary-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); }
+
 /* ---------- 内联确认卡 ---------- */
 .confirm { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); background: var(--card); border: 1px solid var(--border-strong); border-left: 3px solid var(--muted); border-radius: var(--r-md); box-shadow: var(--shadow); }
 .confirm.risk-write { border-left-color: var(--danger); }
@@ -1131,7 +1210,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .tl-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .answer-card { padding: var(--sp-4) var(--sp-5); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
-.ans-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); color: var(--primary-hover); }
+.ans-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); color: var(--primary-hover); }
 .ans-head b { font-size: var(--fs-md); }
 
 .working { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); color: var(--muted); }

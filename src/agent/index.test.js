@@ -324,6 +324,32 @@ describe("createAIPlanner 的技能匹配来源", () => {
   });
 });
 
+describe("createAIPlanner 的会话上下文注入（工作域绑定）", () => {
+  it("带 contextLine 时进 prompt", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ contextLine: "当前工作领域：云仓（代码池：wms.api）" });
+    await planner({ input: "目标", history: [], tools: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).toContain("当前工作领域：云仓");
+    expect(prompt).toContain("wms.api");
+  });
+
+  it("不带 contextLine 时 prompt 零变化（不选域 = 默认行为）", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const withDefault = createAIPlanner();
+    await withDefault({ input: "目标", history: [], tools: [] });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).not.toContain("当前工作领域");
+  });
+
+  it("contextLine 非字符串不注入（脏值不污染提示词）", async () => {
+    aiComplete.mockResolvedValue('{"type":"final","answer":"ok"}');
+    const planner = createAIPlanner({ contextLine: { name: "云仓" } });
+    await planner({ input: "目标", history: [], tools: [] });
+    expect(aiComplete.mock.calls[0][0]).not.toContain("云仓");
+  });
+});
+
 describe("runAIAgent 端到端修复", () => {
   it("模型先回非 JSON，再回合法动作：运行成功且时间线留修复事件", async () => {
     aiComplete

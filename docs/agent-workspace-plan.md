@@ -110,7 +110,22 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
   启动恢复，token 走 secure 存储）；周报闭环（`report/material.js` 素材抽取、`report/weeklyPolicy.js`
   纯函数、`report/schedule.js` 装配式调度器、`report/index.js` 生成/通知/归档、TaskView 定时设置行
   与「确认即归档速记」门禁）。
-- **三期：待做。** 管理面（成员/权限/审计/团队知识引擎）、输入框域绑定、定时任务统一入口。
+- **三期：客户端部分已完成；成员/席位待服务端。**
+  - **企业权限门禁**：`src/enterprise/policy.js`（纯规则：`disabledTools` + `maxRisk` 风险上限）、
+    `policyStore.js`（同步缓存 + 持久化），在 `isEnterprise()` 时接进 `visibleToolboxTools()` 与
+    `buildAgentRegistry/listAgentTools` 的投影（个人版不受影响）。空策略 = 不限制。
+  - **操作审计留痕**：`src/enterprise/audit.js`（`auditFromRun` 从 runtime 的 `approval_decided` 事件
+    1:1 映射条目 + `mergeAudit` 幂等去重，上限 500），session 落盘路径追加接线（**个人版也留痕**，
+    管理面只负责企业态展示）。
+  - **管理面**：设置页新增「管理」段（仅企业态可见）——工具准入开关、风险上限、
+    审计日志列表 + 清空（二次确认）+ 导出 JSON。
+  - **知识写回**：Agent 结论卡「存为速记 / 存为问题」→ `src/agent/answerDraft.js` 纯函数映射 +
+    `repository.create` 复用速记/问题同源写入口。
+  - **会话域绑定**：`src/agent/context.js` 的 `buildContextLine(domain, t)`；AgentView 域选择器 →
+    `startAgentRun(goal, { contextLine })` → 经 planner 注入提示词（照 `clarifyLine` 范式，
+    不选域时提示词逐字节不变）。
+  - **成员/席位管理待服务端**：账号体系、席位配额、令牌签发/吊销必须以服务端为权威来源，
+    客户端无法也不应凭空维护名册；读写接口需与服务端一起定契约，故本期待定。
 
 ## 分期计划（原始规划）
 

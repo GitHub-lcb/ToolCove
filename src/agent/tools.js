@@ -9,9 +9,11 @@
 // settings.agent 是用户可改的 JSON，永不信任：maxSteps / retries / requireConfirmation
 // 都在这里重算，越界值落回默认，防止手改配置绕过运行时的受控边界。
 import { AGENT_CONFIRM_POLICIES, AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../app/settingsConfig.js";
-import { isDesktop, inEdition } from "../platform/env.js";
+import { isDesktop, inEdition, isEnterprise } from "../platform/env.js";
 import { AGENT_TOOL_CATALOG, AGENT_TOOL_NAMES, AGENT_TOOL_BY_NAME } from "./catalog.js";
 import { createToolRegistry } from "./runtime.js";
+import { applyPolicyToActions } from "../enterprise/policy.js";
+import { getPolicySync } from "../enterprise/policyStore.js";
 
 export { AGENT_TOOL_NAMES };
 
@@ -63,25 +65,27 @@ export function resolveRunOptions(cfg) {
 // 所以试图续跑含已停用工具的历史会被既有 canResume 逻辑拒绝，无需额外代码。
 // 浏览器端额外剔除 desktopOnly 工具（依赖原生能力），保证规划器不会选中注定失败的工具。
 // 版本维度同理：按动作 meta.scope（契约投影而来）剔除当前版本不可见的工具。
+// 企业态再叠加权限门禁：按动作的风险级别与所属工具 key 过滤（个人版不受策略影响）。
 export async function buildAgentRegistry(cfg) {
   const disabled = disabledSet(cfg);
   const tools = (await allTools()).filter((t) => !disabled.has(t.name) && (isDesktop || !t.desktopOnly) && inEdition(t.scope));
-  return createToolRegistry(tools);
+  const gated = isEnterprise() ? applyPolicyToActions(getPolicySync(), tools) : tools;
+  return createToolRegistry(gated);
 }
 
 // 能力面板/设置矩阵的数据源：**同步**返回，只读目录（不加载实现层）。
 // 失败用例是「视图为了画一个开关列表而把 300KB 工具实现拉进首屏」，所以这里刻意不碰实现。
 export function listAgentTools(cfg) {
   const disabled = disabledSet(cfg);
-  return AGENT_TOOL_CATALOG
-    .filter((t) => (isDesktop || !t.desktopOnly) && inEdition(t.scope))
-    .map((t) => ({
-      name: t.name,
-      risk: t.risk,
-      descriptionKey: t.descriptionKey || "",
-      toolKey: t.toolKey || "",
-      enabled: !disabled.has(t.name),
-    }));
+  const visible = AGENT_TOOL_CATALOG.filter((t) => (isDesktop || !t.desktopOnly) && inEdition(t.scope));
+  const gated = isEnterprise() ? applyPolicyToActions(getPolicySync(), visible) : visible;
+  return gated.map((t) => ({
+    name: t.name,
+    risk: t.risk,
+    descriptionKey: t.descriptionKey || "",
+    toolKey: t.toolKey || "",
+    enabled: !disabled.has(t.name),
+  }));
 }
 
 /** 单个工具的元数据（风险分级等），供视图同步读取。 */
