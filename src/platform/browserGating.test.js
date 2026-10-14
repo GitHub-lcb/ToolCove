@@ -24,6 +24,9 @@ const DESKTOP_ONLY_TOOLS = [
   "network.ping",
   "network.tcp_check",
   "network.trace",
+  "pdf.extract_pages",
+  "pdf.merge",
+  "pdf.split",
 ];
 
 describe("平台判定", () => {
@@ -129,7 +132,7 @@ describe("Agent 工具注册表平台过滤", () => {
     expect(registry.get("json.parse")).toBeTruthy();
   });
 
-  it("浏览器可用集是桌面可用集的真子集，差异恰为 10 个桌面独占工具", async () => {
+  it("浏览器可用集是桌面可用集的真子集，差异恰为 13 个桌面独占工具", async () => {
     const desktop = (await import("../agent/tools.js")).listAgentTools(null).map((tool) => tool.name);
     stubBrowser();
     const browser = (await import("../agent/tools.js")).listAgentTools(null).map((tool) => tool.name);

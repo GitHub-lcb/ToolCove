@@ -36,24 +36,31 @@ a testable module instead of a component.
 - Follow the existing commit style (`feat: …`, `fix: …`, `docs: …`), one logical change per commit.
 - Add or update tests for behavior changes. Bug fixes should come with a regression test.
 - **A new tool must also be an action.** The toolbox is the agent's action space, so a new tool
-  ships with an entry in `src/agent/catalog.js` (name, description, argument schema, risk tier) and
-  a wired executor — or says explicitly in the PR why a human has to be the one doing it
+  ships as a single contract file in `src/contracts/<key>.js` — declaring the UI metadata (gallery
+  label, icon, group, search keywords) and the agent actions (name, description, argument schema,
+  risk tier) in one place — registered in `src/contracts/index.js`, plus a wired executor. If a
+  human has to be the one doing it, say so in the contract's `agentExempt` field instead
   (Screenshot, Rail Tycoon and Interview prep are the accepted exceptions; see
-  "What the agent can drive — and what it cannot" in README). `catalog.test.js` fails if the catalog
-  and the implementation drift apart in either direction, and `toolboxTools.js` is the single
-  registry the gallery and global search render from — document the tool there, not in three places.
+  "What the agent can drive — and what it cannot" in README). The gallery (`toolboxTools.js`) and
+  the agent catalog (`src/agent/catalog.js`) are both projections of the contracts, so one file is
+  the whole job — `contracts.test.js` enforces the admission rule (actions or a written exemption),
+  and `catalog.test.js` fails if the catalog and the implementation drift apart in either direction.
 - Don't add dependencies unless they clearly earn their place; the project deliberately avoids a
   router, a state library, and a UI framework.
 
 ## Architecture notes
 
 - `src/agent/` — the agent engine: a pure tool-calling loop (`runtime.js`), the tool **catalog**
-  (`catalog.js`, metadata only so it can be read at startup without dragging in 300KB of tool
+  (`catalog.js`, a projection of the contracts plus engine/business actions; metadata only so it
+  can be read at startup without dragging in 300KB of tool
   implementations), the approval policy and risk tiers (`approval.js`), result budgeting and spill
   handles (`resultBudget.js`, `spillStore.js`), run records for resume (`runStore.js`), the skill
   library (`skills.js` / `skillStore.js`) and the assembly layer (`index.js`).
-- `src/toolboxTools.js` — the single tool registry: gallery, group layout, global search and the
-  desktop-only filtering all read it. Add a tool here and document it here, not in scattered lists.
+- `src/contracts/` — the single source of truth for tools: one pure-data file per tool declaring
+  both the toolbox UI metadata and the agent actions (or an `agentExempt` reason). No imports
+  beyond `kit.js`, so the gallery, the agent catalog and the mobile parity tests all read it
+  directly. `src/toolboxTools.js` projects the `ui` field for gallery, group layout, global search
+  and desktop-only filtering — add a tool in `src/contracts/`, not in scattered lists.
 - `src/sync/` — end-to-end encrypted sync engine (client) plus `server/` (zero-dependency Node
   server that only ever stores ciphertext).
 - `src/tools/` — toolbox tool components; each tool's logic lives in a matching plain-JS module.

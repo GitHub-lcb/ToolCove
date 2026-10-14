@@ -4,42 +4,25 @@
 // 在 mobile/app/toolbox.js 里写死了一份映射。若桌面端改图标 / 加工具而手机端
 // 没跟着改，两端慢慢对不上——而这种对不上不会有任何测试变红。
 //
-// 为什么用「读源码文本」而不是 import 桌面注册表：
-//   `src/toolboxTools.js` 顶部 import 了 `i18n/index.js` → 进而 import JSON 词条。
-//   而 `e2e/helpers.js:579` 用**原生 Node ESM loader** 直接 import `mobile/app/toolbox.js`
-//   来比对两端工具清单；一旦本文件再 import 桌面注册表，Node 认不了 Vite 的 JSON 插件，
-//   整个 Playwright 套件会在收集用例时就崩掉（Total: 0 tests in 0 files）。
-//   ——这个坑已经踩过一次，所以这里刻意只读文本，不建立运行时依赖。
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// 桌面注册表现在就是工具契约（src/contracts/，每个工具一份 UI 元数据 + Agent 动作声明）。
+// 契约是纯数据模块（零依赖），vitest 与原生 Node ESM 都能直接 import——
+// 所以这里不再像早年那样正则解析源码文本（那个写法曾经因为
+// src/toolboxTools.js 顶部 import i18n→JSON、原生 Node 加载不了而被迫存在，
+// 且正则本身会悄悄烂掉；真实 import 两样都不占）。
 import { describe, it, expect } from "vitest";
+import { TOOL_CONTRACTS } from "../../src/contracts/index.js";
+import { TOOLBOX_GROUPS } from "../../src/contracts/groups.js";
 import { TOOLS, TOOL_GROUPS, iconOfTool, iconOfGroup } from "./toolbox.js";
 
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const desktopSource = fs.readFileSync(path.join(ROOT, "src/toolboxTools.js"), "utf8");
-
-/** 从桌面注册表源码里抽出 `{ key: "icon" }` 映射（只认 tools/groups 两段的单行写法） */
-function desktopIconMap() {
-  const map = new Map();
-  for (const m of desktopSource.matchAll(/key:\s*"([a-z]+)"[^}]*?icon:\s*"([a-z-]+)"/g)) {
-    if (!map.has(m[1])) map.set(m[1], m[2]);
-  }
-  return map;
-}
-
-const DESKTOP_ICONS = desktopIconMap();
-const DESKTOP_GROUP_ICONS = new Map(
-  [...desktopSource.matchAll(/key:\s*"([a-z]+)",\s*labelKey:\s*"toolbox\.registry\.group[^"]*",\s*icon:\s*"([a-z-]+)"/g)].map(
-    (m) => [m[1], m[2]],
-  ),
-);
+const DESKTOP_ICONS = new Map(TOOL_CONTRACTS.map((c) => [c.key, c.ui?.icon]));
+const DESKTOP_GROUP_ICONS = new Map(TOOLBOX_GROUPS.map((g) => [g.key, g.icon]));
 
 describe("手机端工具箱的图标与桌面注册表一致", () => {
-  it("能从桌面注册表源码里解析出图标（防止上面的正则写失效却空转通过）", () => {
-    expect(DESKTOP_ICONS.size, "没解析到任何桌面图标，正则可能失效").toBeGreaterThan(20);
+  it("能从桌面注册表解析出图标（防止映射来源失效却空转通过）", () => {
+    expect(DESKTOP_ICONS.size, "没解析到任何桌面图标").toBeGreaterThan(20);
     expect(DESKTOP_GROUP_ICONS.size, "没解析到任何分组图标").toBeGreaterThan(4);
-    // 抽查两个已知值，确认解析位置正确
+    for (const icon of DESKTOP_ICONS.values()) expect(icon, "契约里有工具缺 ui.icon").toBeTruthy();
+    // 抽查两个已知值，确认映射位置正确
     expect(DESKTOP_ICONS.get("json")).toBe("braces");
     expect(DESKTOP_ICONS.get("time")).toBe("clock");
   });

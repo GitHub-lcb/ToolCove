@@ -109,28 +109,31 @@ generation against an endpoint you configured, the check-ins you schedule, and o
 
 ### What the agent can drive — and what it cannot
 
-Being honest about this is part of the positioning: the agent exposes **38 typed actions drawn from
-15 of the 27 tools** today, and the plan is to close that gap rather than pretend the toolbox is
+Being honest about this is part of the positioning: the agent exposes **41 typed actions drawn from
+16 of the 27 tools** today, and the plan is to close that gap rather than pretend the toolbox is
 already one big action space.
 
 - **Agent-drivable now**: data conversion, text processing & diff, table, Markdown, XML, JSON + YAML,
   JSON Schema, time & Cron, ID/mock generation, checksum (digest / HMAC / password generator),
-  network diagnostics, HTTP requests, file read / list / write, image resize planning, the database
-  (read-only queries by design), and
+  network diagnostics, HTTP requests, file read / list / write, image resize planning, PDF merge /
+  page extraction / split, the database (read-only queries by design), and
   the local business data (snippets, problems, prompts, iterations, domains, pools, releases)
   through `data.query` / `data.get` / `data.create` / `data.update` / `data.remove`.
 - **Not drivable because a human is the point**: Screenshot (you frame the selection; the agent has
   no screen to look at), Rail Tycoon solver and Interview prep (these are things you play, not
   things you delegate), AI chat (the chat *is* the interaction).
-- **Not drivable yet**: PDF toolkit, Disk analyzer, Multi-threaded downloader, Label printing, API
+- **Not drivable yet**: Disk analyzer, Multi-threaded downloader, Label printing, API
   capture, Prompts/ComfyUI generation, Auto check-in. Each already has native commands behind it,
-  so these are wiring work — adding a catalog entry, an argument schema and a risk tier — not new
-  capability.
+  so these are wiring work — declaring an action with an argument schema and a risk tier in the
+  tool's contract — not new capability.
 
 The rule that follows from calling the tools an action space: **a new tool that cannot be called by
-the agent is either a deliberate exception (like Screenshot) or unfinished.** `src/agent/catalog.js`
-holds the metadata and `catalog.test.js` asserts it against the implementation in both directions,
-so "the catalog promises a tool that does not exist" fails a test rather than failing a user
+the agent is either a deliberate exception (like Screenshot) or unfinished.** Every tool declares
+its UI metadata and its agent actions in a single contract file under `src/contracts/`; the toolbox
+gallery (`toolboxTools.js`) and the agent catalog (`src/agent/catalog.js`) are both projections of
+those contracts. `contracts.test.js` enforces the admission rule (actions or a written exemption),
+and `catalog.test.js` asserts the catalog against the implementation in both directions, so
+"the catalog promises a tool that does not exist" fails a test rather than failing a user
 mid-task.
 
 ### Auto check-in: how it works, and what it will not do
@@ -345,7 +348,7 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   大结果裁剪成 `spill:` 句柄供分段回读，而不是淹没上下文；成功的运行可以存成**技能**（上限 50 条，
   单次最多命中 3 条、注入预算固定），技能只是「上次这么做成了」的提示，不是强制步骤。
   模型走你自己配置的任意 OpenAI 兼容端点，你不发起就没有任何对外请求。
-  **目前 Agent 覆盖 27 个工具里的 15 个、共 38 个动作**，能做什么、不能做什么见下方专门说明。
+  **目前 Agent 覆盖 27 个工具里的 16 个、共 41 个动作**，能做什么、不能做什么见下方专门说明。
 - **工具箱**：27 个内置工具——数据转换、文本处理（含文本对比）、表格转换、Markdown、结构化数据（JSON/YAML）、XML、
   JSON Schema、时间调度、数据生成、网络诊断、
   API 调试、多线程下载、接口抓包、文件处理、图片处理、照片存档（手机拍照直传自建对象存储，桌面端批量下载归档，见 [`docs/photo-storage-setup.md`](docs/photo-storage-setup.md)）、PDF 工具、标签打印、截图、磁盘分析、加密与校验、数据库管理、AI 对话、提示词、自动签到、铁路大亨站点推断、面试刷题，每个工具独立窗口，即开即用。
@@ -428,15 +431,18 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   迁完留**迁移记录**、可一键回滚（回滚先校验「原路径确实是指向该目标的链接」，防止误删真实目录）。
 - **Agent 能驱动什么、不能驱动什么**（把这条写清楚就是定位的一部分）：
   **能驱动**——数据转换、文本处理与对比、表格、Markdown、XML、JSON/YAML、JSON Schema、时间调度、
-  标识符与 Mock 生成、摘要 / HMAC / 密码生成、网络诊断、HTTP 请求、文件读列写、图片尺寸规划、数据库（按设计只给
+  标识符与 Mock 生成、摘要 / HMAC / 密码生成、网络诊断、HTTP 请求、文件读列写、图片尺寸规划、
+  PDF 合并 / 提取页 / 拆分、数据库（按设计只给
   只读查询），以及本地业务数据（速记 / 问题 / 提示词 / 迭代 / 领域 / 池 / 发布）的查、取、建、改、删。
   **不能驱动，因为人本身就是环节**——截图（选区要你框，Agent 没有屏幕可看）、铁路大亨与面试刷题
   （这两个是你玩的，不是委托给它的）、AI 对话（对话就是交互本身）。
-  **还不能驱动**——PDF 工具、磁盘分析、多线程下载、标签打印、接口抓包、提示词生成、自动签到：
-  它们背后的原生命令都在，缺的只是目录条目 + 参数 Schema + 风险级别这三件接线工作，不是新能力。
+  **还不能驱动**——磁盘分析、多线程下载、标签打印、接口抓包、提示词生成、自动签到：
+  它们背后的原生命令都在，缺的只是在工具契约里声明动作 + 参数 Schema + 风险级别这三件接线工作，不是新能力。
   由此推出工具准入规则：**新工具如果 Agent 调不到，它要么是刻意例外（截图这类），要么是没做完**。
-  `src/agent/catalog.js` 存元数据，`catalog.test.js` 双向校验目录与实现一致——「目录说有、实际没有」
-  这种事应该在测试里失败，而不是在用户跑到一半时失败。
+  每个工具在 `src/contracts/` 下用一个契约文件同时声明 UI 元数据与 Agent 动作（单一真相源），
+  工具箱画廊（`toolboxTools.js`）与 Agent 目录（`src/agent/catalog.js`）都是契约的投影；
+  `contracts.test.js` 强制准入规则（要么有动作、要么写明豁免理由），`catalog.test.js` 双向校验目录与实现一致——
+  「目录说有、实际没有」这种事应该在测试里失败，而不是在用户跑到一半时失败。
 - **手机端**：安卓 App 正在重做，目标是**功能对齐桌面端**——架构、分期与无法对齐的平台能力
   （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。
   旧的手机端实现（铁路大亨悬浮面板）已整体移除；铁路大亨的求解逻辑仍在

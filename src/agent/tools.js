@@ -30,12 +30,14 @@ function loadImpls() {
   return implsPromise;
 }
 
-/** 目录 + 实现 → 完整工具定义（含 execute 与 inputSchema）。 */
+/** 目录 + 实现 → 完整工具定义（含 execute 与 inputSchema）。
+ *  inputSchema 优先取目录（contracts 投影）里的声明；data.* 的 Schema 依赖仓库层
+ *  KINDS，留在 dataTools.js 随实现给出（见 catalog.js 说明）。 */
 function assemble(impls) {
   return AGENT_TOOL_CATALOG.map((meta) => {
     const impl = impls[meta.name];
     if (!impl) throw Error(`工具目录与实现不一致：${meta.name} 没有实现`);
-    return { ...impl, ...meta, inputSchema: impl.inputSchema || {} };
+    return { ...impl, ...meta, inputSchema: meta.inputSchema || impl.inputSchema || {} };
   });
 }
 

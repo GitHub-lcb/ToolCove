@@ -70,8 +70,14 @@ describe("分层边界", () => {
   });
 
   it("platform/ 不导入任何上层（它是最低的一层）", () => {
-    const upper = /^(src\/(tools|agent|data|sync|checkin|screenshot|views|ui)\/|src\/[A-Z][A-Za-z]*\.vue$|mobile\/)/;
+    const upper = /^(src\/(tools|agent|data|sync|checkin|screenshot|views|ui|contracts)\/|src\/[A-Z][A-Za-z]*\.vue$|mobile\/)/;
     expect(violations((e) => e.from.startsWith("src/platform/") && upper.test(e.to))).toEqual([]);
+  });
+
+  it("contracts/ 是纯数据层：不导入目录外的任何模块", () => {
+    // 契约要同时被首屏（toolboxTools/catalog 投影）与手机端对齐测试（原生 Node ESM 直接 import）
+    // 消费——一旦它开始 import i18n/平台/实现层，两边都会炸（见 toolboxIcons.test.js 记载的 ESM 坑）。
+    expect(violations((e) => e.from.startsWith("src/contracts/") && !e.to.startsWith("src/contracts/"))).toEqual([]);
   });
 
   it("tools/ 不导入应用视图（工具只依赖共享纯逻辑与 UI 原子）", () => {

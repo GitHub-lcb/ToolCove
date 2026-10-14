@@ -185,9 +185,9 @@ Tool Adapters
   而不是看界面文案）→ 停用后不再注入 → 删除后回到空态；另加一条「只有 ask_user、没有工具调用的运行
   不出现沉淀入口」。
 - **界面**：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
-- 工具：`builtins.js` 覆盖除「AI 对话」与「标签打印」外的全部工具箱能力（json / convert / yaml / diff / time / generator / crypto / image / file / db / network / request）。文件、数据库、网络诊断四项带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
-- 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `builtins.js` 一起由 `tools.js` 装配；
-  `AGENT_TOOL_NAMES` 在 `tools.js` 汇总（停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，
+- 工具：每个工具在 `src/contracts/<key>.js` 用一个契约文件同时声明 UI 元数据与 Agent 动作（单一真相源），`toolboxTools.js`（画廊投影 `ui` 字段）与 `catalog.js`（Agent 目录投影 `actions` 字段）都是契约的投影；实现层 `executors.js` 只做惰性装配（exceljs / hash-wasm / 原生桥等重依赖在动作真正执行时才 import）。16 个工具接入共 35 个动作（json / convert / table / markdown / xml / schema / diff / time / generator / network / crypto / file / image / pdf / request / db），其余 11 个在契约里用 `agentExempt` 写明豁免理由（截图、标签打印、AI 对话、照片存档、磁盘分析、多线程下载、接口抓包、提示词生成、自动签到、铁路大亨、面试刷题），准入规则由 `contracts.test.js` 强制（要么有动作、要么写明豁免）。文件、数据库、网络诊断与 PDF 动作带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
+- 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `executors.js` 一起由 `tools.js` 装配；
+  `AGENT_TOOL_NAMES` 在 `catalog.js` 汇总（契约动作 + 引擎动作 spill.read + 业务动作 data.*，停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，
   `data.create`/`data.update`/`data.remove` 为写工具：写工具走 `repository` 同一写入口（乐观锁 + 冲突重放），
   写后广播 `data-changed`，视图与 Agent 各自的改动自动互见。
   返回体量受控：query 摘要化（长文本 400 字符、对象数组降级为条数），get 超 24000 字符才降级并标记 `truncated`。

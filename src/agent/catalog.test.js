@@ -146,3 +146,26 @@ describe("新接入的纯转换工具", () => {
     }
   });
 });
+
+// PDF 是「契约化改造」第一个按准入规则补接的工具：元数据在 src/contracts/pdf.js 声明，
+// 实现在 executors.js（纯逻辑 mergePdfs/extractPages/splitPdf + 原生 Base64 桥）。
+// 这里锁元数据形状；字节级行为由 pdfTool 自己的测试与 e2e/fixtures 覆盖。
+describe("新接入的 PDF 动作", () => {
+  it("三个动作都是桌面独占的写操作（产出新文件），且带参数 Schema", () => {
+    for (const name of ["pdf.merge", "pdf.extract_pages", "pdf.split"]) {
+      const meta = AGENT_TOOL_BY_NAME.get(name);
+      expect(meta, name).toBeTruthy();
+      expect(meta.risk, name).toBe("write");
+      expect(meta.desktopOnly, name).toBe(true);
+      expect(meta.toolKey, name).toBe("pdf");
+      expect(meta.inputSchema?.type, name).toBe("object");
+    }
+  });
+
+  it("实现层能装配出这三个动作（目录 ↔ 实现双向一致的具体落地）", async () => {
+    const registry = await buildAgentRegistry(null);
+    for (const name of ["pdf.merge", "pdf.extract_pages", "pdf.split"]) {
+      expect(typeof registry.get(name)?.execute, name).toBe("function");
+    }
+  });
+});

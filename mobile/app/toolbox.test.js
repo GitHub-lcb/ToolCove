@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TOOLS, TOOL_BY_KEY, TOOL_GROUPS, progressOf, toolsOfGroup } from "./toolbox.js";
 
@@ -70,29 +68,29 @@ describe("手机端工具箱目录", () => {
     }
   });
 
-  it("桌面独占名单里的工具必须写明降级原因，且在桌面端确实标了 desktopOnly", () => {
+  it("桌面独占名单里的工具必须写明降级原因，且在桌面端确实标了 desktopOnly", async () => {
     // 白名单本身要被审：随便往里加就能绕过上面那条断言，等于给"忘了迁"开后门。
     // 所以要求每一条都有 note（界面上要如实告诉用户为什么这里没有），
     // 并且桌面端注册表里真的标了 desktopOnly（防止名不副实）。
-    const desktop = readFileSync(resolve(process.cwd(), "src/toolboxTools.js"), "utf8");
+    // 桌面注册表即工具契约（src/contracts/，纯数据模块，可直接 import）。
+    const { TOOL_CONTRACTS } = await import("../../src/contracts/index.js");
+    const desktopByKey = new Map(TOOL_CONTRACTS.map((c) => [c.key, c]));
     for (const key of DESKTOP_ONLY_TOOLS) {
       const entry = TOOL_BY_KEY[key];
       expect(entry, `白名单里的 ${key} 不在手机端清单里`).toBeTruthy();
       expect(entry.ready, `${key} 在白名单里就不该再标 ready:false 之外的其它状态`).toBe(false);
       expect(entry.note, `${key} 缺降级说明，界面上会变成一个没原因的空入口`).toBeTruthy();
-      expect(desktop, `${key} 在桌面端没有标 desktopOnly，与白名单矛盾`).toMatch(
-        new RegExp(`key:\\s*"${key}",[\\s\\S]{0,300}?desktopOnly:\\s*true`)
-      );
+      expect(desktopByKey.get(key)?.ui?.desktopOnly, `${key} 在桌面端没有标 desktopOnly，与白名单矛盾`).toBe(true);
     }
   });
 
-  it("工具清单与桌面端一一对应（防漏：少一个工具就是功能没对齐）", () => {
+  it("工具清单与桌面端一一对应（防漏：少一个工具就是功能没对齐）", async () => {
     // 为什么要读桌面端的注册表：手机端目录是手写的，**漏掉一个工具不会有任何报错**——
     // 界面上只是少一个入口。实际发生过：15 个工具里漏了「AI 对话」，
     // 而我当时按自己目录里的条数报成了"14/14 满格"。这条断言就是为了不再发生。
-    const desktop = readFileSync(resolve(process.cwd(), "src/toolboxTools.js"), "utf8");
-    const desktopKeys = [...desktop.matchAll(/key:\s*"([a-z]+)",\s*\n?\s*labelKey:\s*"toolbox\.registry\.tool/g)].map((m) => m[1]);
-    expect(desktopKeys.length, "桌面端注册表没解析出来，正则要跟着改").toBeGreaterThan(10);
+    const { TOOL_CONTRACTS } = await import("../../src/contracts/index.js");
+    const desktopKeys = TOOL_CONTRACTS.map((c) => c.key);
+    expect(desktopKeys.length, "桌面端注册表没解析出来").toBeGreaterThan(10);
 
     const mobileKeys = TOOLS.map((tool) => tool.key);
     const missing = desktopKeys.filter((key) => !mobileKeys.includes(key));

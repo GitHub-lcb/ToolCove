@@ -51,9 +51,11 @@ function bridgeCommands() {
 }
 
 describe("手机端与桌面端的功能对齐", () => {
-  it("工具箱清单与桌面端一一对应", () => {
-    const desktop = read("src/toolboxTools.js");
-    const desktopKeys = [...desktop.matchAll(/key:\s*"([a-z]+)",\s*\n?\s*labelKey:\s*"toolbox\.registry\.tool/g)].map((m) => m[1]);
+  it("工具箱清单与桌面端一一对应", async () => {
+    // 真实 import 契约而不是正则解析源码：契约是纯数据模块（零依赖），
+    // 原生 Node ESM 也能加载——比会悄悄烂掉的正则可靠（注册表已搬进 src/contracts/）。
+    const { TOOL_CONTRACTS } = await import("../../src/contracts/index.js");
+    const desktopKeys = TOOL_CONTRACTS.map((c) => c.key);
     expect(desktopKeys.length).toBeGreaterThan(10);
     expect(TOOLS.map((tool) => tool.key).sort()).toEqual([...desktopKeys].sort());
   });
