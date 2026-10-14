@@ -94,38 +94,23 @@ jobs:
           path: mobile/ios/ToolCove-unsigned.ipa
           if-no-files-found: error
 
+      - name: 生成发布说明
+        run: node mobile/ios/release-notes.mjs
+
       - name: 挂到 Release
         if: startsWith(github.ref, 'refs/tags/ios-v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          tag="ios-v$(node -p "require('./package.json').mobileVersion")"
           version=$(node -p "require('./package.json').mobileVersion")
+          tag="ios-v$version"
           ipa="mobile/ios/ToolCove-unsigned.ipa"
-          size=$(du -h "$ipa" | cut -f1)
-          notes=$(cat <<EOF
-          ToolCove iOS 版 ios-v$version（$size，**未签名**）
-
-          ## 怎么装（免费 Apple ID，不需要开发者账号）
-          1. 下载下面的 `ToolCove-unsigned.ipa` 到电脑（Windows 即可）；
-          2. 用 **爱思助手**（i4Tools）或 **Sideloadly** 打开它，用你的 **Apple ID** 重新签名；
-          3. 工具会自动装进连接的 iPhone（首次要在设置里信任开发者：设置 → 通用 → VPN 与设备管理）。
-
-          ## 必读
-          - **未签名包不能直接安装**：iOS 不存在"无签名运行"，必须重签这一步；
-          - 免费 Apple ID 的签名 **7 天过期**，到期用同一个工具重签一次即可（不是重新装）；
-          - 想免重签只能加入 Apple Developer Program（约 $99/年）；
-          - 这个包与网页版**同一份前端代码**，原生能力目前覆盖：HTTP 请求、密钥加解密、
-            下载到「文件 App ▸ ToolCove」、拍照/相册选图；其余原生能力会在后续版本补齐
-            （未实现的命令会如实提示，网页能力照常可用）。
-
-          安装遇到问题请看 `docs/ios-build.md`。
-          EOF
-          )
-          gh release create "$tag" \
-            --title "ToolCove iOS $version（未签名）" \
-            --notes "$notes" \
-            --latest=false \
-            "$ipa" \
-          || gh release upload "$tag" "$ipa" --clobber
+          title="ToolCove iOS $version（未签名）"
+          # 已存在就改说明+覆盖资产；否则新建（--latest=false：别抢安卓那边的 latest 指针）
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$title" --notes-file release-notes-ios.md
+            gh release upload "$tag" "$ipa" --clobber
+          else
+            gh release create "$tag" --title "$title" --notes-file release-notes-ios.md --latest=false "$ipa"
+          fi
