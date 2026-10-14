@@ -17,11 +17,27 @@ export const isBrowser = !isMobile && !isDesktop;
 
 // 版本（edition）判定：personal（个人版）/ enterprise（企业版），与上面的平台判定同构——
 // 契约的 scope 字段按它投影出两个版本（见 docs/agent-workspace-plan.md「契约加 scope」）。
-// 现在是常量开关：默认个人版；二期将从 settings 的企业服务器配置派生
-// （isEnterprise = !!企业服务器配置）。globalThis.__TOOLCOVE_EDITION__ 是给测试
-// 与二期企业配置留的钩子，用 typeof 判断，Node 单测环境（无 window）同样安全。
-export const edition = typeof globalThis.__TOOLCOVE_EDITION__ === "string" ? globalThis.__TOOLCOVE_EDITION__ : "personal";
-export const isEnterprise = edition === "enterprise";
+// 二期起为三级来源（优先级从高到低）：
+//   1. globalThis.__TOOLCOVE_EDITION__：测试钩子，始终优先——运行时企业配置不得干扰测试态；
+//   2. runtimeEdition：运行时由企业服务器配置派生（platform/remoteStore.js 的
+//      configureRemote 生效 → enterprise，清空 → personal）；
+//   3. 默认 personal。
+// 导出为函数而非常量：常量会在模块求值期固化，运行时配置企业服务器后版本永不翻身。
+let runtimeEdition = null;
+
+export function currentEdition() {
+  if (typeof globalThis.__TOOLCOVE_EDITION__ === "string") return globalThis.__TOOLCOVE_EDITION__;
+  return runtimeEdition ?? "personal";
+}
+
+export function isEnterprise() {
+  return currentEdition() === "enterprise";
+}
+
+/** 仅 platform/remoteStore.js 在企业配置生效/清除时调用；非法值一律按清除处理。 */
+export function setRuntimeEdition(value) {
+  runtimeEdition = value === "enterprise" ? "enterprise" : null;
+}
 
 /**
  * 版本过滤判据：个人版隐藏 enterprise 独占，企业版隐藏 personal 独占，both 两边都见。
@@ -29,7 +45,7 @@ export const isEnterprise = edition === "enterprise";
  * scope 缺省按 both 处理：引擎/业务数据动作（toolKey 为 agent/data）不属于任何工具契约。
  */
 export function inEdition(scope) {
-  return isEnterprise ? scope !== "personal" : scope !== "enterprise";
+  return isEnterprise() ? scope !== "personal" : scope !== "enterprise";
 }
 
 /**

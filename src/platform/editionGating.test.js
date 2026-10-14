@@ -21,15 +21,15 @@ const BOTH_TOOLS = ["json", "convert", "db"];
 describe("版本判定", () => {
   it("无钩子时默认个人版", async () => {
     const env = await import("./env.js");
-    expect(env.edition).toBe("personal");
-    expect(env.isEnterprise).toBe(false);
+    expect(env.currentEdition()).toBe("personal");
+    expect(env.isEnterprise()).toBe(false);
   });
 
   it("stub __TOOLCOVE_EDITION__ 后判定为企业版", async () => {
     stubEdition("enterprise");
     const env = await import("./env.js");
-    expect(env.edition).toBe("enterprise");
-    expect(env.isEnterprise).toBe(true);
+    expect(env.currentEdition()).toBe("enterprise");
+    expect(env.isEnterprise()).toBe(true);
   });
 
   it("inEdition 判据：个人版隐藏 enterprise 独占，企业版隐藏 personal 独占，both 两边都见", async () => {
@@ -46,6 +46,42 @@ describe("版本判定", () => {
     expect(env.inEdition("enterprise")).toBe(true);
     expect(env.inEdition("both")).toBe(true);
     expect(env.inEdition(undefined)).toBe(true);
+  });
+});
+
+describe("运行时企业态（二期：由企业服务器配置派生）", () => {
+  it("configureRemote 有效配置后 isEnterprise() 为 true，清空后回落 personal", async () => {
+    const env = await import("./env.js");
+    const remote = await import("./remoteStore.js");
+    expect(env.isEnterprise()).toBe(false);
+
+    remote.configureRemote({ baseUrl: "https://agent.example.com", token: "tk" });
+    expect(env.currentEdition()).toBe("enterprise");
+    expect(env.isEnterprise()).toBe(true);
+    // 版本过滤同步生效：企业态隐藏 personal 独占工具
+    expect(env.inEdition("personal")).toBe(false);
+
+    remote.configureRemote(null);
+    expect(env.currentEdition()).toBe("personal");
+    expect(env.isEnterprise()).toBe(false);
+    expect(env.inEdition("personal")).toBe(true);
+  });
+
+  it("__TOOLCOVE_EDITION__ 钩子始终优先于运行时配置（测试态不被企业配置干扰）", async () => {
+    stubEdition("personal");
+    const env = await import("./env.js");
+    const remote = await import("./remoteStore.js");
+    remote.configureRemote({ baseUrl: "https://agent.example.com", token: "tk" });
+    expect(env.currentEdition()).toBe("personal");
+    expect(env.isEnterprise()).toBe(false);
+  });
+
+  it("无效配置（缺 token）不派生企业态", async () => {
+    const env = await import("./env.js");
+    const remote = await import("./remoteStore.js");
+    remote.configureRemote({ baseUrl: "https://agent.example.com", token: "" });
+    expect(remote.remoteConfigured()).toBe(false);
+    expect(env.isEnterprise()).toBe(false);
   });
 });
 

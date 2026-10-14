@@ -20,14 +20,36 @@ import ToolWindow from "./ToolWindow.vue";
 import ToolboxView from "../views/ToolboxView.vue";
 import GlobalSearch from "../views/GlobalSearch.vue";
 import ModuleTabs from "./ModuleTabs.vue";
-import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget } from "./navConfig.js";
+import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget, migrateHiddenModulesV2 } from "./navConfig.js";
+import { groupNavModules } from "./taskListItems.js";
 import { startCheckInScheduler, stopCheckInScheduler } from "../checkin/index.js";
 
 const { t } = useI18n();
 
-// ------- 导航分层：4 个一级模块（侧边栏）+ 设置；work / records 内部再分 Tab -------
-// 配置与旧 key 映射见 navConfig.js（纯函数，单测覆盖）
+// ------- 导航分层（二期重构）：侧边栏 = 新任务 + 任务列表（agent 历史）+「工作面」分组 -------
+// NAV_MODULES 数组本身不变：深链与 Ctrl+1..5 热键语义不动（Ctrl+1 仍回 agent 主区）。
+// 配置与旧 key 映射见 navConfig.js，任务列表/工作面分组的投影见 taskListItems.js（均纯函数单测覆盖）
 const MODULES = NAV_MODULES;
+
+// 侧边栏主体（新任务按钮 + 任务行 + 后台任务监控条）。
+// 异步加载的理由与所有模块视图一致：它要读 agentSession 单例，
+// 静态 import 会把整个 agent 引擎拖进外壳的 entry chunk（详见组件内注释）。
+const AgentSidePanel = defineAsyncComponent(() => import("./AgentSidePanel.vue"));
+
+// 正在回看的历史 run id：只驱动侧边栏行高亮，回看状态本体在 AgentView 里
+const viewingRunId = ref("");
+
+// 任务列表跳转：复用 jump 深链机制（activeJump 只认 module/tab 坐标，action/runId 原样透传给 AgentView）
+function onNewTask() {
+  viewingRunId.value = "";
+  activeModule.value = "agent";
+  jump.value = { module: "agent", tab: null, action: "new", ts: Date.now() };
+}
+function onViewTask(runId) {
+  viewingRunId.value = runId;
+  activeModule.value = "agent";
+  jump.value = { module: "agent", tab: null, action: "view", runId, ts: Date.now() };
+}
 
 // 工具箱工具独立窗口模式（URL 携带 ?tool=xxx 时只渲染工具窗口）
 const toolMode = new URLSearchParams(window.location.search).get("tool") || "";
@@ -109,12 +131,20 @@ provide("openSettings", openSettings);
 const density = ref(getDensity());
 const hiddenModules = ref([]); // 设置里隐藏的模块 key；隐藏只是不展示，全局搜索仍可达
 const visibleModules = computed(() => MODULES.filter((m) => !hiddenModules.value.includes(m.key)));
+// 「工作面」分组按钮（work/records/toolbox；agent 永不入组也不可隐藏，语义见 taskListItems.js）
+const workspaceModules = computed(() => groupNavModules(MODULES, hiddenModules.value));
+// 切走 agent 模块后回看高亮失效（AgentView 被 :key 销毁，回看状态随之复位）
+watch(activeModule, (m) => {
+  if (m !== "agent") viewingRunId.value = "";
+});
 async function refreshUiSettings() {
   try {
     const s = (await invoke("load_data", { key: "settings" })) || {};
     density.value = s.ui?.density === "comfort" ? "comfort" : "compact";
     setDensity(density.value);
-    hiddenModules.value = normalizeHiddenModules(MODULES.map((m) => m.key), s.ui?.hiddenModules);
+    // migrateHiddenModulesV2 兜底：v9 迁移已清过盘，但 settings-saved 事件路径上
+    // 仍可能出现脏值（如旧版本回写），agent 被藏会把默认主区弄丢，这里再剔一次
+    hiddenModules.value = migrateHiddenModulesV2(normalizeHiddenModules(MODULES.map((m) => m.key), s.ui?.hiddenModules));
     // 当前所在模块被隐藏时切到第一个可见模块，避免侧边栏失去选中高亮
     if (MODULES.some((m) => m.key === activeModule.value) && hiddenModules.value.includes(activeModule.value) && visibleModules.value.length) {
       activeModule.value = visibleModules.value[0].key;
@@ -287,6 +317,8 @@ function onGlobalNavigate(input) {
   if (target.tab) moduleTabs.value[target.module] = target.tab;
   const id = input && input.id;
   jump.value = id ? { ...target, id, ts: Date.now() } : null;
+  // 回 agent 主区（不带条目深链）= 看当前画布：清掉侧边栏的回看高亮
+  if (target.module === "agent" && !id) viewingRunId.value = "";
 }
 function onTabSwitch(tabKey) {
   moduleTabs.value[activeModule.value] = tabKey;
@@ -454,8 +486,20 @@ onUnmounted(() => {
       </div>
 
       <nav class="nav">
+        <!-- 二期重构：侧边栏主体 = 新任务 + 任务列表（agent 即默认主区，不再占一个模块按钮） -->
+        <AgentSidePanel
+          :active-module="activeModule"
+          :viewing-run-id="viewingRunId"
+          :collapsed="collapsed"
+          @new="onNewTask"
+          @view="onViewTask"
+          @open="activeModule = 'agent'"
+        />
+
+        <!-- 工作面：人自己干活的地方，也是 Agent 的取数记忆 -->
+        <p v-if="workspaceModules.length && !collapsed" class="nav-group">{{ t("nav.workspace") }}</p>
         <button
-          v-for="m in visibleModules"
+          v-for="m in workspaceModules"
           :key="m.key"
           class="nav-item"
           :class="{ on: activeModule === m.key }"
@@ -615,6 +659,8 @@ onUnmounted(() => {
 /* nav 可滚：min-height:0 解除 flex 默认不收缩；负 margin+同值 padding 把滚动区撑到侧边栏边缘，选中项左侧指示条（left:-14px）不被裁 */
 .nav { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 -14px; padding: 0 var(--sp-5); scrollbar-width: thin; scrollbar-color: var(--border-steel) transparent; }
 .nav-item { flex-shrink: 0; }
+/* 「工作面」分组标签：任务列表与模块按钮之间的分组锚点 */
+.nav-group { flex-shrink: 0; margin: var(--sp-3) 0 -2px; padding: 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 700; color: var(--faint); letter-spacing: 0.4px; }
 .nav-item {
   position: relative;
   display: flex;

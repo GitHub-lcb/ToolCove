@@ -73,6 +73,26 @@ describe("平台适配层门禁", () => {
     await expect(invoke("load_data", { key: "gating-key" })).resolves.toEqual({ n: 1 });
   });
 
+  it("浏览器端配置企业服务器后走远端，断开后回浏览器通道（内存/IndexedDB）", async () => {
+    stubBrowser();
+    const { invoke } = await import("./invoke.js");
+    // 与 invoke.js 同一动态导入图：configureRemote 状态就是路由判据读的那份
+    const remote = await import("./remoteStore.js");
+    const calls = [];
+    remote._setFetch(async (url, opts) => {
+      calls.push({ url, method: opts.method });
+      return { status: 200, ok: true, json: async () => ({ data: { from: "remote" } }) };
+    });
+    remote.configureRemote({ baseUrl: "https://agent.example.com", token: "tk" });
+    await expect(invoke("load_data", { key: "gating-remote" })).resolves.toEqual({ from: "remote" });
+    expect(calls[0].url).toBe("https://agent.example.com/v1/kv/gating-remote");
+
+    remote.configureRemote(null);
+    await invoke("save_data", { key: "gating-local", data: { from: "local" } });
+    await expect(invoke("load_data", { key: "gating-local" })).resolves.toEqual({ from: "local" });
+    expect(calls).toHaveLength(1); // 断开后不再发远端请求
+  });
+
   it("browserHandlers 不含桌面独占命令", async () => {
     stubBrowser();
     const { browserHandlers } = await import("./invoke.js");

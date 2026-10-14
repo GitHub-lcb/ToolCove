@@ -1,6 +1,7 @@
 // migrate.js 纯转换函数单测：结构升级 + 幂等性
 import { describe, it, expect } from "vitest";
 import { migrateIterationsV1, migrateIterationsV2, migrateIterationsV3, migrateIterationsV4, migrateSnippetsV3, migrateSnippetsV4, migrateProblemsV1, migrateReleasesV1, migrateLegacyProjectToPools, SCHEMA_VERSION } from "./migrate.js";
+import { migrateHiddenModulesV2 } from "./navConfig.js";
 
 describe("SCHEMA_VERSION", () => {
   it("是正整数", () => {
@@ -292,5 +293,78 @@ describe("v0→v1 这步命中的是真实物理键", () => {
     ex(saved).not.toContain("releases");
     expect(store.get("release-pools").active[0].items).toMatchObject([{ kind: "pool", name: "建表" }]);
     expect("pools" in store.get("release-pools").active[0]).toBe(false);
+  });
+});
+
+describe("migrateHiddenModulesV2（v8→v9：agent 不可隐藏）", () => {
+  it("剔除 agent 并去重保序", () => {
+    expect(migrateHiddenModulesV2(["agent", "work"])).toEqual(["work"]);
+    expect(migrateHiddenModulesV2(["work", "agent", "records"])).toEqual(["work", "records"]);
+    expect(migrateHiddenModulesV2(["work", "work", "agent", "records", "work"])).toEqual(["work", "records"]);
+  });
+
+  it("幂等：已是新态（不含 agent）的输入原样通过，二次执行不变", () => {
+    const once = migrateHiddenModulesV2(["work", "records"]);
+    expect(once).toEqual(["work", "records"]);
+    expect(migrateHiddenModulesV2(once)).toEqual(once);
+  });
+
+  it("历史脏值：agent 在任意位置都被剔除，其余 key 不动", () => {
+    // v9 之前用户可以真的把 agent 藏起来；升级后这些设置必须被清掉，否则默认主区消失
+    expect(migrateHiddenModulesV2(["agent"])).toEqual([]);
+    expect(migrateHiddenModulesV2(["toolbox", "agent", "agent"])).toEqual(["toolbox"]);
+  });
+
+  it("非数组原样返回", () => {
+    expect(migrateHiddenModulesV2(null)).toBeNull();
+    expect(migrateHiddenModulesV2(undefined)).toBeUndefined();
+  });
+
+  it("runMigrations 的 v8→v9 这步落盘清洗后的 settings，已是新态则不多写一次", async () => {
+    const { vi, expect: ex } = await import("vitest");
+    const store = new Map([
+      ["meta", { schemaVersion: 8 }],
+      ["settings", { ui: { hiddenModules: ["agent", "work", "work"], density: "compact" } }],
+    ]);
+    const saved = [];
+    vi.doMock("../platform/invoke.js", () => ({
+      invoke: async (cmd, args = {}) => {
+        if (cmd === "load_data") return store.has(args.key) ? JSON.parse(JSON.stringify(store.get(args.key))) : undefined;
+        if (cmd === "save_data") {
+          store.set(args.key, args.data);
+          saved.push(args.key);
+          return undefined;
+        }
+        throw new Error("unknown command " + cmd);
+      },
+    }));
+    vi.resetModules();
+    const { runMigrations, SCHEMA_VERSION: ver } = await import("./migrate.js");
+    const result = await runMigrations();
+    vi.doUnmock("../platform/invoke.js");
+
+    expect(result).toMatchObject({ migrated: true, from: 8, to: ver });
+    expect(store.get("settings").ui.hiddenModules).toEqual(["work"]);
+    // 其余设置分组原样保留（保存以磁盘快照为基底的惯例不能被迁移打破）
+    expect(store.get("settings").ui.density).toBe("compact");
+    expect(store.get("meta").schemaVersion).toBe(ver);
+
+    // 再跑一次：已是最新秒退，一个字都不该再写
+    saved.length = 0;
+    vi.doMock("../platform/invoke.js", () => ({
+      invoke: async (cmd, args = {}) => {
+        if (cmd === "load_data") return store.has(args.key) ? JSON.parse(JSON.stringify(store.get(args.key))) : undefined;
+        if (cmd === "save_data") {
+          saved.push(args.key);
+          return undefined;
+        }
+        throw new Error("unknown command " + cmd);
+      },
+    }));
+    vi.resetModules();
+    const again = await (await import("./migrate.js")).runMigrations();
+    vi.doUnmock("../platform/invoke.js");
+    expect(again.migrated).toBe(false);
+    ex(saved).toEqual([]);
   });
 });

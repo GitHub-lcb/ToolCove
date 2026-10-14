@@ -73,3 +73,19 @@ export function migrateHiddenModulesV1(hidden) {
   }
   return out;
 }
+
+/**
+ * 隐藏模块迁移（schema v8→v9）：agent 永不可隐藏。
+ * 二期导航重构后侧边栏没有 agent 按钮——它是默认主区，任务列表就是它的历史；
+ * 「隐藏 agent」从语义上不再成立（藏了就没有主区），这里把历史脏值里的 agent 剔除。
+ * 同时去重保序、幂等：不含 agent 且无重复的输入原样返回（调用方据此决定要不要落盘）。
+ */
+export function migrateHiddenModulesV2(hidden) {
+  if (!Array.isArray(hidden)) return hidden;
+  const out = [];
+  for (const key of hidden) {
+    if (key === "agent" || out.includes(key)) continue;
+    out.push(key);
+  }
+  return out;
+}

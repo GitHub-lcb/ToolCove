@@ -5,6 +5,8 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { capabilities } from "../platform/env.js";
+import { configureRemote, getRemoteConfig, remoteConfigured, remotePing } from "../platform/remoteStore.js";
+import { saveEnterpriseConfig, clearEnterpriseConfig, loadEnterpriseConfig } from "../app/enterpriseServer.js";
 import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import { relaunch } from "../platform/shell.js";
 import { openUrl } from "../platform/shell.js";
@@ -35,6 +37,7 @@ const props = defineProps({
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
   { key: "sync", labelKey: "settings.navSync", icon: "refresh", descKey: "settings.navSyncDesc" },
+  { key: "enterprise", labelKey: "settings.navEnterprise", icon: "network", descKey: "settings.navEnterpriseDesc" },
   { key: "sponsor", labelKey: "settings.navSponsor", icon: "heart", descKey: "settings.navSponsorDesc" },
   { key: "general", labelKey: "settings.navGeneral", icon: "settings", descKey: "settings.navGeneralDesc" },
 ];
@@ -50,8 +53,10 @@ watch(
 // 兜底显式指向 general（插入 pro 后 SECTIONS[1] 不再等于 general，评审注意项）
 const currentMeta = computed(() => sections.value.find((s) => s.key === section.value) || SECTIONS.find((s) => s.key === "general") || SECTIONS[0]);
 
-// 侧边栏模块展示/隐藏选项（与 App.vue 同一份 navConfig，四项 + 设置不入列表）
-const NAV_MODULE_OPTIONS = NAV_MODULES;
+// 侧边栏模块展示/隐藏选项（与 App.vue 同一份 navConfig，设置不入列表）。
+// agent 不在选项里：二期导航重构后它是默认主区（侧边栏没有它的按钮），
+// 「隐藏 agent」语义不再成立——历史脏值由 schema v9 迁移清掉（见 navConfig.js）。
+const NAV_MODULE_OPTIONS = NAV_MODULES.filter((m) => m.key !== "agent");
 function isNavModuleVisible(key) {
   return !form.value.ui.hiddenModules.includes(key);
 }
@@ -205,9 +210,75 @@ function registerSyncRefresh() {
 function refreshSyncListener() {
   refreshSync();
 }
+// ---------- 企业服务器（二期：数据桥接企业服务器） ----------
+// 与云同步一样是即改即存、不走表单保存路径：配置本身必须存本地（app/enterpriseServer.js），
+// 不能进 settings.json——数据桥路由到远端后，settings.json 就在服务器上了，配置存里面是自举悖论。
+const entUrl = ref("");
+const entToken = ref("");
+const showEntToken = ref(false);
+const entTesting = ref(false);
+const entConfigured = ref(false); // 数据桥当前是否路由到企业服务器
+const entState = ref("none"); // none / ok / fail
+const entName = ref(""); // ping 返回的服务端显示名
+const entErr = ref("");
+async function loadEnterprise() {
+  const cfg = await loadEnterpriseConfig();
+  entUrl.value = cfg?.baseUrl || "";
+  entToken.value = cfg?.token || "";
+  entConfigured.value = remoteConfigured();
+  entState.value = entConfigured.value ? "ok" : "none";
+}
+function entErrorText(code) {
+  const map = { REMOTE_UNAUTHORIZED: "settings.enterpriseErrAuth", REMOTE_UNREACHABLE: "settings.enterpriseErrUnreachable" };
+  return map[code] ? t(map[code]) : String(code || "");
+}
+async function doEntTest() {
+  entErr.value = "";
+  const baseUrl = entUrl.value.trim();
+  const token = entToken.value.trim();
+  if (!baseUrl || !/^https?:\/\//.test(baseUrl) || !token) {
+    entState.value = "fail";
+    entErr.value = t("settings.enterpriseErrInvalid");
+    return;
+  }
+  entTesting.value = true;
+  // 先暂存旧配置：测试成功才落 configureRemote（规格），失败恢复原状，已连着的配置不被一次失败测试打断
+  const prev = getRemoteConfig();
+  try {
+    configureRemote({ baseUrl, token });
+    const r = await remotePing();
+    if (r.ok) {
+      await saveEnterpriseConfig({ baseUrl, token });
+      entConfigured.value = true;
+      entState.value = "ok";
+      entName.value = r.name || "";
+      props.showToast(t("settings.enterpriseConnected"));
+    } else {
+      configureRemote(prev);
+      entState.value = "fail";
+      entErr.value = entErrorText(r.error);
+    }
+  } catch (e) {
+    configureRemote(prev);
+    entState.value = "fail";
+    entErr.value = e && e.message ? e.message : String(e);
+  } finally {
+    entTesting.value = false;
+  }
+}
+async function doEntDisconnect() {
+  configureRemote(null);
+  clearEnterpriseConfig();
+  entConfigured.value = false;
+  entState.value = "none";
+  entName.value = "";
+  entErr.value = "";
+  props.showToast(t("settings.enterpriseDisconnected"));
+}
 // 打开设置页时刷新 + 订阅状态（遥测与云同步都是桌面端专属，浏览器端跳过）
 onMounted(async () => {
   loadSettings();
+  loadEnterprise();
   if (capabilities.telemetryUpload) loadTelemetryPref();
   if (!capabilities.cloudSync) return;
   await refreshSync();
@@ -700,6 +771,50 @@ async function restoreNow() {
             <p v-if="syncErrKey" class="field-err">{{ t(syncErrKey) }}</p>
             <p class="sect-desc sub">{{ t("sync.viewTip") }}</p>
           </template>
+        </div>
+
+        <!-- ============ 企业服务器（二期：数据桥接企业服务器，配置存本地） ============ -->
+        <div v-show="section === 'enterprise'" class="sect">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="network" :size="15" class="sect-ico" /> {{ t("settings.enterpriseTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.enterpriseHint") }}</p>
+
+          <div class="sync-state" :class="{ idle: entState === 'ok', error: entState === 'fail' }">
+            <span class="sync-dot"></span>
+            <span v-if="entState === 'ok'">{{ t("settings.enterpriseStatusOk") }}{{ entName ? ` · ${entName}` : "" }}</span>
+            <span v-else-if="entState === 'fail'">{{ t("settings.enterpriseStatusFail", { err: entErr }) }}</span>
+            <span v-else>{{ t("settings.enterpriseStatusNone") }}</span>
+          </div>
+
+          <label class="field">
+            <span>{{ t("settings.enterpriseUrl") }}</span>
+            <input v-model="entUrl" :placeholder="t('settings.enterpriseUrlPh')" autocomplete="off" />
+          </label>
+
+          <label class="field">
+            <span>{{ t("settings.enterpriseToken") }}</span>
+            <div class="token-row">
+              <input
+                :type="showEntToken ? 'text' : 'password'"
+                v-model="entToken"
+                :placeholder="t('settings.enterpriseTokenPh')"
+                autocomplete="off"
+              />
+              <button type="button" class="btn-ghost sm" @click="showEntToken = !showEntToken">
+                <Icon :name="showEntToken ? 'x' : 'open'" :size="14" /> {{ showEntToken ? t("settings.hide") : t("settings.show") }}
+              </button>
+            </div>
+          </label>
+
+          <div class="sect-foot">
+            <button class="btn-primary sm" :disabled="entTesting" @click="doEntTest">
+              <Icon name="link" :size="14" /> {{ entTesting ? t("settings.enterpriseTesting") : t("settings.enterpriseTest") }}
+            </button>
+            <button v-if="entConfigured" class="btn-ghost sm" :disabled="entTesting" @click="doEntDisconnect">
+              <Icon name="x" :size="14" /> {{ t("settings.enterpriseDisconnect") }}
+            </button>
+          </div>
         </div>
 
         <!-- ============ 赞助与开源（全面免费，自愿支持） ============ -->

@@ -1,12 +1,3 @@
-<script>
-// 会话搜索过滤抽成命名导出：渲染测试（SSR）模拟不了输入事件，纯函数才能直接断言过滤行为
-export function filterRuns(runs, query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return runs;
-  return runs.filter((rec) => (rec.input || "").toLowerCase().includes(q));
-}
-</script>
-
 <script setup>
 // Agent 工作台：应用首屏。运行态在 src/agent/session.js 的模块级单例里，
 // 视图被 :key="activeModule" 销毁重建也不丢运行、pending 确认与时间线。
@@ -14,12 +5,11 @@ import { ref, reactive, computed, inject, nextTick, onMounted, watch } from "vue
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import MarkdownRender from "../tools/MarkdownRender.vue";
-import { relativeTime } from "../shared/dates.js";
 import { errText } from "../shared/errors.js";
 import { buildAgentRegistry, listAgentTools } from "../agent/tools.js";
 import { foldTimeline, payloadText, COLLAPSE_AT } from "../agent/timeline.js";
 import { describePreview, rowKind, rowText } from "../agent/preview.js";
-import { canResume, sanitizeRun } from "../agent/runStore.js";
+import { canResume } from "../agent/runStore.js";
 import { extractArtifacts } from "../agent/artifacts.js";
 import { visibleToolboxTools, findToolboxTool } from "../toolboxTools.js";
 import RunProgress from "./RunProgress.vue";
@@ -33,7 +23,6 @@ import {
   clearSpills,
   clearTimeline,
   deleteSkill,
-  discardRun,
   initAgentSession,
   promoteRunToSkill,
   resolvePending,
@@ -46,7 +35,8 @@ import {
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
-  // App.vue 对所有模块视图统一透传这两个 prop；Agent 视图没有分段与跳转目标，仅为契约一致
+  // App.vue 对所有模块视图统一透传这两个 prop；section 仅为契约一致，
+  // jumpId 在二期接了真语义：侧边栏任务列表的 new / view 深链（见下方 watch）
   section: { type: String, default: "" },
   jumpId: { type: Object, default: null },
 });
@@ -55,16 +45,63 @@ const emit = defineEmits(["navigate"]);
 const { t } = useI18n();
 const openSettings = inject("openSettings", null);
 
+const busy = computed(() => agentSession.status !== "idle");
+
+// ------- 历史任务回看（二期导航重构：会话列表上移侧边栏，画布承接回看） -------
+// viewRunId 非空时画布只读渲染该 run 落盘的 steps；运行中的真实进度由
+// RunProgress 表达（不随回看切换），所以「边跑新任务边翻旧账」是安全的。
+const viewRunId = ref("");
+const viewRun = computed(() => agentSession.runs.find((r) => r.id === viewRunId.value) || null);
+
+// 时间线数据源：回看 → 该 run 的 steps 快照（与实时 steps 同一事件流形状，
+// foldTimeline 对缺运行时字段容错——缺什么显示什么）；否则 → 实时会话。
+const sourceSteps = computed(() => {
+  const viewing = viewRun.value;
+  if (viewing) return Array.isArray(viewing.steps) ? viewing.steps : [];
+  return agentSession.steps;
+});
+
 // payloadText 在模板里会被同一份数据反复调用，这里一次性算好挂到尝试上；
 // 产物同理一并算好（extractArtifacts 是纯函数，见 agent/artifacts.js）
 const timeline = computed(() =>
-  foldTimeline(agentSession.steps).map((item) =>
+  foldTimeline(sourceSteps.value).map((item) =>
     item.kind === "tool"
       ? { ...item, attempts: item.attempts.map((a) => ({ ...a, argsText: payloadText(a.args), resultText: payloadText(a.result), artifacts: extractArtifacts(a.result) })) }
       : item
   )
 );
-const busy = computed(() => agentSession.status !== "idle");
+
+// jump 深链：{ action:"new" } 开新任务；{ action:"view", runId } 回看历史。
+// immediate 是因为 AgentView 按 :key="activeModule" 重建——带深链从别的模块切进来时，
+// 组件出生那一刻 jumpId 就已经就位，非 immediate 的 watch 会漏掉这一拍。
+watch(
+  () => props.jumpId,
+  async (j) => {
+    if (!j || j.module !== "agent") return;
+    if (j.action === "new") {
+      // busy 时清时间线等于砍掉正在跑的运行现场：忽略并如实提示
+      if (busy.value) return props.showToast(t("agent.busyNew"));
+      viewRunId.value = "";
+      clearTimeline();
+      nextTick(() => goalBox.value?.focus());
+      return;
+    }
+    if (j.action === "view" && j.runId) {
+      // 深链可能比首次 init 先到：先等历史就位再找记录
+      if (!agentSession.ready) await initAgentSession();
+      const rec = agentSession.runs.find((r) => r.id === j.runId);
+      // 记录可能刚被删掉：忽略这次跳转，不把一个空 id 挂上画布
+      if (rec) viewRunId.value = rec.id;
+    }
+  },
+  { immediate: true }
+);
+
+function backToCurrent() {
+  viewRunId.value = "";
+  // 知会外壳清掉侧边栏的回看高亮（navigate 到 agent 不带 id：jump 置空，无其他副作用）
+  emit("navigate", { module: "agent" });
+}
 const toolMeta = computed(() => new Map(listAgentTools(agentSession.cfg).map((x) => [x.name, x])));
 // registry 只建一次：逐行调 canResume 会为 30 行历史重建 30 次 14 个工具定义。
 // 它必须是 await 出来的真 registry——buildAgentRegistry 是 async（工具实现层按需加载），
@@ -209,7 +246,7 @@ const manualTools = visibleToolboxTools();
 // registry 的懒加载策略：buildAgentRegistry 会动态拉整套工具实现层
 // （executors + luxon/js-yaml 等，实测约 400KB），放首屏就把工具箱的懒加载抵消掉了。
 // 所以推迟到两个时机（都走同一个幂等入口）：启动约 1.2s 后若已有历史可续跑就建一次；
-// 或用户首次把指针移进左栏会话列表时再建。resumeMap 在 registry 未就绪时一律判
+// 或用户真的点续跑时（onResume 里 ensure）。resumeMap 在 registry 未就绪时一律判
 // 「不可续跑」（按钮先灰后亮，比先亮后灭更少误导），逻辑不变。
 let registryFor = null; // 已建 registry 对应的 cfg：换了配置（如关停工具）要重建，否则续跑判定用的是旧开关
 let registryBuilding = false;
@@ -226,10 +263,6 @@ async function ensureAgentRegistry() {
     registryFor = cfg;
   }
 }
-
-// 左栏会话列表：runs 在 session.js 里用 unshift 落记录（最新在前），这里保持原序不翻转
-const sessionQuery = ref("");
-const filteredRuns = computed(() => filterRuns(agentSession.runs, sessionQuery.value));
 
 // 首启引导卡：纯本机 UI 状态而非用户数据，所以走 localStorage（先例：themeMode）
 const HINT_KEY = "tc.agent.hint";
@@ -258,7 +291,7 @@ const answerBox = ref(null);
 onMounted(async () => {
   await initAgentSession();
   if (agentSession.goal && !goal.value) goal.value = agentSession.goal;
-  // 有历史才值得提前建 registry（续跑按钮靠它判定）；没有就等左栏首次 pointerenter
+  // 有历史才值得提前建 registry（续跑按钮靠它判定）；没有就等 onResume 里 ensure
   setTimeout(() => {
     if (agentSession.runs.length) ensureAgentRegistry();
   }, 1200);
@@ -368,16 +401,21 @@ async function onCopy(text, okKey) {
 }
 
 function onRerun(rec) {
+  viewRunId.value = ""; // 输入框在回看模式下是藏的：先退出回看，重填的目标才看得见
   goal.value = rec.input || "";
   nextTick(() => goalBox.value?.focus());
 }
 
 async function onResume(rec) {
+  // 续跑判定要 registry：二期入口（回看横幅）不再经过左栏 pointerenter，
+  // 这里主动 ensure 一次（幂等；registry 未就绪时 resumeMap 判「不可续跑」的语义不变）
+  await ensureAgentRegistry();
   if (!resumeMap.value.get(rec.id)) return props.showToast(t("agent.resumeBlocked"));
   if (!agentSession.aiReady) {
     props.showToast(t("agent.errNoAI"));
     return goSettings("ai");
   }
+  viewRunId.value = ""; // 续跑即回到实时画布
   track("agent.resume");
   await resumeAgentRun(rec);
 }
@@ -452,15 +490,16 @@ const RUN_STATUS = {
   max_steps: { cls: "st-pending", key: "agent.statusMaxSteps" },
 };
 const runMeta = (rec) => RUN_STATUS[rec.status] || { cls: "tc-neutral", key: "agent.statusIdle" };
-const runLabel = (rec) => t(runMeta(rec).key);
 
 // ------- Summary 交付清单（纯派生，不改引擎） -------
 // 为什么是派生而不是引擎生成：一期不动 session.js 的收尾逻辑，视图从现有 steps 现算一份；
 // 把 summary 写进 run 记录落盘是二期的任务列表升级（见 docs/agent-workspace-plan.md）。
+// 二期：数据源参数化——回看历史时吃该 run 的快照（落盘 run 没有 error 字段，缺什么显示什么）。
 const TERMINAL_STATUS = new Set(["completed", "failed", "cancelled", "max_steps"]);
 const runSummary = computed(() => {
-  const status = agentSession.runStatus;
-  if (!TERMINAL_STATUS.has(status) || !agentSession.steps.length) return null;
+  const viewing = viewRun.value;
+  const status = viewing ? viewing.status : agentSession.runStatus;
+  if (!TERMINAL_STATUS.has(status) || !sourceSteps.value.length) return null;
   const counts = new Map();
   const seen = new Set();
   const artifacts = [];
@@ -479,11 +518,11 @@ const runSummary = computed(() => {
   }
   // 遗留说明：只有非圆满终态才有话可说
   let leftover = "";
-  if (status === "failed") leftover = errorText.value;
+  if (status === "failed") leftover = viewing ? viewing.error || "" : errorText.value;
   else if (status === "cancelled") leftover = t("agent.statusCancelled");
   else if (status === "max_steps") leftover = t("agent.statusMaxSteps");
   return {
-    goal: agentSession.goal,
+    goal: viewing ? viewing.input || "" : agentSession.goal,
     statusKey: runMeta({ status }).key,
     cls: runMeta({ status }).cls,
     tools: [...counts].map(([name, count]) => ({ name, count })),
@@ -573,51 +612,23 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
     </section>
 
     <div class="body">
-      <!-- 左栏：会话列表（原右栏「最近任务」提升而来）。指针首次进入时触发 registry 懒加载 -->
-      <aside class="sessions" @pointerenter="ensureAgentRegistry">
-        <input
-          v-model="sessionQuery"
-          class="sess-search"
-          type="search"
-          :placeholder="t('agent.sessionSearchPh')"
-          :aria-label="t('agent.sessionSearchPh')"
-        />
-        <p v-if="!agentSession.runs.length" class="rail-desc">{{ t("agent.historyEmpty") }}</p>
-        <p v-else-if="!filteredRuns.length" class="rail-desc">{{ t("agent.sessionNoMatch") }}</p>
-        <article v-for="rec in filteredRuns" :key="rec.id" class="run-item" :class="{ cur: rec.id === agentSession.currentRunId }">
-          <div class="run-top">
-            <span class="run-status">
-              <span class="st-chip sm" :class="runMeta(rec).cls">{{ runLabel(rec) }}</span>
-              <!-- 进行中状态灯：当前 run 且引擎非 idle（waiting 在等人，也算活运行） -->
-              <span v-if="rec.id === agentSession.currentRunId && busy" class="run-live" :title="t('agent.statusRunning')"></span>
-            </span>
-            <span class="run-time">{{ relativeTime(rec.updatedAt || rec.createdAt) }}</span>
-          </div>
-          <p class="run-input" :title="rec.input">{{ rec.input }}</p>
-          <div class="run-meter">
-            {{ t("agent.stepsCount", { n: rec.steps?.length || 0 }) }} · {{ t("agent.tokensCount", { n: fmtNum(rec.usage?.totalTokens) }) }}
-          </div>
-          <div class="run-actions">
-            <button
-              class="link xs"
-              :disabled="busy || !resumeMap.get(rec.id)"
-              :title="resumeMap.get(rec.id) ? t('agent.resume') : t('agent.resumeBlocked')"
-              @click="onResume(rec)"
-            >
-              {{ t("agent.resume") }}
-            </button>
-            <button class="link xs" :disabled="busy" @click="onRerun(rec)">{{ t("agent.rerun") }}</button>
-            <button class="link xs" @click="onCopy(JSON.stringify(sanitizeRun(rec), null, 2), 'agent.copied')">
-              {{ t("agent.copyRun") }}
-            </button>
-            <button class="link xs danger" :disabled="busy" @click="discardRun(rec.id)">{{ t("agent.deleteRun") }}</button>
-          </div>
-        </article>
-      </aside>
-
       <!-- 运行画布 -->
       <div class="canvas">
-        <div class="goal-box">
+        <!-- 历史任务回看横幅：画布只读渲染该 run 的 steps 快照。
+             续跑/重跑按钮复用主流程（内部会先退出回看）；「返回当前」回到实时画布。 -->
+        <section v-if="viewRun" class="view-banner">
+          <Icon name="clock" :size="14" />
+          <span class="vb-label">{{ t("agent.viewingHistory") }}</span>
+          <span class="vb-input" :title="viewRun.input">{{ viewRun.input }}</span>
+          <span class="vb-actions">
+            <button class="link xs" :disabled="busy" @click="onResume(viewRun)">{{ t("agent.resume") }}</button>
+            <button class="link xs" :disabled="busy" @click="onRerun(viewRun)">{{ t("agent.rerun") }}</button>
+            <button class="btn-ghost xs" @click="backToCurrent">{{ t("agent.backToCurrent") }}</button>
+          </span>
+        </section>
+
+        <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史 -->
+        <div v-if="!viewRun" class="goal-box">
           <textarea
             ref="goalBox"
             v-model="goal"
@@ -639,7 +650,8 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
         <div class="scroll">
           <!-- 内联确认卡：运行时交给我们的是 Promise，卡片能展示工具名 / 风险 / 完整 args，
-               全局 askConfirm 模态做不到，而且不会盖住用户正在看的时间线 -->
+               全局 askConfirm 模态做不到，而且不会盖住用户正在看的时间线。
+               它属于实时运行：回看历史时照常显示——后台运行来了一张确认卡，人仍要答得上。 -->
           <section v-if="agentSession.pending" class="confirm" :class="'risk-' + (agentSession.pending.risk || 'ask')">
             <div class="cf-head">
               <Icon name="alert" :size="15" />
@@ -811,12 +823,13 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                   <Icon name="sparkles" :size="14" />
                   <b>{{ t("agent.stepFinal") }}</b>
                   <button class="link xs" @click="onCopy(item.answer, 'agent.copied')">{{ t("agent.copyAnswer") }}</button>
-                  <!-- 沉淀为技能：只有真的跑成功、且用过工具的运行才值得复用（引擎侧判定） -->
+                  <!-- 沉淀为技能：只有真的跑成功、且用过工具的运行才值得复用（引擎侧判定）；
+                       回看历史时作用于被回看的那条 run -->
                   <button
-                    v-if="agentSession.runStatus === 'completed'"
+                    v-if="(viewRun ? viewRun.status : agentSession.runStatus) === 'completed'"
                     class="link xs ans-skill"
                     :title="t('agent.skillPromoteTip')"
-                    @click="onPromoteRun(agentSession.currentRunId)"
+                    @click="onPromoteRun(viewRun ? viewRun.id : agentSession.currentRunId)"
                   >
                     <Icon name="sparkles" :size="12" />{{ t("agent.skillPromote") }}
                   </button>
@@ -825,15 +838,19 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               </article>
             </template>
 
-            <div v-if="busy" class="working">
+            <div v-if="busy && !viewRun" class="working">
               <span class="dot"></span>{{ agentSession.status === "waiting" ? t("agent.statusWaiting") : t("agent.running") }}
             </div>
           </section>
 
-          <p v-else class="canvas-empty">{{ t("agent.emptyTimeline") }}</p>
+          <!-- 空态：定位叙事（二期）。回看空记录时什么都不补——横幅与交付清单已经说明了现状 -->
+          <div v-else-if="!viewRun" class="canvas-empty">
+            <b class="ce-slogan">{{ t("agent.emptySlogan") }}</b>
+            <p class="ce-hint">{{ t("agent.emptyHint") }}</p>
+          </div>
 
-          <!-- 运行级错误卡 -->
-          <section v-if="errorText && agentSession.runStatus === 'failed'" class="err-card">
+          <!-- 运行级错误卡（仅实时运行；历史 run 的失败信息由交付清单的遗留说明表达） -->
+          <section v-if="errorText && agentSession.runStatus === 'failed' && !viewRun" class="err-card">
             <Icon name="alert" :size="15" />
             <pre class="err-text">{{ errorText }}</pre>
           </section>
@@ -1005,14 +1022,28 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .noai p { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 .noai-actions { display: flex; gap: var(--sp-3); }
 
-/* ---------- 三栏：会话列表 / 运行画布 / 能力清单 ---------- */
-.body { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: stretch; }
-/* 三栏都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
-.sessions { width: 264px; flex-shrink: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3); padding-right: 2px; }
-.sess-search { flex-shrink: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); color: var(--text); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); outline: none; }
-.sess-search:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+/* ---------- 两栏：运行画布 / 能力清单（二期：会话列表上移应用侧边栏） ---------- */
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: stretch; }
+/* 两栏都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
 .canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-4); }
 .scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-3); }
+
+/* ---------- 历史任务回看横幅 ---------- */
+.view-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--primary-soft);
+  border: 1px solid var(--border-blue);
+  border-radius: var(--r-md);
+  color: var(--primary-hover);
+  font-size: var(--fs-sm);
+}
+.vb-label { flex-shrink: 0; font-weight: 700; }
+.vb-input { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-weak); }
+.vb-actions { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); }
 
 /* ---------- 目标输入 ---------- */
 .goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); }
@@ -1056,7 +1087,10 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 /* ---------- 时间线 ---------- */
 .timeline { display: flex; flex-direction: column; gap: var(--sp-2); }
-.canvas-empty { margin: 0; padding: var(--sp-7) 0; text-align: center; font-size: var(--fs-sm); color: var(--faint); }
+/* 空态定位叙事（二期）：主句说主张，副句说布局 */
+.canvas-empty { margin: 0; padding: var(--sp-7) var(--sp-6); text-align: center; display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; }
+.ce-slogan { font-size: var(--fs-lg); font-weight: 700; color: var(--text-weak); }
+.ce-hint { margin: 0; font-size: var(--fs-sm); color: var(--faint); }
 
 .tl-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
 .tl-head { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-4); background: transparent; border: none; cursor: pointer; text-align: left; transition: background 0.15s; }
@@ -1148,18 +1182,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .m-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
 .wide { width: 100%; }
 
-/* ---------- 会话列表（左栏） ---------- */
-.run-item { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); }
-.run-item.cur { border-color: var(--border-blue); background: color-mix(in srgb, var(--primary) 2.5%, var(--card)); }
-.run-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-.run-status { display: inline-flex; align-items: center; gap: 6px; }
-/* 进行中状态灯：复用时间线 .working .dot 的脉冲动画，语义一致（这个 run 还活着） */
-.run-live { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); animation: agentPulse 1.1s ease-in-out infinite; }
-.run-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
-.run-input { margin: 0; font-size: var(--fs-sm); color: var(--text); line-height: var(--lh-tight); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.run-meter { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
-.run-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: 2px; }
-
 /* ---------- 局部链接按钮（全局按钮体系里没有 xs 文字钮） ---------- */
 .link { padding: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--primary); background: none; border: none; cursor: pointer; transition: color 0.15s; }
 .link:hover { color: var(--primary-hover); text-decoration: underline; }
@@ -1175,13 +1197,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   .link:hover { color: var(--primary-bright); }
   .hint-ex { color: var(--primary-light); }
   .hint-ex:hover { color: var(--primary-bright); }
-}
-
-/* 小窗不挤：1080px 以下先藏左栏会话列表（历史不影响主流程，窄窗优先保住画布与能力清单）。
-   藏的同时要收回 grid 轨道——display:none 不会消灭显式定义的 264px 轨道，会留下一列空白 */
-@media (max-width: 1080px) {
-  .body { grid-template-columns: minmax(0, 1fr) 340px; }
-  .sessions { display: none; }
 }
 
 /* 窄窗口：右栏移到主列下方 */

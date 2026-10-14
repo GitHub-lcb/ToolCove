@@ -1,11 +1,12 @@
 // 平台适配层单测：浏览器端命令实现 + 桌面端直通。
 // 说明：Node 环境下 isDesktop 为 true，因此 invoke() 走直通分支；
 // 浏览器端实现通过 browserHandlers 直接驱动（kv 在 Node 下自动落到内存后端）。
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => "desktop-ok"), Channel: undefined }));
 
 import { invoke, browserHandlers, createChannel } from "./invoke.js";
+import { configureRemote, _setFetch } from "./remoteStore.js";
 
 describe("invoke 桌面直通", () => {
   it("Node/桌面环境下调用原生 invoke", async () => {
@@ -77,6 +78,51 @@ describe("browserHandlers 存储语义", () => {
     await browserHandlers.save_data_versioned({ key: "platform-plain", data: reactiveish, expectedRevision: revision });
     const after = await browserHandlers.load_data({ key: "platform-plain" });
     expect(() => structuredClone(after)).not.toThrow();
+  });
+});
+
+describe("企业服务器数据路由（二期）", () => {
+  afterEach(() => {
+    // 模块级状态：每个用例结束后还原，避免污染本文件其他用例
+    configureRemote(null);
+    _setFetch(null);
+  });
+
+  it("配置后 load_data/save_data 走远端（Node/桌面环境也不例外），断开后回 Tauri IPC", async () => {
+    const calls = [];
+    _setFetch(async (url, opts) => {
+      calls.push({ url, opts });
+      if (opts.method === "GET") return { status: 200, ok: true, json: async () => ({ data: { n: 42 } }) };
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    });
+    configureRemote({ baseUrl: "https://agent.example.com/", token: "tk" });
+
+    // 走 mock fetch 而不是 tauriCore.invoke（否则返回值会是 "desktop-ok"）
+    await expect(invoke("load_data", { key: "settings" })).resolves.toEqual({ n: 42 });
+    expect(calls[0].url).toBe("https://agent.example.com/v1/kv/settings");
+    expect(calls[0].opts.headers.Authorization).toBe("Bearer tk");
+
+    await invoke("save_data", { key: "settings", data: { a: 1 } });
+    expect(calls[1].opts.method).toBe("PUT");
+    expect(JSON.parse(calls[1].opts.body)).toEqual({ data: { a: 1 } });
+
+    configureRemote(null);
+    await expect(invoke("load_data", { key: "settings" })).resolves.toBe("desktop-ok");
+  });
+
+  it("远端不可达时抛 REMOTE_UNREACHABLE，不降级写本地（防数据分裂）", async () => {
+    _setFetch(async () => { throw new Error("connect ECONNREFUSED"); });
+    configureRemote({ baseUrl: "https://agent.example.com", token: "tk" });
+    await expect(invoke("save_data", { key: "settings", data: {} })).rejects.toMatchObject({ code: "REMOTE_UNREACHABLE" });
+    await expect(invoke("load_data", { key: "settings" })).rejects.toMatchObject({ code: "REMOTE_UNREACHABLE" });
+  });
+
+  it("非数据命令不路由：encrypt_text 等仍走桌面 IPC", async () => {
+    const spy = vi.fn(async () => { throw new Error("不应被调用"); });
+    _setFetch(spy);
+    configureRemote({ baseUrl: "https://agent.example.com", token: "tk" });
+    await expect(invoke("encrypt_text", { plain: "x" })).resolves.toBe("desktop-ok");
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

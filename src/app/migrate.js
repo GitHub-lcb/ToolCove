@@ -10,10 +10,10 @@
 // - 纯转换逻辑抽成导出函数（migrate*V1），便于单测；invoke 编排只做 IO。
 // - 任何一步失败都不得阻断应用启动（main.js 里 catch 后照常挂载）。
 import { invoke } from "../platform/invoke.js";
-import { migrateHiddenModulesV1 } from "./navConfig.js";
+import { migrateHiddenModulesV1, migrateHiddenModulesV2 } from "./navConfig.js";
 
 // 当前数据结构版本。每次改动持久化结构时 +1，并在 MIGRATIONS 末尾补一步。
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 const META_KEY = "meta";
 
 // ===================== 纯转换函数（可单测，就地改并返回） =====================
@@ -199,6 +199,18 @@ const MIGRATIONS = [
     const hidden = settings.ui?.hiddenModules;
     if (!Array.isArray(hidden)) return;
     const next = migrateHiddenModulesV1(hidden);
+    if (next.length === hidden.length && next.every((k, i) => k === hidden[i])) return;
+    settings.ui = { ...settings.ui, hiddenModules: next };
+    await invoke("save_data", { key: "settings", data: settings });
+  },
+  // v8 → v9：agent 转为默认主区后不可再隐藏（侧边栏已没有它的按钮），
+  // 从 hiddenModules 剔除历史残留的 agent 并去重。无变化不落盘（幂等 + 避免每次启动多一次写）。
+  async () => {
+    const settings = await loadKey("settings", {});
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return;
+    const hidden = settings.ui?.hiddenModules;
+    if (!Array.isArray(hidden)) return;
+    const next = migrateHiddenModulesV2(hidden);
     if (next.length === hidden.length && next.every((k, i) => k === hidden[i])) return;
     settings.ui = { ...settings.ui, hiddenModules: next };
     await invoke("save_data", { key: "settings", data: settings });
