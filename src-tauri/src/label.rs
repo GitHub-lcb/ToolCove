@@ -752,7 +752,7 @@ mod tests {
     }
 
     /// 回包字段名是前端唯一能依赖的契约（前端有对应用例逐个读取）：
-    /// 这里用真实序列化结果钉住名字，改名必须同步改 LabelTool.vue / labelTool.js。
+    /// 这里用真实序列化结果钉住名字，改名必须同步改 src/tools/label/View.vue / logic.js。
     #[test]
     fn render_json_key_contract() {
         let v = serde_json::to_value(label_layout(Settings::default()).unwrap()).unwrap();

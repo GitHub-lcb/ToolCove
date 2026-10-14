@@ -17,7 +17,7 @@
 //     5px/7px/9px/11px/13px/18px/22px 等"半档"值留着（给它们建令牌会让刻度变成 25 档）
 //
 // ## ⚠️ 为什么必须逐文件保留行尾
-// 本仓库多数文件是 LF，但 DbTool.vue 等是 CRLF。
+// 本仓库多数文件是 LF，但 db 工具的视图（src/tools/db/View.vue）是 CRLF。
 // 无脑 readFileSync + writeFileSync 会把 CRLF 变 LF，产生整文件假 diff。
 // 因此这里按文件判定：先把内容归一成 LF 处理，写回时若原本是 CRLF 就换回去，
 // 让 diff 里只出现真正被令牌化的那几行（此前 CRLF 文件是整文件跳过，

@@ -98,7 +98,7 @@ fn write_xlsx(path: &str, sheet: &XlsxSheet) -> Result<(), String> {
     Ok(())
 }
 
-/// 生成 .xlsx 写盘（桌面端 DB 结果集导出用；浏览器端该功能本来就不可用，见 DbTool.vue）。
+/// 生成 .xlsx 写盘（桌面端 DB 结果集导出用；浏览器端该功能本来就不可用，见 src/tools/db/View.vue）。
 #[tauri::command]
 pub async fn export_xlsx(path: String, sheet: XlsxSheet) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || write_xlsx(&path, &sheet))

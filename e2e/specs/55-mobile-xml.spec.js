@@ -1,6 +1,6 @@
 // XML 工具 E2E（移动视口）。
 //
-// 与桌面端共用同一份纯逻辑（src/xmlTool.js，66 条单测），这里验手机端界面接线：
+// 与桌面端共用同一份纯逻辑（src/tools/xml/logic.js，66 条单测），这里验手机端界面接线：
 // 模式 chips、输入/输出切换、校验提示、导出下载。
 import { expect, test } from "@playwright/test";
 import {seedData, expectMobileToolboxCatalog } from "../helpers.js";

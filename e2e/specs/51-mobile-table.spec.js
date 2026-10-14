@@ -1,6 +1,6 @@
 // 表格工具 E2E（移动视口）。
 //
-// 与桌面端**共用同一份纯逻辑**（src/tableTool.js），所以这里重点验手机端的界面接线：
+// 与桌面端**共用同一份纯逻辑**（src/tools/table/logic.js），所以这里重点验手机端的界面接线：
 // 输入 → 表格横向滚动 → chips 操作 → 导出下载。
 import { expect, test } from "@playwright/test";
 import {seedData, expectMobileToolboxCatalog } from "../helpers.js";

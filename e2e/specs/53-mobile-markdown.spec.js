@@ -1,6 +1,6 @@
 // Markdown 工具 E2E（移动视口）。
 //
-// 与桌面端共用同一份纯逻辑（src/markdownTool.js）与同一个渲染器（shared.renderMarkdown），
+// 与桌面端共用同一份纯逻辑（src/tools/markdown/logic.js）与同一个渲染器（shared.renderMarkdown），
 // 这里验手机端的界面接线：编辑/预览切换、chips 操作、面板展开、导出下载。
 import { expect, test } from "@playwright/test";
 import {seedData, expectMobileToolboxCatalog } from "../helpers.js";

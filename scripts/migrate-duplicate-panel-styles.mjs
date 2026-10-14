@@ -7,23 +7,24 @@
 //
 // 为什么脚本化：10 个文件 × 2 行，手改容易漏；而漏掉不会有任何报错，只是又多一份重复。
 //
-// ⚠️ 行尾必须逐文件保留：本仓库多数文件是 LF，但 DbTool.vue 等是 CRLF。
+// ⚠️ 行尾必须逐文件保留：本仓库多数文件是 LF，但 db 工具的视图是 CRLF。
 //    无脑 readFileSync+writeFileSync 会把 CRLF 变成 LF，产生整文件假 diff。
+// 注：本脚本已执行过；路径按「工具包模型」更新为各包内的实际位置（历史记录见 git）。
 import fs from "node:fs";
 import path from "node:path";
 
 const TARGETS = [
-  "src/tools/FileTool.vue",
-  "src/tools/GeneratorTool.vue",
-  "src/tools/CryptoTool.vue",
-  "src/tools/ImageTool.vue",
-  "src/tools/NetworkTool.vue",
+  "src/tools/file/View.vue",
+  "src/tools/generator/View.vue",
+  "src/tools/crypto/View.vue",
+  "src/tools/image/View.vue",
+  "src/tools/network/View.vue",
   "src/tools/pdf/View.vue",
-  "src/tools/LabelTool.vue",
-  "src/tools/ConvertTool.vue",
-  "src/tools/DiffTool.vue",
-  "src/tools/TextTool.vue",
-  "src/tools/ImagePreview.vue",
+  "src/tools/label/View.vue",
+  "src/tools/convert/View.vue",
+  "src/tools/diff/DiffTool.vue",
+  "src/tools/diff/View.vue",
+  "src/tools/image/ImagePreview.vue",
 ];
 
 // 与 globals.css 完全相同的底座（逐字比对，含前后空格）

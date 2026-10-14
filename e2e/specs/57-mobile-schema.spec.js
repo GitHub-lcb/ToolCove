@@ -1,6 +1,6 @@
 // JSON Schema 工具 E2E（移动视口）。
 //
-// 与桌面端共用同一份纯逻辑（src/jsonSchema.js，60 条单测），这里验手机端界面接线：
+// 与桌面端共用同一份纯逻辑（src/tools/schema/logic.js，60 条单测），这里验手机端界面接线：
 // 模式 chips、输入切换、校验错误列表、造样例、结构解读、导出。
 import { expect, test } from "@playwright/test";
 import {seedData, expectMobileToolboxCatalog } from "../helpers.js";

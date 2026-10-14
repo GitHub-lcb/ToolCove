@@ -1,6 +1,6 @@
 // YAML 纯逻辑层：面向工程配置的 YAML 1.2 Core，并额外支持常见的合并键 <<。
 //
-// 为什么住在 src/ 根而不是 src/tools/：它有两个调用方跨了区——JSON 工具（`tools/JsonTool.vue`）
+// 为什么住在 src/ 根而不是某个工具包里：它有两个调用方跨了区——JSON 工具（`src/tools/json/View.vue`）
 // 与 Agent 的 `yaml.to_json` 执行器（`agent/executors.js`）。放在 `tools/` 下时，
 // `agent/executors.js` 是全项目**唯一**一条 `agent → tools` 依赖边，与 `tools → agent` 的两条边
 // 合成一个只为借一个 YAML 解析函数的跨区环。上移到根级共享层后环消失，

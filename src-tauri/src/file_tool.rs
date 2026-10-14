@@ -516,7 +516,7 @@ pub fn hash_file_generic(
 }
 
 /// 计算文件哈希（桌面端 Crypto 工具用）：流式读盘走 spawn_blocking，进度经 Channel 推送。
-/// 浏览器/手机端没有本地路径，仍走 hash-wasm（见 src/tools/CryptoTool.vue 的分流）。
+/// 浏览器/手机端没有本地路径，仍走 hash-wasm（见 src/tools/crypto/View.vue 的分流）。
 #[tauri::command]
 pub async fn file_tool_hash_file(
     path: String,
