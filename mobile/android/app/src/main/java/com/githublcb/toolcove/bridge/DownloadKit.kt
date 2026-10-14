@@ -36,6 +36,16 @@ object DownloadKit {
         return if (trimmed.isEmpty()) fallback else trimmed.take(120)
     }
 
+    /** 图片一律进相册（Pictures），其余进下载目录——用户在相册里找照片，不在文件管理器里找。 */
+    fun isImage(mimeType: String, fileName: String): Boolean {
+        if (mimeType.startsWith("image/")) return true
+        if (mimeType.isNotEmpty() && mimeType != "application/octet-stream") return false
+        return fileName.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp")
+    }
+
+    /** 落盘用的子目录名（相册里就是这个名字的相簿）。 */
+    const val FOLDER = "ToolCove"
+
     /** 重名时补 (1)(2)…，避免把下载目录里已有的同名文件悄悄覆盖掉。 */
     fun uniqueName(name: String, taken: (String) -> Boolean): String {
         if (!taken(name)) return name

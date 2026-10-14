@@ -888,7 +888,8 @@ body,
   border-radius: var(--m-radius);
   background: var(--m-soft);
   color: var(--m-ok);
-  font-size: 0.85rem;
+  font-size: 0.85rem;  /* 长文件名/长提示要能折行，否则横向溢出把卡片挤变形（真机反馈过） */
+  overflow-wrap: anywhere;
 }
 
 .m-hint-sm {

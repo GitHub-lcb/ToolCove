@@ -120,8 +120,9 @@ https://<你的 S3 端点>/<桶名>/` —— 配好前会看到 `CORSResponse: C
 
 | 形态 | 落地方式 |
 |---|---|
-| 安卓 App | 原生下载（`download_to_device`）→ 系统的**下载/ToolCove/** 目录，无需任何权限 |
+| 安卓 App | 原生下载（`download_to_device`）：**图片进相册**（相簿 `ToolCove`，在相册 App 里直接能看到），其余进**下载/ToolCove/**；Android 10+ 走 MediaStore，**无需任何权限** |
 | 手机网页版 / iPhone PWA | 取成 Blob：iPhone 优先弹系统分享（可「存储到图像」存进相册），其余浏览器走 `<a download>` |
+| iOS App | 原生下载 → 「**文件 App ▸ 我的 iPhone ▸ ToolCove**」 |
 | 桌面端 | 已有的 Rust `photo_download`（带进度） |
 
 下载用的是 **S3 签名 GET**（私有空间不必等 1 小时令牌），因此网页版能否下载取决于 §4.1 的桶跨域配置。

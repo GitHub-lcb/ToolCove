@@ -309,7 +309,12 @@ async function downloadItem(item) {
   try {
     const out = await downloadCloudObject({ config: config.value, key: item.key });
     if (out.native) {
-      cloudNotice.value = t("toolbox.photo.cloudDownloadedNative", { where: out.location || out.fileName });
+      // 原生落盘分两处：图片进相册（相簿名 ToolCove），其余进下载目录。
+      // 文案只给"去哪儿找"，不带完整路径——路径又长又占地方（真机反馈过）。
+      const where = out.kind === "image"
+        ? t("toolbox.photo.cloudSavedGallery", { folder: out.folder || "ToolCove" })
+        : t("toolbox.photo.cloudSavedDownloads");
+      cloudNotice.value = t("toolbox.photo.cloudDownloadedNative", { where, name: out.fileName || "" });
       return;
     }
     const how = await saveBlobToDevice(out.blob, out.fileName);

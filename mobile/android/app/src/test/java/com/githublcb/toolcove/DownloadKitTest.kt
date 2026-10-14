@@ -59,6 +59,19 @@ class DownloadKitTest {
         assertFalse(safe.isEmpty())
     }
 
+    // ---------- 落盘位置 ----------
+    @Test
+    fun `图片进相册 其余进下载目录`() {
+        // 真机反馈「下载完不知道文件在哪」：照片必须能在相册里找到
+        assertTrue(DownloadKit.isImage("image/jpeg", "a.jpg"))
+        assertTrue(DownloadKit.isImage("", "a.PNG"))
+        assertTrue(DownloadKit.isImage("application/octet-stream", "a.heic"))
+        assertFalse(DownloadKit.isImage("application/pdf", "a.pdf"))
+        assertFalse(DownloadKit.isImage("application/octet-stream", "a.bin"))
+        assertFalse(DownloadKit.isImage("video/mp4", "a.mp4"))
+        assertEquals("ToolCove", DownloadKit.FOLDER)
+    }
+
     // ---------- 重名 ----------
     @Test
     fun `重名补序号且保留扩展名`() {

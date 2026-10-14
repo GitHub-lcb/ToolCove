@@ -414,7 +414,16 @@ export async function downloadCloudObject({ config, key, fetchImpl, now } = {}) 
     const result = await invoke("download_to_device", target);
     const location = String(result?.location || "");
     if (!result?.ok && !location) throw new Error(String(result?.message || "下载失败"));
-    return { ok: true, native: true, fileName: target.fileName, location };
+    // kind/folder 交给界面拼"短文案"：原生那边知道图片进了相册还是下载目录，
+    // 而界面需要的是本地化的一句话，不是一条长路径（真机上路径把提示挤爆过）。
+    return {
+      ok: true,
+      native: true,
+      fileName: String(result?.name || target.fileName),
+      location,
+      kind: String(result?.kind || ""),
+      folder: String(result?.folder || ""),
+    };
   }
   const fetchFn = fetchImpl || globalThis.fetch;
   if (!fetchFn) throw new Error("当前环境没有 fetch");
