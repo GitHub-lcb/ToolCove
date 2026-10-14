@@ -5,11 +5,14 @@ import WebKit
 ///
 /// 这套结构与安卓壳一一对应（AssetsServer / ToolCoveBridge / MainActivity），
 /// 连端口列表都一样，就是为了让同一份前端代码在两边的行为一致。
-final class WebViewController: UIViewController, WKUIDelegate {
+///
+/// 关于 <input type="file">（拍照/相册选图）：iOS 的 WKWebView **自带**系统选择器，
+/// 不需要实现 WKUIDelegate——那个 runOpenPanelWith 回调是 iOS 18.4 才有的 API，
+/// 我们部署目标 15.0，自己实现反而要写一堆版本分支（第一版就为此编译失败过一次）。
+final class WebViewController: UIViewController {
 
     private var server: AssetServer?
     private var bridge: Bridge?
-    private var openPanelCompletion: (([URL]?) -> Void)?
 
     private let webView: WKWebView = {
         let configuration = WKWebViewConfiguration()
@@ -21,7 +24,6 @@ final class WebViewController: UIViewController, WKUIDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
         NSLayoutConstraint.activate([
@@ -61,49 +63,6 @@ final class WebViewController: UIViewController, WKUIDelegate {
         server?.stop()
     }
 
-    // ---------- 网页里的选择文件（拍照 / 从相册选） ----------
-
-    /// WKWebView 默认不会响应 <input type="file">，必须实现这个方法。
-    /// 这里给一个「拍照 / 从相册选」的选择表，与 App 自己的两个按钮语义一致。
-    func webView(
-        _ webView: WKWebView,
-        runOpenPanelWith parameters: WKOpenPanelParameters,
-        initiatedByFrame frame: WKFrameInfo,
-        completionHandler: @escaping ([URL]?) -> Void
-    ) {
-        openPanelCompletion = completionHandler
-        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-        if UIImagePickerController.isSourceTypeAvailable(.camera) {
-            sheet.addAction(UIAlertAction(title: "拍照", style: .default) { [weak self] _ in
-                self?.presentPicker(source: .camera)
-            })
-        }
-        sheet.addAction(UIAlertAction(title: "从相册选", style: .default) { [weak self] _ in
-            self?.presentPicker(source: .photoLibrary)
-        })
-        sheet.addAction(UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
-            self?.finishOpenPanel(urls: nil)
-        })
-        // iPad 上 actionSheet 必须有锚点，否则直接崩
-        sheet.popoverPresentationController?.sourceView = view
-        sheet.popoverPresentationController?.sourceRect = view.bounds
-        present(sheet, animated: true)
-    }
-
-    private func presentPicker(source: UIImagePickerController.SourceType) {
-        let picker = UIImagePickerController()
-        picker.sourceType = source
-        picker.mediaTypes = ["public.image"]
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-
-    private func finishOpenPanel(urls: [URL]?) {
-        let completion = openPanelCompletion
-        openPanelCompletion = nil
-        completion?(urls)
-    }
-
     private func showFatal(_ message: String) {
         let label = UILabel()
         label.text = message
@@ -117,31 +76,5 @@ final class WebViewController: UIViewController, WKUIDelegate {
             label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
         ])
-    }
-}
-
-extension WebViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-
-    func imagePickerController(
-        _ picker: UIImagePickerController,
-        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
-    ) {
-        picker.dismiss(animated: true)
-        var urls: [URL] = []
-        if let url = info[.imageURL] as? URL {
-            urls.append(url)
-        } else if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.9) {
-            // 相机拍的原图没有 URL，落一个临时文件给网页（网页只认 File/URL）
-            let temp = FileManager.default.temporaryDirectory
-                .appendingPathComponent("capture-\(UUID().uuidString).jpg")
-            try? data.write(to: temp)
-            urls.append(temp)
-        }
-        finishOpenPanel(urls: urls.isEmpty ? nil : urls)
-    }
-
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
-        finishOpenPanel(urls: nil)
     }
 }

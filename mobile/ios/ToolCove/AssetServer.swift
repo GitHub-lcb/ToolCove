@@ -150,7 +150,7 @@ final class AssetServer {
         var candidate = root.appendingPathComponent(String(trimmed)).standardizedFileURL
         guard candidate.path == root.path || candidate.path.hasPrefix(root.path + "/") else { return index }
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory {
+        if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory.boolValue {
             candidate.appendPathComponent("index.html")
         }
         if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
