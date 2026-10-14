@@ -14,7 +14,7 @@ log="$here/build.log"
 # 全过程既进日志又进 CI 输出
 exec > >(tee -a "$log") 2>&1
 
-version=${MARKETING_VERSION:-$(node -p "require('../../package.json').mobileVersion" 2>/dev/null || echo 0.0.0)}
+version=$(node -p "require('../../package.json').mobileVersion" 2>/dev/null || echo 0.0.0)
 echo "== 版本：$version =="
 
 command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
@@ -32,7 +32,6 @@ xcodebuild \
   -target ToolCove \
   -configuration Release \
   -sdk iphoneos \
-  -derivedDataPath "$here/build" \
   CONFIGURATION_BUILD_DIR="$here/out" \
   MARKETING_VERSION="$version" \
   CURRENT_PROJECT_VERSION="1" \
