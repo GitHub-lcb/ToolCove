@@ -5,7 +5,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { capabilities, isEnterprise } from "../platform/env.js";
-import { configureRemote, getRemoteConfig, remoteConfigured, remotePing } from "../platform/remoteStore.js";
+import { configureRemote, getRemoteConfig, remoteConfigured, remotePing, remoteMembers, remoteCreateMember, remoteRevokeMember } from "../platform/remoteStore.js";
 import { saveEnterpriseConfig, clearEnterpriseConfig, loadEnterpriseConfig } from "../app/enterpriseServer.js";
 import { getPolicySync, loadPolicy, setPolicy } from "../enterprise/policyStore.js";
 import { RISK_LEVELS } from "../enterprise/policy.js";
@@ -15,6 +15,7 @@ import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import { relaunch } from "../platform/shell.js";
 import { openUrl } from "../platform/shell.js";
 import Icon from "../ui/Icon.vue";
+import MembersPanel from "../enterprise/MembersPanel.vue";
 import { testAI, AI_PRESETS } from "../ai.js";
 import { testTypeSafe } from "../typesafe.js";
 import { checkForUpdate } from "../app/updater.js";
@@ -42,7 +43,7 @@ const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
   { key: "sync", labelKey: "settings.navSync", icon: "refresh", descKey: "settings.navSyncDesc" },
   { key: "enterprise", labelKey: "settings.navEnterprise", icon: "network", descKey: "settings.navEnterpriseDesc" },
-  // 管理面仅企业态出现（见下方 sections 过滤）：成员/席位管理依赖服务端，本次不做。
+  // 管理面仅企业态出现（见下方 sections 过滤）：成员/席位管理走服务端成员 API，仅管理员可读写。
   { key: "admin", labelKey: "settings.navAdmin", icon: "shield", descKey: "settings.navAdminDesc" },
   { key: "sponsor", labelKey: "settings.navSponsor", icon: "heart", descKey: "settings.navSponsorDesc" },
   { key: "general", labelKey: "settings.navGeneral", icon: "settings", descKey: "settings.navGeneralDesc" },
@@ -259,7 +260,9 @@ async function doEntTest() {
       entConfigured.value = true;
       entState.value = "ok";
       entName.value = r.name || "";
+      entRole.value = r.role || "";
       props.showToast(t("settings.enterpriseConnected"));
+      if (entRole.value === "admin") await loadMembers();
     } else {
       configureRemote(prev);
       entState.value = "fail";
@@ -280,6 +283,11 @@ async function doEntDisconnect() {
   entState.value = "none";
   entName.value = "";
   entErr.value = "";
+  // 断开后清空成员面：名册与一次性令牌都只属于已连接的企业服务器，不能留在界面上
+  entRole.value = "";
+  members.value = [];
+  membersErr.value = "";
+  newMemberToken.value = "";
   props.showToast(t("settings.enterpriseDisconnected"));
 }
 // ---------- 管理面（三期：企业权限门禁 + 操作审计留痕，仅企业态出现） ----------
@@ -339,6 +347,77 @@ async function exportAuditLog() {
     props.showToast(t("settings.adminAuditExportFailed", { err: e }));
   }
 }
+// ---------- 成员/席位管理（三期：对接服务端成员 API，仅企业态且当前令牌为管理员才可用） ----------
+// 与上面的策略/审计同款「不走表单保存路径」：名册以服务端为权威来源，这里只做读写与展示。
+const entRole = ref(""); // ping 返回的当前令牌角色（admin | member）
+const members = ref([]);
+const membersBusy = ref(false);
+const membersErr = ref(""); // 错误码，展示时映射为文案
+const newMemberToken = ref(""); // 创建成功后返回的令牌：只显示一次，关闭即清空
+function memberErrorText(code) {
+  const map = {
+    REMOTE_FORBIDDEN: "settings.membersForbidden",
+    REMOTE_SEAT_LIMIT: "settings.memberSeatLimit",
+    CANNOT_REVOKE_SELF: "settings.memberCannotRevokeSelf",
+    REMOTE_UNAUTHORIZED: "settings.enterpriseErrAuth",
+  };
+  return map[code] ? t(map[code]) : String(code || "");
+}
+async function loadMembers() {
+  membersBusy.value = true;
+  membersErr.value = "";
+  try {
+    members.value = (await remoteMembers()).members;
+  } catch (e) {
+    membersErr.value = e?.code || "REMOTE_ERROR";
+  } finally {
+    membersBusy.value = false;
+  }
+}
+// 进企业态后先 ping 取角色：只有管理员才拉名册（普通成员看到的是 MembersPanel 的「无权查看」提示）
+async function refreshMembers() {
+  if (!remoteConfigured()) return;
+  membersErr.value = "";
+  const r = await remotePing();
+  if (!r.ok) {
+    membersErr.value = r.error || "REMOTE_UNREACHABLE";
+    return;
+  }
+  entRole.value = r.role || "";
+  if (r.name) entName.value = r.name;
+  if (entRole.value === "admin") await loadMembers();
+}
+async function createMember({ name, role }) {
+  membersBusy.value = true;
+  membersErr.value = "";
+  try {
+    const { token } = await remoteCreateMember({ name, role });
+    newMemberToken.value = token || "";
+    await loadMembers();
+  } catch (e) {
+    membersErr.value = e?.code || "REMOTE_ERROR";
+  } finally {
+    membersBusy.value = false;
+  }
+}
+async function revokeMember(member) {
+  const ok = await askConfirm({
+    title: t("settings.memberRevoke"),
+    message: t("settings.memberRevokeConfirm", { name: member.name }),
+    okText: t("settings.memberRevoke"),
+  });
+  if (!ok) return;
+  membersBusy.value = true;
+  membersErr.value = "";
+  try {
+    await remoteRevokeMember(member.id);
+    await loadMembers();
+  } catch (e) {
+    membersErr.value = e?.code || "REMOTE_ERROR";
+  } finally {
+    membersBusy.value = false;
+  }
+}
 // 打开设置页时刷新 + 订阅状态（遥测与云同步都是桌面端专属，浏览器端跳过）
 onMounted(async () => {
   loadSettings();
@@ -348,6 +427,7 @@ onMounted(async () => {
   if (isEnterprise()) {
     policy.value = await loadPolicy();
     refreshAuditLog();
+    refreshMembers();
   }
   if (capabilities.telemetryUpload) loadTelemetryPref();
   if (!capabilities.cloudSync) return;
@@ -939,6 +1019,19 @@ async function restoreNow() {
               <span class="audit-source">{{ t(auditSourceKey(row.source)) }}</span>
             </div>
           </div>
+
+          <!-- 成员/席位管理：仅企业态的管理员可用；非管理员时块内说明原因而不是隐藏 -->
+          <MembersPanel
+            :members="members"
+            :self-name="entName"
+            :is-admin="entRole === 'admin'"
+            :busy="membersBusy"
+            :new-token="newMemberToken"
+            @create="createMember"
+            @revoke="revokeMember"
+            @dismiss-token="newMemberToken = ''"
+          />
+          <p v-if="membersErr" class="field-err">{{ memberErrorText(membersErr) }}</p>
         </div>
 
         <!-- ============ 赞助与开源（全面免费，自愿支持） ============ -->

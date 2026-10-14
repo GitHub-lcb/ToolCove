@@ -106,54 +106,65 @@ cd server
 node enterprise-server.js --port 8787 --data-dir ./enterprise-data
 ```
 
-首次启动会自动签发一个管理员令牌并打印：
+首次启动会自动签发一个管理员成员并打印其令牌：
 
 ```
 已签发管理员令牌（请填入客户端设置页的「企业服务器」令牌栏）：
   tc_xxxxxxxxxxxxxxxxxxxxxxxx
-令牌表：./enterprise-data/tokens.json
+成员表：./enterprise-data/members.json
 ```
 
 把它填进客户端「设置 → 企业服务器」的地址（`http://<主机>:8787`）与令牌，点「连接测试」即可切换为企业态。
 
 参数：`--port`（默认 8787）、`--host`（默认 0.0.0.0）、`--data-dir`（默认 ./enterprise-data）、
-`--max-bytes`（单键体积上限，默认 8MB）。
+`--max-bytes`（单键体积上限，默认 8MB）、`--seats`（席位上限，默认 0 = 不限）。
 
-### 令牌与席位
+### 成员与席位
 
-`tokens.json` 是权威的令牌表，可放多个令牌（每个 = 一个工作区/席位）：
+`members.json` 是权威的成员/席位表：
 
 ```json
-{ "tokens": [ { "token": "tc_xxx", "name": "云仓研发组", "role": "admin" } ] }
+{ "members": [ { "id": "…uuid…", "name": "云仓研发组", "role": "admin", "tokenHash": "<sha256>", "createdAt": 1730000000000 } ] }
 ```
 
-- `name` 是客户端「连接测试」成功后显示的工作区名。
-- 吊销 = 从文件里删掉该条并重启（客户端随即收到 401）。
-- 「成员/席位管理」的**接口尚未定义**——那需要账号体系与席位配额的服务端语义，等契约确定后再扩展。
+- 服务端**只存令牌的 `tokenHash`（sha256），不存明文**——成员令牌仅在创建（`POST /v1/members`）的响应里返回一次，之后任何接口都不再提供，`GET /v1/members` 只回 `id/name/role/createdAt`。
+- `name` 是客户端「连接测试」成功后显示的工作区名；`role` 为 `admin` 或 `member`，管理接口仅 `admin` 可访问。
+- 吊销 = `DELETE /v1/members/<id>`（admin）；也可直接改文件后重启。不能删除自己（400 `cannot_revoke_self`）。
+- **席位语义**：`--seats N` 约束**全部成员总数（含 admin）**，不只约束普通成员——admin 也占一个真实席位，避免账实不符。超配额时新建返回 `409 { "error": "seat_limit" }`；`0` 表示不限。
+
+**旧版迁移（向后兼容）**：启动时若发现旧的 `tokens.json` 且没有 `members.json`，会自动迁成
+`members.json`——旧条目里的明文 `token` 转成 `tokenHash`，`id` 用 `crypto.randomUUID()`，
+`createdAt` 用当前时间；**原 `tokens.json` 保留不动**（迁移异常时可回滚），仅在启动日志里说明。
+两者都存在时以 `members.json` 为准。
 
 ### 接口一览
 
-| Method | Path | 说明 |
-|---|---|---|
-| POST | /v1/auth/ping | 令牌校验 → `{ ok, name }`（401 表示令牌无效） |
-| GET | /v1/kv/:key | 读键 → `{ data }`（404 表示键不存在，客户端映射为空值） |
-| PUT | /v1/kv/:key | 写键（body `{ data }`）→ `{ ok }`（413 表示超体积上限） |
+| Method | Path | 权限 | 说明 |
+|---|---|---|---|
+| POST | /v1/auth/ping | 任意有效令牌 | → `{ ok, name, role }`（401 表示令牌无效） |
+| GET | /v1/kv/:key | 任意有效令牌 | 读键 → `{ data }`（404 表示键不存在，客户端映射为空值） |
+| PUT | /v1/kv/:key | 任意有效令牌 | 写键（body `{ data }`）→ `{ ok }`（413 表示超体积上限） |
+| GET | /v1/members | admin | 成员列表 → `{ members: [{ id, name, role, createdAt }] }`（403 非 admin） |
+| POST | /v1/members | admin | 新建成员（body `{ name, role? }`）→ 201 `{ member, token }`（令牌只返回一次；400 name 缺失；409 超席位） |
+| DELETE | /v1/members/:id | admin | 删除成员 → `{ ok }`（400 删除自己；404 不存在） |
 
-键名 `encodeURIComponent` 后传输，服务端按 `sha256(key)` 落文件名（键里的特殊字符不参与路径拼接）。
+错误体统一为 `{ "ok": false, "error": "<code>" }`。键名 `encodeURIComponent` 后传输，
+服务端按 `sha256(key)` 落文件名（键里的特殊字符不参与路径拼接）。
 
 ### 安全模型
 
 | 项 | 说明 |
 |---|---|
-| 鉴权 | `Authorization: Bearer <token>`；常数时间比对（先 sha256 再 timingSafeEqual） |
-| 限流 | 每令牌每分钟 600 次请求（429） |
+| 鉴权 | `Authorization: Bearer <token>`；服务端存令牌的 sha256，比对时先 sha256 再常数时间 `timingSafeEqual`（遍历全部不提前返回） |
+| 成员 | 令牌绑定成员记录（`name` + `role`）；仅 `admin` 可管理成员与席位 |
+| 限流 | 每成员每分钟 600 次请求（429） |
 | 体积 | 单键默认 8MB（可调），超限 413；请求体另设硬上限防内存打满 |
-| 落盘 | 每键一个 JSON 文件，原子写（tmp + rename） |
+| 落盘 | KV 每键一个 JSON 文件；成员表一个 `members.json`；均原子写（tmp + rename） |
 | 部署 | 内网直连即可；若要跨公网**必须**置于 HTTPS 反向代理之后（配置同云同步） |
 
 ### 数据与备份
 
-- 数据在 `<data-dir>/kv/`：每键一个 JSON（文件名 sha256(key)，文档内保留原始 key 便于排查）。
+- 数据在 `<data-dir>/`：KV 在 `kv/`（每键一个 JSON，文件名 sha256(key)，文档内保留原始 key 便于排查）；成员表 `members.json`。
 - 备份 = 直接复制 `<data-dir>/`（原子写保证单文件一致性）；恢复 = 放回重启。
 
 ## 测试

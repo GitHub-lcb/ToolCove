@@ -110,7 +110,7 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
   启动恢复，token 走 secure 存储）；周报闭环（`report/material.js` 素材抽取、`report/weeklyPolicy.js`
   纯函数、`report/schedule.js` 装配式调度器、`report/index.js` 生成/通知/归档、TaskView 定时设置行
   与「确认即归档速记」门禁）。
-- **三期：客户端部分已完成；成员/席位待服务端。**
+- **三期：客户端部分已完成。**
   - **企业权限门禁**：`src/enterprise/policy.js`（纯规则：`disabledTools` + `maxRisk` 风险上限）、
     `policyStore.js`（同步缓存 + 持久化），在 `isEnterprise()` 时接进 `visibleToolboxTools()` 与
     `buildAgentRegistry/listAgentTools` 的投影（个人版不受影响）。空策略 = 不限制。
@@ -124,13 +124,16 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
   - **会话域绑定**：`src/agent/context.js` 的 `buildContextLine(domain, t)`；AgentView 域选择器 →
     `startAgentRun(goal, { contextLine })` → 经 planner 注入提示词（照 `clarifyLine` 范式，
     不选域时提示词逐字节不变）。
-  - **成员/席位管理待服务端**：账号体系、席位配额、令牌签发/吊销必须以服务端为权威来源，
-    客户端无法也不应凭空维护名册；读写接口需与服务端一起定契约，故本期待定。
+  - **成员/席位管理**：接口与客户端已完成——`src/platform/remoteStore.js` 的
+    `remoteMembers` / `remoteCreateMember` / `remoteRevokeMember`（403→`REMOTE_FORBIDDEN`、
+    409→`REMOTE_SEAT_LIMIT`、删自己→`CANNOT_REVOKE_SELF`），`remotePing` 增加 `role`；
+    设置页「管理」段挂 `src/enterprise/MembersPanel.vue`（哑组件 + SSR 渲染测试）。名册以服务端为
+    权威来源，令牌只在创建时返回一次。服务端实现见 `server/enterprise-server.js`。
 - **服务端（企业）**：`server/enterprise-server.js`（零依赖 Node）已实现客户端契约
   （`POST /v1/auth/ping` + `GET/PUT /v1/kv/<key>`，常数时间令牌比对、限流、体积上限、原子写），
   首次启动自动签发管理员令牌；`server/enterprise-server.test.js`（5 例）与客户端
   `src/platform/remoteStore.js` 的契约注释一一对应。部署与令牌表见 `server/README.md`。
-  成员/席位接口仍待定（需服务端账号语义）。
+  成员/席位接口（`GET/POST /v1/members`、`DELETE /v1/members/{id}` 与 ping 的 `role`）也已实现。
 
 ## 分期计划（原始规划）
 
