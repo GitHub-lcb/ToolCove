@@ -142,13 +142,17 @@ already one big action space.
   tool's contract — not new capability.
 
 The rule that follows from calling the tools an action space: **a new tool that cannot be called by
-the agent is either a deliberate exception (like Screenshot) or unfinished.** Every tool declares
-its UI metadata and its agent actions in a single contract file under `src/contracts/`; the toolbox
-gallery (`toolboxTools.js`) and the agent catalog (`src/agent/catalog.js`) are both projections of
-those contracts. `contracts.test.js` enforces the admission rule (actions or a written exemption),
-and `catalog.test.js` asserts the catalog against the implementation in both directions, so
-"the catalog promises a tool that does not exist" fails a test rather than failing a user
-mid-task.
+the agent is either a deliberate exception (like Screenshot) or unfinished.** Each tool is a
+self-contained package under `src/tools/<key>/` — `contract.js` declares its UI metadata and its
+agent actions in one place, with an optional `logic.js`, an optional `executor.js` and a `View.vue`.
+Registration is **generated, not hand-written**: `npm run gen:tools` rebuilds the contract aggregate,
+the component loaders and the action table from the directory tree, so two people can add two tools
+on two branches without touching a shared registration file. The toolbox gallery
+(`toolboxTools.js`) and the agent catalog (`src/agent/catalog.js`) are both projections of those
+contracts. `contracts.test.js` enforces the admission rule (actions or a written exemption),
+`registryGating.test.js` fails when the generator is stale, and `catalog.test.js` asserts the
+catalog against the implementation in both directions, so "the catalog promises a tool that does
+not exist" fails a test rather than failing a user mid-task.
 
 ### Auto check-in: how it works, and what it will not do
 
@@ -455,9 +459,14 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   **还不能驱动**——磁盘分析、多线程下载、标签打印、接口抓包、提示词生成、自动签到：
   它们背后的原生命令都在，缺的只是在工具契约里声明动作 + 参数 Schema + 风险级别这三件接线工作，不是新能力。
   由此推出工具准入规则：**新工具如果 Agent 调不到，它要么是刻意例外（截图这类），要么是没做完**。
-  每个工具在 `src/contracts/` 下用一个契约文件同时声明 UI 元数据与 Agent 动作（单一真相源），
+  每个工具是一个**自包含包**（`src/tools/<key>/`，形态类似一份 skill 或一个 MCP server）：
+  `contract.js` 同时声明 UI 元数据与 Agent 动作，可选 `logic.js`（界面与 Agent 执行器共用的纯逻辑）、
+  可选 `executor.js`（动作实现，重依赖只在执行那一刻加载）、`View.vue` 与它自己的测试。
+  **注册是生成的，不是手写的**：跑 `npm run gen:tools`，契约聚合、组件加载器、动作实现三张表
+  都由目录扫描得出——两个人在两条分支上各加一个工具，不会争抢同一个登记点。
   工具箱画廊（`toolboxTools.js`）与 Agent 目录（`src/agent/catalog.js`）都是契约的投影；
-  `contracts.test.js` 强制准入规则（要么有动作、要么写明豁免理由），`catalog.test.js` 双向校验目录与实现一致——
+  `contracts.test.js` 强制准入规则（要么有动作、要么写明豁免理由），`registryGating.test.js` 在
+  「忘了重跑生成器」时红灯，`catalog.test.js` 双向校验目录与实现一致——
   「目录说有、实际没有」这种事应该在测试里失败，而不是在用户跑到一半时失败。
 - **手机端**：安卓 App 正在重做，目标是**功能对齐桌面端**——架构、分期与无法对齐的平台能力
   （JDBC、真打印、ICMP/DNS 诊断）见 [`docs/mobile-app-plan.md`](docs/mobile-app-plan.md)。

@@ -35,16 +35,20 @@ a testable module instead of a component.
   identical key sets (`src/i18n/i18n.test.js` enforces this).
 - Follow the existing commit style (`feat: …`, `fix: …`, `docs: …`), one logical change per commit.
 - Add or update tests for behavior changes. Bug fixes should come with a regression test.
-- **A new tool must also be an action.** The toolbox is the agent's action space, so a new tool
-  ships as a single contract file in `src/contracts/<key>.js` — declaring the UI metadata (gallery
-  label, icon, group, search keywords) and the agent actions (name, description, argument schema,
-  risk tier) in one place — registered in `src/contracts/index.js`, plus a wired executor. If a
-  human has to be the one doing it, say so in the contract's `agentExempt` field instead
-  (Screenshot, Rail Tycoon and Interview prep are the accepted exceptions; see
-  "What the agent can drive — and what it cannot" in README). The gallery (`toolboxTools.js`) and
-  the agent catalog (`src/agent/catalog.js`) are both projections of the contracts, so one file is
-  the whole job — `contracts.test.js` enforces the admission rule (actions or a written exemption),
-  and `catalog.test.js` fails if the catalog and the implementation drift apart in either direction.
+- **A new tool must also be an action.** The toolbox is the agent's action space, so a new tool is
+  a self-contained package under `src/tools/<key>/`: `contract.js` (pure data — UI metadata: gallery
+  label, icon, group, search keywords, `order`; plus agent actions: name, description, argument
+  schema, risk tier), an optional `logic.js` (pure logic shared by the tool's view and its agent
+  executor), an optional `executor.js` (the actions' implementations) and `View.vue`. Registration
+  is **generated, not hand-written**: run `npm run gen:tools` and the contract aggregate
+  (`src/contracts/index.generated.js`), the component loaders and the action table are rebuilt from
+  the directory tree. That is what lets two people add two different tools on two branches without
+  fighting over a shared registration file. If a human has to be the one doing it, say so in the
+  contract's `agentExempt` field instead (Screenshot, Rail Tycoon and Interview prep are the
+  accepted exceptions; see "What the agent can drive — and what it cannot" in README).
+  `contracts.test.js` enforces the admission rule (actions or a written exemption),
+  `registryGating.test.js` fails when you forget to re-run the generator, and `catalog.test.js`
+  fails if the catalog and the implementation drift apart in either direction.
 - Don't add dependencies unless they clearly earn their place; the project deliberately avoids a
   router, a state library, and a UI framework.
 
@@ -56,14 +60,23 @@ a testable module instead of a component.
   implementations), the approval policy and risk tiers (`approval.js`), result budgeting and spill
   handles (`resultBudget.js`, `spillStore.js`), run records for resume (`runStore.js`), the skill
   library (`skills.js` / `skillStore.js`) and the assembly layer (`index.js`).
-- `src/contracts/` — the single source of truth for tools: one pure-data file per tool declaring
-  both the toolbox UI metadata and the agent actions (or an `agentExempt` reason). No imports
-  beyond `kit.js`, so the gallery, the agent catalog and the mobile parity tests all read it
-  directly. `src/toolboxTools.js` projects the `ui` field for gallery, group layout, global search
-  and desktop-only filtering — add a tool in `src/contracts/`, not in scattered lists.
+- `src/tools/<key>/` — one **package per tool** (think of it as a skill or an MCP server):
+  `contract.js` (pure data: toolbox UI metadata + agent actions, or an `agentExempt` reason),
+  optional `logic.js` (pure logic the view and the agent executor share), optional `executor.js`
+  (action implementations, heavy deps imported only at execution time), `View.vue` and the tool's
+  own tests. Registration is directory-driven: `scripts/gen-tool-registry.mjs` scans
+  `src/tools/*/contract.js` and writes three **static-import** artifacts. Static imports (not
+  `import.meta.glob`) are required because contracts must also load under plain Node ESM — the
+  mobile parity tests import them by real path. A module stays in the neutral root layer (e.g.
+  `json.js`, `textDiff.js`, `nativeInvoke.js`) whenever something outside its package needs it.
+- `src/contracts/` — the generated registry plus the shared contract infrastructure: `kit.js`
+  (schema helpers), `groups.js` (gallery groups), `index.js` (stable façade) and
+  `index.generated.js`. `src/toolboxTools.js` projects the `ui` field for gallery, group layout,
+  global search and platform/edition filtering — add a tool package, not a scattered list entry.
 - `src/sync/` — end-to-end encrypted sync engine (client) plus `server/` (zero-dependency Node
   server that only ever stores ciphertext).
-- `src/tools/` — toolbox tool components; each tool's logic lives in a matching plain-JS module.
+- `src/tools/` — see the per-tool package layout above; each tool owns its view, logic, executor
+  and tests.
 - `src-tauri/src/` — Rust commands: storage, files, network proxy, database drivers, AI streaming,
   secure storage, notifications, updater.
 
