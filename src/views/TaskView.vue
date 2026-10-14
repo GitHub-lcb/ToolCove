@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { save as saveDialog } from "../platform/dialog.js";
 import Icon from "../ui/Icon.vue";
-import { fmtDate, relativeTime, startOfWeek, weekday } from "../shared/dates.js";
+import { fmtDate, relativeTime, weekday } from "../shared/dates.js";
 import { errText } from "../shared/errors.js";
 import { WORK_SOURCES, collectDayLogs, partitionDayLogs, sumHoursByDate } from "../shared/hours.js";
 import { renderMarkdown } from "../shared/markdown.js";
@@ -13,6 +13,9 @@ import { aiChat, aiComplete, isAIConfigured } from "../ai.js";
 import { askConfirm } from "../ui/confirm.js";
 import { buildReportSystem, buildDistillPrompt, splitReportSamples, truncate, buildHeartPrompt, extractReportSection, replaceReportSection, REPORT_SECTIONS, HEART_IMAGE_MAX, TEMPLATE_MAX, STYLE_MAX, REPORT_STATUS, advanceReportStatus, recoverReportStatus, upsertReport, updateReportStatus } from "../weeklyReport.js";
 import { load as loadRecords, mutate, onDataChanged } from "../data/repository.js";
+import { weekRange, buildReportMaterial } from "../report/material.js";
+import { loadWeeklyPolicy, saveWeeklyPolicy, generateWeeklyDraft, archiveDraftToSnippet } from "../report/index.js";
+import WeeklySchedulePanel from "../report/WeeklySchedulePanel.vue";
 import { newIteration, newRequirement, newSubTask, addIteration, addRequirement, addSubTask, updateSubTask, removeSubTask, findIteration } from "../iterations.js";
 
 const props = defineProps({
@@ -444,74 +447,52 @@ async function clearReportPrefs() {
   props.showToast(t("task.prefsCleared"));
 }
 
-// 周范围：本周（周一至今天）/ 上周（上周一至上周日）
-function rangeDates(kind) {
-  const mon = startOfWeek();
-  if (kind === "last") {
-    const from = new Date(mon);
-    from.setDate(mon.getDate() - 7);
-    const to = new Date(mon);
-    to.setDate(mon.getDate() - 1);
-    return { from: fmtDate(from), to: fmtDate(to), label: t("task.rangeLast"), labelKey: "task.rangeLast" };
-  }
-  return { from: fmtDate(mon), to: fmtDate(new Date()), label: t("task.rangeThis"), labelKey: "task.rangeThis" };
+// 周范围与素材拼接已抽到 ../report/material.js：定时生成（src/report/index.js）与界面手动生成
+// 必须产出同一份素材，放在一处才不会漂。此处直接 import 使用（weekRange / buildReportMaterial）。
+
+// ------- 定时生成（周报闭环的定时触发：策略设置 + 立即生成；生成逻辑在 src/report/index.js）-------
+const weeklyPolicy = ref({ enabled: false, weekday: 5, hour: 17, minute: 0 });
+const weeklyGenerating = ref(false);
+// 星期选项复用图表横轴的同一套 common.weekXxx 词条（0=周日，与 policy.weekday 口径一致）
+const WEEKDAY_OPTIONS = computed(() => CHART_WEEKDAY_KEYS.map((key, i) => ({ value: i, label: t(key) })));
+
+async function loadWeekly() {
+  weeklyPolicy.value = await loadWeeklyPolicy();
 }
-
-// 把范围内的工时/迭代/问题/未完成需求整理成给 AI 的素材文本
-function buildReportMaterial(range) {
-  const inRange = (d) => d && d >= range.from && d <= range.to;
-  const lines = [t("task.materialRange", { from: range.from, to: range.to, label: range.label })];
-
-  const logs = dayLogs.value.filter((e) => inRange(e.date));
-  const total = round(logs.reduce((s, e) => s + e.hours, 0));
-  if (logs.length) {
-    lines.push(t("task.materialHoursHead", { total }));
-    const byDay = {};
-    logs.forEach((e) => (byDay[e.date] = byDay[e.date] || []).push(e));
-    Object.keys(byDay)
-      .sort()
-      .forEach((d) => {
-        lines.push(t("task.materialDayHead", { date: d, weekday: weekday(d) }));
-        byDay[d].forEach((e) =>
-          lines.push(t("task.materialEntryLine", { hours: e.hours, title: e.title, note: e.note ? t("task.copyNote", { note: e.note }) : "" }))
-        );
-      });
-  } else {
-    lines.push(t("task.materialNoLogs"));
+// 控件变更即落盘（开关/星期/时间），无需额外的「保存」按钮
+async function onWeeklyChange(next) {
+  weeklyPolicy.value = next;
+  try {
+    await saveWeeklyPolicy(next);
+  } catch (e) {
+    props.showToast(t("task.saveFailedPlain", { err: errText(e) }));
   }
-
-  const rel = iterations.value.filter((it) => inRange(it.releaseDate));
-  if (rel.length) {
-    lines.push(t("task.materialReleasesHead"));
-    rel.forEach((it) =>
-      lines.push(
-        t("task.materialReleaseLine", {
-          version: it.version ? it.version + " " : "",
-          title: it.title,
-          date: it.releaseDate,
-          status: t(it.status === "live" ? "task.releaseLive" : "task.releaseNotLive"),
-        })
-      )
-    );
+}
+// 立即生成：等同手动触发一次定时生成（本周草稿），并把结果刷进弹窗
+async function generateWeeklyNow() {
+  if (weeklyGenerating.value) return;
+  weeklyGenerating.value = true;
+  try {
+    const res = await generateWeeklyDraft();
+    if (!res.ok) {
+      props.showToast(res.reason === "no-ai" ? t("task.aiNotConfigured") : t("task.weeklyNoMaterial"));
+      return;
+    }
+    reportRange.value = "this"; // 定时生成固定针对「本周」，让弹窗与草稿对齐
+    reportText.value = res.text;
+    editingReport.value = false;
+    clearHeartHistory();
+    props.showToast(t("task.weeklyGenerated"));
+  } catch (e) {
+    props.showToast(t("task.generateFailed", { err: errText(e) }));
+  } finally {
+    weeklyGenerating.value = false;
   }
-
-  const undone = [];
-  iterations.value.forEach((it) => {
-    if (it.status === "live") return;
-    (it.items || []).forEach((r) => {
-      if (!r.done) undone.push(`- ${it.title} / ${r.name}`);
-    });
-  });
-  if (undone.length) {
-    lines.push(t("task.materialUndoneHead"));
-    lines.push(...undone.slice(0, 20));
-  }
-  return { text: lines.join("\n"), hasLogs: logs.length > 0 };
 }
 
 async function openReport() {
   if (!(await isAIConfigured())) return props.showToast(t("task.aiNotConfigured"));
-  await loadReportPrefs();
+  await Promise.all([loadReportPrefs(), loadWeekly()]);
   showReport.value = true;
   editingReport.value = false;
   clearHeartHistory(); // 重新打开弹窗：心得对话从新的一轮开始
@@ -520,8 +501,8 @@ async function openReport() {
 }
 
 async function generateReport() {
-  const range = rangeDates(reportRange.value);
-  const mat = buildReportMaterial(range);
+  const range = weekRange(reportRange.value, t);
+  const mat = buildReportMaterial({ dayLogs: dayLogs.value, iterations: iterations.value }, range, t);
   if (!mat.hasLogs) return props.showToast(t("task.noLogsInRange", { label: range.label }));
   generating.value = true;
   try {
@@ -691,7 +672,7 @@ async function loadSavedReport(kind) {
 async function autosaveReport(kind) {
   try {
     await loadReports();
-    const range = rangeDates(kind);
+    const range = weekRange(kind, t);
     const { list } = upsertReport(reports.value, {
       range: kind,
       rangeLabel: range.label,
@@ -723,7 +704,7 @@ const filteredReports = computed(() => {
 async function saveReport() {
   if (!reportText.value || generating.value) return;
   await loadReports();
-  const range = rangeDates(reportRange.value);
+  const range = weekRange(reportRange.value, t);
   const { list, created } = upsertReport(reports.value, {
     range: reportRange.value,
     rangeLabel: range.label,
@@ -744,6 +725,21 @@ async function historyAdvance(r) {
   reports.value = updateReportStatus(reports.value, r.id, next);
   await persistReports();
   props.showToast(t("task.statusAdvanced", { label: statusLabel(next) }));
+  // 确认门禁：状态照常前进（语义不变），「确认」时额外问一句是否归档到速记；
+  // 归档失败不阻断——它只是附加动作，不能反过来把已完成的确认回滚。
+  if (next !== "confirmed") return;
+  const ok = await askConfirm({
+    title: t("task.weeklyArchiveConfirmTitle"),
+    message: t("task.weeklyArchiveConfirmMsg"),
+    danger: false,
+  });
+  if (!ok) return;
+  try {
+    await archiveDraftToSnippet(r);
+    props.showToast(t("task.weeklyArchived"));
+  } catch (e) {
+    props.showToast(t("task.weeklyArchiveFailed", { err: errText(e) }));
+  }
 }
 async function historyRecover(r) {
   reports.value = updateReportStatus(reports.value, r.id, recoverReportStatus(r.status));
@@ -988,6 +984,14 @@ async function historyEditSave() {
           </button>
         </div>
       </div>
+      <!-- 定时生成设置行：启用开关 + 星期 + 时间 + 立即生成（配置即落盘，见 src/report/index.js） -->
+      <WeeklySchedulePanel
+        :policy="weeklyPolicy"
+        :weekday-options="WEEKDAY_OPTIONS"
+        :generating="weeklyGenerating"
+        @change="onWeeklyChange"
+        @generate="generateWeeklyNow"
+      />
       <div v-if="generating" class="report-loading"><Icon name="sparkles" :size="14" /> {{ t("task.generating") }}</div>
       <textarea v-else-if="editingReport" v-model="reportText" class="report-edit" spellcheck="false" :placeholder="t('task.reportEditPh')"></textarea>
       <!-- eslint-disable-next-line vue/no-v-html -- reportHtml 走 renderMarkdown（先 escapeHtml），来源是本地周报文本 -->

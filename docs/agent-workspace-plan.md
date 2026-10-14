@@ -95,7 +95,24 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
 - 验证的卖点：每个研发周五花约一小时拼周报，现在一键。
 - 企业版里这条链路的数据来自企业服务器（二期远端后端接通后自然成立）。
 
-## 分期计划
+## 实施状态（2026-10-14）
+
+- **一期：已完成。** 契约 `scope` 标注（5 个 personal / 22 个 both）+ `env.js` 版本判定
+  （`currentEdition()` / `isEnterprise()` / `inEdition()`，测试钩子 `__TOOLCOVE_EDITION__`）
+  + 画廊与 Agent 注册表的「平台 × 版本」双过滤（`editionGating.test.js`）；
+  AgentView 三栏化（左栏会话列表：搜索 / 进行中脉冲灯 / 最新在前）；产物「在工具中打开」
+  （`agent/artifacts.js` 识别产物 + `app/toolPrefill.js` 跨窗口一次性交接 + `PdfTool.vue` 消费）；
+  Summary 交付清单（纯派生 `runSummary`，不改引擎）。
+- **二期：已完成。** 导航重构（侧边栏主体 = 新任务 + 任务列表 `AgentSidePanel.vue`、
+  「工作面」分组收拢 work/records/toolbox、跨模块后台任务监控条、AgentView 历史任务回看
+  `viewRunId`、schema v9 迁移使 agent 不可隐藏）；企业服务器数据桥（`platform/remoteStore.js`
+  的 ping/kv API 契约 + `platform/invoke.js` 数据路由 + 设置页 enterprise 段 + `app/enterpriseServer.js`
+  启动恢复，token 走 secure 存储）；周报闭环（`report/material.js` 素材抽取、`report/weeklyPolicy.js`
+  纯函数、`report/schedule.js` 装配式调度器、`report/index.js` 生成/通知/归档、TaskView 定时设置行
+  与「确认即归档速记」门禁）。
+- **三期：待做。** 管理面（成员/权限/审计/团队知识引擎）、输入框域绑定、定时任务统一入口。
+
+## 分期计划（原始规划）
 
 ### 一期：地基与体感（不碰导航迁移）
 

@@ -184,7 +184,24 @@ Tool Adapters
   跑成功 → 点「沉淀为技能」→ 技能库出现该条 → 下次同类目标进 prompt（**从桩收到的请求里读**，
   而不是看界面文案）→ 停用后不再注入 → 删除后回到空态；另加一条「只有 ask_user、没有工具调用的运行
   不出现沉淀入口」。
-- **界面**：`AgentView.vue` 是应用默认首屏（`App.vue` MODULES 第一项，Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
+- **界面**：`AgentView.vue` 是应用默认首屏（Ctrl+1）；`AiChatTool.vue` 的「Agent 任务」模式不再自建循环，直接复用 `session.js`，确认与历史与工作台同一份。
+- **工作台骨架与双版投影**（2026-10-14，方案见 `docs/agent-workspace-plan.md`）：
+  - **侧边栏重构**：主体是「新任务 + 任务列表」（`app/AgentSidePanel.vue`，投影纯函数 `app/taskListItems.js`），
+    work/records/toolbox 收进「工作面」分组——agent 不再是平级模块按钮，它是默认主区。schema v9 迁移
+    （`migrateHiddenModulesV2`）把 hiddenModules 里的 agent 剔除：藏掉就没有主区。
+  - **历史任务回看**：`AgentView` 的 `viewRunId` 非空时画布只读渲染该 run 落盘的 steps（复用时间线与
+    Summary 派生逻辑）；运行中的真实进度仍由 `RunProgress` 与跨模块后台监控条呈现。
+  - **产物「在工具中打开」**：`agent/artifacts.js` 按执行器约定（结果含 `output` 或 `files[]`）识别产物，
+    `app/toolPrefill.js` 用 localStorage 在独立工具窗口与内嵌降级间一次性交接预填参数。
+  - **双版投影**：契约新增 `scope`（`personal` / `enterprise` / `both`），`platform/env.js` 的
+    `currentEdition()` / `isEnterprise()` / `inEdition()` 与既有 `desktopOnly` 同构，画廊与 Agent 注册表
+    按「平台 × 版本」双过滤。企业态由 `configureRemote` 派生（`platform/remoteStore.js` 配置存在即企业）。
+  - **企业服务器数据桥**：`platform/invoke.js` 的 `load_data/save_data` 在 `remoteConfigured()` 时统一走
+    `remoteStore`（桌面端也走服务器，决策①）；失败不自动降级写本地（避免数据分裂）。配置存本地
+    （自举悖论），token 走 secure 存储。
+  - **周报闭环**：`src/report/` 下素材抽取（`material.js`）、纯函数策略（`weeklyPolicy.js`）、装配式调度器
+    （`schedule.js`）、真实装配（`index.js`）。定时生成只落 `pending` 草稿，确认动作经 `askConfirm` 门禁后
+    归档速记——自动生成永不自动确认。
 - 工具：每个工具在 `src/contracts/<key>.js` 用一个契约文件同时声明 UI 元数据与 Agent 动作（单一真相源），`toolboxTools.js`（画廊投影 `ui` 字段）与 `catalog.js`（Agent 目录投影 `actions` 字段）都是契约的投影；实现层 `executors.js` 只做惰性装配（exceljs / hash-wasm / 原生桥等重依赖在动作真正执行时才 import）。16 个工具接入共 35 个动作（json / convert / table / markdown / xml / schema / diff / time / generator / network / crypto / file / image / pdf / request / db），其余 11 个在契约里用 `agentExempt` 写明豁免理由（截图、标签打印、AI 对话、照片存档、磁盘分析、多线程下载、接口抓包、提示词生成、自动签到、铁路大亨、面试刷题），准入规则由 `contracts.test.js` 强制（要么有动作、要么写明豁免）。文件、数据库、网络诊断与 PDF 动作带 `desktopOnly: true`；HTTP 请求改走平台 `invoke`，浏览器端由 fetch 直连实现（受目标端点 CORS 限制）。标签打印是有物理副作用的动作（要人核对介质与目标打印机），只在工具箱里手动操作，能力面板按「手动工具箱」列出入口。
 - 数据工具：`dataTools.js` 提供业务数据读写（速记/问题/迭代/领域/池/发布），与 `executors.js` 一起由 `tools.js` 装配；
   `AGENT_TOOL_NAMES` 在 `catalog.js` 汇总（契约动作 + 引擎动作 spill.read + 业务动作 data.*，停用清单与能力面板共用）。`data.query`/`data.get` 为只读工具，

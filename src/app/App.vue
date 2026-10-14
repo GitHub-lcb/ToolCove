@@ -23,6 +23,7 @@ import ModuleTabs from "./ModuleTabs.vue";
 import { NAV_MODULES, MODULE_TABS, MODULE_HOME_TAB, resolveNavTarget, migrateHiddenModulesV2 } from "./navConfig.js";
 import { groupNavModules } from "./taskListItems.js";
 import { startCheckInScheduler, stopCheckInScheduler } from "../checkin/index.js";
+import { startWeeklyScheduler, stopWeeklyScheduler } from "../report/index.js";
 
 const { t } = useI18n();
 
@@ -414,6 +415,8 @@ onMounted(async () => {
     // 自动签到的常驻定时器必须挂在主窗口：工具是独立 WebviewWindow，
     // 关掉工具窗口定时器就没了。toolMode（工具独立窗口）时一律不挂。
     if (!toolMode) startCheckInScheduler().catch(() => {});
+    // 周报定时生成同理（到点自动产草稿 + 启动补跑），只在主窗口挂一次
+    if (!toolMode) startWeeklyScheduler().catch(() => {});
   }
   if (!isTauri) return;
   applyThemeAccent();
@@ -453,6 +456,7 @@ onUnmounted(() => {
   }
   mqUnlisten && mqUnlisten();
   if (!toolMode) stopCheckInScheduler();
+  if (!toolMode) stopWeeklyScheduler();
 });
 </script>
 

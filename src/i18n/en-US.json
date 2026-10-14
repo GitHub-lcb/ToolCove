@@ -5136,6 +5136,18 @@
     "undo": "Undo",
     "updatedAt": "{label} · Updated {time}",
     "view": "View",
+    "weeklyArchiveConfirmMsg": "Also archive it to snippets after confirming?",
+    "weeklyArchiveConfirmTitle": "Confirm weekly report",
+    "weeklyArchiveFailed": "Archive failed: {err}",
+    "weeklyArchived": "Archived to snippets",
+    "weeklyGenerateNow": "Generate now",
+    "weeklyGenerated": "This week's weekly report draft generated",
+    "weeklyNoMaterial": "No work hours recorded this week, nothing to write yet",
+    "weeklyNotifyBody": "Weekly report draft for {label} is ready — go confirm it",
+    "weeklyNotifyTitle": "Weekly report draft generated",
+    "weeklySchedule": "Scheduled generation",
+    "weeklyTime": "Time",
+    "weeklyWeekday": "Day",
     "yesterday": "Yesterday"
   },
   "requirement": {

@@ -78,12 +78,19 @@ It runs as a **Windows desktop app** (Tauri 2) and as a **static web app** in th
 - **Cloud sync (optional)** — end-to-end encrypted multi-device sync for snippets and issues.
   The server only ever stores ciphertext; pairing uses anonymous codes, no account. Self-host with
   the zero-dependency Node server in [`server/`](server/README.md) or use a hosted instance you trust.
+- **One codebase, two editions (personal / enterprise)** — projected from a `scope` field on each tool
+  contract. Personal is "the butler who knows you" (local-first, no account); Enterprise is "the
+  employee who knows your company" (desktop client pointed at a company server, data stays inside,
+  one model gateway). Enter a server URL and token in Settings to switch: work data moves to the
+  server, and game/hobby tools marked `scope: personal` hide themselves. Both editions share the
+  same task / workspace / manual surfaces.
 
 ### Delivery management (your own data)
 
-A personal agent workbench needs something to work on. These six modules — the app's **Delivery**
-tab — are where your own delivery data lives, and the agent reads and writes them through the same
-typed actions it uses for everything else.
+A personal agent workbench needs something to work on. The sidebar is now your **task list** — the
+agent's past runs, each openable as a read-only replay. The work-management screens live under a
+**Workspace** group, and the agent reads and writes them through the same typed actions it uses for
+everything else.
 
 - **Overview** — today's actions, KPI tiles, this week's releases, and a single log stream merged from
   iteration requirements and issues. Weekend-aware: it does not nudge you to log hours on a Saturday.
@@ -96,7 +103,8 @@ typed actions it uses for everything else.
 - **Release** — release health across all pools, plus a per-release checklist (package → upload →
   deploy → verify) recorded locally, with an Excel "release package" export.
 - **Tasks & hours** — monthly timesheet trends, day logs, hours-to-XLSX export, and an AI weekly report
-  that remembers your preferred structure.
+  that remembers your preferred structure — now schedulable: pick a weekday and time and it drafts the
+  week's report for you, and confirming the draft archives a copy to Snippets.
 
 **Snippets** and **Problems** live in their own **Records** module for quick capture and issue tracking.
 
@@ -454,11 +462,16 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
 - **问题记录**：轻量问题跟踪，本地标签分类，支持 AI 辅助分析与经验复用。
 - **云同步（可选）**：速记与问题记录的多设备端到端加密同步；服务端只见密文，配对码入伙、
   无需账号，可用 `server/` 内的零依赖 Node 服务自托管。
+- **同源双版（个人 / 企业）**：一套代码，靠契约的 `scope` 字段投影——个人版是「懂你的管家」
+  （本地优先、无账号），企业版是「懂你们公司的员工」（桌面客户端连企业服务器、数据留在公司、
+  统一模型网关）。在设置里填入企业服务器地址与令牌即切换为企业态：工作数据改存服务器，
+  游戏 / 玩票类工具按 `scope: personal` 自动隐身。两个版本共用同一份任务面 / 工作面 / 手动面骨架。
 
 ### 研发管理（你自己的交付数据）
 
-个人 Agent 工作台需要一份「可供它施展」的数据。侧边栏的**研发**标签下六个模块就是你的交付数据所在之处，
-而且它们与其它能力一样，是 Agent 通过类型化动作直接读写的对象。
+个人 Agent 工作台需要一份「可供它施展」的数据。侧边栏主体是**任务列表**（Agent 的历史任务，
+点任意一条可回看只读运行记录），工作管理界面收在「工作面」分组下——它们与其它能力一样，
+是 Agent 通过类型化动作直接读写的对象。
 
 - **概览**：今日行动（上线 / 逾期 / 待产品确认 / 工时汇总成一条）、KPI 数字条、本周上线、
   迭代需求与问题合并而成的一条动态流水。认得工作日——周末不会催你记工时。
@@ -470,7 +483,8 @@ Agent 自己挑动作、串起来执行、每步实时可见，风险操作先�
   每项给出预估、实际与超额。
 - **发布**：所有池的发布健康度总览，以及按「打包 → 上传 → 发布 → 验证」逐步记录的发布工作台，
   另有「上线包」三表编辑与 Excel 导出。
-- **任务与工时**：月度工时趋势、按日流水、工时导出 Excel，以及会记住你偏好的 AI 周报。
+- **任务与工时**：月度工时趋势、按日流水、工时导出 Excel，以及会记住你偏好的 AI 周报——
+  现在还能定时：选定星期与时间，到点自动生成当周草稿，确认后顺手归档一份到速记。
 
 **纯本地、无账号、开源免费（MIT）**：数据全部保存在本机（桌面端为本地 JSON，浏览器端为
 IndexedDB）；无强制云同步；遥测是**可选开启**——一次性弹窗决定，且上报端点默认为空，

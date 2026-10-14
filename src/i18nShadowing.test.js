@@ -41,7 +41,13 @@ const I18N_CALL = /\bt\(\s*["'`][\w.]+["'`]/;
  * 刻意例外：这里的 t 就是调用方传进来的 i18n 函数本身（参数名即语义），
  * 不属于「数据对象被误当函数」。改动此处需同步更新本清单。
  */
-const ALLOWED_SCRIPT_PARAM = new Set(["src/sync/index.js:syncNowManual"]);
+const ALLOWED_SCRIPT_PARAM = new Set([
+  "src/sync/index.js:syncNowManual",
+  // 周报素材的 t 是调用方注入的 i18n 函数本身（参数名即语义，与 syncNowManual 同理）：
+  // 界面用 useI18n 的 t、定时任务用 i18n.global.t，注入后才能纯测。
+  "src/report/material.js:weekRange",
+  "src/report/material.js:buildReportMaterial",
+]);
 
 /**
  * 扫描时跳过的目录名（任意层级）：

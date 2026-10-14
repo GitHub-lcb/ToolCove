@@ -5136,6 +5136,18 @@
     "undo": "撤销",
     "updatedAt": "{label} · 更新于 {time}",
     "view": "查看",
+    "weeklyArchiveConfirmMsg": "确认后同时归档到速记？",
+    "weeklyArchiveConfirmTitle": "确认周报",
+    "weeklyArchiveFailed": "归档失败：{err}",
+    "weeklyArchived": "已归档到速记",
+    "weeklyGenerateNow": "立即生成",
+    "weeklyGenerated": "已生成本周周报草稿",
+    "weeklyNoMaterial": "本周没有工时记录，暂无可写的内容",
+    "weeklyNotifyBody": "「{label}」周报草稿已生成，去确认吧",
+    "weeklyNotifyTitle": "周报草稿已生成",
+    "weeklySchedule": "定时生成",
+    "weeklyTime": "时间",
+    "weeklyWeekday": "星期",
     "yesterday": "昨天"
   },
   "requirement": {
