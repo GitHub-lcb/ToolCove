@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as json from "../../../src/json.js";
-import * as convert from "../../../src/convert.js";
+import * as convert from "../../../src/tools/convert/logic.js";
 import { generatePassword, getPasswordPoolSize } from "../../../src/cryptoTool.js";
 
 /**

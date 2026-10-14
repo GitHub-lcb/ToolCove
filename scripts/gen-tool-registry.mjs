@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // 工具注册表生成器：**目录即注册**。
 //
-// 扫两类契约来源：
-//   A. 新形态（工具包）：src/tools/<key>/contract.js
-//   B. 过渡期旧形态：src/contracts/<key>.js（27 个工具全部迁完后删掉这条扫描）
+// 扫描源只有一个：src/tools/<key>/contract.js（一个工具 = 一个自包含包）。
+// 过渡期已关闭——旧的 src/contracts/<key>.js 形态不复存在，本目录只剩基础设施
+// （index.js / index.generated.js / kit.js / groups.js），findStrayContracts 会把
+// 重新冒出来的旧形态契约变成红灯，避免注册又被悄悄拆回两处。
 // 生成三个**静态 import** 产物：
 //   src/contracts/index.generated.js   → { TOOL_CONTRACTS, CONTRACT_BY_KEY }
 //   src/toolComponents.generated.js    → { TOOL_COMPONENT_LOADERS }
@@ -29,36 +30,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..");
 
-/** 过渡期脚手架：还没搬进工具包的工件的组件路径。每迁一个工具就删掉一行，最终清空。 */
-const LEGACY_COMPONENTS = {
-  convert: "./tools/ConvertTool.vue",
-  table: "./tools/TableTool.vue",
-  markdown: "./tools/MarkdownTool.vue",
-  xml: "./tools/XmlTool.vue",
-  schema: "./tools/SchemaTool.vue",
-  diff: "./tools/TextTool.vue",
-  time: "./tools/TimeTool.vue",
-  json: "./tools/JsonTool.vue",
-  network: "./tools/NetworkTool.vue",
-  crypto: "./tools/CryptoTool.vue",
-  file: "./tools/FileTool.vue",
-  image: "./tools/ImageTool.vue",
-  photo: "./tools/PhotoTool.vue",
-  screenshot: "./tools/ScreenshotTool.vue",
-  disk: "./tools/DiskAnalyzerTool.vue",
-  generator: "./tools/GeneratorTool.vue",
-  request: "./tools/RequestTool.vue",
-  downloader: "./tools/DownloadTool.vue",
-  db: "./tools/DbTool.vue",
-  chat: "./tools/AiChatTool.vue",
-  checkin: "./tools/CheckInTool.vue",
-  prompt: "./tools/PromptTool.vue",
-  netcapture: "./tools/NetCaptureTool.vue",
-  label: "./tools/LabelTool.vue",
-  rail: "./tools/RailTycoonTool.vue",
-  interview: "./tools/InterviewTool.vue",
-};
-
 /** 契约聚合器自身与共享数据件不算工具（kit 是 Schema 小件，groups 是分组元数据）。 */
 const CONTRACT_INFRA = new Set(["index.js", "index.generated.js", "kit.js", "groups.js"]);
 
@@ -68,24 +39,31 @@ const relFrom = (fromFile, target) => {
   return r.startsWith(".") ? r : "./" + r;
 };
 
-/** 扫出全部工具契约来源（不含已迁移完成前的重复）。 */
+/** 扫出全部工具契约来源：只有工具包形态 src/tools/<key>/contract.js。 */
 function scanContracts(root) {
   const found = [];
-  // A. 工具包形态
   const toolsDir = path.join(root, "src/tools");
   for (const entry of fs.readdirSync(toolsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const contract = path.join(toolsDir, entry.name, "contract.js");
     if (fs.existsSync(contract)) found.push({ key: entry.name, file: contract, pkg: entry.name });
   }
-  // B. 过渡期旧形态
+  return found;
+}
+
+/**
+ * 守卫「过渡期已关闭」：src/contracts/ 只许剩基础设施（CONTRACT_INFRA）与测试。
+ * 若这里又出现一个工具契约，说明有人把契约拆回了旧形态——注册会变成两处，必须红灯。
+ */
+function findStrayContracts(root) {
   const contractsDir = path.join(root, "src/contracts");
+  const strays = [];
   for (const entry of fs.readdirSync(contractsDir, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
     if (CONTRACT_INFRA.has(entry.name) || entry.name.endsWith(".test.js")) continue;
-    found.push({ key: entry.name.slice(0, -3), file: path.join(contractsDir, entry.name), pkg: null });
+    strays.push(posix(path.relative(root, path.join(contractsDir, entry.name))));
   }
-  return found;
+  return strays;
 }
 
 /**
@@ -96,6 +74,11 @@ export async function buildRegistry({ root = ROOT } = {}) {
   const sources = scanContracts(root);
   const entries = [];
   const errors = [];
+
+  // 过渡期已关闭：src/contracts 只剩基础设施，再冒出工具契约就是回退。
+  for (const stray of findStrayContracts(root)) {
+    errors.push(`src/contracts 出现旧形态契约（过渡期已关闭，契约应住 src/tools/<key>/contract.js）：${stray}`);
+  }
 
   for (const source of sources) {
     let mod;
@@ -165,22 +148,12 @@ export async function buildRegistry({ root = ROOT } = {}) {
   const compPath = path.join(root, "src/toolComponents.generated.js");
   const compLines = [];
   for (const e of entries) {
-    let spec;
-    if (e.pkg) {
-      const view = path.join(root, "src/tools", e.pkg, "View.vue");
-      if (!fs.existsSync(view)) {
-        errors.push(`工具包缺少界面：src/tools/${e.pkg}/View.vue`);
-        continue;
-      }
-      spec = relFrom(compPath, view);
-    } else {
-      spec = LEGACY_COMPONENTS[e.key];
-      if (!spec) {
-        errors.push(`过渡期组件映射缺少 ${e.key}（请补 scripts/gen-tool-registry.mjs 的 LEGACY_COMPONENTS，或把工具迁进 src/tools/${e.key}/）`);
-        continue;
-      }
+    const view = path.join(root, "src/tools", e.pkg, "View.vue");
+    if (!fs.existsSync(view)) {
+      errors.push(`工具包缺少界面：src/tools/${e.pkg}/View.vue`);
+      continue;
     }
-    compLines.push(`  ${JSON.stringify(e.key)}: () => import("${spec}"),`);
+    compLines.push(`  ${JSON.stringify(e.key)}: () => import("${relFrom(compPath, view)}"),`);
   }
   if (errors.length) return { files: {}, errors };
   const compContent = [

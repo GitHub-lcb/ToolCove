@@ -1,11 +1,11 @@
 <script setup>
 // 转换工具（手机端）：Base64 / URL / Unicode / Hex / JSON 字符串 的双向转换。
 //
-// 逻辑复用 src/convert.js（桌面端同一个模块）。手机端的差异只有排版：
+// 逻辑复用 src/tools/convert/logic.js（桌面端同一个模块）。手机端的差异只有排版：
 // 双向转换用「方向」按钮组切换，而不是桌面端的两栏并排——窄屏放不下两栏。
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { decodeBase64, decodeHex, decodeJsonString, decodeUnicode, decodeUrl, encodeBase64, encodeHex, encodeJsonString, encodeUnicode, encodeUrl } from "../../../src/convert.js";
+import { decodeBase64, decodeHex, decodeJsonString, decodeUnicode, decodeUrl, encodeBase64, encodeHex, encodeJsonString, encodeUnicode, encodeUrl } from "../../../src/tools/convert/logic.js";
 
 const { t } = useI18n();
 

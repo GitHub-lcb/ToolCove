@@ -153,7 +153,12 @@ describe("共享纯逻辑的位置", () => {
     expect(fs.existsSync(path.join(ROOT, "src/json.js"))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, "src/tools/json.js"))).toBe(false);
     const users = edges.filter((e) => /(^|\/)(json|yaml)\.js$/.test(e.to)).map((e) => e.from);
-    expect(users.some((f) => f.startsWith("src/agent/")), "Agent 走根级实现").toBe(true);
-    expect(users.some((f) => f.startsWith("src/tools/")), "JSON 工具走同一份实现").toBe(true);
+    // 第二波后 json.parse/format/yaml.to_json 的下沉进 src/tools/json/executor.js，
+    // Agent 引擎不再直接 import 根级 json.js（它经工具包 executor 消费），故原先「Agent 走根级」的
+    // 断言已不成立。防重复的意图保持不变：根级只有一份，且工具包 executor 与 yaml 序列化器都走它；
+    // 反向再钉一条——Agent 引擎不得自带第二份 json/yaml 实现，要用就走工具包。
+    expect(users.some((f) => f.startsWith("src/tools/")), "JSON 工具走根级实现").toBe(true);
+    expect(users.includes("src/yaml.js"), "yaml 复用根级 json（单一实现链）").toBe(true);
+    expect(users.some((f) => f.startsWith("src/agent/")), "Agent 引擎不自带第二份 json/yaml（实现下沉进工具包 executor）").toBe(false);
   });
 });

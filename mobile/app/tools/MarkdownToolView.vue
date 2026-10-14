@@ -1,7 +1,7 @@
 <script setup>
 // Markdown 工具（手机端）：编辑 / 预览切换 + 目录 + 统计 + 检查 + 导出 HTML。
 //
-// 与桌面端**共用同一份纯逻辑**（src/markdownTool.js，52 条单测）与**同一个渲染器**
+// 与桌面端**共用同一份纯逻辑**（src/tools/markdown/logic.js，52 条单测）与**同一个渲染器**
 // （src/shared.js 的 renderMarkdown），所以预览结果两端一致。
 //
 // 界面按手机重排：编辑与预览**不能并排**（393px 宽并排两边都没法看），
@@ -10,7 +10,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { renderMarkdown } from "../../../src/shared/markdown.js";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
-import { formatTables, lint, normalize, outline, stats, toHtmlDocument, toToc } from "../../../src/markdownTool.js";
+import { formatTables, lint, normalize, outline, stats, toHtmlDocument, toToc } from "../../../src/tools/markdown/logic.js";
 
 const { t } = useI18n();
 

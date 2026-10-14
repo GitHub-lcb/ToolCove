@@ -15,6 +15,7 @@
 // （见 mobile/app/toolboxIcons.test.js）。所以聚合器只能是「静态 import + 数组」这种
 // 生成形态：import.meta.glob 是 Vite 特性、原生 Node 不认，用不了。
 //
-// 过渡期：还没搬进工具包的契约暂时仍住在本目录（生成器同时扫两处）；全部迁完后，
-// 本目录只剩 kit.js / groups.js / index.js / index.generated.js。
+// 迁移已完成（工具包模型第三波收尾）：27 个工具全部住 src/tools/<key>/，本目录只剩
+// 基础设施 kit.js / groups.js / index.js / index.generated.js；生成器只扫 src/tools/*/contract.js，
+// 旧形态 src/contracts/<key>.js 不再存在（再出现会被生成器守卫成红灯）。
 export { TOOL_CONTRACTS, CONTRACT_BY_KEY } from "./index.generated.js";

@@ -1,7 +1,7 @@
 <script setup>
 // 表格工具（手机端）：粘贴分隔文本 → 表格视图 → 清洗 → 导出。
 //
-// 与桌面端**共用同一份纯逻辑** src/tableTool.js（54 条单测），所以解析/转换/清洗的结果两端一致。
+// 与桌面端**共用同一份纯逻辑** src/tools/table/logic.js（54 条单测），所以解析/转换/清洗的结果两端一致。
 // 界面按手机重排：
 //   · 表格横向滚动 + 首列行号固定（手机上列多时必须能定位）
 //   · 操作收进 chips（横排可滚动），不摆一排按钮挤成两行
@@ -24,7 +24,7 @@ import {
   toJson,
   toMarkdown,
   toSqlInsert,
-} from "../../../src/tableTool.js";
+} from "../../../src/tools/table/logic.js";
 
 const { t } = useI18n();
 

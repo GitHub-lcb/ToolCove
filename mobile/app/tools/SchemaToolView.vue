@@ -1,13 +1,13 @@
 <script setup>
 // JSON Schema 工具（手机端）：推断、校验、造样例、解读结构。
 //
-// 与桌面端**共用同一份纯逻辑**（src/jsonSchema.js，60 条单测），所以结果两端一致。
+// 与桌面端**共用同一份纯逻辑**（src/tools/schema/logic.js，60 条单测），所以结果两端一致。
 // 界面按手机重排：JSON 与 Schema 两个输入**不能并排**（393px 宽并排都没法看），
 // 改成 chips 切换；校验结果常驻显示。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
-import { inferSchema, sampleFromSchema, summarizeSchema, validateSchema } from "../../../src/jsonSchema.js";
+import { inferSchema, sampleFromSchema, summarizeSchema, validateSchema } from "../../../src/tools/schema/logic.js";
 
 const { t } = useI18n();
 

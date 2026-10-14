@@ -1,12 +1,12 @@
 <script setup>
 // XML / 报文工具（手机端）：格式化、压缩、转 JSON、XPath 查询、校验、统计。
 //
-// 与桌面端**共用同一份纯逻辑**（src/xmlTool.js，64 条单测），所以结果两端一致。
+// 与桌面端**共用同一份纯逻辑**（src/tools/xml/logic.js，64 条单测），所以结果两端一致。
 // 界面按手机重排：输入/输出**不能并排**（393px 宽并排两边都没法看），改成切换式。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
-import { formatXml, jsonToXml, minifyXml, queryXPath, statsXml, textOf, validateXml, xmlToJson } from "../../../src/xmlTool.js";
+import { formatXml, jsonToXml, minifyXml, queryXPath, statsXml, textOf, validateXml, xmlToJson } from "../../../src/tools/xml/logic.js";
 
 const { t } = useI18n();
 

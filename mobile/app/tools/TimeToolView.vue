@@ -1,11 +1,11 @@
 <script setup>
 // 时间工具（手机端）：当前时间戳 / 时间戳解析 / 时区换算。
 //
-// 逻辑复用 src/timeTool.js（桌面端同一模块，基于 Luxon，按需加载 chunk）。
+// 逻辑复用 src/tools/time/logic.js（桌面端同一模块，基于 Luxon，按需加载 chunk）。
 // 手机端的差异是排版与交互：桌面上三栏并排，窄屏改为「一张卡一件事」纵向排列。
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { convertZonedDateTime, formatInstant, parseTimestamp, toDateTimeInput } from "../../../src/timeTool.js";
+import { convertZonedDateTime, formatInstant, parseTimestamp, toDateTimeInput } from "../../../src/tools/time/logic.js";
 
 const { t } = useI18n();
 

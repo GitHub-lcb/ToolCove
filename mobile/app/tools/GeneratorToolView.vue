@@ -1,14 +1,14 @@
 <script setup>
 // 生成器工具（手机端）：标识符（UUID/ULID/NanoID）/ 随机值 / 序列 / mock 数据。
 //
-// 逻辑复用 src/generatorTool.js（桌面端同一模块），文案复用 toolbox.generator.*。
+// 逻辑复用 src/tools/generator/logic.js（桌面端同一模块），文案复用 toolbox.generator.*。
 //
 // 四个子页都保留，但**配置项按手机端收敛**：桌面端每种类型有一整套参数面板
 // （min/max/precision/length/start/end/charset…），窄屏铺不下也无法一眼看全。
 // 这里给每组参数选「最常用的那几个」，其余走默认值——默认值是共享层定的，两端结果一致。
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { formatMockOutput, generateIdentifiers, generateMockRows, generateRandomValues, generateSequence, mockFieldTypes, randomTypes } from "../../../src/generatorTool.js";
+import { formatMockOutput, generateIdentifiers, generateMockRows, generateRandomValues, generateSequence, mockFieldTypes, randomTypes } from "../../../src/tools/generator/logic.js";
 
 const { t } = useI18n();
 
