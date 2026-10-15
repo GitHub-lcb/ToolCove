@@ -495,6 +495,10 @@ async function openDemo(item, attempt) {
   const runId = `${item.id}#${attempt.n}`;
   const label = findToolboxTool(found.toolKey)?.labelKey;
   track("tool.demo." + found.toolKey);
+  // 结果里有落盘产物的动作（pdf.*）：演示的前提是工具里先有那份文件，
+  // 所以顺带把产物预填过去（与「在工具中打开」同一条交接机制），否则演示只能指着一片空白。
+  const artifact = attempt.artifacts?.[0];
+  if (artifact) setToolPrefill(found.toolKey, { kind: "open-file", path: artifact.path });
   // 必须**等投递落地**再开窗：写存储是异步的，抢在它之前开窗会让新窗口挂载时读到空，
   // 表现就是「点了没反应」（静默退化）。已开着的工具还会经实时通道额外收到一份。
   await sendDemo({ toolKey: found.toolKey, action: item.tool, runId, script: found.script });

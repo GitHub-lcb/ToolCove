@@ -17,6 +17,10 @@
         "split"
       ]
     },
+    "demo": {
+      "revealSource": "这是 AI 刚才交进来的文件",
+      "revealPanel": "这里能看到它的页数与大小"
+    },
     "pdf": {
       "navLabel": "PDF 工具模式",
       "modeMerge": "合并",

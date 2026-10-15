@@ -17,6 +17,10 @@
         "rotate pages"
       ]
     },
+    "demo": {
+      "revealSource": "This is the file the AI just handed over",
+      "revealPanel": "Here you can see its page count and size"
+    },
     "pdf": {
       "navLabel": "PDF tool modes",
       "modeMerge": "Merge",

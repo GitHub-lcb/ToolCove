@@ -2119,6 +2119,15 @@ export const TOOL_MESSAGES = Object.freeze({
         "uaUseCurrentTitle": "使用当前 User-Agent",
         "uaPh": "粘贴 User-Agent 字符串"
       },
+      "demo": {
+        "revealSource": "这是 AI 刚才交进来的文件",
+        "revealPanel": "这里能看到它的页数与大小",
+        "fillInput": "把参数里的文本填进输入框",
+        "pickDelimiter": "选定分隔符",
+        "pickFormat": "切换导出格式",
+        "showOutput": "指出导出结果",
+        "showTable": "指出解析后的表格"
+      },
       "pdf": {
         "navLabel": "PDF 工具模式",
         "modeMerge": "合并",
@@ -2957,13 +2966,6 @@ export const TOOL_MESSAGES = Object.freeze({
         "err_oneOf": "{path}：应恰好满足一个分支，实际满足 {matched} 个（共 {count} 个）。",
         "err_not": "{path}：命中了不该匹配的规则。",
         "err_unresolvedRef": "{path}：引用 {ref} 找不到目标。"
-      },
-      "demo": {
-        "fillInput": "把参数里的文本填进输入框",
-        "pickDelimiter": "选定分隔符",
-        "pickFormat": "切换导出格式",
-        "showOutput": "指出导出结果",
-        "showTable": "指出解析后的表格"
       },
       "table": {
         "inputLabel": "粘贴分隔文本",
@@ -5524,6 +5526,15 @@ export const TOOL_MESSAGES = Object.freeze({
         "uaUseCurrentTitle": "Use current User-Agent",
         "uaPh": "Paste a User-Agent string"
       },
+      "demo": {
+        "revealSource": "This is the file the AI just handed over",
+        "revealPanel": "Here you can see its page count and size",
+        "fillInput": "Filling the input with the argument text",
+        "pickDelimiter": "Setting the delimiter",
+        "pickFormat": "Switching the export format",
+        "showOutput": "Pointing at the exported result",
+        "showTable": "Pointing at the parsed table"
+      },
       "pdf": {
         "navLabel": "PDF tool modes",
         "modeMerge": "Merge",
@@ -6362,13 +6373,6 @@ export const TOOL_MESSAGES = Object.freeze({
         "err_oneOf": "{path}: must match exactly one branch, matched {matched} of {count}.",
         "err_not": "{path}: matched a rule it must not match.",
         "err_unresolvedRef": "{path}: reference {ref} cannot be resolved."
-      },
-      "demo": {
-        "fillInput": "Filling the input with the argument text",
-        "pickDelimiter": "Setting the delimiter",
-        "pickFormat": "Switching the export format",
-        "showOutput": "Pointing at the exported result",
-        "showTable": "Pointing at the parsed table"
       },
       "table": {
         "inputLabel": "Paste delimited text",

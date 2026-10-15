@@ -14,6 +14,15 @@ import { notifySignal, subscribeDemo, takeDemo } from "./toolDemoLink.js";
 const STEP_MS = 900;
 /** 降低动效偏好下的停留：不播动画，但仍要让人看清这一步做了什么 */
 const STEP_MS_REDUCED = 400;
+/**
+ * 等锚点出现的上限（毫秒）。
+ *
+ * 有些工具的目标控件是**异步才渲染**的：pdf 要先经预填读文件、拿到页数才会出现内容面板。
+ * 不等的话那一步就只有字幕、没有聚光——而「聚光」正是这一步的全部信息量。
+ * 上限刻意很短：等不到就如实降级（留字幕、不假装演过），不能把演示卡在这儿。
+ */
+const ANCHOR_WAIT_MS = 1200;
+const ANCHOR_POLL_MS = 80;
 /** 聚光类名（定义在 styles/globals.css，全局生效——工具视图是 scoped 样式，类必须来自全局） */
 export const FOCUS_CLASS = "tc-demo-focus";
 
@@ -53,13 +62,23 @@ export function useToolDemo(toolKey, { anchors = {}, handlers = {} } = {}) {
     if (focused) focused.classList.remove(FOCUS_CLASS);
     focused = null;
   }
-  function setFocus(name) {
+  function focus(el) {
     clearFocus();
-    const el = toElement(anchors[name]);
     if (!el) return null;
     el.classList.add(FOCUS_CLASS);
     focused = el;
     return el;
+  }
+
+  /** 锚点可能在挂载后才渲染出来（异步载入的内容），所以给一小段等待窗口 */
+  async function waitForAnchor(name) {
+    const deadline = Date.now() + ANCHOR_WAIT_MS;
+    for (;;) {
+      const el = toElement(anchors[name]);
+      if (el) return el;
+      if (Date.now() >= deadline) return null;
+      await sleep(ANCHOR_POLL_MS);
+    }
   }
 
   async function play(script, runId) {
@@ -69,7 +88,8 @@ export function useToolDemo(toolKey, { anchors = {}, handlers = {} } = {}) {
       if (mine !== token) return;
       const current = script[i];
       setState({ index: i, captionKey: current.captionKey, captionValue: current.value });
-      const el = setFocus(current.anchor);
+      const el = focus(await waitForAnchor(current.anchor));
+      if (mine !== token) return;
       const handler = handlers[current.action];
       // 元素找不到（如该控件在当前状态下不渲染）或工具没实现该动作：留字幕，不假装做过
       if (el && typeof handler === "function") {

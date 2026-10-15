@@ -8,6 +8,8 @@ import { isDesktop } from "../../platform/env.js";
 import { useDragSort } from "../../ui/dragsort.js";
 import { formatFileSize } from "../../fileTool.js";
 import { consumeToolPrefill } from "../../app/toolPrefill.js";
+import { useToolDemo } from "../../app/useToolDemo.js";
+import ToolDemoLayer from "../../ui/ToolDemoLayer.vue";
 import Icon from "../../ui/Icon.vue";
 import {
   buildSplitGroups,
@@ -442,6 +444,23 @@ onMounted(async () => {
   }
 });
 
+// —— Agent 演示接入（见 app/useToolDemo.js） ——
+//
+// PDF 的产物是磁盘上的新文件，工具窗口里能看见的只有「交进来的文件」与「它的内容概览」，
+// 所以演示是纯 reveal（挑文件是原生对话框、是人的环节，不假装替用户点过）。
+// 锚点名必须与本包 contract.js 的 PDF_DEMO 对齐，一致性由 app/toolDemoContract.test.js 强制。
+//
+// 放在预填那段之后：预填要先跑起来把文件读进来，演示等的就是它渲染出来的那两个锚点
+// （目标控件异步出现，播放器自带等待窗口，见 useToolDemo 的 ANCHOR_WAIT_MS）。
+const fileChipRef = ref(null);
+const sourcePanelRef = ref(null);
+const demo = useToolDemo("pdf", {
+  anchors: {
+    "file-chip": () => fileChipRef.value,
+    "source-panel": () => sourcePanelRef.value,
+  },
+});
+
 // —— 页面操作 ——
 function togglePage(index) {
   const list = [...selected.value];
@@ -670,7 +689,7 @@ async function doSplit() {
         <button class="btn-outline" type="button" :disabled="busy" @click="pickSingleFile">
           <Icon name="file" :size="15" />{{ source ? t("toolbox.pdf.switchFile") : t("toolbox.pdf.pickFile") }}
         </button>
-        <span v-if="source" class="file-chip" :title="source.name"><Icon name="file" :size="13" />{{ source.name }}</span>
+        <span v-if="source" class="file-chip" :title="source.name" ref="fileChipRef" data-role="file-chip"><Icon name="file" :size="13" />{{ source.name }}</span>
         <button v-if="source" class="btn-ghost sm" type="button" @click="clearSingle">{{ t("toolbox.pdf.removeFile") }}</button>
 
         <template v-if="mode === 'pages' && source">
@@ -687,7 +706,7 @@ async function doSplit() {
         </template>
       </div>
 
-      <section v-if="source" class="panel">
+      <section v-if="source" class="panel" ref="sourcePanelRef" data-role="source-panel">
         <header class="panel-head">
           <b>{{ mode === "pages" ? t("toolbox.pdf.pagesPanel") : t("toolbox.pdf.splitPanel") }}</b>
           <span>{{ t("toolbox.pdf.sourceMeta", { pages: source.pageCount, size: formatFileSize(source.size) }) }}</span>
@@ -776,6 +795,9 @@ async function doSplit() {
         </template>
       </div>
     </template>
+
+    <!-- Agent 演示层：只在「被 Agent 打开」时出现 -->
+    <ToolDemoLayer :state="demo.state" @skip="demo.skip" @replay="demo.replay" />
   </div>
 </template>
 

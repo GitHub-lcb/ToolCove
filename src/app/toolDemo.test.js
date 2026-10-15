@@ -24,6 +24,18 @@ describe("从契约取演示声明", () => {
     expect(script[1].value).toBe("json");
   });
 
+  it("pdf 三个动作共用同一段纯 reveal 脚本（它的产物是磁盘文件，工具里能指的只有那两处）", () => {
+    for (const name of ["pdf.merge", "pdf.extract_pages", "pdf.split"]) {
+      const script = buildDemoScript(actionDemo("pdf", name), { path: "/tmp/a.pdf", output: "/tmp/b.pdf" });
+      expect(script.map((s) => [s.anchor, s.action])).toEqual([
+        ["file-chip", "reveal"],
+        ["source-panel", "reveal"],
+      ]);
+      // 纯 reveal 不代表做过什么：挑文件是原生对话框，是人的环节
+      expect(script.every((s) => s.value === null)).toBe(true);
+    }
+  });
+
   it("没有声明 / 工具不存在时返回 null", () => {
     expect(actionDemo("table", "table.nope")).toBeNull();
     expect(actionDemo("__nope__", "table.parse")).toBeNull();
