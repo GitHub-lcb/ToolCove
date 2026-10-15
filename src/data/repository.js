@@ -12,6 +12,8 @@ export const KINDS = Object.freeze({
   problems: { key: "problems", shape: "array", sync: true },
   // 提示词库（生图/生视频）：与速记/问题同为用户内容，墓碑 + 云同步同路径
   prompts: { key: "prompts", shape: "array", sync: true },
+  // 知识库：用户收藏的长文本条目（含导入的文档正文），同为用户内容，墓碑 + 云同步同路径
+  kb: { key: "kb", shape: "array", sync: true },
   iterations: { key: "iterations", shape: "array", sync: false },
   domains: { key: "domains", shape: "array", sync: false },
   pools: { key: "pools", shape: "array", sync: false },

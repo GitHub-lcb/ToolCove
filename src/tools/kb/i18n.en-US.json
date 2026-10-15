@@ -1,0 +1,53 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolKb": "Knowledge Base",
+      "toolKbDesc": "Collect and search long-form text: create/edit entries, tag them, full-text search, import txt / Markdown files, synced across devices",
+      "kwKb": [
+        "knowledge base",
+        "notes",
+        "documents",
+        "bookmarks",
+        "search",
+        "full-text search",
+        "tags",
+        "import",
+        "Markdown",
+        "local storage"
+      ]
+    },
+    "kb": {
+      "searchPh": "Search titles, content and tags",
+      "newEntry": "New entry",
+      "allTags": "All tags",
+      "empty": "Your knowledge base is empty",
+      "emptyHint": "Click “New entry” to write one, or use “Import file” to pull in an existing txt / Markdown file.",
+      "noMatch": "No entry matches the filter",
+      "titlePh": "Name this piece of knowledge",
+      "tagsLabel": "Tags",
+      "tagsPh": "Separate with commas or spaces, e.g. backend, auth",
+      "contentPh": "Plain text and Markdown are both fine. Content is synced to your other devices.",
+      "statsChars": "{n} chars",
+      "statsLines": "{n} lines",
+      "sourceImported": "Imported from {name}",
+      "save": "Save",
+      "saved": "Saved.",
+      "delete": "Delete",
+      "deleteTitle": "Delete this entry?",
+      "deleteMsg": "“{title}” will be deleted, and the deletion is synced to your other devices. This cannot be undone.",
+      "deleted": "Deleted.",
+      "deleteFailed": "Delete failed: {err}",
+      "saveFailed": "Save failed: {err}",
+      "loadFailed": "Failed to load the knowledge base: {err}",
+      "errNoTitle": "Add a title, or write something in the content first.",
+      "untitled": "Untitled",
+      "import": "Import file",
+      "importPick": "Pick a text file to import",
+      "importTextFilter": "Text files",
+      "importSafety": "Only plain-text files are supported ({exts}); PDF / Word need text extraction, which is not supported yet.",
+      "imported": "Imported “{title}”.",
+      "importFailed": "Import failed: {err}",
+      "importEmpty": "The file is empty — nothing to import."
+    }
+  }
+}

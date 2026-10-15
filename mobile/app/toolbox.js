@@ -46,6 +46,7 @@ const DESKTOP_ICON = Object.freeze({
   disk: "hard-drive",
   rail: "train",
   interview: "book-open",
+  kb: "archive",
 });
 
 const DESKTOP_GROUP_ICON = Object.freeze({
@@ -94,6 +95,7 @@ export const TOOLS = Object.freeze([
   { key: "xml", group: "data", labelKey: "toolbox.registry.toolXml", ready: true },
   { key: "schema", group: "data", labelKey: "toolbox.registry.toolSchema", ready: true },
   { key: "markdown", group: "data", labelKey: "toolbox.registry.toolMarkdown", ready: true },
+  { key: "kb", group: "data", labelKey: "toolbox.registry.toolKb", ready: true },
   { key: "table", group: "data", labelKey: "toolbox.registry.toolTable", ready: true },
   { key: "convert", group: "data", labelKey: "toolbox.registry.toolConvert", ready: true },
   { key: "diff", group: "data", labelKey: "toolbox.registry.toolDiff", ready: true },

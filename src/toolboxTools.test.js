@@ -66,7 +66,7 @@ describe("searchToolboxTools", () => {
     const groups = groupToolboxTools();
     expect(groups.map((group) => i18n.global.t(group.labelKey))).toEqual(["数据与文本", "网络与接口", "文件与媒体", "开发调试", "AI 助手", "游戏辅助", "面试刷题"]);
     expect(groups.map((group) => group.tools.map((tool) => tool.key))).toEqual([
-      ["convert", "table", "markdown", "xml", "diff", "schema", "time", "json", "generator"],
+      ["convert", "table", "markdown", "kb", "xml", "diff", "schema", "time", "json", "generator"],
       ["network", "request", "downloader", "netcapture"],
       ["file", "image", "photo", "screenshot", "disk", "pdf", "label"],
       ["crypto", "db"],

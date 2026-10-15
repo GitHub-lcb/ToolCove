@@ -6,6 +6,7 @@ export const TOOL_COMPONENT_LOADERS = Object.freeze({
   "convert": () => import("./tools/convert/View.vue"),
   "table": () => import("./tools/table/View.vue"),
   "markdown": () => import("./tools/markdown/View.vue"),
+  "kb": () => import("./tools/kb/View.vue"),
   "xml": () => import("./tools/xml/View.vue"),
   "diff": () => import("./tools/diff/View.vue"),
   "schema": () => import("./tools/schema/View.vue"),

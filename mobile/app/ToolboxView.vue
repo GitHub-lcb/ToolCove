@@ -19,6 +19,7 @@ const { t } = useI18n();
 
 const openKey = ref(""); // 空串 = 在列表页
 const current = computed(() => TOOLS.find((tool) => tool.key === openKey.value) || null);
+const toolRef = ref(null); // 当前打开的工具体（内部还有子层级时由它决定返回键去哪）
 
 // ---------- 常用工具（与桌面端同一套口径） ----------
 // 存储键也用桌面端的：同一台设备上两个端各存各的库，但键名一致便于对照，
@@ -84,6 +85,7 @@ const VIEWS = {
   convert: defineAsyncComponent(() => import("./tools/ConvertToolView.vue")),
   table: defineAsyncComponent(() => import("./tools/TableToolView.vue")),
   markdown: defineAsyncComponent(() => import("./tools/MarkdownToolView.vue")),
+  kb: defineAsyncComponent(() => import("./tools/KbToolView.vue")),
   xml: defineAsyncComponent(() => import("./tools/XmlToolView.vue")),
   schema: defineAsyncComponent(() => import("./tools/SchemaToolView.vue")),
   time: defineAsyncComponent(() => import("./tools/TimeToolView.vue")),
@@ -113,9 +115,14 @@ function open(tool) {
 /**
  * 返回工具列表。**必须暴露给 Shell**：安卓系统返回键要能关掉工具页，
  * 否则在工具里按返回会直接退出应用（用户最容易骂人的行为）。
+ *
+ * 先问工具自己愿不愿意吃掉这次返回（与 Shell → 本视图、WorkView → DomainPanel 同一条下沉链）：
+ * 工具内部有子层级时（知识库的编辑态），返回该先回它的列表，而不是直接把工具关掉——
+ * 那会连带丢掉用户没保存的输入。
  */
 function goBack() {
   if (!openKey.value) return false;
+  if (toolRef.value?.goBack?.() === true) return true;
   openKey.value = "";
   return true;
 }
@@ -135,7 +142,7 @@ function close() {
         <button class="m-back" @click="close">‹</button>
         <h2 class="m-h2">{{ t(current.labelKey) }}</h2>
       </div>
-      <component :is="VIEWS[current.key]" />
+      <component :is="VIEWS[current.key]" ref="toolRef" />
     </template>
 
     <!-- 列表页 -->

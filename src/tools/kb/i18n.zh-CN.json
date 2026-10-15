@@ -1,0 +1,53 @@
+{
+  "toolbox": {
+    "registry": {
+      "toolKb": "知识库",
+      "toolKbDesc": "收藏与检索长文本：条目增删改、标签分类、全文搜索，支持导入 txt / Markdown 等文本文件，多端云同步",
+      "kwKb": [
+        "知识库",
+        "笔记",
+        "文档",
+        "收藏",
+        "检索",
+        "全文搜索",
+        "标签",
+        "导入",
+        "Markdown",
+        "本地存储"
+      ]
+    },
+    "kb": {
+      "searchPh": "搜索标题、正文与标签",
+      "newEntry": "新建条目",
+      "allTags": "全部标签",
+      "empty": "知识库还是空的",
+      "emptyHint": "点「新建条目」写一条，或用「导入文件」把已有的 txt / Markdown 收进来。",
+      "noMatch": "没有命中筛选的条目",
+      "titlePh": "给这条知识起个名字",
+      "tagsLabel": "标签",
+      "tagsPh": "逗号或空格分隔，如：后端, 鉴权",
+      "contentPh": "支持纯文本与 Markdown。正文会随云同步到其他设备。",
+      "statsChars": "{n} 字",
+      "statsLines": "{n} 行",
+      "sourceImported": "导入自 {name}",
+      "save": "保存",
+      "saved": "已保存。",
+      "delete": "删除",
+      "deleteTitle": "删除这条知识？",
+      "deleteMsg": "「{title}」将被删除，并同步删除到其他设备。此操作不可撤销。",
+      "deleted": "已删除。",
+      "deleteFailed": "删除失败：{err}",
+      "saveFailed": "保存失败：{err}",
+      "loadFailed": "加载知识库失败：{err}",
+      "errNoTitle": "请先填写标题，或在正文里写点内容。",
+      "untitled": "未命名",
+      "import": "导入文件",
+      "importPick": "选择要导入的文本文件",
+      "importTextFilter": "文本文件",
+      "importSafety": "只支持纯文本类文件（{exts}）；PDF / Word 需要正文抽取，暂未支持。",
+      "imported": "已导入「{title}」。",
+      "importFailed": "导入失败：{err}",
+      "importEmpty": "文件是空的，没有可导入的内容。"
+    }
+  }
+}
