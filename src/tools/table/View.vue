@@ -32,6 +32,8 @@ import {
   toSqlInsert,
 } from "./logic.js";
 import { resolveTypeSafeTransport } from "../../typesafe.js";
+import { useToolDemo } from "../../app/useToolDemo.js";
+import ToolDemoLayer from "../../ui/ToolDemoLayer.vue";
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -100,6 +102,37 @@ const EXPORTS = computed(() => [
 
 const exportFormat = ref("csv");
 const sqlTable = ref("t");
+
+/**
+ * Agent 演示接入（见 app/useToolDemo.js）：锚点名必须与本包 contract.js 的 demo.steps 对齐，
+ * 两边的一致性由 src/app/toolDemoContract.test.js 强制。
+ *
+ * handlers 只做「真实写入」——写的就是本视图自己的状态，所以演示结束后用户看到的是真结果，
+ * 可以接着改（而不是一场对不上结果的假动画）。
+ */
+const inputRef = ref(null);
+const delimiterRef = ref(null);
+const formatRef = ref(null);
+const outputRef = ref(null);
+const tableRef = ref(null);
+const demo = useToolDemo("table", {
+  anchors: {
+    input: () => inputRef.value,
+    delimiter: () => delimiterRef.value,
+    "export-format": () => formatRef.value,
+    "export-output": () => outputRef.value,
+    table: () => tableRef.value,
+  },
+  handlers: {
+    fill: (step) => {
+      if (step.anchor === "input") input.value = String(step.value);
+    },
+    select: (step) => {
+      if (step.anchor === "export-format") exportFormat.value = String(step.value);
+      else if (step.anchor === "delimiter") delimiter.value = String(step.value);
+    },
+  },
+});
 
 const exportText = computed(() => {
   const rows = table.value;
@@ -311,7 +344,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
       </button>
       <label class="tt-field">
         <span>{{ t("toolbox.table.delimiter") }}</span>
-        <select v-model="delimiter" data-role="delimiter">
+        <select v-model="delimiter" data-role="delimiter" ref="delimiterRef">
           <option value="auto">{{ t("toolbox.table.delimAuto") }}</option>
           <option v-for="item in DELIMITERS" :key="item.key" :value="item.char">{{ t(item.labelKey) }}</option>
         </select>
@@ -334,6 +367,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
       rows="12"
       spellcheck="false"
       data-role="input"
+      ref="inputRef"
       :placeholder="t('toolbox.table.inputPh')"
     ></textarea>
 
@@ -416,7 +450,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 
       <!-- 表格视图：点列头排序 -->
       <div class="tt-wrap">
-        <table class="tt-table" data-role="table">
+        <table class="tt-table" data-role="table" ref="tableRef">
           <thead v-if="hasHeader">
             <tr>
               <th class="tt-rownum"></th>
@@ -451,7 +485,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
       <div class="tt-toolbar">
         <label class="tt-field">
           <span>{{ t("toolbox.table.exportAs") }}</span>
-          <select v-model="exportFormat" data-role="export-format">
+          <select v-model="exportFormat" data-role="export-format" ref="formatRef">
             <option v-for="item in EXPORTS" :key="item.key" :value="item.key">{{ item.label }}</option>
           </select>
         </label>
@@ -462,8 +496,11 @@ const shownError = computed(() => parsed.value.parseError || error.value);
         <button class="tt-btn" data-role="copy-export" @click="copyExport">{{ t("toolbox.table.copyExport") }}</button>
         <button class="tt-btn primary" data-role="download-export" @click="downloadExport">{{ t("toolbox.table.downloadExport") }}</button>
       </div>
-      <textarea class="tt-output" rows="8" readonly spellcheck="false" data-role="export-output" :value="exportText"></textarea>
+      <textarea class="tt-output" rows="8" readonly spellcheck="false" data-role="export-output" ref="outputRef" :value="exportText"></textarea>
     </template>
+
+    <!-- Agent 演示层：只在「被 Agent 打开」时出现，手动开工具时整层不渲染 -->
+    <ToolDemoLayer :state="demo.state" @skip="demo.skip" @replay="demo.replay" />
   </div>
 </template>
 

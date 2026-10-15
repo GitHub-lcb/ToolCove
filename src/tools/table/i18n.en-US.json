@@ -17,6 +17,13 @@
         "SQL INSERT"
       ]
     },
+    "demo": {
+      "fillInput": "Filling the input with the argument text",
+      "pickDelimiter": "Setting the delimiter",
+      "pickFormat": "Switching the export format",
+      "showOutput": "Pointing at the exported result",
+      "showTable": "Pointing at the parsed table"
+    },
     "table": {
       "inputLabel": "Paste delimited text",
       "inputPh": "Paste CSV / TSV, or copy a range from Excel and hit “Paste clipboard”. The delimiter is detected automatically.",

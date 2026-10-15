@@ -17,6 +17,13 @@
         "导出"
       ]
     },
+    "demo": {
+      "fillInput": "把参数里的文本填进输入框",
+      "pickDelimiter": "选定分隔符",
+      "pickFormat": "切换导出格式",
+      "showOutput": "指出导出结果",
+      "showTable": "指出解析后的表格"
+    },
     "table": {
       "inputLabel": "粘贴分隔文本",
       "inputPh": "粘贴 CSV / TSV，或从 Excel 复制一片区域后点「粘贴剪贴板」。分隔符会自动识别。",

@@ -2958,6 +2958,13 @@ export const TOOL_MESSAGES = Object.freeze({
         "err_not": "{path}：命中了不该匹配的规则。",
         "err_unresolvedRef": "{path}：引用 {ref} 找不到目标。"
       },
+      "demo": {
+        "fillInput": "把参数里的文本填进输入框",
+        "pickDelimiter": "选定分隔符",
+        "pickFormat": "切换导出格式",
+        "showOutput": "指出导出结果",
+        "showTable": "指出解析后的表格"
+      },
       "table": {
         "inputLabel": "粘贴分隔文本",
         "inputPh": "粘贴 CSV / TSV，或从 Excel 复制一片区域后点「粘贴剪贴板」。分隔符会自动识别。",
@@ -6355,6 +6362,13 @@ export const TOOL_MESSAGES = Object.freeze({
         "err_oneOf": "{path}: must match exactly one branch, matched {matched} of {count}.",
         "err_not": "{path}: matched a rule it must not match.",
         "err_unresolvedRef": "{path}: reference {ref} cannot be resolved."
+      },
+      "demo": {
+        "fillInput": "Filling the input with the argument text",
+        "pickDelimiter": "Setting the delimiter",
+        "pickFormat": "Switching the export format",
+        "showOutput": "Pointing at the exported result",
+        "showTable": "Pointing at the parsed table"
       },
       "table": {
         "inputLabel": "Paste delimited text",

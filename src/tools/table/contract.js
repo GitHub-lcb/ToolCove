@@ -22,6 +22,14 @@ export default {
       risk: "transform",
       retryable: false,
       inputSchema: schema({ text, delimiter: str(4), maxRows: { type: "integer", minimum: 1, maximum: 5000 } }, ["text"]),
+      // 演示脚本：锚点名由本工具视图注册（见 View.vue 的 useToolDemo），
+      // 两边的一致性由 src/app/toolDemoContract.test.js 强制。from 取不到的交互步骤会被丢弃。
+      demo: {
+        steps: [
+          { anchor: "input", action: "fill", from: "text", captionKey: "toolbox.demo.fillInput" },
+          { anchor: "table", action: "reveal", captionKey: "toolbox.demo.showTable" },
+        ],
+      },
     },
     {
       name: "table.convert",
@@ -34,6 +42,14 @@ export default {
         { text, delimiter: str(4), format: { type: "string", enum: ["json", "markdown", "sql", "csv", "tsv"] }, tableName: str(64), indent: { type: "integer", minimum: 0, maximum: 8 } },
         ["text", "format"]
       ),
+      demo: {
+        steps: [
+          { anchor: "input", action: "fill", from: "text", captionKey: "toolbox.demo.fillInput" },
+          { anchor: "delimiter", action: "select", from: "delimiter", captionKey: "toolbox.demo.pickDelimiter" },
+          { anchor: "export-format", action: "select", from: "format", captionKey: "toolbox.demo.pickFormat" },
+          { anchor: "export-output", action: "reveal", captionKey: "toolbox.demo.showOutput" },
+        ],
+      },
     },
   ],
 };

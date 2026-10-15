@@ -1,7 +1,7 @@
 <script setup>
 // Agent 工作台：应用首屏。运行态在 src/agent/session.js 的模块级单例里，
 // 视图被 :key="activeModule" 销毁重建也不丢运行、pending 确认与时间线。
-import { ref, reactive, computed, inject, nextTick, onMounted, onServerPrefetch, watch } from "vue";
+import { ref, reactive, computed, inject, nextTick, onBeforeUnmount, onMounted, onServerPrefetch, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import MarkdownRender from "../tools/MarkdownRender.vue";
@@ -20,6 +20,8 @@ import RunProgress from "./RunProgress.vue";
 import { askConfirm } from "../ui/confirm.js";
 import { openToolWindow, isTauriEnv } from "../app/toolWindow.js";
 import { setToolPrefill } from "../app/toolPrefill.js";
+import { actionDemo, buildDemoScript, isPlayable } from "../app/toolDemo.js";
+import { onDemoSignal, sendDemo } from "../app/toolDemoLink.js";
 import { track } from "../app/telemetry.js";
 import {
   agentSession,
@@ -472,6 +474,49 @@ function openArtifact(toolName, artifacts) {
   openManual(toolKey, { kind: "open-file", path: first.path });
 }
 
+// —— Agent 演示：「看它怎么操作」 ——
+//
+// 脚本来自契约里的 demo 声明（见 app/toolDemo.js）+ 这一步的真实参数，所以在界面上演的是
+// **这次调用真正发生过的操作**，播放器改的也是工具自己的状态（不是一段伪造的动画）。
+// 演示结束后工具有回执（ready/done），这一步才算闭环——否则主窗口无从知道对面演到哪了。
+const demoDone = reactive(new Map()); // runId(`${卡片 id}#${尝试号}`) -> { steps, skipped }
+
+/** 这一步有没有可播的演示（契约声明了脚本、且参数齐到能演） */
+function demoScriptOf(actionName, args) {
+  const toolKey = toolMeta.value.get(actionName)?.toolKey;
+  if (!toolKey) return null;
+  const script = buildDemoScript(actionDemo(toolKey, actionName), args);
+  return isPlayable(script) ? { toolKey, script } : null;
+}
+
+async function openDemo(item, attempt) {
+  const found = demoScriptOf(item.tool, attempt.args);
+  if (!found) return;
+  const runId = `${item.id}#${attempt.n}`;
+  const label = findToolboxTool(found.toolKey)?.labelKey;
+  track("tool.demo." + found.toolKey);
+  // 必须**等投递落地**再开窗：写存储是异步的，抢在它之前开窗会让新窗口挂载时读到空，
+  // 表现就是「点了没反应」（静默退化）。已开着的工具还会经实时通道额外收到一份。
+  await sendDemo({ toolKey: found.toolKey, action: item.tool, runId, script: found.script });
+  props.showToast(t("agent.demoOpening", { tool: label ? t(label) : found.toolKey }));
+  openManual(found.toolKey);
+}
+
+let offDemoSignal = null;
+onMounted(() => {
+  offDemoSignal = onDemoSignal((signal) => {
+    if (!signal || !signal.runId) return;
+    // ready：工具那边开播了 → 清掉这一条上旧的「已演示」结论（重播后不该还挂着上一轮的结论）
+    if (signal.kind === "ready") {
+      demoDone.delete(signal.runId);
+      return;
+    }
+    if (signal.kind !== "done") return;
+    demoDone.set(signal.runId, { steps: Number(signal.steps) || 0, skipped: !!signal.skipped });
+  });
+});
+onBeforeUnmount(() => offDemoSignal?.());
+
 async function onCopy(text, okKey) {
   try {
     await navigator.clipboard.writeText(text);
@@ -737,7 +782,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           <!-- 步骤时间线 -->
           <section v-if="timeline.length" class="timeline">
             <template v-for="(item, index) in timeline" :key="cardKey(item, index)">
-              <article v-if="item.kind === 'tool'" class="tl-card">
+              <article v-if="item.kind === 'tool'" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" data-role="tool-card">
                 <button
                   class="tl-head"
                   :aria-expanded="openCards.has(cardKey(item, index))"
@@ -796,6 +841,16 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                         >
                           <Icon name="open" :size="12" />{{ t("agent.openInTool") }}
                         </button>
+                        <!-- 「看它怎么操作」：动作在契约里声明了演示脚本时出现，
+                             点一下就把这次调用的操作在工具界面上重演一遍 -->
+                        <button
+                          v-if="demoScriptOf(item.tool, a.args)"
+                          class="link xs demo-in-tool"
+                          data-role="watch-demo"
+                          @click="openDemo(item, a)"
+                        >
+                          <Icon name="sparkles" :size="12" />{{ t("agent.watchDemo") }}
+                        </button>
                       </div>
                       <pre
                         class="pl-body"
@@ -803,6 +858,12 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                       >{{ a.resultText }}</pre>
                     </div>
                     <p v-if="a.error" class="ta-error"><Icon name="alert" :size="12" />{{ attemptText(a) }}</p>
+                    <!-- 演示回执：工具那边播完（或被跳过）后由它回信，主窗口据此把「已演示过」写在这一步上 -->
+                    <p v-if="demoDone.get(item.id + '#' + a.n)" class="ta-demo" data-role="demo-done">
+                      <Icon name="sparkles" :size="12" />
+                      <template v-if="demoDone.get(item.id + '#' + a.n).skipped">{{ t("agent.demoDoneSkipped") }}</template>
+                      <template v-else>{{ t("agent.demoDone", { n: demoDone.get(item.id + '#' + a.n).steps }) }}</template>
+                    </p>
                   </div>
                 </div>
               </article>
@@ -1177,6 +1238,22 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .timeline { display: flex; flex-direction: column; gap: var(--sp-2); }
 
 .tl-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
+
+/* 工具卡的「正在动手 / 已落地」反馈（动效第一层体感，不需要工具侧改造就生效）。
+   呼吸动画只在允许动效时播：prefers-reduced-motion 下退化为静态主色描边。 */
+.tl-card[data-status="running"] { border-color: var(--primary); }
+.tl-card[data-status="ok"] { animation: tlCardSettle 0.42s var(--ease-out); }
+@media (prefers-reduced-motion: no-preference) {
+  .tl-card[data-status="running"] { animation: tlCardBreath 1.4s ease-in-out infinite; }
+}
+@keyframes tlCardBreath {
+  0%, 100% { box-shadow: 0 0 0 0 var(--primary-soft); }
+  50% { box-shadow: 0 0 0 4px var(--primary-soft); }
+}
+@keyframes tlCardSettle {
+  0% { transform: translateY(-1px); box-shadow: 0 0 0 3px var(--primary-soft); }
+  100% { transform: none; box-shadow: none; }
+}
 .tl-head { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-4); background: transparent; border: none; cursor: pointer; text-align: left; transition: background 0.15s; }
 .tl-head:hover { background: var(--card-soft); }
 .tl-arrow { flex-shrink: 0; color: var(--muted); transition: transform 0.15s; }
@@ -1195,6 +1272,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .ta-head { display: flex; align-items: center; gap: var(--sp-2); }
 .ta-n { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
 .ta-error { display: flex; align-items: center; gap: 5px; margin: 0; font-size: var(--fs-sm); color: var(--danger-deep); line-height: var(--lh-body); }
+.ta-demo { display: flex; align-items: center; gap: 5px; margin: var(--sp-1) 0 0; font-size: var(--fs-sm); color: var(--primary); line-height: var(--lh-body); }
 
 .payload { display: flex; flex-direction: column; gap: 3px; }
 .pl-head { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-xs); color: var(--muted); }
