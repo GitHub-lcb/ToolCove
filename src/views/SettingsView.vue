@@ -622,9 +622,19 @@ function newSettings() {
 
 const LOCALE_PREFS = ["system", "zh-CN", "en-US"];
 
-// 进入设置页加载真实配置（解密敏感字段）；改动即标记未保存
-async function loadSettings() {
-  settingsLoadError.value = "";
+/**
+ * 回填闸门：为 true 时 dirty 的 watch 忽略一切变更（程序化回填不算用户的改动）。
+ * 定义在 loadSettings **之前**——它虽因函数提升不会真的报错，但读代码的人不该
+ * 先看到一个"未定义"的变量。语义见下方 watch 处的注释。
+ */
+let applying = false;
+
+/**
+ * 读盘并把 settings 组装成表单形状（解密敏感字段）。失败时回退到默认值并记下 loadError。
+ * 抽出来是为了让 loadSettings 只剩「开闸 → 回填 → 关闸」三件事——回填的每一步都必须在
+ * 闸门内完成，把它摊在 loadSettings 里会让人分不清哪几行属于回填、哪几行是别的初始化。
+ */
+async function readSettingsForm() {
   try {
     const s = (await invoke("load_data", { key: "settings" })) || {};
     // load_data 对缺失文件返回 []，只接受真正的对象作为合并基底
@@ -657,18 +667,51 @@ async function loadSettings() {
     try {
       autostartOn.value = !!(await invoke("autostart_status"));
     } catch (e) {
+      // 读不到就按「关」显示：这是系统状态不是应用数据，不该因读失败而拦住整个设置页
       autostartOn.value = false;
     }
   }
   fieldErr.value = {};
-  dirty.value = false;
 }
-// 任意字段改动标记未保存（排除程序化回填）
+
+// 进入设置页加载真实配置。
+//
+// 回填期间（applying = true）dirty 的 watch 一律忽略——见下方 watch 处的注释。
+// 用 try/finally 而不是在尾部置 false：中间任何一个 await 抛错都不能把闸门留在关闭状态，
+// 否则之后用户的真实改动不再标记未保存（比原来的 bug 更糟）。
+async function loadSettings() {
+  settingsLoadError.value = "";
+  applying = true;
+  try {
+    await readSettingsForm();
+  } finally {
+    // 关闸门 + 把 dirty 归零。因为 watch 是 flush:"sync"（见下），回填的每一次赋值都已在
+    // 当场被闸门拦下，这里不需要再 await 什么——少一个 await 就少一处时序推理，
+    // 而「靠先后顺序消除副作用」正是这个 bug 的成因。
+    applying = false;
+    dirty.value = false;
+  }
+}
+// 任意字段改动标记未保存。
+//
+// 程序化回填必须**显式豁免**（`applying` 闸门），不能靠「回填完再把 dirty 置回 false」——
+// 那正是这里原先的写法，也是「一进设置页就显示有未保存修改」的根因：loadSettings 里有
+// await（解密 apiKey、读开机启动状态），回填跨越了多个微任务，而 watch 是异步触发的，
+// 于是 dirty = false 之后还有一批变更落进来，把标记又点亮。
+// 而且 onMounted 里 loadSettings() 并没有被 await，回填与外层那些 async 初始化是并发的，
+// 「谁后跑完」本身就不确定——用先后顺序来消除副作用，本质上就不可靠。
+//
+// 闸门写法把语义说清楚：**只有非回填期间的变化才算用户的改动**。
+// flush: "sync" 让回调在赋值那一刻就同步跑掉，于是 loadSettings 的 finally 里关闸门
+// 必然发生在全部回填之后——默认的 pre 队列会把回调推迟到组件更新前，
+// 「关闸门与回调谁先谁后」又要靠推理，而那正是这个 bug 的成因。
 watch(
   () => JSON.stringify({ f: form.value, a: autostartOn.value }),
   () => {
+    if (applying) return;
     dirty.value = true;
-  }
+  },
+  { flush: "sync" }
 );
 
 async function save() {
