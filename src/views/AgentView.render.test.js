@@ -96,19 +96,51 @@ async function render(over = {}, props = {}) {
 }
 
 describe("AgentView 渲染", () => {
-  it("空态渲染定位叙事（二期文案）与右栏能力清单", async () => {
+  it("空态渲染任务导向的标语与示例，且不再有常驻能力清单", async () => {
     const html = await render();
-    for (const key of ["agent.emptySlogan", "agent.emptyHint", "agent.capManual", "agent.capSkills"]) {
+    for (const key of ["agent.emptySlogan", "agent.emptyHint", "agent.example1", "agent.example2", "agent.example3"]) {
       expect(html, key).toContain(t(key));
     }
     expect(html).not.toContain("undefined");
+    // 工具目录已搬进设置页：对话主区不该再出现「手动工具箱 / 技能库」这类配置块
+    expect(html).not.toContain(t("agent.capManual"));
+    expect(html).not.toContain(t("agent.capSkills"));
   });
 
-  it("两列布局：左栏会话列表已上移应用侧边栏，画布与右栏仍在", async () => {
+  it("骨架是「消息流 + 底部输入框」：输入框在文档流末尾，任务监控默认不出现", async () => {
     const html = await render();
-    expect(html).not.toContain("sessions");
     expect(html).toContain("canvas");
-    expect(html).toContain("rail");
+    expect(html).toContain("composer");
+    // 空态与输入框同在，但输入框（composer）必须排在空态之后——这是「输入框钉底部」的结构证据
+    expect(html.indexOf("composer")).toBeGreaterThan(html.indexOf("canvas-empty"));
+    // 空闲且无产物时右侧监控面板整块不渲染（条件出现）
+    expect(html).not.toContain('class="monitor"');
+    // 二期的会话列表已上移应用侧边栏，主区不该再有那一栏。
+    // 断言 class 而不是裸词 "sessions"：SSR 会把模板注释一起输出，
+    // 注释里提一句 "VS Code Chat view 的 sessions/对话/输入三段" 就会把裸词断言打成假红。
+    expect(html).not.toContain('class="sessions"');
+  });
+
+  it("用户的目标作为「我说的那句话」进入消息流首条", async () => {
+    const html = await render({
+      runStatus: "completed",
+      goal: "合并两个 PDF 文件",
+      steps: [{ type: "final", answer: "完成", ts: 1 }],
+    });
+    expect(html).toContain("msg-user");
+    expect(html).toContain(t("agent.you"));
+    expect(html).toContain("合并两个 PDF 文件");
+    // 有步骤时空态消失（两者互斥）
+    expect(html).not.toContain("canvas-empty");
+  });
+
+  it("进入终态且无产物时任务监控仍不出现（它是运行态面板，不是常驻配置栏）", async () => {
+    const html = await render({
+      runStatus: "completed",
+      goal: "合并两个 PDF",
+      steps: [{ type: "final", answer: "完成", ts: 1 }],
+    });
+    expect(html).not.toContain('class="monitor"');
   });
 
   it("历史任务回看：横幅 + 该 run 的 steps 时间线，目标输入框隐藏", async () => {
@@ -308,11 +340,12 @@ describe("AgentView 渲染", () => {
     expect(html).toContain(t("agent.skillPromote"));
   });
 
-  it("技能库折叠时只显示条数（不把正文塞进首屏）", async () => {
+  it("技能库不在对话主区（正文不会漏进首屏）", async () => {
     const html = await render({ skills: [skill] });
-    expect(html).toContain(t("agent.capSkills"));
-    expect(html).toContain("1");
+    // 技能库整块已搬进「设置 → Agent」：主区既不显示条数，更不该把正文塞进首屏
+    expect(html).not.toContain(t("agent.capSkills"));
     expect(html).not.toContain(skill.instructions);
+    expect(html).not.toContain(skill.description);
   });
 
   it("最终答复卡给出「存为速记 / 存为问题」写回入口（知识沉淀）", async () => {

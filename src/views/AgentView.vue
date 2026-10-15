@@ -7,6 +7,7 @@ import Icon from "../ui/Icon.vue";
 import MarkdownRender from "../tools/MarkdownRender.vue";
 import { errText } from "../shared/errors.js";
 import { buildAgentRegistry, listAgentTools } from "../agent/tools.js";
+import { riskChip, riskKey } from "../agent/capabilities.js";
 import { foldTimeline, payloadText, COLLAPSE_AT } from "../agent/timeline.js";
 import { describePreview, rowKind, rowText } from "../agent/preview.js";
 import { canResume } from "../agent/runStore.js";
@@ -14,7 +15,7 @@ import { extractArtifacts } from "../agent/artifacts.js";
 import { answerToProblemDraft, answerToSnippetDraft } from "../agent/answerDraft.js";
 import { buildContextLine } from "../agent/context.js";
 import { create as createRecord, load as loadRepo } from "../data/repository.js";
-import { visibleToolboxTools, findToolboxTool } from "../toolboxTools.js";
+import { findToolboxTool } from "../toolboxTools.js";
 import RunProgress from "./RunProgress.vue";
 import { askConfirm } from "../ui/confirm.js";
 import { openToolWindow, isTauriEnv } from "../app/toolWindow.js";
@@ -23,15 +24,11 @@ import { track } from "../app/telemetry.js";
 import {
   agentSession,
   answerPending,
-  clearSpills,
   clearTimeline,
-  deleteSkill,
   initAgentSession,
   promoteRunToSkill,
   resolvePending,
   resumeAgentRun,
-  setSkillEnabled,
-  setToolEnabled,
   startAgentRun,
   stopAgentRun,
 } from "../agent/session.js";
@@ -133,12 +130,20 @@ watch(
     if (last?.kind === "tool" && last.id && busy.value) openCards.add(last.id);
   }
 );
+// 一轮结束时把工具卡全部收起。
+// 运行中展开是有意的（「看着它干活」）；但结束后留着一屏展开的参数与结果 JSON，
+// 等于把对话记录变成日志转储——主流做法是工具调用默认折叠成一行摘要、按需展开
+// （Claude Code 折叠 + Ctrl+O 展开、Claude Desktop 的 Normal 模式、Cursor 的密度档）。
+// 结果是可逆的：想看细节随时点开，卡片本身不会被丢弃。
+watch(busy, (now, before) => {
+  if (before && !now) {
+    openCards.clear();
+    openPayloads.clear();
+  }
+});
 
-const RISK_ORDER = ["read", "transform", "write", "database"];
-const RISK_CHIP = { read: "tc-sky", transform: "tc-primary", write: "tc-danger", database: "tc-teal" };
-const RISK_KEY = { read: "agent.riskRead", transform: "agent.riskTransform", write: "agent.riskWrite", database: "agent.riskDatabase" };
-const riskChip = (risk) => RISK_CHIP[risk] || "tc-neutral";
-const riskKey = (risk) => RISK_KEY[risk] || "agent.riskRead";
+// 风险语义色 / 词条映射住在 agent/capabilities.js（设置页的工具开关矩阵用同一套，
+// 各写一份会出现「时间线标红、设置页标橙」这类分裂）。
 
 const ATTEMPT_KEY = { running: "agent.statusRunning", ok: "agent.statusSuccess", retry: "agent.stepRetry", error: "agent.stepError" };
 const NOTICE_KEY = {
@@ -238,13 +243,36 @@ const fmtNum = (n) => {
   return v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
 };
 
-// 能力面板：机器工具按风险分组 + 手动兜底工具箱
-const capTools = computed(() => listAgentTools(agentSession.cfg));
-const capGroups = computed(() =>
-  RISK_ORDER.map((risk) => ({ risk, tools: capTools.value.filter((x) => x.risk === risk) })).filter((g) => g.tools.length > 0)
+// ------- 任务监控面板（右侧，条件出现） -------
+// 三期的核心取舍：右侧**不再常驻**「能力清单」。工具开关是配置，不是对话的家具——
+// 它常驻时占掉 1/4 宽度，把消息流挤成窄条，而且和"这台机器能干什么"这个一次性问题
+// 绑死在每一轮对话上。工具开关因此搬进「设置 → Agent」，这里只留在**运行时**才有意义的
+// 东西（目标 / 实时进度 / 产物），也就是 Qoder 的任务监控那一栏。
+//
+// 可见条件 = 用户没手动关掉 且 （正在跑 或 有待确认 或 有产物）。
+// 用户手动关掉后即使是运行中也不弹回来——面板自己冒出来比少一个面板更烦人。
+const monitorWanted = ref(true);
+const monitorVisible = computed(
+  () => monitorWanted.value && (busy.value || !!agentSession.pending || !!runSummary.value?.artifacts.length)
 );
-const capEnabledCount = computed(() => capTools.value.filter((x) => x.enabled).length);
-const manualTools = visibleToolboxTools();
+function toggleMonitor() {
+  monitorWanted.value = !monitorWanted.value;
+}
+
+// 会话流里的「我说的那句话」。这是三期相对二期最要紧的一处：
+// 二期的主区只有 Agent 的步骤时间线，用户自己的目标不出现在流里，于是它读起来像
+// 「运行监视器」而不是对话——翻到一条历史，得回到顶部横幅才知道当初让它干什么。
+// 一次运行 = 一轮问答，目标就是这一轮的用户消息（引擎没有多轮会话模型，见
+// docs/agent-workspace-plan.md；将来真长出会话模型时，这里换成遍历 turn 即可）。
+const threadGoal = computed(() => {
+  const viewing = viewRun.value;
+  const text = viewing ? viewing.input || "" : agentSession.goal || "";
+  return typeof text === "string" ? text.trim() : "";
+});
+
+// 空态只在「这一轮还没有任何步骤」时出现。回看历史时一律不补空态——
+// 横幅与交付清单已经说明了现状，再插一句标语是噪声。
+const showEmpty = computed(() => !viewRun.value && !timeline.value.length && !agentSession.pending);
 
 // registry 的懒加载策略：buildAgentRegistry 会动态拉整套工具实现层
 // （executors + luxon/js-yaml 等，实测约 400KB），放首屏就把工具箱的懒加载抵消掉了。
@@ -420,13 +448,8 @@ function onAnswerSkip() {
   if (stopAgentRun("denied")) props.showToast(t("agent.stopped"));
 }
 
-async function onToggleTool(tool) {
-  try {
-    await setToolEnabled(tool.name, !tool.enabled);
-  } catch (e) {
-    props.showToast(e?.code === "ALL_DISABLED" ? t("settings.errAgentTools") : t("settings.saveFailed", { err: errText(e) }));
-  }
-}
+// 工具开关 / 技能库 / 溢出清理的交互已搬进「设置 → Agent」（见 SettingsView.vue）。
+// 视图这边只保留运行与回看：主区不再长着一张配置表。
 
 function openManual(toolKey, prefill) {
   const tool = findToolboxTool(toolKey);
@@ -478,11 +501,8 @@ async function onResume(rec) {
   await resumeAgentRun(rec);
 }
 
-// ------- 技能库 -------
-// 技能是「可选增强」：关掉/删掉都不影响可执行能力，所以没有「至少留一条」的校验（对比工具开关）。
-const skillDisabled = (id) => (agentSession.cfg?.disabledSkills || []).includes(id);
-const skillsOpen = ref(false);
-
+// ------- 知识沉淀：把成功路径提升为技能 -------
+// 技能库本身的开关 / 删除在设置页；这里只留「这一轮跑得好，存下来」这个当场的动作。
 async function onPromoteRun(runId) {
   try {
     let result = await promoteRunToSkill(runId);
@@ -503,36 +523,6 @@ async function onPromoteRun(runId) {
     }
     track("agent.skill.save");
     props.showToast(t(result.updated ? "agent.skillUpdated" : "agent.skillSaved", { name: result.skill.name }));
-  } catch (e) {
-    props.showToast(t("settings.saveFailed", { err: errText(e) }));
-  }
-}
-
-async function onToggleSkill(skill) {
-  try {
-    await setSkillEnabled(skill.id, skillDisabled(skill.id));
-  } catch (e) {
-    props.showToast(t("settings.saveFailed", { err: errText(e) }));
-  }
-}
-
-async function onDeleteSkill(skill) {
-  try {
-    if (await deleteSkill(skill.id)) props.showToast(t("agent.skillDeleted", { name: skill.name }));
-  } catch (e) {
-    props.showToast(t("settings.saveFailed", { err: errText(e) }));
-  }
-}
-
-/** 清空溢出结果区。没有可清的条目时如实说「本来就是空的」，不要假装成功。 */
-async function onClearSpills() {
-  try {
-    const result = await clearSpills();
-    props.showToast(
-      result.cleared
-        ? t("agent.spillCleared", { n: result.cleared, chars: fmtNum(result.chars) })
-        : t("agent.spillClearEmpty")
-    );
   } catch (e) {
     props.showToast(t("settings.saveFailed", { err: errText(e) }));
   }
@@ -613,7 +603,9 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 <template>
   <div class="agent">
-    <!-- 表头条 -->
+    <!-- 表头条：只放「这一轮是什么状态」与全局动作。曾经还挂着一条运行进度条，
+         已下移贴住输入框——进度讲的是「我正在做什么」，它该挨着用户下一步动作，
+         而不是和页面标题抢第一行。 -->
     <header class="bar">
       <span class="st-chip" :class="statusMeta.cls">
         <Icon :name="statusMeta.icon" :size="13" />{{ t(statusMeta.key) }}
@@ -624,6 +616,15 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
         <span>{{ t("agent.callsCount", { n: agentSession.usage.calls }) }}</span>
       </span>
       <span class="spacer"></span>
+      <button
+        class="btn-ghost sm"
+        :class="{ 'mon-on': monitorVisible }"
+        :title="monitorWanted ? t('agent.monitorHide') : t('agent.monitorShow')"
+        :aria-pressed="monitorWanted"
+        @click="toggleMonitor"
+      >
+        <Icon name="layout" :size="14" />{{ t("agent.monitorTitle") }}
+      </button>
       <button class="btn-ghost sm" @click="goSettings('agent')">
         <Icon name="settings" :size="14" />{{ t("agent.openSettings") }}
       </button>
@@ -632,45 +633,11 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
       </button>
     </header>
 
-    <!-- 运行进度：把「现在在干嘛、走到哪、还剩多少步」压缩成一行。
-         参考 Qoder 的会话底部 todo —— 三态一眼可读，不必去翻时间线猜。 -->
-    <RunProgress
-      class="agent-progress"
-      :steps="agentSession.steps"
-      :status="progressStatus"
-      :current-tool="currentTool"
-      :max-steps="maxSteps"
-      :tokens="usageText"
-    />
-
-    <!-- 首启引导卡：可关闭，不叠第二个模态（遥测同意弹窗已是唯一的模态闸门） -->
-    <section v-if="hintOpen" class="hint">
-      <button class="hint-x icon-btn xs" :aria-label="t('agent.hintDismiss')" @click="dismissHint">
-        <Icon name="x" :size="13" />
-      </button>
-      <b class="hint-title">{{ t("agent.hintTitle") }}</b>
-      <p class="hint-body">{{ t("agent.hintBody") }}</p>
-      <div class="hint-examples">
-        <button v-for="n in 3" :key="n" class="hint-ex" @click="useExample('agent.example' + n)">{{ t("agent.example" + n) }}</button>
-      </div>
-      <div class="hint-foot">
-        <button class="link" @click="dismissHint">{{ t("agent.hintDismiss") }}</button>
-      </div>
-    </section>
-
-    <!-- 未配置模型：给出两条出路，而不是把死界面推给用户 -->
-    <section v-if="!agentSession.aiReady" class="noai">
-      <Icon name="sparkles" :size="20" />
-      <b>{{ t("agent.empty") }}</b>
-      <p>{{ t("agent.settingsHint") }}</p>
-      <div class="noai-actions">
-        <button class="btn-primary sm" @click="goSettings('ai')">{{ t("agent.configureAI") }}</button>
-        <button class="btn-ghost sm" @click="emit('navigate', { module: 'toolbox' })">{{ t("agent.openToolbox") }}</button>
-      </div>
-    </section>
-
-    <div class="body">
-      <!-- 运行画布 -->
+    <div class="body" :class="{ 'with-monitor': monitorVisible }">
+      <!-- 对话列：消息流占满剩余高度，输入框钉在底部。
+           这是主流 agent 产品的固定骨架（Qoder「输入框位于中央区域底部」、
+           VS Code Chat view 的 sessions/对话/输入三段、Zed 的 message editor 在面板底部），
+           二期的实现恰好相反——输入框浮在页面中部、空态标语落在它下面。 -->
       <div class="canvas">
         <!-- 历史任务回看横幅：画布只读渲染该 run 的 steps 快照。
              续跑/重跑按钮复用主流程（内部会先退出回看）；「返回当前」回到实时画布。 -->
@@ -685,38 +652,18 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           </span>
         </section>
 
-        <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史 -->
-        <div v-if="!viewRun" class="goal-box">
-          <!-- 域选择器（三期上下文）：没有领域数据时不显示；选定后给一行预览并可一键清除 -->
-          <div v-if="domains.length" class="goal-domain">
-            <label class="gd-label" :title="t('agent.domain')"><Icon name="layers" :size="13" />{{ t("agent.domain") }}</label>
-            <select v-model="agentSession.contextDomain" class="gd-select">
-              <option value="">{{ t("agent.domainNone") }}</option>
-              <option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}</option>
-            </select>
-            <span v-if="selectedDomain" class="gd-context">{{ domainContextText }}</span>
-            <button v-if="selectedDomain" class="link xs" @click="agentSession.contextDomain = ''">{{ t("agent.domainClear") }}</button>
-          </div>
-          <textarea
-            ref="goalBox"
-            v-model="goal"
-            class="goal"
-            rows="3"
-            :placeholder="t('agent.goalPh')"
-            @keydown="onGoalKey"
-          ></textarea>
-          <div class="goal-actions">
-            <span class="goal-hint">Enter {{ t("agent.run") }} · Shift+Enter {{ t("agent.newline") }}</span>
-            <button v-if="agentSession.steps.length" class="btn-ghost xs" :disabled="busy" @click="clearTimeline()">
-              {{ t("agent.clear") }}
-            </button>
-            <button class="btn-primary sm" :disabled="busy || !goal.trim()" @click="startRun">
-              <Icon name="rocket" :size="14" />{{ busy ? t("agent.running") : t("agent.run") }}
-            </button>
-          </div>
-        </div>
-
         <div class="scroll">
+          <!-- 我说的那句话：会话流的第一条消息。回看历史时它就是当初那条目标，
+               实时运行时是本次运行的目标（goal 在 startRun 成功后即被清空，
+               所以这里读 agentSession.goal，而不是输入框的草稿）。 -->
+          <article v-if="threadGoal" class="msg msg-user">
+            <span class="msg-av"><Icon name="user" :size="13" /></span>
+            <div class="msg-body">
+              <span class="msg-who">{{ t("agent.you") }}</span>
+              <p class="msg-text">{{ threadGoal }}</p>
+            </div>
+          </article>
+
           <!-- 内联确认卡：运行时交给我们的是 Promise，卡片能展示工具名 / 风险 / 完整 args，
                全局 askConfirm 模态做不到，而且不会盖住用户正在看的时间线。
                它属于实时运行：回看历史时照常显示——后台运行来了一张确认卡，人仍要答得上。 -->
@@ -915,10 +862,23 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </div>
           </section>
 
-          <!-- 空态：定位叙事（二期）。回看空记录时什么都不补——横幅与交付清单已经说明了现状 -->
-          <div v-else-if="!viewRun" class="canvas-empty">
+          <!-- 空态：输入框正上方的那块地方。二期的空态标语落在输入框**下面**——
+               新用户按从上到下的顺序读，先看到输入框、再看到"说一件事"，逻辑是反的。
+               现在它待在消息流该在的位置（输入框上方），一旦有了第一条步骤就消失。
+               示例提示也收进这里：二期那张可关闭的欢迎卡与空态标语同时在首屏出现，
+               两块内容讲同一件事，互相稀释。 -->
+          <div v-if="showEmpty" class="canvas-empty">
             <b class="ce-slogan">{{ t("agent.emptySlogan") }}</b>
             <p class="ce-hint">{{ t("agent.emptyHint") }}</p>
+            <div class="ce-examples">
+              <button v-for="n in 3" :key="n" class="ce-ex" @click="useExample('agent.example' + n)">{{ t("agent.example" + n) }}</button>
+            </div>
+            <!-- 首启说明：确认行为是这个产品最需要提前讲清楚的一件事（写文件会先问）。
+                 只讲一次、可关掉，且只在空态出现——不再是压在消息流顶上的一条横幅。 -->
+            <p v-if="hintOpen" class="ce-note">
+              <Icon name="shield" :size="12" />{{ t("agent.hintBody") }}
+              <button class="link xs" @click="dismissHint">{{ t("agent.hintDismiss") }}</button>
+            </p>
           </div>
 
           <!-- 运行级错误卡（仅实时运行；历史 run 的失败信息由交付清单的遗留说明表达） -->
@@ -954,101 +914,111 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <p v-if="runSummary.leftover" class="sum-leftover">{{ runSummary.leftover }}</p>
           </section>
         </div>
-      </div>
 
-      <!-- 右栏：能力清单（三栏化后「最近任务」在左栏，这里不再做 tab 切换） -->
-      <aside class="rail">
-        <div class="rail-body">
-          <p class="rail-desc">{{ t("agent.capDesc", { n: capEnabledCount }) }}</p>
-          <section v-for="group in capGroups" :key="group.risk" class="cap-group">
-            <h4 class="cap-head">
-              <span class="tc-chip sm" :class="riskChip(group.risk)">{{ t(riskKey(group.risk)) }}</span>
-              <span class="cap-count">{{ group.tools.length }}</span>
-            </h4>
-            <div v-for="tool in group.tools" :key="tool.name" class="cap-row" :class="{ off: !tool.enabled }">
-              <div class="cap-main">
-                <code class="cap-name">{{ tool.name }}</code>
-                <span class="cap-item-desc">{{ tool.descriptionKey ? t(tool.descriptionKey) : tool.name }}</span>
-              </div>
-              <div class="cap-side">
-                <button v-if="tool.toolKey" class="link xs" :title="t('agent.capOpenTool')" @click="openManual(tool.toolKey)">
-                  <Icon name="open" :size="12" />
-                </button>
-                <button
-                  class="switch"
-                  role="switch"
-                  :aria-checked="tool.enabled"
-                  :aria-label="tool.name"
-                  :title="t('agent.capEnabled')"
-                  @click="onToggleTool(tool)"
-                >
-                  <span class="knob"></span>
-                </button>
-              </div>
+        <!-- 输入框：钉在对话列底部。它是这一屏唯一的操作面（attachments/上下文/发送
+             在同一条横带上），而不是页面中部的一块卡片——二期的输入框会随内容滚走，
+             翻历史翻到一半想接着问，得先滚回页面中间。 -->
+        <footer class="composer">
+          <!-- 未配置模型：两条出路贴着被禁用的运行按钮，而不是压在整个消息流顶上 -->
+          <section v-if="!agentSession.aiReady" class="noai">
+            <Icon name="sparkles" :size="18" />
+            <div class="noai-text">
+              <b>{{ t("agent.empty") }}</b>
+              <p>{{ t("agent.settingsHint") }}</p>
+            </div>
+            <div class="noai-actions">
+              <button class="btn-primary sm" @click="goSettings('ai')">{{ t("agent.configureAI") }}</button>
+              <button class="btn-ghost sm" @click="emit('navigate', { module: 'toolbox' })">{{ t("agent.openToolbox") }}</button>
             </div>
           </section>
 
-          <!-- 技能库：用户自己沉淀的成功路径。默认折叠——技能是可选增强，不该挤占能力清单的位置。 -->
-          <section class="cap-group">
-            <button class="cap-head skill-head" :aria-expanded="skillsOpen" @click="skillsOpen = !skillsOpen">
-              <Icon name="chevron-right" :size="13" class="tl-arrow" :class="{ open: skillsOpen }" />
-              <span class="tc-chip sm tc-primary">{{ t("agent.capSkills") }}</span>
-              <span class="cap-count">{{ agentSession.skills.length }}</span>
-            </button>
-            <template v-if="skillsOpen">
-              <p class="rail-desc">{{ t("agent.capSkillsDesc") }}</p>
-              <p v-if="!agentSession.skills.length" class="rail-desc">{{ t("agent.skillEmpty") }}</p>
-              <div v-for="skill in agentSession.skills" :key="skill.id" class="cap-row" :class="{ off: skillDisabled(skill.id) }">
-                <div class="cap-main">
-                  <code class="cap-name">{{ skill.name }}</code>
-                  <span class="cap-item-desc">{{ skill.description || t("agent.skillNoDesc") }}</span>
-                </div>
-                <div class="cap-side">
-                  <button class="link xs danger" :title="t('agent.skillDelete')" @click="onDeleteSkill(skill)">
-                    <Icon name="trash" :size="12" />
-                  </button>
-                  <button
-                    class="switch"
-                    role="switch"
-                    :aria-checked="!skillDisabled(skill.id)"
-                    :aria-label="t('agent.skillToggle')"
-                    :class="{ on: !skillDisabled(skill.id) }"
-                    @click="onToggleSkill(skill)"
-                  >
-                    <span class="knob"></span>
-                  </button>
-                </div>
-              </div>
-            </template>
-          </section>
+          <!-- 实时进度：把「现在在干嘛、走到哪、还剩多少步」压成一行，紧贴输入框。
+               参考 Qoder 的会话底部 todo / OpenHands 把活动指示放进 composer —— 三态一眼可读，
+               不必去翻时间线猜。只在运行或等待确认时出现，跑完就收（终态由交付清单表达）。 -->
+          <RunProgress
+            v-if="busy || agentSession.pending"
+            class="agent-progress"
+            :steps="agentSession.steps"
+            :status="progressStatus"
+            :current-tool="currentTool"
+            :max-steps="maxSteps"
+            :tokens="usageText"
+          />
 
-          <section class="cap-group">
-            <h4 class="cap-head">
-              <span class="tc-chip sm tc-neutral">{{ t("agent.capManual") }}</span>
-              <span class="cap-count">{{ manualTools.length }}</span>
-            </h4>
-            <p class="rail-desc">{{ t("agent.capManualDesc") }}</p>
-            <div class="manual-chips">
-              <button v-for="tool in manualTools" :key="tool.key" class="m-chip" @click="openManual(tool.key)">
-                <Icon :name="tool.icon" :size="13" />{{ t(tool.labelKey) }}
+          <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史 -->
+          <div v-if="!viewRun" class="goal-box">
+            <!-- 域选择器（三期上下文）：没有领域数据时不显示；选定后给一行预览并可一键清除 -->
+            <div v-if="domains.length" class="goal-domain">
+              <label class="gd-label" :title="t('agent.domain')"><Icon name="layers" :size="13" />{{ t("agent.domain") }}</label>
+              <select v-model="agentSession.contextDomain" class="gd-select">
+                <option value="">{{ t("agent.domainNone") }}</option>
+                <option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}</option>
+              </select>
+              <span v-if="selectedDomain" class="gd-context">{{ domainContextText }}</span>
+              <button v-if="selectedDomain" class="link xs" @click="agentSession.contextDomain = ''">{{ t("agent.domainClear") }}</button>
+            </div>
+            <textarea
+              ref="goalBox"
+              v-model="goal"
+              class="goal"
+              rows="2"
+              :placeholder="t('agent.goalPh')"
+              @keydown="onGoalKey"
+            ></textarea>
+            <div class="goal-actions">
+              <span class="goal-hint">Enter {{ t("agent.run") }} · Shift+Enter {{ t("agent.newline") }}</span>
+              <button v-if="agentSession.steps.length" class="btn-ghost xs" :disabled="busy" @click="clearTimeline()">
+                {{ t("agent.clear") }}
+              </button>
+              <button class="btn-primary sm" :disabled="busy || !goal.trim()" @click="startRun">
+                <Icon name="rocket" :size="14" />{{ busy ? t("agent.running") : t("agent.run") }}
               </button>
             </div>
-            <button class="btn-ghost sm wide" @click="emit('navigate', { module: 'toolbox' })">
-              <Icon name="grid" :size="14" />{{ t("agent.openToolbox") }}
-            </button>
-          </section>
-          <p class="rail-desc">{{ t("agent.capSettingsHint") }}</p>
-          <!-- 溢出结果区：大结果落盘的正文会占磁盘，这里给一个手动出口。
-               措辞如实——桌面端删不掉文件本体，只能清索引并把正文覆写成空。 -->
-          <section class="cap-group">
-            <h4 class="cap-head">
-              <span class="tc-chip sm tc-neutral">{{ t("agent.capSpills") }}</span>
-            </h4>
-            <p class="rail-desc">{{ t("agent.capSpillsDesc") }}</p>
-            <button class="btn-ghost sm wide" :disabled="busy" @click="onClearSpills">
-              <Icon name="trash" :size="13" />{{ t("agent.spillClear") }}
-            </button>
-          </section>
+          </div>
+        </footer>
+      </div>
+
+      <!-- 右栏：任务监控（Qoder 同名的「条件出现」面板）。
+           它的可见性由监视器状态与运行态共同决定：只有正在跑、等你确认、或这一轮产出了
+           文件时才占位，其余时间对话区独占整宽。工具开关不在这里——那是设置。 -->
+      <aside v-if="monitorVisible" class="monitor">
+        <div class="mon-head">
+          <Icon name="activity" :size="14" />
+          <b>{{ t("agent.monitorTitle") }}</b>
+          <span class="st-chip sm" :class="statusMeta.cls">{{ t(statusMeta.key) }}</span>
+        </div>
+        <div class="mon-body">
+          <div class="mon-sec">
+            <span class="mon-label">{{ t("agent.goalLabel") }}</span>
+            <p class="mon-goal">{{ threadGoal || t("agent.emptyTimeline") }}</p>
+          </div>
+          <div class="mon-sec">
+            <span class="mon-label">{{ t("agent.monitorActivity") }}</span>
+            <p class="mon-now">
+              <template v-if="currentTool"><Icon name="zap" :size="12" /><code>{{ currentTool }}</code></template>
+              <template v-else>{{ t(progressStatus === "waiting" ? "agent.statusWaiting" : busy ? "agent.running" : statusMeta.key) }}</template>
+            </p>
+            <p class="mon-meter">
+              <span>{{ t("agent.stepsCount", { n: agentSession.steps.length }) }}</span>
+              <span>{{ t("agent.tokensCount", { n: fmtNum(agentSession.usage.totalTokens) }) }}</span>
+              <span>{{ t("agent.callsCount", { n: agentSession.usage.calls }) }}</span>
+            </p>
+          </div>
+          <div v-if="runSummary && runSummary.artifacts.length" class="mon-sec">
+            <span class="mon-label">{{ t("agent.summaryArtifacts") }}</span>
+            <div class="manual-chips">
+              <button
+                v-for="art in runSummary.artifacts"
+                :key="art.path"
+                class="m-chip"
+                :title="art.path + ' · ' + t('agent.openInTool')"
+                @click="openArtifact(art.tool, [art])"
+              >
+                <Icon name="open" :size="12" />{{ art.label }}
+              </button>
+            </div>
+          </div>
+          <p class="mon-hint">{{ t("agent.capMoved") }}</p>
         </div>
       </aside>
     </div>
@@ -1061,44 +1031,81 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 /* ---------- 表头条 ---------- */
 .bar { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-/* 进度条紧贴表头条：两者讲的是同一件事（本次运行的状态），不该被别的元素隔开 */
-.agent-progress { flex-shrink: 0; margin-bottom: var(--sp-3); }
+/* 进度条贴住输入框：它讲的是「这一次现在走到哪」，与用户下一步动作是同一件事 */
+.agent-progress { flex-shrink: 0; }
 .meter { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--muted); font-family: var(--font-num); }
 .spacer { flex: 1; }
 
-/* ---------- 首启引导卡 ---------- */
-.hint {
-  position: relative; flex-shrink: 0; padding: var(--sp-5) var(--sp-6);
-  background: var(--grad-promo); border: 1px solid var(--border-blue); border-radius: var(--r-md);
-  display: flex; flex-direction: column; gap: var(--sp-2);
-}
-.hint-x { position: absolute; top: 10px; right: 10px; }
-.hint-title { font-size: var(--fs-base); font-weight: 700; }
-.hint-body { margin: 0; font-size: var(--fs-sm); color: var(--text-weak); line-height: var(--lh-body); max-width: 78ch; }
-.hint-examples { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.hint-ex {
+/* ---------- 空态（输入框正上方） ---------- */
+/* 占满输入框以上的整块消息区并**垂直居中**：只顶对齐会在下面留出四五百像素的死白，
+   读起来像界面没加载完；居中让标题、示例、说明成为这一屏的主体，视线自然落到下方输入框。
+   flex:1 让它吃掉 .scroll 的剩余高度（.scroll 是 flex 列）。 */
+.canvas-empty { flex: 1; margin: 0; padding: 0 var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; justify-content: center; text-align: center; }
+.ce-slogan { font-size: var(--fs-lg); font-weight: 700; color: var(--text-weak); }
+.ce-hint { margin: 0; font-size: var(--fs-sm); color: var(--faint); }
+.ce-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.ce-ex {
   padding: 5px 11px; font-size: var(--fs-sm); color: var(--primary-hover); text-align: left;
   background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-pill);
-  cursor: pointer; transition: all 0.15s;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
 }
-.hint-ex:hover { background: var(--primary-soft); border-color: var(--primary); }
-.hint-foot { display: flex; gap: var(--sp-4); }
+.ce-ex:hover { background: var(--primary-soft); border-color: var(--primary); }
+/* 确认行为说明：低调的一段，且自带「知道了」——它讲的是安全边界，不是卖点。
+   刻意不用 flex（图标会在大段文字里被挤到单独一行），图标用 vertical-align 跟首行对齐。 */
+.ce-note {
+  margin: var(--sp-2) 0 0; max-width: 60ch;
+  font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body);
+}
+.ce-note .icon { vertical-align: -2px; margin-right: 4px; }
+.ce-note .link { margin-left: var(--sp-2); }
 
 /* ---------- 未配置模型 ---------- */
+/* 横排：图标 + 说明 + 出路按钮一行放下，占的高度不到原来的三分之二，
+   因为它现在是「贴在禁用按钮上方的一行提示」，不是压在消息流顶上的一张公告。 */
 .noai {
-  flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
-  padding: var(--sp-5) var(--sp-6); color: var(--text);
+  flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); color: var(--text);
   background: var(--card); border: 1px dashed var(--border-strong); border-radius: var(--r-md);
 }
-.noai b { font-size: var(--fs-base); }
-.noai p { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
-.noai-actions { display: flex; gap: var(--sp-3); }
+.noai-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.noai b { font-size: var(--fs-sm); }
+.noai p { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-tight); }
+.noai-actions { flex-shrink: 0; display: flex; gap: var(--sp-2); }
 
-/* ---------- 两栏：运行画布 / 能力清单（二期：会话列表上移应用侧边栏） ---------- */
-.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--sp-5); align-items: stretch; }
-/* 两栏都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
-.canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-4); }
+/* ---------- 对话列 + 条件出现的任务监控 ---------- */
+/* 第二列只在监控面板真的渲染时才有意义，所以列宽由 .with-monitor 这个类切换，
+   而不是写死 grid-template-columns（写死会让空列白占 320px，正是「右栏不常驻」要避免的）。
+   刻意不用 :has(.monitor)：它要求较新的 WebView2，老运行时上规则会被整条丢弃、
+   面板退化成堆在对话下方，而这里的降级必须可控。 */
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-5); align-items: stretch; }
+.body.with-monitor { grid-template-columns: minmax(0, 1fr) 320px; }
+/* 两列都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
+.canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 消息流：占满输入框以上的全部高度，滚它自己 */
 .scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-3); }
+
+/* ---------- 用户消息（会话流的第一条） ---------- */
+/* 与 Agent 的答复卡刻意长得不一样：靠头像 + 姓名行认出「谁在说话」，
+   底色用 card-soft 而不是 card，避免和右侧工具卡的白色块糊成一片。 */
+.msg { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.msg-user { flex-shrink: 0; }
+.msg-av {
+  flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: var(--r-sm); background: var(--well); color: var(--text-weak);
+}
+.msg-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.msg-who { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+.msg-text {
+  margin: 0; padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text);
+  background: var(--card-soft); border: 1px solid var(--card-border); border-radius: var(--r-md);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* ---------- 输入区（钉在对话列底部） ---------- */
+.composer { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+/* 与消息流的分隔：一条发丝线足矣，不做整块背板——输入框本身已经是卡片 */
+.composer::before { content: ""; display: block; height: 1px; margin-bottom: var(--sp-1); background: var(--card-border); }
 
 /* ---------- 历史任务回看横幅 ---------- */
 .view-banner {
@@ -1118,9 +1125,11 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .vb-actions { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); }
 
 /* ---------- 目标输入 ---------- */
-.goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); }
+/* rows=2 + min-height 44px：输入框是入口不是编辑器，默认给两行足够写下目标；
+   需要写长的拖右下角（resize: vertical）自己拉高，而不是一上来就占掉半屏。 */
+.goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); }
 .goal {
-  width: 100%; resize: vertical; min-height: 62px; padding: var(--sp-3);
+  width: 100%; resize: vertical; min-height: 44px; padding: var(--sp-3);
   font-family: inherit; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text);
   background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--r-sm);
 }
@@ -1166,10 +1175,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 /* ---------- 时间线 ---------- */
 .timeline { display: flex; flex-direction: column; gap: var(--sp-2); }
-/* 空态定位叙事（二期）：主句说主张，副句说布局 */
-.canvas-empty { margin: 0; padding: var(--sp-7) var(--sp-6); text-align: center; display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; }
-.ce-slogan { font-size: var(--fs-lg); font-weight: 700; color: var(--text-weak); }
-.ce-hint { margin: 0; font-size: var(--fs-sm); color: var(--faint); }
 
 .tl-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
 .tl-head { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-4); background: transparent; border: none; cursor: pointer; text-align: left; transition: background 0.15s; }
@@ -1230,36 +1235,29 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .sum-label { flex-shrink: 0; color: var(--muted); font-size: var(--fs-xs); }
 .sum-leftover { margin: 0; font-size: var(--fs-sm); color: var(--warn-deep); line-height: var(--lh-body); }
 
-/* ---------- 右栏 ---------- */
-.rail { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
-.rail-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: 2px; }
-.rail-desc { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
-
-.cap-group { display: flex; flex-direction: column; gap: var(--sp-2); }
-.cap-head { display: flex; align-items: center; gap: var(--sp-2); margin: 0; }
-.cap-count { font-size: var(--fs-xs); color: var(--faint); font-family: var(--font-num); }
-.cap-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); }
-.cap-row.off { opacity: 0.55; }
-.cap-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.cap-name { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
-.cap-item-desc { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cap-side { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-1); }
-/* 技能库：折叠头是可点击的整行按钮，不是标题（观感与 cap-head 保持一致） */
-.skill-head { width: 100%; display: flex; align-items: center; gap: var(--sp-2); background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
-.skill-head .tl-arrow { transition: transform 0.15s; color: var(--muted); }
-.skill-head .tl-arrow.open { transform: rotate(90deg); }
-.ans-skill { margin-left: auto; }
-
-/* 开关：能力面板里启停单个工具 */
-.switch { position: relative; width: 34px; height: 19px; flex-shrink: 0; display: inline-flex; align-items: center; padding: 0 2px; background: var(--well-hover); border: 1px solid var(--border-strong); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, border-color 0.15s; color: var(--warn); }
-.switch .knob { position: absolute; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow-tile); transition: transform 0.15s; }
-.switch[aria-checked="true"] { background: var(--primary); border-color: var(--primary); }
-.switch[aria-checked="true"] .knob { transform: translateX(15px); }
+/* ---------- 任务监控（右侧，条件出现） ---------- */
+/* 320px 而不是二期能力清单的 340px：这栏只放目标/实时状态/产物，不需要工具目录那么宽。
+   它出现时对话区仍然拿得到绝大部分宽度，1280px 窗口下也不至于把消息挤成窄条。 */
+.monitor { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.mon-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); }
+.mon-head b { font-size: var(--fs-sm); }
+.mon-head .st-chip { margin-left: auto; }
+.mon-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: 2px; }
+.mon-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
+.mon-label { font-size: var(--fs-xs); font-weight: 700; color: var(--faint); }
+/* 目标可能很长（一句话描述）：限高滚动而不是撑爆面板，也不截断成看不懂的半句 */
+.mon-goal { margin: 0; max-height: 6.6em; overflow: auto; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.mon-now { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); color: var(--text-soft); }
+.mon-now code { padding: 1px var(--sp-1); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-code); }
+.mon-meter { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin: 0; font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
+/* 面板里唯一一句「去哪儿配」的指路，常驻在底部（工具开关在设置页，见 capMoved） */
+.mon-hint { margin: auto 0 0; padding-top: var(--sp-2); font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); border-top: 1px solid var(--card-border); }
 
 .manual-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.m-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-soft); background: var(--ghost); border: 1px solid var(--border); border-radius: var(--r-pill); cursor: pointer; transition: all 0.15s; }
+.m-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-soft); background: var(--ghost); border: 1px solid var(--border); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .m-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
-.wide { width: 100%; }
+/* 顶栏的「任务监控」按钮：面板开着时留一个按下态，否则点了没反馈 */
+.mon-on { color: var(--primary-hover); border-color: var(--border-blue); background: var(--primary-soft); }
 
 /* ---------- 局部链接按钮（全局按钮体系里没有 xs 文字钮） ---------- */
 .link { padding: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--primary); background: none; border: none; cursor: pointer; transition: color 0.15s; }
@@ -1270,17 +1268,19 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .link:disabled { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
 
 /* 深色下 --primary 被压深（为了主按钮上的白字达标），文字类链接需要更亮的一档，
-   否则 12.5px 的链接只有 3.67:1（E2E 对比度审计）。同理用于 .hint-ex 的示例按钮文字。 */
+   否则 12.5px 的链接只有 3.67:1（E2E 对比度审计）。同理用于空态的示例按钮文字。 */
 @media (prefers-color-scheme: dark) {
   .link { color: var(--primary-light); }
   .link:hover { color: var(--primary-bright); }
-  .hint-ex { color: var(--primary-light); }
-  .hint-ex:hover { color: var(--primary-bright); }
+  .ce-ex { color: var(--primary-light); }
+  .ce-ex:hover { color: var(--primary-bright); }
 }
 
-/* 窄窗口：右栏移到主列下方 */
-@media (max-width: 1000px) {
-  .body { grid-template-columns: 1fr; overflow: auto; }
-  .rail { min-height: 320px; }
+/* 窄窗口：监控面板移到对话列下方，并且不再有并排的两列。
+   同权重下靠源码顺序盖过上面的 .body.with-monitor。 */
+@media (max-width: 1100px) {
+  .body.with-monitor { grid-template-columns: minmax(0, 1fr); }
+  .body { overflow: auto; }
+  .monitor { min-height: 0; }
 }
 </style>

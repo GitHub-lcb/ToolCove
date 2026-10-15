@@ -15,6 +15,35 @@
 // 于是"界面密度"设置对工具窗口完全无效。
 const THEME_KEY = "themeMode";
 const DENSITY_KEY = "density";
+// 侧边栏收起状态。刻意与主题/密度同住 localStorage 而**不落 settings.json**：
+// 它必须在首帧同步可读。落 settings.json 就得 await 一次 load_data，那意味着外壳先按
+// 「展开」画出来、拿到值再收起——用户每次启动都看见侧边栏闪一下。
+// 同理，它是纯本机显示偏好（换台设备不该跟着走），与 density 是同一类东西。
+const SIDEBAR_KEY = "tc.sidebar.collapsed";
+
+/**
+ * 侧边栏是否收起。默认**展开**——这是本次导航重构的硬要求：
+ * 导航默认折成图标栏等于把历史与工作面藏起来（ChatGPT 桌面端重设计踩过的坑，
+ * 官方随后专门修复）。只有用户自己收起来过，才保持收起。
+ */
+export function getSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setSidebarCollapsed(value) {
+  const next = value === true;
+  try {
+    if (next) localStorage.setItem(SIDEBAR_KEY, "1");
+    else localStorage.removeItem(SIDEBAR_KEY);
+  } catch {
+    /* 隐私模式下写不进去：只影响本次会话 */
+  }
+  return next;
+}
 
 /** 读用户选择的主题模式：system | light | dark */
 export function getThemeMode() {

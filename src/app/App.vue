@@ -12,7 +12,7 @@ import { normalizeHiddenModules } from "./settingsConfig.js";
 import { shouldPrompt, consent as telemetryConsent, track as telemetryTrack, flush as telemetryFlush, getConfig as telemetryGetConfig, invalidateConfigCache as telemetryInvalidateCache } from "./telemetry.js";
 import { applyAccent, resetAccent, loadAccentKey } from "./accentTheme.js";
 import { getThemeMode, setThemeMode, syncThemeAttribute, nextThemeMode, isDarkEffective } from "./theme.js";
-import { getDensity, setDensity } from "./theme.js";
+import { getDensity, setDensity, getSidebarCollapsed, setSidebarCollapsed } from "./theme.js";
 import { checkForUpdate } from "./updater.js";
 import ConfirmDialog from "../ui/ConfirmDialog.vue";
 import { askConfirm } from "../ui/confirm.js";
@@ -81,7 +81,10 @@ const activeModule = ref("agent");
 // 各模块记住自己停留的 Tab（不入 settings：纯会话内状态，重启回默认 Tab）
 const moduleTabs = ref({ ...MODULE_HOME_TAB });
 const activeTab = computed(() => (MODULE_TABS[activeModule.value] ? moduleTabs.value[activeModule.value] : null));
-const collapsed = ref(true);
+// 侧边栏默认展开，用户的收起动作持久化（见 theme.js 的 getSidebarCollapsed 注释：
+// 存 localStorage 而不是 settings.json，因为它必须首帧同步可读，否则启动会闪一下）
+const collapsed = ref(getSidebarCollapsed());
+watch(collapsed, (value) => setSidebarCollapsed(value));
 const toast = ref(null);
 // 视图埋点（节流 10s；可选遥测未开启时只本地计数）
 let viewTrackTs = {};
@@ -490,7 +493,12 @@ onUnmounted(() => {
       </div>
 
       <nav class="nav">
-        <!-- 二期重构：侧边栏主体 = 新任务 + 任务列表（agent 即默认主区，不再占一个模块按钮） -->
+        <!-- 侧边栏分层（三期修订）：固定区 + 唯一的滚动区。
+             新任务 / 工作面 / 搜索 / 底部按钮都是固定入口，只有会话列表滚动——
+             旧版把整条侧边栏做成一个滚动容器，历史一长，「新任务」和搜索框被滚出视野、
+             工作面被挤到底部，三个入口都变成「取决于你滚到哪」（用户实测反馈）。
+             顺序：新任务 → 工作面 → 搜索 → 历史（滚动）→ 底部。
+             工作面在会话列表之上，与 Qoder 桌面端一致（导航在上、任务列表在下半部分）。 -->
         <AgentSidePanel
           :active-module="activeModule"
           :viewing-run-id="viewingRunId"
@@ -498,21 +506,25 @@ onUnmounted(() => {
           @new="onNewTask"
           @view="onViewTask"
           @open="activeModule = 'agent'"
-        />
-
-        <!-- 工作面：人自己干活的地方，也是 Agent 的取数记忆 -->
-        <p v-if="workspaceModules.length && !collapsed" class="nav-group">{{ t("nav.workspace") }}</p>
-        <button
-          v-for="m in workspaceModules"
-          :key="m.key"
-          class="nav-item"
-          :class="{ on: activeModule === m.key }"
-          :title="t(m.labelKey)"
-          @click="activeModule = m.key"
         >
-          <span class="nav-ico"><Icon :name="m.icon" :size="17" /></span>
-          <span class="nav-label">{{ t(m.labelKey) }}</span>
-        </button>
+          <!-- 工作面：人自己干活的地方，也是 Agent 的取数记忆。
+               交给侧栏组件插在「新任务」与会话列表之间，但数据源（navConfig / hiddenModules）
+               仍留在这里——组件只负责位置，不负责决定有哪些模块。 -->
+          <template #workspace>
+            <p v-if="workspaceModules.length && !collapsed" class="nav-group">{{ t("nav.workspace") }}</p>
+            <button
+              v-for="m in workspaceModules"
+              :key="m.key"
+              class="nav-item"
+              :class="{ on: activeModule === m.key }"
+              :title="t(m.labelKey)"
+              @click="activeModule = m.key"
+            >
+              <span class="nav-ico"><Icon :name="m.icon" :size="17" /></span>
+              <span class="nav-label">{{ t(m.labelKey) }}</span>
+            </button>
+          </template>
+        </AgentSidePanel>
       </nav>
 
       <div class="side-foot">
@@ -613,7 +625,10 @@ onUnmounted(() => {
 <style scoped>
 .shell {
   display: grid;
-  grid-template-columns: 224px 1fr;
+  /* 268px：主流 agent 桌面端的侧边栏宽度带是 240–300px（Qoder/Cursor/VS Code 同量级）。
+     旧的 224px 装不下「主题 + 相对时间」两行——标题被压到十来个字就必须截断，
+     历史列表失去扫读性。 */
+  grid-template-columns: 268px 1fr;
   height: 100vh;
   overflow: hidden;
   transition: grid-template-columns 0.22s ease;
@@ -660,35 +675,39 @@ onUnmounted(() => {
 }
 .brand-name { font-size: var(--fs-lg); font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
 
-/* nav 可滚：min-height:0 解除 flex 默认不收缩；负 margin+同值 padding 把滚动区撑到侧边栏边缘，选中项左侧指示条（left:-14px）不被裁 */
-.nav { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 -14px; padding: 0 var(--sp-5); scrollbar-width: thin; scrollbar-color: var(--border-steel) transparent; }
+/* nav 是固定区容器，**不滚动**：滚动交给 AgentSidePanel 的 .history（见那边的注释）。
+   负 margin+同值 padding 把内容撑到侧边栏边缘，选中项左侧指示条（left:-14px）不被裁。 */
+.nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; margin: 0 -14px; padding: 0 var(--sp-5); }
 .nav-item { flex-shrink: 0; }
-/* 「工作面」分组标签：任务列表与模块按钮之间的分组锚点 */
-.nav-group { flex-shrink: 0; margin: var(--sp-3) 0 -2px; padding: 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 700; color: var(--faint); letter-spacing: 0.4px; }
+/* 「工作面」分组标签：与「新任务」之间的分组锚点（间距比行间距大得多，才能断开两组） */
+.nav-group { flex-shrink: 0; margin: var(--sp-5) 0 var(--sp-1); padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 700; color: var(--faint); letter-spacing: 0.4px; }
+/* 导航行：扁平行 + 悬停填充，而不是默认就带边框与投影的小卡片。
+   卡片式行每一条都在抢注意力，侧边栏一旦有 10 条历史就变成一片浮起的方块；
+   Qoder / Cursor / VS Code 的侧边栏行都是扁平的，只有选中态才有底色。
+   （AgentSidePanel.vue 里有一份等效样式：那边是 scoped，拿不到这里的声明。） */
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  border: 1px solid var(--card-border);
-  background: var(--card);
-  padding: 11px var(--sp-4);
-  border-radius: var(--r-md);
+  gap: var(--sp-3);
+  border: 1px solid transparent;
+  background: none;
+  padding: 9px var(--sp-3);
+  border-radius: var(--r-sm);
   font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(35, 43, 66, 0.04), 0 6px 16px rgba(35, 43, 66, 0.05);
-  transition: background 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.nav-ico { display: grid; place-items: center; flex-shrink: 0; width: 24px; color: var(--text-weak); }
+.nav-ico { display: grid; place-items: center; flex-shrink: 0; width: 22px; color: var(--text-weak); }
 .nav-item:hover .nav-ico { color: var(--primary-hover); }
 .nav-item.on .nav-ico { color: var(--primary-hover); }
-.nav-item:hover { color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(35, 43, 66, 0.05), 0 10px 22px rgba(35, 43, 66, 0.08); }
+.nav-item:hover { color: var(--primary-hover); background: var(--card); border-color: var(--card-border); }
 /* 键盘导航的焦点框用主题紫柔化，覆盖浏览器默认黑框 */
 .nav-item:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
-.nav-item.on { background: var(--grad-selected); color: var(--primary-hover); border-color: var(--border-blue); box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06), 0 8px 20px rgba(37, 99, 235, 0.1); }
+.nav-item.on { background: var(--grad-selected); color: var(--primary-hover); border-color: var(--border-blue); }
 .nav-item.on::before {
   content: "";
   position: absolute;

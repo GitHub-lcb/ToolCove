@@ -557,6 +557,22 @@ export const applicableKey = (id) => (String(id).startsWith("applicable::") ? St
 export const toolCall = (tool, args, id = "c1") => ({ type: "tool_call", id, tool, args });
 export const final = (answer) => ({ type: "final", answer });
 
+/**
+ * 打开「设置 → Agent」并返回该分节的容器。
+ *
+ * 为什么需要这个 helper：工具开关 / 技能库 / 溢出结果区原先常驻在对话右栏（`.rail`），
+ * 导航重构后整块搬进设置页——多个用例（技能库、工具开关）都要走「打开设置 → 切 Agent 分节」
+ * 这两步，散在各处写就会有两份选择器真相。
+ */
+export async function openAgentSettings(page) {
+  // 侧边栏底部的「设置」入口：标题是「设置」，但同名的可见文案不止一处，优先用 title 定位
+  await page.locator(".side-foot button", { hasText: "设置" }).first().click();
+  await page.locator(".sv-nav", { hasText: "Agent" }).first().click();
+  const sect = page.locator(".sect.agent");
+  await expect(sect).toBeVisible();
+  return sect;
+}
+
 /** 启动一次 Agent 运行：填目标 → 回车。 */
 export async function runGoal(page, goal) {
   const box = page.getByPlaceholder(/描述目标/);

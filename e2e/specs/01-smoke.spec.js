@@ -12,7 +12,9 @@ test("首屏渲染 Agent 工作台，不出现白屏或未解析词条", async (
 
   // 首屏是 Agent 工作台（App.vue 的 MODULES 第一项）
   await expect(page.locator(".agent")).toBeVisible();
-  await expect(page.getByText("欢迎使用 Agent 工作台")).toBeVisible();
+  // 空态：任务导向的标语 + 输入框钉在对话列底部（.composer 存在即骨架正确）
+  await expect(page.getByText("说一件事，剩下的交给我")).toBeVisible();
+  await expect(page.locator(".composer")).toBeVisible();
   // 目标输入框与主按钮可用
   await expect(page.getByPlaceholder(/描述目标/)).toBeVisible();
 
@@ -23,19 +25,19 @@ test("首屏渲染 Agent 工作台，不出现白屏或未解析词条", async (
   expect(errors).toEqual([]);
 });
 
-test("四个导航模块都能切换并渲染出内容", async ({ page }) => {
+test("工作面三个模块都能切换并渲染出内容，新任务能回到 Agent 主区", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await seedData(page, {});
   await page.goto("/");
   await expect(page.locator(".agent")).toBeVisible();
 
-  // 导航按钮没有 data-module，用可见文案定位（也就是用户看到的那几个词）
+  // 导航按钮没有 data-module，用可见文案定位（也就是用户看到的那几个词）。
+  // agent 不在这里：导航重构后它不是侧边栏的一个按钮，而是默认主区 + 顶部的「新任务」行。
   const modules = [
     { label: "研发", marker: /概览|迭代进度|待产品确认/ },
     { label: "记录", marker: /速记|问题/ },
     { label: "工具箱", marker: /工具箱|常用工具|数据与文本/ },
-    { label: "Agent", marker: /Agent 工作台|欢迎使用/ },
   ];
   for (const item of modules) {
     await page.locator(".nav-item", { hasText: item.label }).first().click();
@@ -44,6 +46,11 @@ test("四个导航模块都能切换并渲染出内容", async ({ page }) => {
     // 未解析词条会以 "nav.xxx" 形态漏出来
     expect(text, `${item.label} 不应漏出词条 key`).not.toMatch(/\b(agent|nav|toolbox)\.[a-zA-Z]+\.[a-zA-Z]+/);
   }
+
+  // 「新任务」是回 Agent 主区的入口：从工作面切回去后画布与输入框都在
+  await page.locator(".new-chat").click();
+  await expect(page.locator(".agent")).toBeVisible();
+  await expect(page.getByPlaceholder(/描述目标/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -27,7 +27,11 @@ import { askConfirm } from "../ui/confirm.js";
 import { flushToolbox } from "../toolboxStore.js";
 import { flushSecureToolbox } from "../secureToolbox.js";
 import { cloneJsonData } from "../jsonData.js";
-import { normalizeHiddenModules, mergeSettingsSnapshot, normalizeTypeSafe } from "../app/settingsConfig.js";
+import { normalizeHiddenModules, mergeSettingsSnapshot, normalizeTypeSafe, AGENT_CONFIRM_POLICIES, AGENT_MAX_STEPS_HARD_CAP, AGENT_MAX_RETRIES } from "../app/settingsConfig.js";
+import { saveAgentConfig } from "../agent/config.js";
+import { listAgentTools } from "../agent/tools.js";
+import { buildCapabilityGroups, countEnabledTools, riskChip, riskKey } from "../agent/capabilities.js";
+import { agentSession, clearSpills, deleteSkill, initAgentSession, refreshAgentConfig, setSkillEnabled } from "../agent/session.js";
 import { NAV_MODULES } from "../app/navConfig.js";
 import { applyLocale } from "../i18n/index.js";
 import pkg from "../../package.json";
@@ -38,9 +42,17 @@ const props = defineProps({
   showToast: { type: Function, default: () => {} },
   section: { type: String, default: "general" }, // 侧边栏系统管理入口定位的分类
 });
+// 唯一的外部动作是「打开对应工具箱工具」：App.vue 对所有模块视图统一透传 @navigate，
+// 设置页不自建窗口逻辑（工作台那条独立窗口路径属于对话区，见 AgentView 的 openManual）。
+const emit = defineEmits(["navigate"]);
 
 const SECTIONS = [
   { key: "ai", labelKey: "settings.navAi", icon: "sparkles", descKey: "settings.navAiDesc" },
+  // Agent 分节：工具开关原先常驻在对话右栏的「能力清单」里，三栏改版后那一栏撤掉，
+  // catalogue（工具开关 / 技能库 / 溢出结果区）落到设置里——agent.capSettingsHint 的文案
+  // 「工具开关与运行上限可在设置 → Agent 中调整」本来就是指向这里的。
+  // icon 用 zap：与工作台的状态图标同源（Agent 是「会动手」的那一区）。
+  { key: "agent", labelKey: "settings.navAgent", icon: "zap", descKey: "settings.navAgentDesc" },
   { key: "sync", labelKey: "settings.navSync", icon: "refresh", descKey: "settings.navSyncDesc" },
   { key: "enterprise", labelKey: "settings.navEnterprise", icon: "network", descKey: "settings.navEnterpriseDesc" },
   // 管理面仅企业态出现（见下方 sections 过滤）：成员/席位管理走服务端成员 API，仅管理员可读写。
@@ -418,10 +430,140 @@ async function revokeMember(member) {
     membersBusy.value = false;
   }
 }
+// ---------- Agent 设置（运行上限 / 确认策略 / 工具开关 / 技能库 / 溢出结果区） ----------
+// 即改即存，**刻意不走页面底部的「保存」按钮**：save() 的合并基底是磁盘快照，而表单只渲染
+// ai / ui 两组——把 agent 塞进表单快照，等于让「改一次界面密度」有机会整组覆盖 Agent 配置
+// （先例：云同步配置曾被表单快照抹掉，见 mergeSettingsSnapshot 的注释）。
+// 即改即存也是老能力面板的既有行为（agent/session.js 的 setToolEnabled 直接落盘），
+// 与本节同页的云同步 / 遥测 / 管理面一致，沿用同一条路径最不容易出岔子。
+const agentMaxSteps = ref(null); // 数字输入框的本地值：落盘后按磁盘上的归一化结果回填（越界值会被夹取）
+const agentRetries = ref(null);
+// 三选一的词条：值域来自 AGENT_CONFIRM_POLICIES（冻结数组，顺序即展示顺序），
+// 不自己再写一遍 ["risky","always","never"]——那样值域就有两份真相了。
+const CONFIRM_LABEL_KEY = {
+  risky: "settings.agentConfirmRisky",
+  always: "settings.agentConfirmAlways",
+  never: "settings.agentConfirmNever",
+};
+// 工具清单走 tools.js 的 listAgentTools：**只读目录**、同步返回、不碰实现层。
+// 绝不能用 buildAgentRegistry——那是实现层（executors / dataTools，约 300KB），为画一份开关列表
+// 把它拉进设置页，正是当初把「目录 / 实现」拆成两层要避免的事（见 agent/tools.js 头部说明）。
+const agentTools = computed(() => {
+  // 显式读一次 policy：企业态在管理面改完门禁后这份清单要跟着重算，而 getPolicySync() 读的是
+  // 模块级非响应式缓存（同步投影的代价，见 enterprise/policyStore.js），不读这个 ref 会一直显示旧清单。
+  void policy.value;
+  return listAgentTools(agentSession.cfg);
+});
+const agentToolGroups = computed(() => buildCapabilityGroups(agentTools.value));
+const agentToolCount = computed(() => countEnabledTools(agentTools.value));
+// 运行中不允许清溢出：正在跑的那次运行可能还要读回自己的大结果（与老面板的禁用条件一致）
+const agentBusy = computed(() => agentSession.status !== "idle");
+const skillDisabled = (id) => (agentSession.cfg?.disabledSkills || []).includes(id);
+
+/** 表单值按**会话配置**回填（不另读一次盘）：保证输入框显示的就是将要生效的那一份。 */
+function syncAgentFields() {
+  const cfg = agentSession.cfg;
+  if (!cfg) return;
+  agentMaxSteps.value = cfg.maxSteps;
+  agentRetries.value = cfg.retries;
+}
+
+/**
+ * 即改即存。落盘后走 refreshAgentConfig() 而不是直接相信入参：normalizeAgent 会夹取越界步数、
+ * 把「工具全关」当未配置重置——这些修正只有读回磁盘才看得见，界面不能显示一个没落地的值。
+ * 它同时把 agentSession.cfg 刷成新值：对话主区与运行链路读的就是它，只写盘不刷新会话会留下
+ * 「设置页改了、Agent 还用旧清单」的时间差。
+ * 失败必须出声：静默吞掉会造成「开关看着关了、重启又打开」（agent/config.js 的既有纪律）。
+ */
+async function saveAgentPatch(patch) {
+  try {
+    await saveAgentConfig(patch);
+    await refreshAgentConfig();
+    syncAgentFields();
+    props.showToast(t("settings.agentSaved"));
+    return true;
+  } catch {
+    props.showToast(t("settings.agentSaveFail"));
+    return false;
+  }
+}
+
+/** 数字旋钮在 @change（失焦 / 回车）落盘：绑 input 事件会把打字中间态（空串、半截数字）写进配置。 */
+function onRunLimitChange(key) {
+  const raw = key === "maxSteps" ? agentMaxSteps.value : agentRetries.value;
+  const value = Number(raw);
+  // 清空输入框只是打字过程中的中间态，不等于「设为 0」：回填现值，不写盘
+  if (raw === "" || raw === null || !Number.isFinite(value)) return syncAgentFields();
+  // 取整：normalizeAgent 只认整数，3.5 落盘会被当成坏值退回默认值——用户要的是 3
+  saveAgentPatch({ [key]: Math.trunc(value) });
+}
+
+async function onToggleAgentTool(tool, ev) {
+  const disabled = new Set(agentSession.cfg?.disabledTools || []);
+  if (tool.enabled) disabled.add(tool.name);
+  else disabled.delete(tool.name);
+  const ok = await saveAgentPatch({ disabledTools: [...disabled] });
+  // 开关一律按**落盘后的真实配置**回正。原因：复选框的 :checked 只在 vnode 上的值发生变化时
+  // 才写回 DOM，而落盘失败（值没变）与「关掉最后一个工具被归一化重置成全开」（目标值本来就是
+  // true，diff 不出来）这两种情况下 DOM 会停在用户刚拨过去的位置——一个看着关掉、其实没关的开关。
+  if (ev?.target) ev.target.checked = !(agentSession.cfg?.disabledTools || []).includes(tool.name);
+  // 关掉最后一个工具：归一化把「全关 = 空 registry」视为未配置并重置成全开，这次改动因此不生效。
+  // 不假装成功，也不自己弹回去——如实说明开关为什么又亮了。
+  if (ok && tool.enabled && ev?.target?.checked) {
+    props.showToast(t("settings.agentAllToolsOff"));
+  }
+}
+
+/** 打开对应工具箱工具：沿用工作台那条「跳工具箱 + 带工具 key」的路径（见 AgentView 的 fallback）。 */
+function openToolManual(toolKey) {
+  if (toolKey) emit("navigate", { module: "toolbox", id: toolKey });
+}
+
+// 技能与溢出：行为与老能力面板一致。技能开关复用 disabledSkills（与 disabledTools 同一惯例：
+// 记**停用**清单，默认全开）；关掉最后一条不报错——技能是可选增强，不是可执行能力。
+async function onToggleSkill(skill, ev) {
+  try {
+    await setSkillEnabled(skill.id, skillDisabled(skill.id));
+  } catch {
+    props.showToast(t("settings.agentSaveFail"));
+  }
+  // 同工具开关：按真实配置回正复选框（落盘失败时 cfg 没变，界面不该停在用户拨过去的位置）
+  if (ev?.target) ev.target.checked = !skillDisabled(skill.id);
+}
+
+async function onDeleteSkill(skill) {
+  try {
+    if (await deleteSkill(skill.id)) props.showToast(t("agent.skillDeleted", { name: skill.name }));
+  } catch {
+    props.showToast(t("settings.agentSaveFail"));
+  }
+}
+
+async function onClearSpills() {
+  try {
+    await clearSpills();
+    // 这里只回执「已执行」：老面板用的 agent.spillCleared / agent.spillClearEmpty（带条数与字符数、
+    // 以及如实说「本来就是空的」）不在本次可用的词条清单里，而字典 JSON 由并行的另一个改动持有、
+    // 不能动。补上那两把键之后应换回带条数的措辞——「清掉了几条」对用户是有用信息。
+    props.showToast(t("agent.spillClear"));
+  } catch {
+    props.showToast(t("settings.agentSaveFail"));
+  }
+}
+
 // 打开设置页时刷新 + 订阅状态（遥测与云同步都是桌面端专属，浏览器端跳过）
 onMounted(async () => {
   loadSettings();
   loadEnterprise();
+  // Agent 分节读的是**会话配置**（agentSession.cfg），不另读一次盘：它是对话主区与运行链路
+  // 将要使用的那一份，换个来源就可能出现「设置页开着、运行时不认」的分裂。
+  // refreshAgentConfig() 内部就是 loadAgentConfig()（顺带刷新 aiReady），于是两处对齐。
+  // 会话还没初始化时走 initAgentSession()：它除了配置还带起技能库（agentSession.skills）——
+  // 设置页是技能库的第二个入口，用户完全可能从侧边栏直接进来而没经过工作台，
+  // 那时只刷配置会把技能库显示成空的。两者都幂等。
+  if (agentSession.ready) await refreshAgentConfig();
+  else await initAgentSession();
+  syncAgentFields();
   // 管理面数据：企业态才需要（策略回填缓存的当前值、审计读回列表）。loadPolicy 顺带刷新缓存，
   // 保证设置页展示的策略与投影处实际生效的策略是同一份。
   if (isEnterprise()) {
@@ -854,6 +996,120 @@ async function restoreNow() {
 
           <div class="sect-foot">
             <button class="btn-ghost sm" :disabled="testingTypeSafe" @click="testTypeSafeConn"><Icon name="sparkles" :size="14" /> {{ testingTypeSafe ? t("settings.typesafeTesting") : t("settings.typesafeTest") }}</button>
+          </div>
+        </div>
+        <!-- ============ Agent（运行上限 / 确认策略 / 工具开关 / 技能库 / 溢出结果区） ============
+             这一节整体即改即存：没有「保存」按钮，也没有 dirty 标记（表单只渲染 ai / ui）。 -->
+        <div v-show="section === 'agent'" class="sect agent">
+          <div class="sect-head">
+            <span class="sect-title"><Icon name="zap" :size="15" class="sect-ico" /> {{ t("settings.agentRunTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.agentRunDesc") }}</p>
+          <div class="grid2">
+            <label class="field">
+              <span>{{ t("settings.agentMaxSteps") }}</span>
+              <input
+                type="number"
+                min="1"
+                :max="AGENT_MAX_STEPS_HARD_CAP"
+                step="1"
+                v-model.number="agentMaxSteps"
+                @change="onRunLimitChange('maxSteps')"
+              />
+            </label>
+            <label class="field">
+              <span>{{ t("settings.agentRetries") }}</span>
+              <input
+                type="number"
+                min="0"
+                :max="AGENT_MAX_RETRIES"
+                step="1"
+                v-model.number="agentRetries"
+                @change="onRunLimitChange('retries')"
+              />
+            </label>
+          </div>
+
+          <div class="sect-head admin-sub">
+            <span class="sect-title"><Icon name="alert" :size="15" class="sect-ico" /> {{ t("settings.agentConfirmTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.agentConfirmDesc") }}</p>
+          <!-- 三选一用预设胶囊而不是 select：三种模式的差别（风险 / 频率）要一眼可比，
+               select 只能看到当前选中的那一项。与 AI 预设同一套 .preset-chip。 -->
+          <div class="presets">
+            <button
+              v-for="p in AGENT_CONFIRM_POLICIES"
+              :key="p"
+              type="button"
+              class="preset-chip"
+              :class="{ on: agentSession.cfg?.requireConfirmation === p }"
+              @click="saveAgentPatch({ requireConfirmation: p })"
+            >{{ t(CONFIRM_LABEL_KEY[p]) }}</button>
+          </div>
+
+          <div class="sect-head admin-sub">
+            <span class="sect-title"><Icon name="grid" :size="15" class="sect-ico" /> {{ t("settings.agentToolsTitle") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("settings.agentToolsDesc", { n: agentToolCount.enabled, total: agentToolCount.total }) }}</p>
+          <div v-for="group in agentToolGroups" :key="group.risk" class="agent-group">
+            <div class="agent-group-title">
+              <span class="tc-chip sm" :class="riskChip(group.risk)">{{ t(riskKey(group.risk)) }}</span>
+              <span class="agent-group-count">{{ group.tools.length }}</span>
+            </div>
+            <div v-for="tool in group.tools" :key="tool.name" class="agent-tool-row" :class="{ off: !tool.enabled }">
+              <div class="agent-tool-main">
+                <code class="agent-tool-name">{{ tool.name }}</code>
+                <!-- 缺词条的目录项退化成工具名（与工作台同一判据），不显示成空行 -->
+                <span class="agent-tool-desc">{{ tool.descriptionKey ? t(tool.descriptionKey) : tool.name }}</span>
+              </div>
+              <div class="agent-tool-side">
+                <button v-if="tool.toolKey" type="button" class="link-btn" :title="t('agent.capOpenTool')" @click="openToolManual(tool.toolKey)">
+                  <Icon name="open" :size="13" />
+                </button>
+                <label class="switch" :title="t('agent.capEnabled')">
+                  <input type="checkbox" :checked="tool.enabled" @change="onToggleAgentTool(tool)" />
+                  <span class="track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 技能库：单独包一层 .agent-skills。技能行与工具行共用 .agent-tool-row 的观感，
+               但语义上是两个清单（一个来自目录、一个来自用户沉淀），e2e 与样式都需要一个边界，
+               否则「在技能里点第一个开关」会选到上面工具清单里的第一个。 -->
+          <div class="agent-skills">
+            <div class="sect-head admin-sub">
+              <span class="sect-title"><Icon name="archive" :size="15" class="sect-ico" /> {{ t("agent.capSkills") }}</span>
+              <span class="agent-group-count">{{ agentSession.skills.length }}</span>
+            </div>
+            <p class="sect-desc">{{ t("agent.capSkillsDesc") }}</p>
+            <p v-if="!agentSession.skills.length" class="sect-desc sub">{{ t("agent.skillEmpty") }}</p>
+            <div v-for="skill in agentSession.skills" :key="skill.id" class="agent-tool-row" :class="{ off: skillDisabled(skill.id) }">
+              <div class="agent-tool-main">
+                <code class="agent-tool-name">{{ skill.name }}</code>
+                <span class="agent-tool-desc">{{ skill.description || t("agent.skillNoDesc") }}</span>
+              </div>
+              <div class="agent-tool-side">
+                <button type="button" class="link-btn danger" :title="t('agent.skillDelete')" @click="onDeleteSkill(skill)">
+                  <Icon name="trash" :size="13" />
+                </button>
+                <label class="switch" :title="t('agent.skillToggle')">
+                  <input type="checkbox" :checked="!skillDisabled(skill.id)" @change="onToggleSkill(skill)" />
+                  <span class="track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="sect-head admin-sub">
+            <span class="sect-title"><Icon name="box" :size="15" class="sect-ico" /> {{ t("agent.capSpills") }}</span>
+          </div>
+          <p class="sect-desc">{{ t("agent.capSpillsDesc") }}</p>
+          <div class="sect-foot">
+            <!-- 运行中禁用：正在跑的那次运行可能还要读回自己的大结果 -->
+            <button class="btn-ghost sm" :disabled="agentBusy" @click="onClearSpills">
+              <Icon name="trash" :size="14" /> {{ t("agent.spillClear") }}
+            </button>
           </div>
         </div>
         <!-- ============ 云同步（端到端加密，免费内置） ============ -->
@@ -1399,4 +1655,23 @@ async function restoreNow() {
 .audit-badge.allow { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .audit-badge.deny { color: var(--danger); background: var(--danger-soft); }
 .audit-source { color: var(--faint); }
+
+/* ============ Agent（运行上限 / 确认策略 / 工具开关 / 技能库 / 溢出结果区）============
+   工具行与技能行同构：左侧「名字 + 一句说明」，右侧「打开工具 / 删除」+ 开关。
+   与老能力面板（AgentView 的 .cap-row）同一套信息层级，只是从窄栏换成了设置页的整幅宽度。 */
+.agent-group { margin-bottom: var(--sp-5); }
+.agent-group-title { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.agent-group-count { font-size: var(--fs-xs); color: var(--faint); font-family: var(--font-num); }
+.agent-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.agent-tool-row:last-child { border-bottom: none; }
+/* 停用态整体压暗：一眼看出哪些不在运行时的清单里（与老面板的 .cap-row.off 同义） */
+.agent-tool-row.off { opacity: 0.55; }
+.agent-tool-main { display: flex; align-items: baseline; gap: var(--sp-3); min-width: 0; }
+.agent-tool-name { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
+.agent-tool-desc { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-tool-side { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 0; }
+/* 行内的图标按钮：.link-btn 的下划线是给文字链准备的，图标按钮不要 */
+.agent-tool-side .link-btn:hover { text-decoration: none; }
+.agent-tool-side .link-btn.danger { color: var(--muted); }
+.agent-tool-side .link-btn.danger:hover { color: var(--danger); }
 </style>

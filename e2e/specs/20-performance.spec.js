@@ -135,8 +135,11 @@ test("切模块与开工具的交互延迟（人眼可感阈值 200ms）", async
       return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(Math.round(performance.now() - started)))));
     }, label);
 
+  // 导航文案：「新任务」是回 Agent 主区的入口（导航重构后 agent 不再是侧边栏的一个模块按钮，
+  // 而是默认主区 + 顶部这行「新任务」）。这里量的是「切回主区」的交互成本，语义与原来一致。
+  const NAV_LABELS = ["研发", "记录", "工具箱", "新任务"];
   const samples = [];
-  for (const label of ["研发", "记录", "工具箱", "Agent"]) samples.push(await measureNav(label));
+  for (const label of NAV_LABELS) samples.push(await measureNav(label));
 
   // 打开一个工具（工具箱里点第一张卡）
   const toolDelay = await page.evaluate(async () => {
@@ -155,7 +158,7 @@ test("切模块与开工具的交互延迟（人眼可感阈值 200ms）", async
   // 首轮样本混着 JIT 与模块求值，会出现 38ms 与 904ms 这种极端值——拿首轮当基线会得出「应用很慢」的错觉，
   // 而用户感知的是「第二次点同一个地方」的开销。
   const warm = [];
-  for (const label of ["研发", "记录", "工具箱", "Agent", "研发", "记录"]) warm.push(await measureNav(label));
+  for (const label of [...NAV_LABELS, "研发", "记录"]) warm.push(await measureNav(label));
   const all = [...samples, ...warm];
 
   console.log("== 交互延迟(ms，页面内测量) ==");
