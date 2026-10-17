@@ -18,7 +18,7 @@
 //   2. 历史加搜索与按时间分组（进行中 / 今天 / 昨天 / 最近 7 天 / 更早）。二期是一条
 //      无差别的倒序长列表，20 条原始目标平铺，找不回任何一条。
 //   3. 行内显示**主题**而不是原始目标（conversationTitle 压空白 + 断句处截断）。
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import RunProgress from "../views/RunProgress.vue";
@@ -32,12 +32,27 @@ const props = defineProps({
   viewingRunId: { type: String, default: "" },
   collapsed: { type: Boolean, default: false },
 });
-const emit = defineEmits(["new", "view", "open"]);
+const emit = defineEmits(["new", "view", "open", "expand"]);
 
 const { t } = useI18n();
 
 const query = ref("");
+const searchInput = ref(null);
 const searching = computed(() => query.value.trim().length > 0);
+async function openHistorySearch() {
+  emit("expand");
+  await nextTick();
+  searchInput.value?.focus();
+}
+const newTaskSelected = computed(() => props.activeModule === "agent" && !props.viewingRunId
+  && agentSession.status === "idle" && !agentSession.goal && !agentSession.currentRunId);
+const selectedRunId = computed(() => props.activeModule === "agent"
+  ? props.viewingRunId || agentSession.currentRunId : "");
+function requestNewTask() {
+  // clearTimeline 只清执行记录，旧 goal 需在新任务入口一并清掉；忙碌时不碰运行现场。
+  if (agentSession.status === "idle") agentSession.goal = "";
+  emit("new");
+}
 
 // 会话行是 runs 的纯投影（最新在前）；运行中 unshift/更新都会即时反映
 const items = computed(() => buildTaskItems(agentSession.runs));
@@ -55,18 +70,18 @@ const GROUP_LABEL = {
   older: "nav.groupOlder",
 };
 
-// 状态点只取颜色语义，与 AgentView 的 RUN_STATUS 一致：
-// 进行中脉冲、成功绿、失败红、取消/达上限灰。行太窄放不下状态词，点来扛语义。
-const DOT_CLASS = {
-  pending: "run",
-  running: "run",
-  success: "ok",
-  completed: "ok",
-  failed: "fail",
-  cancelled: "mute",
-  max_steps: "mute",
+// 图形与可访问名称共同表达状态，不能只依赖红/绿颜色辨认结果。
+const RUN_STATUS = {
+  pending: { cls: "run", icon: "clock", key: "agent.statusRunning" },
+  running: { cls: "run", icon: "clock", key: "agent.statusRunning" },
+  success: { cls: "ok", icon: "check", key: "agent.statusSuccess" },
+  completed: { cls: "ok", icon: "check", key: "agent.statusSuccess" },
+  failed: { cls: "fail", icon: "x", key: "agent.statusFailed" },
+  cancelled: { cls: "mute", icon: "minus", key: "agent.statusCancelled" },
+  max_steps: { cls: "mute", icon: "alert", key: "agent.statusMaxSteps" },
 };
-const dotClass = (item) => "dot-" + (DOT_CLASS[item.status] || "mute");
+const runMeta = (item) => RUN_STATUS[item.status] || { cls: "mute", icon: "circle", key: "agent.statusIdle" };
+const taskLabel = (item) => `${item.input || item.title} · ${t(runMeta(item).key)}`;
 
 // ------- 后台任务监控条 -------
 // agent 正在跑且用户不在 agent 主区时出现；点击整条回 agent（停止按钮不放这里——
@@ -93,9 +108,11 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
        它是"去哪里"，不是"现在执行"；执行按钮只有主区那一个。 -->
   <button
     class="nav-item new-chat"
-    :class="{ on: activeModule === 'agent' && !viewingRunId, 'hide-text': collapsed }"
+    :class="{ on: newTaskSelected, 'hide-text': collapsed }"
     :title="t('nav.newTask')"
-    @click="emit('new')"
+    :aria-label="t('nav.newTask')"
+    :aria-current="newTaskSelected ? 'page' : undefined"
+    @click="requestNewTask"
   >
     <span class="nav-ico"><Icon name="plus" :size="17" /></span>
     <span class="nav-label">{{ t("nav.newTask") }}</span>
@@ -105,10 +122,14 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
        但要夹在「新任务」与会话列表之间——见下方 .history 的注释。 -->
   <slot name="workspace" />
 
-  <!-- 历史搜索：只在有历史时出现（没有历史时搜索框是纯噪声） -->
+  <!-- 图标轨道仍保留搜索入口，展开后直接聚焦输入框。 -->
+  <button v-if="collapsed && items.length" class="nav-item hide-text" :title="t('nav.searchHistoryPh')" :aria-label="t('nav.searchHistoryPh')" @click="openHistorySearch">
+    <span class="nav-ico"><Icon name="search" :size="17" /></span>
+  </button>
   <div v-if="!collapsed && items.length" class="search">
     <Icon name="search" :size="13" class="search-ico" />
     <input
+      ref="searchInput"
       v-model="query"
       class="search-input"
       type="search"
@@ -138,11 +159,13 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
         v-for="item in section.items"
         :key="item.id"
         class="task-item"
-        :class="{ on: activeModule === 'agent' && viewingRunId === item.id, 'hide-text': collapsed }"
-        :title="item.input"
+        :class="{ on: !!selectedRunId && selectedRunId === item.id, 'hide-text': collapsed }"
+        :title="taskLabel(item)"
+        :aria-label="taskLabel(item)"
+        :aria-current="selectedRunId && selectedRunId === item.id ? 'page' : undefined"
         @click="emit('view', item.id)"
       >
-        <span class="task-dot" :class="dotClass(item)"></span>
+        <span class="task-dot" :class="'dot-' + runMeta(item).cls" aria-hidden="true"><Icon :name="runMeta(item).icon" :size="13" /></span>
         <span class="task-main">
           <span class="task-text">{{ item.title }}</span>
           <span class="task-time">{{ relativeTime(item.updatedAt) }}</span>
@@ -177,10 +200,11 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   flex-shrink: 0;
   border: 1px solid transparent;
   background: none;
-  padding: 9px var(--sp-3);
+  height: 34px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
-  font-size: var(--fs-base);
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
@@ -196,10 +220,10 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 .nav-item.on::before {
   content: "";
   position: absolute;
-  left: -14px;
+  left: -10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 4px;
+  width: 3px;
   height: 22px;
   border-radius: 0 4px 4px 0;
   background: var(--primary);
@@ -210,9 +234,11 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 .search-ico { position: absolute; left: 10px; color: var(--faint); pointer-events: none; }
 .search-input {
   width: 100%;
-  padding: 7px 26px 7px 28px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 26px 0 28px;
   font-family: inherit;
-  font-size: var(--fs-sm);
+  font-size: 12px;
   color: var(--text);
   background: var(--card-soft);
   border: 1px solid var(--border);
@@ -238,19 +264,17 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 }
 .search-x:hover { color: var(--primary); background: var(--primary-soft); }
 
-/* 会话列表：侧边栏唯一的滚动区（见模板里的说明）。
-   min-height:0 解除 flex 子项「不收缩」的默认行为，否则内容会把容器撑高、滚动失效。
-   负 margin + 同值 padding 用与 .nav 相同的 --sp-5：滚动条贴侧边栏边缘，行内容仍左对齐。 */
+/* 会话列表是唯一滚动区；负边距仅将滚动条贴到侧栏边缘。 */
 .history {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   overflow-y: auto;
   overflow-x: hidden;
-  margin: 0 calc(var(--sp-5) * -1);
-  padding: 0 var(--sp-5);
+  margin: 0 -10px;
+  padding: 0 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--border-steel) transparent;
 }
@@ -267,14 +291,15 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 }
 .list-empty { flex-shrink: 0; margin: 0; padding: 2px var(--sp-3) 6px; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
 
-/* 会话行：状态点 + 主题 + 相对时间 */
+/* 会话行：状态图形 + 主题 + 相对时间 */
 .task-item {
   display: flex;
   align-items: flex-start;
-  gap: var(--sp-3);
+  gap: 7px;
   width: 100%;
+  min-height: 34px;
   flex-shrink: 0;
-  padding: 7px var(--sp-3);
+  padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: none;
@@ -285,13 +310,13 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 .task-item:hover { background: var(--card); border-color: var(--card-border); }
 .task-item:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
 .task-item.on { background: var(--grad-selected); border-color: var(--border-blue); }
-.task-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--faint); }
-.task-dot.dot-ok { background: var(--success); }
-.task-dot.dot-fail { background: var(--danger); }
-.task-dot.dot-mute { background: var(--faint); }
-/* 进行中脉冲：与 AgentView 的 .run-live / .working .dot 同一节奏，跨界面一致 */
-.task-dot.dot-run { background: var(--primary); animation: taskPulse 1.1s ease-in-out infinite; }
-@keyframes taskPulse { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+.task-dot { display: grid; place-items: center; flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; color: var(--faint); }
+.task-dot.dot-ok { color: var(--success); }
+.task-dot.dot-fail { color: var(--danger); }
+.task-dot.dot-mute { color: var(--muted); }
+.task-dot.dot-run { color: var(--primary); animation: taskPulse 1.1s ease-in-out infinite; }
+@keyframes taskPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .task-dot.dot-run { animation: none; } }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 /* 标题已由 conversationTitle 压过空白并限长，这里再兜一道单行截断，
    免得超长 CJK 主题把行撑成两行、列表失去节奏 */
@@ -305,10 +330,10 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 }
 .task-time { font-size: var(--fs-xs); color: var(--faint); }
 
-/* 收起态：只留状态点与新任务图标（与 App.vue 收起态隐藏 .nav-label 同一策略） */
+/* 收起态保留状态图形；任务完整名称由 aria-label/title 提供。 */
 .nav-item.hide-text { justify-content: center; padding-left: 0; padding-right: 0; }
 .nav-item.hide-text .nav-label { display: none; }
-.task-item.hide-text { justify-content: center; padding-left: 0; padding-right: 0; }
+.task-item.hide-text { align-items: center; justify-content: center; padding-left: 0; padding-right: 0; }
 .task-item.hide-text .task-main { display: none; }
 .task-item.hide-text .task-dot { margin-top: 0; }
 

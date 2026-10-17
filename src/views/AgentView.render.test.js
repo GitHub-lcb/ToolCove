@@ -92,10 +92,90 @@ async function render(over = {}, props = {}) {
   state.current = session(over);
   const app = createSSRApp({ render: () => h(AgentView, { showToast: () => {}, ...props }) });
   app.use(i18n);
-  return renderToString(app);
+  return (await renderToString(app)).replace(/<!--[\s\S]*?-->/g, "");
 }
 
 describe("AgentView 渲染", () => {
+  it("取消任务显示中性结束说明与重新填入入口，不冒充交付成功", async () => {
+    const html = await render({
+      runStatus: "cancelled", goal: "pdf处理",
+      steps: [{ type: "model_repair", attempt: 1 }, { type: "notice", code: "stopped" }],
+    });
+    expect(html).toContain('class="outcome');
+    expect(html).toContain(t("agent.rerun"));
+    expect(html).not.toContain(t("agent.summaryTitle"));
+    expect(html).not.toContain('class="sum-card"');
+    expect(html).toMatch(/class="(?=[^"]*\bst-chip\b)(?=[^"]*\btc-neutral\b)[^"]*"/);
+  });
+
+  it("没有事件的失败任务也有明确结束说明，不显示欢迎空态", async () => {
+    const html = await render({ runStatus: "failed", goal: "处理文件", error: "服务不可用" });
+    expect(html).toContain('class="outcome');
+    expect(html).toContain("服务不可用");
+    expect(html).not.toContain('class="canvas-empty"');
+  });
+
+  it("执行诊断保存在默认折叠的记录中，最终回答在折叠区域外", async () => {
+    const html = await render({ runStatus: "completed", steps: [
+      { type: "model_repair", attempt: 1 },
+      { type: "notice", code: "custom", text: "诊断详情" },
+      { type: "final", answer: "最终内容" },
+    ] });
+    const details = html.match(/<details\b[^>]*class="execution"[^>]*>[\s\S]*?<\/details>/)?.[0];
+    expect(details).toBeTruthy();
+    expect(details).not.toMatch(/^<details[^>]*\sopen(?:[\s=>])/);
+    expect(details).toContain("诊断详情");
+    expect(details).not.toContain("最终内容");
+    expect(html).toContain("最终内容");
+  });
+
+  it("人工复核提示不藏入默认折叠的诊断记录", async () => {
+    const html = await render({ runStatus: "completed", steps: [
+      { type: "final", answer: "已处理" },
+      { type: "verify", verified: true, needsReview: true, reviewOf: ["complete"], weakest: 0.4 },
+    ] });
+    expect(html).toContain('role="status"');
+    expect(html).toContain('class="review-notice"');
+  });
+
+  it("回看标题与统计来自历史记录，不混入后台运行的数据", async () => {
+    const html = await render({
+      status: "running", goal: "后台任务", usage: { totalTokens: 9999, calls: 8 },
+      runs: [{ id: "old", input: "历史任务", status: "cancelled", usage: { totalTokens: 120, calls: 1 },
+        steps: [{ type: "notice", code: "stopped" }], createdAt: 1, updatedAt: 2 }],
+    }, { jumpId: { module: "agent", action: "view", runId: "old" } });
+    const bar = html.match(/<header class="bar"[^>]*>[\s\S]*?<\/header>/)?.[0];
+    expect(bar).toContain("历史任务");
+    expect(bar).toContain(t("agent.statusCancelled"));
+    expect(bar).not.toContain(t("agent.statusRunning"));
+    const execution = html.match(/<details\b[^>]*class="execution"[^>]*>[\s\S]*?<\/details>/)?.[0];
+    expect(execution).toContain("120 tokens");
+    expect(execution).not.toContain("10.0k");
+  });
+
+  it("运行中不自动挤出监控栏，等待用户时确认卡始终可见", async () => {
+    const html = await render({ status: "waiting", pending: { kind: "ask", question: "文件在哪里？" } });
+    expect(html).not.toContain('class="monitor"');
+    expect(html).toMatch(/class="[^"]*\bconfirm\b/);
+    expect(html).toContain('aria-pressed="false"');
+  });
+
+  it("输入框有可访问名称，工具开始前不显示欢迎标语", async () => {
+    const html = await render({ status: "running", goal: "处理文件" });
+    expect(html).toContain(`aria-label="${t("agent.goalLabel")}"`);
+    expect(html).not.toContain('class="canvas-empty"');
+  });
+
+  it("取消后仍保留已生成文件，但不使用交付成功标题", async () => {
+    const html = await render({ runStatus: "cancelled", goal: "合并后继续分析", steps: [
+      { type: "tool_result", id: "c1", tool: "pdf.merge", result: { output: "/tmp/partial.pdf" } },
+      { type: "notice", code: "stopped" },
+    ] });
+    expect(html).toContain("partial.pdf");
+    expect(html).toContain('class="sum-card"');
+    expect(html).not.toContain(t("agent.summaryTitle"));
+  });
+
   it("空态渲染任务导向的标语与示例，且不再有常驻能力清单", async () => {
     const html = await render();
     for (const key of ["agent.emptySlogan", "agent.emptyHint", "agent.example1", "agent.example2", "agent.example3"]) {

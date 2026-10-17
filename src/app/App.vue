@@ -85,6 +85,29 @@ const activeTab = computed(() => (MODULE_TABS[activeModule.value] ? moduleTabs.v
 // 存 localStorage 而不是 settings.json，因为它必须首帧同步可读，否则启动会闪一下）
 const collapsed = ref(getSidebarCollapsed());
 watch(collapsed, (value) => setSidebarCollapsed(value));
+// 窄窗自动收为图标轨道；临时展开不覆盖桌面端的持久化偏好。
+const sidebarMedia = window.matchMedia?.("(max-width: 760px)");
+const narrowSidebar = ref(sidebarMedia?.matches || false);
+const narrowExpanded = ref(false);
+const sidebarCollapsed = computed(() => narrowSidebar.value ? !narrowExpanded.value : collapsed.value);
+function onSidebarMediaChange(event) {
+  narrowSidebar.value = event.matches;
+  narrowExpanded.value = false;
+}
+function toggleSidebar() {
+  if (narrowSidebar.value) narrowExpanded.value = !narrowExpanded.value;
+  else collapsed.value = !collapsed.value;
+}
+function expandSidebar() {
+  if (narrowSidebar.value) narrowExpanded.value = true;
+  else collapsed.value = false;
+}
+// 窄窗的临时展开是抽屉：点主区即收起（与 Escape、收起按钮等效），不落任何持久化偏好。
+function onMainClick() {
+  if (narrowSidebar.value && narrowExpanded.value) narrowExpanded.value = false;
+}
+onMounted(() => sidebarMedia?.addEventListener("change", onSidebarMediaChange));
+onUnmounted(() => sidebarMedia?.removeEventListener("change", onSidebarMediaChange));
 const toast = ref(null);
 // 视图埋点（节流 10s；可选遥测未开启时只本地计数）
 let viewTrackTs = {};
@@ -479,20 +502,15 @@ onUnmounted(() => {
     <ConfirmDialog />
   </template>
 
-  <div v-else class="shell" :class="{ collapsed }">
-    <div class="orbs" aria-hidden="true">
-      <span class="orb o1"></span>
-      <span class="orb o2"></span>
-      <span class="orb o3"></span>
-    </div>
+  <div v-else class="shell" :class="{ collapsed: sidebarCollapsed }">
     <!-- ============ 侧边栏 ============ -->
-    <aside class="sidebar">
+    <aside class="sidebar" @keydown.esc="narrowExpanded = false">
       <div class="brand" data-tauri-drag-region>
         <span class="brand-logo"><Icon name="sparkles" :size="20" /></span>
         <span class="brand-name">ToolCove</span>
       </div>
 
-      <nav class="nav">
+      <nav id="sidebar-nav" class="nav">
         <!-- 侧边栏分层（三期修订）：固定区 + 唯一的滚动区。
              新任务 / 工作面 / 搜索 / 底部按钮都是固定入口，只有会话列表滚动——
              旧版把整条侧边栏做成一个滚动容器，历史一长，「新任务」和搜索框被滚出视野、
@@ -502,22 +520,25 @@ onUnmounted(() => {
         <AgentSidePanel
           :active-module="activeModule"
           :viewing-run-id="viewingRunId"
-          :collapsed="collapsed"
+          :collapsed="sidebarCollapsed"
           @new="onNewTask"
           @view="onViewTask"
           @open="activeModule = 'agent'"
+          @expand="expandSidebar"
         >
           <!-- 工作面：人自己干活的地方，也是 Agent 的取数记忆。
                交给侧栏组件插在「新任务」与会话列表之间，但数据源（navConfig / hiddenModules）
                仍留在这里——组件只负责位置，不负责决定有哪些模块。 -->
           <template #workspace>
-            <p v-if="workspaceModules.length && !collapsed" class="nav-group">{{ t("nav.workspace") }}</p>
+            <p v-if="workspaceModules.length && !sidebarCollapsed" class="nav-group">{{ t("nav.workspace") }}</p>
             <button
               v-for="m in workspaceModules"
               :key="m.key"
               class="nav-item"
               :class="{ on: activeModule === m.key }"
               :title="t(m.labelKey)"
+              :aria-label="t(m.labelKey)"
+              :aria-current="activeModule === m.key ? 'page' : undefined"
               @click="activeModule = m.key"
             >
               <span class="nav-ico"><Icon :name="m.icon" :size="17" /></span>
@@ -528,24 +549,22 @@ onUnmounted(() => {
       </nav>
 
       <div class="side-foot">
-        <!-- 赞助入口：项目免费开源，靠自愿赞助维持 -->
-        <button class="collapse sponsor-btn" :title="t('sponsor.sideTip')" @click="openSettings('sponsor')">
-          <span class="clp-ico"><Icon name="heart" :size="15" /></span>
-          <span class="nav-label">{{ t("sponsor.sideBadge") }}</span>
-        </button>
-        <button class="collapse" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" @click="openSettings('general')">
+        <button class="collapse settings-btn" :class="{ on: activeModule === 'settings' }" :title="t('nav.settings')" :aria-label="t('nav.settings')" :aria-current="activeModule === 'settings' ? 'page' : undefined" @click="openSettings('general')">
           <span class="clp-ico"><Icon name="settings" :size="15" /></span>
           <span class="nav-label">{{ t("nav.settings") }}</span>
         </button>
-        <button class="collapse" :title="collapsed ? t('nav.expand') : t('nav.collapse')" @click="collapsed = !collapsed">
-          <span class="clp-ico"><Icon name="chevrons-left" :size="14" :class="{ flip: collapsed }" /></span>
-          <span class="nav-label">{{ collapsed ? t("nav.expand") : t("nav.collapse") }}</span>
+        <!-- 保留赞助与收起入口，以低权重图标和设置并排。 -->
+        <button class="collapse foot-icon sponsor-btn" :title="t('sponsor.sideTip')" :aria-label="t('sponsor.sideTip')" @click="openSettings('sponsor')">
+          <span class="clp-ico"><Icon name="heart" :size="15" /></span>
+        </button>
+        <button class="collapse foot-icon" :title="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')" :aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')" :aria-expanded="!sidebarCollapsed" aria-controls="sidebar-nav" @click="toggleSidebar">
+          <span class="clp-ico"><Icon name="chevrons-left" :size="14" :class="{ flip: sidebarCollapsed }" /></span>
         </button>
       </div>
     </aside>
 
     <!-- ============ 主区 ============ -->
-    <div class="main">
+    <div class="main" @click="onMainClick">
       <header class="topbar" data-tauri-drag-region>
         <div class="page-title">
           <span class="pt-ico"><Icon :name="activeModule === 'settings' ? 'settings' : (MODULES.find((m) => m.key === activeModule) || MODULES[0]).icon" :size="20" /></span>
@@ -625,62 +644,45 @@ onUnmounted(() => {
 <style scoped>
 .shell {
   display: grid;
-  /* 268px：主流 agent 桌面端的侧边栏宽度带是 240–300px（Qoder/Cursor/VS Code 同量级）。
-     旧的 224px 装不下「主题 + 相对时间」两行——标题被压到十来个字就必须截断，
-     历史列表失去扫读性。 */
-  grid-template-columns: 268px 1fr;
-  height: 100vh;
+  grid-template-columns: 244px minmax(0, 1fr);
+  height: 100dvh;
   overflow: hidden;
   transition: grid-template-columns 0.22s ease;
 }
-.shell.collapsed { grid-template-columns: 76px 1fr; }
-
-/* 环境柔光（低饱和低透明度，仅作背景点缀；深色下经 --orb-opacity 减半） */
-.orbs { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
-.orb { position: absolute; border-radius: 50%; filter: blur(72px); opacity: var(--orb-opacity, 0.18); }
-.o1 { width: 360px; height: 360px; background: radial-gradient(circle, rgba(9, 105, 218, 0.45), transparent 70%); top: -70px; right: 7%; animation: drift1 19s ease-in-out infinite; }
-.o2 { width: 320px; height: 320px; background: radial-gradient(circle, rgba(88, 166, 255, 0.4), transparent 70%); bottom: -90px; right: 22%; animation: drift2 23s ease-in-out infinite; }
-.o3 { width: 280px; height: 280px; background: radial-gradient(circle, rgba(56, 139, 253, 0.3), transparent 70%); top: 42%; left: 28%; animation: drift3 27s ease-in-out infinite; }
-@keyframes drift1 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-46px, 34px); } }
-@keyframes drift2 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(34px, -44px); } }
-@keyframes drift3 { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(24px, 22px); } }
+.shell.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
 
 /* ============ 侧边栏 ============ */
 .sidebar {
   display: flex;
   flex-direction: column;
-  padding: var(--sp-7) var(--sp-5) var(--sp-6);
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border-right: 1px solid rgba(216, 222, 228, 0.9);
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  min-width: 0;
+  padding: 0 10px 10px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  position: relative;
+  height: 100dvh;
   overflow: hidden;
 }
-.brand { display: flex; align-items: center; gap: var(--sp-4); padding: 4px var(--sp-2) 22px; }
+.brand { display: flex; align-items: center; flex-shrink: 0; height: 56px; gap: 10px; padding: 0 4px; }
 /* 品牌区子元素不拦截鼠标，拖拽落到 .brand 的 drag-region 上（可拖动窗口） */
 .brand > * { pointer-events: none; }
 .brand-logo {
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
   border-radius: var(--r-md);
   background: var(--grad-brand);
   color: var(--text-invert);
-  box-shadow: var(--glow-md);
 }
 .brand-name { font-size: var(--fs-lg); font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
 
-/* nav 是固定区容器，**不滚动**：滚动交给 AgentSidePanel 的 .history（见那边的注释）。
-   负 margin+同值 padding 把内容撑到侧边栏边缘，选中项左侧指示条（left:-14px）不被裁。 */
-.nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; margin: 0 -14px; padding: 0 var(--sp-5); }
+/* 固定入口不滚动；只把剩余高度交给 AgentSidePanel 的历史列表。 */
+.nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
 .nav-item { flex-shrink: 0; }
-/* 「工作面」分组标签：与「新任务」之间的分组锚点（间距比行间距大得多，才能断开两组） */
-.nav-group { flex-shrink: 0; margin: var(--sp-5) 0 var(--sp-1); padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 700; color: var(--faint); letter-spacing: 0.4px; }
+/* 工作面分组与新任务保持清晰分隔。 */
+.nav-group { flex-shrink: 0; margin: 10px 0 2px; padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--faint); letter-spacing: 0.4px; }
 /* 导航行：扁平行 + 悬停填充，而不是默认就带边框与投影的小卡片。
    卡片式行每一条都在抢注意力，侧边栏一旦有 10 条历史就变成一片浮起的方块；
    Qoder / Cursor / VS Code 的侧边栏行都是扁平的，只有选中态才有底色。
@@ -692,10 +694,11 @@ onUnmounted(() => {
   gap: var(--sp-3);
   border: 1px solid transparent;
   background: none;
-  padding: 9px var(--sp-3);
+  height: 34px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
-  font-size: var(--fs-base);
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
@@ -711,49 +714,46 @@ onUnmounted(() => {
 .nav-item.on::before {
   content: "";
   position: absolute;
-  left: -14px;
+  left: -10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 4px;
+  width: 3px;
   height: 22px;
   border-radius: 0 4px 4px 0;
   background: var(--primary);
 }
 
-/* 侧边栏底部（收起钉底 + 设置入口） */
-.side-foot { display: flex; flex-direction: column; gap: 7px; margin-top: auto; padding-top: var(--sp-4); border-top: 1px solid var(--card-border); }
+/* 设置保留文字主入口，其余按钮横排；图标轨道内再纵向排布。 */
+.side-foot { display: flex; align-items: center; flex-shrink: 0; gap: 4px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
 
 .collapse {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 6px;
+  height: 34px;
   border: 1px solid transparent;
   background: none;
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-md);
-  font-size: var(--fs-md);
-  font-weight: 600;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--muted);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
+.settings-btn { flex: 1; min-width: 0; }
+.foot-icon { width: 34px; flex-shrink: 0; justify-content: center; padding: 0; }
 .collapse:hover { background: var(--card); border-color: var(--card-border); color: var(--primary); }
+.collapse:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
 .collapse.on { background: var(--grad-selected); border-color: var(--border-blue); color: var(--primary-hover); }
-.collapse:hover .clp-ico { background: var(--primary-soft); color: var(--primary); }
-/* 赞助入口：金色主题，与品牌一致但不抢主导航焦点 */
-.sponsor-btn { color: var(--warn); }
-.sponsor-btn .clp-ico { background: var(--warn-soft); color: var(--warn); }
-.sponsor-btn:hover { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--warn-soft) 70%, var(--card)), var(--card)); }
+.sponsor-btn:hover { color: var(--warn); background: var(--warn-soft); }
 .clp-ico {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--r-sm);
-  background: var(--well);
-  color: var(--text-weak);
-  transition: background 0.15s, color 0.15s;
+  color: inherit;
 }
 .clp-ico svg { transition: transform 0.22s ease; }
 .clp-ico svg.flip { transform: scaleX(-1); }
@@ -763,40 +763,40 @@ onUnmounted(() => {
 .shell.collapsed .brand-name,
 .shell.collapsed .nav-label { display: none; }
 .shell.collapsed .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
-.shell.collapsed .collapse { justify-content: center; padding-left: 0; padding-right: 0; }
+.shell.collapsed .side-foot { flex-direction: column; }
+.shell.collapsed .collapse { flex: none; width: 100%; justify-content: center; padding-left: 0; padding-right: 0; }
 
 /* ============ 主区 ============ */
-.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; position: relative; z-index: 1; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; overflow: hidden; position: relative; background: var(--card); }
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-6);
-  padding: var(--sp-7) 30px var(--sp-5);
+  gap: 12px;
+  height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-/* 页面标题区不拦截鼠标，拖拽落到 topbar 的 drag-region 上（可拖动窗口/双击最大化）；flex-shrink:0 保证窄窗口时标题优先不被挤压 */
-.page-title { display: flex; align-items: center; gap: 13px; min-width: 0; flex-shrink: 0; pointer-events: none; }
+/* 标题不拦截拖拽；极窄窗口省略文字，不挤掉窗口控件。 */
+.page-title { display: flex; align-items: center; gap: 8px; min-width: 0; pointer-events: none; }
 .pt-ico {
-  width: 44px;
-  height: 44px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--r-md);
-  background: var(--primary-soft);
-  color: var(--primary-hover);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 28%, transparent);
+  color: var(--text-weak);
 }
-.pt-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.pt-text h1 { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: 0.2px; white-space: nowrap; }
-.pt-desc { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
-.top-actions { display: flex; align-items: center; gap: var(--sp-3); flex-shrink: 1; min-width: 0; }
-/* 图标按钮/通知/头像/窗口控制不收缩，窄窗时只压缩搜索框，保证最小化/最大化/关闭永远可见可点 */
+.pt-text { display: flex; flex-direction: column; min-width: 0; }
+.pt-text h1 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 仅搜索框收缩；GlobalSearch 是多根组件，选择器直接命中其真实触发按钮。 */
 .top-actions > * { flex-shrink: 0; }
-/* 全局搜索框可收缩：窄窗口时先缩搜索框宽度（省略号兜底），而不是挤压页面标题 */
-.top-actions :deep(.gs-trigger) { flex-shrink: 1; min-width: 0; }
-.theme-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
+.top-actions :deep(.gs-trigger) { flex-shrink: 1; width: 220px; min-width: 32px; height: 32px; padding: 0 10px; }
+.top-actions :deep(.gs-trigger > svg) { flex-shrink: 0; }
+.top-actions :deep(.gs-ph) { min-width: 0; }
+.theme-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
 .theme-btn:hover { border-color: var(--primary); color: var(--primary); }
 /* 云同步指示灯：灰=未启用/蓝=同步中/绿=已同步/红=失败/琥珀=已吊销 */
 .sync-ind { display: grid; place-items: center; }
@@ -881,10 +881,10 @@ onUnmounted(() => {
 }
 .user-chip:hover .uc-avatar { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(99, 102, 241, 0.36); }
 
-.body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
 
 /* 视图切换动画：入场淡入 + 上移 6px（组件 key 重建触发；无 leave，reduced-motion 全局降级） */
-.body > * { animation: viewIn 0.18s ease; }
+.body > * { min-width: 0; animation: viewIn 0.18s ease; }
 @keyframes viewIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -924,25 +924,31 @@ onUnmounted(() => {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* ============ 深色模式（组件级覆盖，变量在全局块已翻转） ============ */
-@media (prefers-color-scheme: dark) {
-  .sidebar { background: rgba(13, 17, 23, 0.72); border-right-color: var(--border); }
-  .nav { scrollbar-color: var(--faint) transparent; }
-  .nav-item:hover { background: rgba(56, 139, 253, 0.12); }
-  .pt-ico { background: var(--card-raised); }
-  .theme-btn { background: var(--card-raised); }
+/* 壳层配色完全跟随 token，不用系统媒体查询覆盖用户手动选择的主题。 */
+@media (max-width: 1000px) {
+  .topbar { padding: 0 12px; gap: 8px; }
+  .top-actions :deep(.gs-trigger) { width: 160px; }
+  .top-actions :deep(.gs-kbd) { display: none; }
 }
-
-/* ============ 小窗口适配：按宽度逐步隐藏次要信息，标题永不竖排 ============ */
-@media (max-width: 1180px) {
-  .pt-desc { display: none; }   /* 先藏副标题说明 */
+@media (max-width: 760px) {
+  .shell, .shell.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+  /* 侧栏浮出后不在流内，主区必须钉在第二列，否则会掉进 64px 的轨道列。 */
+  .main { grid-column: 2; }
+  /* 临时展开覆盖主区，而不压缩工作台；底部收起和 Escape 均可回到轨道。 */
+  .shell:not(.collapsed) .sidebar { position: absolute; inset: 0 auto 0 0; width: 244px; z-index: 30; }
+  .top-actions { flex-shrink: 0; }
+  .top-actions :deep(.gs-trigger) { width: 32px; min-width: 32px; justify-content: center; padding: 0; }
+  .top-actions :deep(.gs-ph) { display: none; }
 }
-@media (max-width: 920px) {
-  .pt-ico { display: none; }    /* 最后藏页面图标，只留标题文字 */
-  .topbar { padding-left: var(--sp-7); padding-right: var(--sp-7); }
+@media (max-width: 560px) {
+  .topbar { padding: 0 8px; gap: 4px; }
+  .pt-ico { display: none; }
+  .top-actions { gap: 3px; }
+  .theme-btn { width: 28px; }
+  .win-ctrls { gap: 0; margin-left: 0; }
+  .wc-btn { width: 24px; }
 }
-/* 矮窗口：压缩顶栏纵向留白，把空间留给内容区 */
-@media (max-height: 720px) {
-  .topbar { padding-top: var(--sp-5); padding-bottom: var(--sp-3); }
+@media (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
 }
 </style>

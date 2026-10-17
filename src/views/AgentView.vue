@@ -48,6 +48,8 @@ const { t } = useI18n();
 const openSettings = inject("openSettings", null);
 
 const busy = computed(() => agentSession.status !== "idle");
+const goal = ref("");
+const goalBox = ref(null);
 
 // ------- 历史任务回看（二期导航重构：会话列表上移侧边栏，画布承接回看） -------
 // viewRunId 非空时画布只读渲染该 run 落盘的 steps；运行中的真实进度由
@@ -84,6 +86,7 @@ watch(
       // busy 时清时间线等于砍掉正在跑的运行现场：忽略并如实提示
       if (busy.value) return props.showToast(t("agent.busyNew"));
       viewRunId.value = "";
+      goal.value = "";
       clearTimeline();
       nextTick(() => goalBox.value?.focus());
       return;
@@ -165,16 +168,22 @@ const ERROR_KEY = {
   OBSERVATION_REQUIRED: "agent.errObserveDenied",
 };
 
+const displayedStatus = computed(() => viewRun.value?.status || (busy.value ? agentSession.status : agentSession.runStatus));
+const displayedUsage = computed(() => viewRun.value ? viewRun.value.usage || {} : agentSession.usage);
 const statusMeta = computed(() => {
-  const s = agentSession;
-  if (s.status === "waiting") return { cls: "st-wait", key: "agent.statusWaiting", icon: "alert" };
-  if (s.status === "running") return { cls: "st-dev", key: "agent.statusRunning", icon: "activity" };
-  if (s.runStatus === "completed") return { cls: "st-done", key: "agent.statusSuccess", icon: "check" };
-  if (s.runStatus === "cancelled") return { cls: "st-pending", key: "agent.statusCancelled", icon: "x" };
-  if (s.runStatus === "max_steps") return { cls: "st-pending", key: "agent.statusMaxSteps", icon: "alert" };
-  if (s.runStatus === "failed") return { cls: "st-fail", key: "agent.statusFailed", icon: "alert" };
+  const status = displayedStatus.value;
+  if (status === "waiting") return { cls: "st-wait", key: "agent.statusWaiting", icon: "alert" };
+  if (status === "running" || status === "pending") return { cls: "st-dev", key: "agent.statusRunning", icon: "activity" };
+  if (status === "completed" || status === "success") return { cls: "st-done", key: "agent.statusSuccess", icon: "check" };
+  if (status === "cancelled") return { cls: "tc-neutral", key: "agent.statusCancelled", icon: "square" };
+  if (status === "max_steps") return { cls: "st-pending", key: "agent.statusMaxSteps", icon: "alert" };
+  if (status === "failed") return { cls: "st-fail", key: "agent.statusFailed", icon: "alert" };
   return { cls: "tc-neutral", key: "agent.statusIdle", icon: "zap" };
 });
+const executionTimeline = computed(() => timeline.value.filter((item) => item.kind !== "final" && item.code !== "verify_review"));
+const answers = computed(() => timeline.value.filter((item) => item.kind === "final"));
+const reviewNotices = computed(() => timeline.value.filter((item) => item.code === "verify_review"));
+const toolCount = computed(() => timeline.value.filter((item) => item.kind === "tool").length);
 
 const errorText = computed(() => {
   const key = ERROR_KEY[agentSession.errorCode];
@@ -245,20 +254,9 @@ const fmtNum = (n) => {
   return v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
 };
 
-// ------- 任务监控面板（右侧，条件出现） -------
-// 三期的核心取舍：右侧**不再常驻**「能力清单」。工具开关是配置，不是对话的家具——
-// 它常驻时占掉 1/4 宽度，把消息流挤成窄条，而且和"这台机器能干什么"这个一次性问题
-// 绑死在每一轮对话上。工具开关因此搬进「设置 → Agent」，这里只留在**运行时**才有意义的
-// 东西（目标 / 实时进度 / 产物），也就是 Qoder 的任务监控那一栏。
-//
-// 可见条件 = 用户没手动关掉 且 （正在跑 或 有待确认 或 有产物）。
-// 用户手动关掉后即使是运行中也不弹回来——面板自己冒出来比少一个面板更烦人。
-const monitorWanted = ref(true);
-const monitorVisible = computed(
-  () => monitorWanted.value && (busy.value || !!agentSession.pending || !!runSummary.value?.artifacts.length)
-);
+const monitorVisible = ref(false);
 function toggleMonitor() {
-  monitorWanted.value = !monitorWanted.value;
+  monitorVisible.value = !monitorVisible.value;
 }
 
 // 会话流里的「我说的那句话」。这是三期相对二期最要紧的一处：
@@ -274,7 +272,7 @@ const threadGoal = computed(() => {
 
 // 空态只在「这一轮还没有任何步骤」时出现。回看历史时一律不补空态——
 // 横幅与交付清单已经说明了现状，再插一句标语是噪声。
-const showEmpty = computed(() => !viewRun.value && !timeline.value.length && !agentSession.pending);
+const showEmpty = computed(() => !viewRun.value && !threadGoal.value && !busy.value && !displayedStatus.value && !timeline.value.length && !agentSession.pending);
 
 // registry 的懒加载策略：buildAgentRegistry 会动态拉整套工具实现层
 // （executors + luxon/js-yaml 等，实测约 400KB），放首屏就把工具箱的懒加载抵消掉了。
@@ -314,8 +312,6 @@ function dismissHint() {
   }
 }
 
-const goal = ref("");
-const goalBox = ref(null);
 const denyBtn = ref(null);
 // 提问卡的回答草稿。与 goal 分开：提问的回答常常是路径这类短文本，不该污染上一条目标。
 const answerDraft = ref("");
@@ -323,7 +319,6 @@ const answerBox = ref(null);
 
 onMounted(async () => {
   await initAgentSession();
-  if (agentSession.goal && !goal.value) goal.value = agentSession.goal;
   // 有历史才值得提前建 registry（续跑按钮靠它判定）；没有就等 onResume 里 ensure
   setTimeout(() => {
     if (agentSession.runs.length) ensureAgentRegistry();
@@ -398,9 +393,8 @@ async function startRun() {
   track("agent.run");
   // 域绑定：选中域时把领域上下文拼成一行提示，随运行透传（未选域 → 空串，提示词一字不变）
   const contextLine = selectedDomain.value ? buildContextLine(selectedDomain.value, t) : "";
-  if (await startAgentRun(input, { contextLine })) {
-    goal.value = "";
-  }
+  goal.value = "";
+  if (!await startAgentRun(input, { contextLine }) && !goal.value) goal.value = input;
 }
 
 function onGoalKey(e) {
@@ -443,6 +437,13 @@ function onAnswer() {
     return;
   }
   answerDraft.value = "";
+}
+
+function onAnswerKey(e) {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    onAnswer();
+  }
 }
 
 /** 跳过提问 = 放弃这次目标（与 runtime 的 cancelled 语义一致）。 */
@@ -577,17 +578,6 @@ async function onPromoteRun(runId) {
   }
 }
 
-const RUN_STATUS = {
-  success: { cls: "st-done", key: "agent.statusSuccess" },
-  completed: { cls: "st-done", key: "agent.statusSuccess" },
-  pending: { cls: "st-dev", key: "agent.statusRunning" },
-  running: { cls: "st-dev", key: "agent.statusRunning" },
-  failed: { cls: "st-fail", key: "agent.statusFailed" },
-  cancelled: { cls: "st-pending", key: "agent.statusCancelled" },
-  max_steps: { cls: "st-pending", key: "agent.statusMaxSteps" },
-};
-const runMeta = (rec) => RUN_STATUS[rec.status] || { cls: "tc-neutral", key: "agent.statusIdle" };
-
 // ------- Summary 交付清单（纯派生，不改引擎） -------
 // 为什么是派生而不是引擎生成：一期不动 session.js 的收尾逻辑，视图从现有 steps 现算一份；
 // 把 summary 写进 run 记录落盘是二期的任务列表升级（见 docs/agent-workspace-plan.md）。
@@ -596,7 +586,7 @@ const TERMINAL_STATUS = new Set(["completed", "failed", "cancelled", "max_steps"
 const runSummary = computed(() => {
   const viewing = viewRun.value;
   const status = viewing ? viewing.status : agentSession.runStatus;
-  if (!TERMINAL_STATUS.has(status) || !sourceSteps.value.length) return null;
+  if (!TERMINAL_STATUS.has(status)) return null;
   const counts = new Map();
   const seen = new Set();
   const artifacts = [];
@@ -613,18 +603,22 @@ const runSummary = computed(() => {
       }
     }
   }
-  // 遗留说明：只有非圆满终态才有话可说
-  let leftover = "";
-  if (status === "failed") leftover = viewing ? viewing.error || "" : errorText.value;
-  else if (status === "cancelled") leftover = t("agent.statusCancelled");
-  else if (status === "max_steps") leftover = t("agent.statusMaxSteps");
+  if (!artifacts.length && (status !== "completed" || !counts.size)) return null;
   return {
-    goal: viewing ? viewing.input || "" : agentSession.goal,
-    statusKey: runMeta({ status }).key,
-    cls: runMeta({ status }).cls,
+    titleKey: status === "completed" ? "agent.summaryTitle" : "agent.partialArtifacts",
     tools: [...counts].map(([name, count]) => ({ name, count })),
     artifacts,
-    leftover,
+  };
+});
+const outcome = computed(() => {
+  const status = displayedStatus.value;
+  if (!["cancelled", "failed", "max_steps"].includes(status)) return null;
+  const reason = viewRun.value
+    ? viewRun.value.error || sourceSteps.value.findLast((step) => step.type === "notice" && step.code === "failed")?.text || ""
+    : errorText.value;
+  return {
+    status,
+    message: status === "failed" ? reason || t("agent.failedHint") : t(status === "cancelled" ? "agent.cancelledHint" : "agent.limitHint"),
   };
 });
 
@@ -652,33 +646,20 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 <template>
   <div class="agent">
-    <!-- 表头条：只放「这一轮是什么状态」与全局动作。曾经还挂着一条运行进度条，
-         已下移贴住输入框——进度讲的是「我正在做什么」，它该挨着用户下一步动作，
-         而不是和页面标题抢第一行。 -->
     <header class="bar">
-      <span class="st-chip" :class="statusMeta.cls">
-        <Icon :name="statusMeta.icon" :size="13" />{{ t(statusMeta.key) }}
+      <h2 class="thread-title" :title="threadGoal">{{ threadGoal || t("nav.newTask") }}</h2>
+      <span class="st-chip" :class="statusMeta.cls" role="status">
+        <Icon :name="statusMeta.icon" :size="12" />{{ t(statusMeta.key) }}
       </span>
-      <span class="meter">
-        <span>{{ t("agent.stepsCount", { n: agentSession.steps.length }) }}</span>
-        <span>{{ t("agent.tokensCount", { n: fmtNum(agentSession.usage.totalTokens) }) }}</span>
-        <span>{{ t("agent.callsCount", { n: agentSession.usage.calls }) }}</span>
-      </span>
-      <span class="spacer"></span>
       <button
-        class="btn-ghost sm"
+        class="btn-ghost sm monitor-toggle"
         :class="{ 'mon-on': monitorVisible }"
-        :title="monitorWanted ? t('agent.monitorHide') : t('agent.monitorShow')"
-        :aria-pressed="monitorWanted"
+        :title="monitorVisible ? t('agent.monitorHide') : t('agent.monitorShow')"
+        :aria-pressed="monitorVisible"
+        aria-controls="agent-monitor"
         @click="toggleMonitor"
       >
         <Icon name="layout" :size="14" />{{ t("agent.monitorTitle") }}
-      </button>
-      <button class="btn-ghost sm" @click="goSettings('agent')">
-        <Icon name="settings" :size="14" />{{ t("agent.openSettings") }}
-      </button>
-      <button v-if="busy" class="btn-outline danger sm" @click="stopAgentRun('user')">
-        <Icon name="x" :size="14" />{{ t("agent.stop") }}
       </button>
     </header>
 
@@ -717,9 +698,10 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                全局 askConfirm 模态做不到，而且不会盖住用户正在看的时间线。
                它属于实时运行：回看历史时照常显示——后台运行来了一张确认卡，人仍要答得上。 -->
           <section v-if="agentSession.pending" class="confirm" :class="'risk-' + (agentSession.pending.risk || 'ask')">
+            <p v-if="viewRun" class="cf-hint">{{ t("agent.backgroundTask") }} · {{ agentSession.goal }}</p>
             <div class="cf-head">
               <Icon name="alert" :size="15" />
-              <b>{{ agentSession.pending.kind === "tool" ? t("agent.confirmTitle") : agentSession.pending.question }}</b>
+              <b>{{ agentSession.pending.kind === "tool" ? t("agent.confirmTitle") : t("agent.needInput") }}</b>
               <span v-if="agentSession.pending.risk" class="tc-chip sm" :class="riskChip(agentSession.pending.risk)">
                 {{ t(riskKey(agentSession.pending.risk)) }}
               </span>
@@ -733,8 +715,9 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                 v-model="answerDraft"
                 class="cf-answer"
                 rows="3"
+                :aria-label="agentSession.pending.question"
                 :placeholder="t('agent.answerPlaceholder')"
-                @keydown.enter.exact.prevent="onAnswer"
+                @keydown="onAnswerKey"
               ></textarea>
               <p class="cf-hint">{{ t("agent.answerHint") }}</p>
               <div class="cf-actions">
@@ -783,9 +766,19 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </template>
           </section>
 
-          <!-- 步骤时间线 -->
-          <section v-if="timeline.length" class="timeline">
-            <template v-for="(item, index) in timeline" :key="cardKey(item, index)">
+          <details v-if="executionTimeline.length" :key="viewRunId || agentSession.currentRunId" class="execution">
+            <summary class="execution-head">
+              <Icon name="chevron-right" :size="13" class="execution-arrow" />
+              <span>{{ t("agent.executionTitle") }}</span>
+              <span class="execution-count">{{ t("agent.eventCount", { n: executionTimeline.length }) }}</span>
+              <span class="execution-usage">{{ t("agent.tokensCount", { n: fmtNum(displayedUsage.totalTokens) }) }}</span>
+            </summary>
+            <div class="execution-meta">
+              <span>{{ t("agent.toolCallsCount", { n: toolCount }) }}</span>
+              <span>{{ t("agent.modelCallsCount", { n: displayedUsage.calls || 0 }) }}</span>
+            </div>
+            <section class="timeline">
+            <template v-for="(item, index) in executionTimeline" :key="cardKey(item, index)">
               <article v-if="item.kind === 'tool'" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" data-role="tool-card">
                 <button
                   class="tl-head"
@@ -893,12 +886,21 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               </article>
 
               <article v-else-if="item.kind === 'notice'" class="tl-row tl-notice">
-                <Icon name="alert" :size="14" />
+                <Icon name="activity" :size="14" />
                 <span class="tl-text">{{ noticeText(item) }}</span>
                 <span v-if="item.attempt" class="tl-n">{{ t("agent.retryAttempt", { n: item.attempt }) }}</span>
               </article>
+            </template>
+            </section>
+          </details>
 
-              <article v-else class="answer-card">
+          <div v-if="busy && !viewRun" class="working" role="status">
+            <span class="dot"></span>
+            <span>{{ agentSession.status === "waiting" ? t("agent.statusWaiting") : currentTool || t("agent.running") }}</span>
+          </div>
+
+          <section v-if="answers.length" class="answers">
+              <article v-for="(item, index) in answers" :key="index" class="answer-card">
                 <div class="ans-head">
                   <Icon name="sparkles" :size="14" />
                   <b>{{ t("agent.stepFinal") }}</b>
@@ -920,11 +922,10 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                 </div>
                 <MarkdownRender :text="item.answer" :show-toast="showToast" />
               </article>
-            </template>
-
-            <div v-if="busy && !viewRun" class="working">
-              <span class="dot"></span>{{ agentSession.status === "waiting" ? t("agent.statusWaiting") : t("agent.running") }}
-            </div>
+          </section>
+          <section v-for="(item, index) in reviewNotices" :key="index" class="review-notice" role="status">
+            <Icon name="alert" :size="15" />
+            <span>{{ noticeText(item) }}</span>
           </section>
 
           <!-- 空态：输入框正上方的那块地方。二期的空态标语落在输入框**下面**——
@@ -933,10 +934,15 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                示例提示也收进这里：二期那张可关闭的欢迎卡与空态标语同时在首屏出现，
                两块内容讲同一件事，互相稀释。 -->
           <div v-if="showEmpty" class="canvas-empty">
-            <b class="ce-slogan">{{ t("agent.emptySlogan") }}</b>
+            <span class="ce-mark"><Icon name="sparkles" :size="24" /></span>
+            <h2 class="ce-slogan">{{ t("agent.emptySlogan") }}</h2>
             <p class="ce-hint">{{ t("agent.emptyHint") }}</p>
             <div class="ce-examples">
-              <button v-for="n in 3" :key="n" class="ce-ex" @click="useExample('agent.example' + n)">{{ t("agent.example" + n) }}</button>
+              <button v-for="(icon, index) in ['braces', 'zap', 'git-compare']" :key="icon" class="ce-ex" @click="useExample('agent.example' + (index + 1))">
+                <Icon :name="icon" :size="16" />
+                <span><b>{{ t('agent.exampleTitle' + (index + 1)) }}</b><span>{{ t('agent.example' + (index + 1)) }}</span></span>
+                <Icon name="chevron-right" :size="14" class="ce-arrow" />
+              </button>
             </div>
             <!-- 首启说明：确认行为是这个产品最需要提前讲清楚的一件事（写文件会先问）。
                  只讲一次、可关掉，且只在空态出现——不再是压在消息流顶上的一条横幅。 -->
@@ -946,20 +952,22 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </p>
           </div>
 
-          <!-- 运行级错误卡（仅实时运行；历史 run 的失败信息由交付清单的遗留说明表达） -->
-          <section v-if="errorText && agentSession.runStatus === 'failed' && !viewRun" class="err-card">
-            <Icon name="alert" :size="15" />
-            <pre class="err-text">{{ errorText }}</pre>
+          <section v-if="outcome" class="outcome" :class="'outcome-' + outcome.status" role="status">
+            <span class="outcome-icon"><Icon :name="statusMeta.icon" :size="18" /></span>
+            <div class="outcome-body">
+              <h3>{{ t(statusMeta.key) }}</h3>
+              <p>{{ outcome.message }}</p>
+              <button class="btn-ghost sm" :disabled="busy" @click="onRerun({ input: threadGoal })">
+                <Icon name="repeat" :size="13" />{{ t("agent.rerun") }}
+              </button>
+            </div>
           </section>
 
-          <!-- Summary 交付清单：终态后给出「做了什么 / 产出了什么 / 遗留什么」（派生数据，见 script 注释） -->
           <section v-if="runSummary" class="sum-card">
             <div class="sum-head">
-              <Icon name="check" :size="14" />
-              <b>{{ t("agent.summaryTitle") }}</b>
-              <span class="st-chip sm" :class="runSummary.cls">{{ t(runSummary.statusKey) }}</span>
+              <Icon name="file" :size="14" />
+              <b>{{ t(runSummary.titleKey) }}</b>
             </div>
-            <p class="sum-goal" :title="runSummary.goal">{{ runSummary.goal }}</p>
             <div v-if="runSummary.tools.length" class="sum-row">
               <span class="sum-label">{{ t("agent.summaryTools") }}</span>
               <span v-for="x in runSummary.tools" :key="x.name" class="tc-chip sm tc-neutral">{{ x.name }} × {{ x.count }}</span>
@@ -976,7 +984,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                 <Icon name="open" :size="12" />{{ art.label }}
               </button>
             </div>
-            <p v-if="runSummary.leftover" class="sum-leftover">{{ runSummary.leftover }}</p>
           </section>
         </div>
 
@@ -1000,6 +1007,11 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           <!-- 实时进度：把「现在在干嘛、走到哪、还剩多少步」压成一行，紧贴输入框。
                参考 Qoder 的会话底部 todo / OpenHands 把活动指示放进 composer —— 三态一眼可读，
                不必去翻时间线猜。只在运行或等待确认时出现，跑完就收（终态由交付清单表达）。 -->
+          <div v-if="viewRun && busy" class="background-run">
+            <span>{{ t("agent.backgroundTask") }} · {{ agentSession.goal }}</span>
+            <button class="btn-ghost sm" @click="backToCurrent">{{ t("agent.backToCurrent") }}</button>
+            <button class="btn-outline danger sm" @click="stopAgentRun('user')">{{ t("agent.stop") }}</button>
+          </div>
           <RunProgress
             v-if="busy || agentSession.pending"
             class="agent-progress"
@@ -1022,35 +1034,36 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               <span v-if="selectedDomain" class="gd-context">{{ domainContextText }}</span>
               <button v-if="selectedDomain" class="link xs" @click="agentSession.contextDomain = ''">{{ t("agent.domainClear") }}</button>
             </div>
+            <label for="agent-goal" class="goal-label">{{ t("agent.goalLabel") }}</label>
             <textarea
+              id="agent-goal"
               ref="goalBox"
               v-model="goal"
               class="goal"
               rows="2"
-              :placeholder="t('agent.goalPh')"
+              :aria-label="t('agent.goalLabel')"
+              :placeholder="t(busy ? 'agent.nextGoalPh' : 'agent.goalPh')"
               @keydown="onGoalKey"
             ></textarea>
             <div class="goal-actions">
+              <span class="composer-mode"><Icon name="sparkles" :size="13" />Agent</span>
               <span class="goal-hint">Enter {{ t("agent.run") }} · Shift+Enter {{ t("agent.newline") }}</span>
-              <button v-if="agentSession.steps.length" class="btn-ghost xs" :disabled="busy" @click="clearTimeline()">
-                {{ t("agent.clear") }}
+              <button v-if="busy" class="btn-outline danger sm" @click="stopAgentRun('user')">
+                <Icon name="square" :size="13" />{{ t("agent.stop") }}
               </button>
-              <button class="btn-primary sm" :disabled="busy || !goal.trim()" @click="startRun">
-                <Icon name="rocket" :size="14" />{{ busy ? t("agent.running") : t("agent.run") }}
+              <button v-else class="btn-primary sm" :disabled="!goal.trim()" @click="startRun">
+                <Icon name="send" :size="15" />{{ t("agent.run") }}
               </button>
             </div>
           </div>
         </footer>
       </div>
 
-      <!-- 右栏：任务监控（Qoder 同名的「条件出现」面板）。
-           它的可见性由监视器状态与运行态共同决定：只有正在跑、等你确认、或这一轮产出了
-           文件时才占位，其余时间对话区独占整宽。工具开关不在这里——那是设置。 -->
-      <aside v-if="monitorVisible" class="monitor">
+      <aside v-if="monitorVisible" id="agent-monitor" class="monitor" :aria-label="t('agent.monitorTitle')">
         <div class="mon-head">
           <Icon name="activity" :size="14" />
           <b>{{ t("agent.monitorTitle") }}</b>
-          <span class="st-chip sm" :class="statusMeta.cls">{{ t(statusMeta.key) }}</span>
+          <button class="mon-close" :aria-label="t('agent.monitorHide')" @click="toggleMonitor"><Icon name="x" :size="15" /></button>
         </div>
         <div class="mon-body">
           <div class="mon-sec">
@@ -1060,14 +1073,14 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           <div class="mon-sec">
             <span class="mon-label">{{ t("agent.monitorActivity") }}</span>
             <p class="mon-now">
-              <template v-if="currentTool"><Icon name="zap" :size="12" /><code>{{ currentTool }}</code></template>
-              <template v-else>{{ t(progressStatus === "waiting" ? "agent.statusWaiting" : busy ? "agent.running" : statusMeta.key) }}</template>
+              <template v-if="!viewRun && currentTool"><Icon name="zap" :size="12" /><code>{{ currentTool }}</code></template>
+              <template v-else><Icon :name="statusMeta.icon" :size="12" />{{ t(statusMeta.key) }}</template>
             </p>
-            <p class="mon-meter">
-              <span>{{ t("agent.stepsCount", { n: agentSession.steps.length }) }}</span>
-              <span>{{ t("agent.tokensCount", { n: fmtNum(agentSession.usage.totalTokens) }) }}</span>
-              <span>{{ t("agent.callsCount", { n: agentSession.usage.calls }) }}</span>
-            </p>
+            <dl class="mon-meter">
+              <div><dt>{{ t("agent.summaryTools") }}</dt><dd>{{ toolCount }}</dd></div>
+              <div><dt>{{ t("agent.modelCalls") }}</dt><dd>{{ displayedUsage.calls || 0 }}</dd></div>
+              <div><dt>Tokens</dt><dd>{{ fmtNum(displayedUsage.totalTokens) }}</dd></div>
+            </dl>
           </div>
           <div v-if="runSummary && runSummary.artifacts.length" class="mon-sec">
             <span class="mon-label">{{ t("agent.summaryArtifacts") }}</span>
@@ -1091,30 +1104,25 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 </template>
 
 <style scoped>
-/* 页面留白对齐全局惯例：水平 28px，与顶栏标题起点对齐 */
-.agent { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: var(--sp-3); padding: var(--sp-2) 28px 18px; }
-
-/* ---------- 表头条 ---------- */
-.bar { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-/* 进度条贴住输入框：它讲的是「这一次现在走到哪」，与用户下一步动作是同一件事 */
+.agent { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--card); container: agent / inline-size; }
+.bar { flex-shrink: 0; min-height: 52px; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-7); border-bottom: 1px solid var(--card-border); }
+.thread-title { min-width: 0; margin: 0; font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .st-chip { flex-shrink: 0; font-size: var(--fs-xs); }
+.monitor-toggle { margin-left: auto; flex-shrink: 0; }
 .agent-progress { flex-shrink: 0; }
-.meter { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--muted); font-family: var(--font-num); }
-.spacer { flex: 1; }
-
-/* ---------- 空态（输入框正上方） ---------- */
-/* 占满输入框以上的整块消息区并**垂直居中**：只顶对齐会在下面留出四五百像素的死白，
-   读起来像界面没加载完；居中让标题、示例、说明成为这一屏的主体，视线自然落到下方输入框。
-   flex:1 让它吃掉 .scroll 的剩余高度（.scroll 是 flex 列）。 */
-.canvas-empty { flex: 1; margin: 0; padding: 0 var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; justify-content: center; text-align: center; }
-.ce-slogan { font-size: var(--fs-lg); font-weight: 700; color: var(--text-weak); }
-.ce-hint { margin: 0; font-size: var(--fs-sm); color: var(--faint); }
-.ce-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-1); }
-.ce-ex {
-  padding: 5px 11px; font-size: var(--fs-sm); color: var(--primary-hover); text-align: left;
-  background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-pill);
-  cursor: pointer; transition: background 0.15s, border-color 0.15s;
-}
-.ce-ex:hover { background: var(--primary-soft); border-color: var(--primary); }
+.canvas-empty { flex: 1; min-height: 330px; margin: 0; padding: var(--sp-7) 0; display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; justify-content: center; }
+.ce-mark { display: grid; place-items: center; width: 48px; height: 48px; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); margin-bottom: var(--sp-2); }
+.ce-slogan { margin: 0; font-size: var(--fs-num); line-height: var(--lh-tight); font-weight: 600; color: var(--text); letter-spacing: -0.5px; }
+.ce-hint { margin: 0; font-size: var(--fs-md); color: var(--muted); line-height: var(--lh-body); }
+.ce-examples { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-7); width: 100%; max-width: 600px; }
+.ce-ex { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); color: var(--text-weak); text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer; transition: background var(--dur-fast), border-color var(--dur-fast); }
+.ce-ex > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ce-ex b { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.ce-ex span span { font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-tight); }
+.ce-ex .icon { flex-shrink: 0; }
+.ce-arrow { margin-left: auto; }
+.ce-ex:hover { background: var(--bg); border-color: var(--card-border); }
+.ce-ex:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* 确认行为说明：低调的一段，且自带「知道了」——它讲的是安全边界，不是卖点。
    刻意不用 flex（图标会在大段文字里被挤到单独一行），图标用 vertical-align 跟首行对齐。 */
 .ce-note {
@@ -1137,17 +1145,12 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .noai p { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-tight); }
 .noai-actions { flex-shrink: 0; display: flex; gap: var(--sp-2); }
 
-/* ---------- 对话列 + 条件出现的任务监控 ---------- */
-/* 第二列只在监控面板真的渲染时才有意义，所以列宽由 .with-monitor 这个类切换，
-   而不是写死 grid-template-columns（写死会让空列白占 320px，正是「右栏不常驻」要避免的）。
-   刻意不用 :has(.monitor)：它要求较新的 WebView2，老运行时上规则会被整条丢弃、
-   面板退化成堆在对话下方，而这里的降级必须可控。 */
-.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-5); align-items: stretch; }
-.body.with-monitor { grid-template-columns: minmax(0, 1fr) 320px; }
-/* 两列都要 min-height:0，否则 grid 子项被内容撑高、内部滚动失效 */
-.canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
-/* 消息流：占满输入框以上的全部高度，滚它自己 */
-.scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-3); }
+.body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; position: relative; overflow: hidden; }
+.body.with-monitor { grid-template-columns: minmax(0, 1fr) 280px; }
+.canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-7); padding: 28px 24px; scrollbar-gutter: stable both-edges; overscroll-behavior: contain; }
+.scroll > * { width: 100%; max-width: 820px; align-self: center; flex-shrink: 0; }
+.scroll > .canvas-empty { max-width: 640px; }
 
 /* ---------- 用户消息（会话流的第一条） ---------- */
 /* 与 Agent 的答复卡刻意长得不一样：靠头像 + 姓名行认出「谁在说话」，
@@ -1167,10 +1170,9 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   white-space: pre-wrap; word-break: break-word;
 }
 
-/* ---------- 输入区（钉在对话列底部） ---------- */
-.composer { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
-/* 与消息流的分隔：一条发丝线足矣，不做整块背板——输入框本身已经是卡片 */
-.composer::before { content: ""; display: block; height: 1px; margin-bottom: var(--sp-1); background: var(--card-border); }
+.composer { width: calc(100% - 48px); max-width: 820px; align-self: center; flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-7); }
+.background-run { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-weak); }
+.background-run > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 历史任务回看横幅 ---------- */
 .view-banner {
@@ -1189,18 +1191,15 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .vb-input { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-weak); }
 .vb-actions { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); }
 
-/* ---------- 目标输入 ---------- */
-/* rows=2 + min-height 44px：输入框是入口不是编辑器，默认给两行足够写下目标；
-   需要写长的拖右下角（resize: vertical）自己拉高，而不是一上来就占掉半屏。 */
-.goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); }
-.goal {
-  width: 100%; resize: vertical; min-height: 44px; padding: var(--sp-3);
-  font-family: inherit; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text);
-  background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--r-sm);
-}
-.goal:focus { outline: none; border-color: var(--primary); background: var(--card); }
+.goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 4%, transparent); transition: border-color var(--dur-fast), box-shadow var(--dur-fast); }
+.goal-box:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.goal-label { color: var(--text-weak); font-size: var(--fs-xs); font-weight: 500; }
+.goal { width: 100%; resize: vertical; min-height: 52px; max-height: min(180px, 25dvh); padding: 0; font-family: inherit; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text); background: transparent; border: 0; border-radius: 0; }
+.goal::placeholder { color: var(--muted); }
+.goal:focus { outline: none; }
 .goal-actions { display: flex; align-items: center; gap: var(--sp-3); }
-.goal-hint { flex: 1; font-size: var(--fs-xs); color: var(--faint); }
+.composer-mode { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); color: var(--text-weak); }
+.goal-hint { flex: 1; text-align: right; font-size: var(--fs-xs); color: var(--muted); }
 
 /* ---------- 域选择器（三段同色系小控件，与目标输入同卡） ---------- */
 .goal-domain { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
@@ -1238,8 +1237,16 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .cf-pv-more { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
 .cf-actions { display: flex; justify-content: flex-end; gap: var(--sp-3); }
 
-/* ---------- 时间线 ---------- */
-.timeline { display: flex; flex-direction: column; gap: var(--sp-2); }
+.execution { border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--card-soft); }
+.execution-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); cursor: pointer; list-style: none; color: var(--text-weak); font-size: var(--fs-sm); }
+.execution-head::-webkit-details-marker { display: none; }
+.execution-head:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--r-sm); }
+.execution-arrow { flex-shrink: 0; transition: transform var(--dur-fast); }
+.execution[open] .execution-arrow { transform: rotate(90deg); }
+.execution-count, .execution-usage { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.execution-usage { margin-left: auto; }
+.execution-meta { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding: 0 var(--sp-4) var(--sp-3); font-size: var(--fs-xs); color: var(--muted); }
+.timeline { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-3) var(--sp-3); }
 
 .tl-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
 
@@ -1289,41 +1296,46 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 /* 文本回答可能很长（路径、SQL）：单行截断 + title 看全文，不把时间线撑开 */
 .tl-confirm .ans-text { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .tl-confirm .no { margin-left: auto; color: var(--danger-deep); font-size: var(--fs-sm); }
-.tl-notice { color: var(--warn-deep); background: var(--amber-soft); border-color: var(--amber-border); }
+.tl-notice { color: var(--text-weak); background: transparent; border-color: transparent; align-items: flex-start; }
+.tl-notice > .icon { flex-shrink: 0; margin-top: 3px; }
+.tl-notice .tl-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-notice { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-4); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--warn-deep); background: var(--warn-tint); border: 1px solid var(--warn-border); border-radius: var(--r-sm); }
+.review-notice .icon { flex-shrink: 0; margin-top: 3px; }
 /* 审计行：与确认行同款右对齐结论，但来源是事件流而非卡片 */
 .tl-approval { color: var(--text-weak); }
 .tl-approval .ok { margin-left: auto; color: var(--success-deep); font-size: var(--fs-sm); }
 .tl-approval .no { margin-left: auto; color: var(--danger-deep); font-size: var(--fs-sm); }
 .tl-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.answer-card { padding: var(--sp-4) var(--sp-5); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
-.ans-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); color: var(--primary-hover); }
-.ans-head b { font-size: var(--fs-md); }
+.answers { display: flex; flex-direction: column; gap: var(--sp-7); }
+.answer-card { min-width: 0; padding: var(--sp-2) 0; background: transparent; }
+.ans-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-4); color: var(--text-weak); }
+.ans-head b { font-size: var(--fs-md); color: var(--text); margin-right: auto; }
+.answer-card :deep(.md-render) { overflow-wrap: anywhere; }
 
 .working { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); color: var(--muted); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); animation: agentPulse 1.1s ease-in-out infinite; }
 @keyframes agentPulse { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
 
-.err-card { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); color: var(--danger-deep); background: var(--danger-soft); border: 1px solid var(--border-danger); border-radius: var(--r-md); }
-.err-text { flex: 1; min-width: 0; margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--danger-deep); white-space: pre-wrap; word-break: break-word; }
-
-/* ---------- Summary 交付清单 ---------- */
-.sum-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
-.sum-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--primary-hover); }
+.outcome { display: flex; align-items: flex-start; gap: var(--sp-4); padding: var(--sp-7) 0; }
+.outcome-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: var(--r-sm); color: var(--text-weak); background: var(--well); }
+.outcome-failed .outcome-icon { color: var(--fail-deep); background: var(--fail-soft); }
+.outcome-max_steps .outcome-icon { color: var(--wait-deep); background: var(--wait-soft); }
+.outcome-body { flex: 1; min-width: 0; }
+.outcome h3 { margin: var(--sp-1) 0 var(--sp-2); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.outcome p { margin: 0 0 var(--sp-4); font-size: var(--fs-md); line-height: var(--lh-body); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-weak); }
+.sum-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); background: var(--card-soft); border: 1px solid var(--card-border); border-radius: var(--r-sm); }
+.sum-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); }
 .sum-head b { font-size: var(--fs-md); }
-.sum-head .st-chip { margin-left: auto; }
-.sum-goal { margin: 0; font-size: var(--fs-sm); color: var(--text-weak); line-height: var(--lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sum-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-sm); }
 .sum-label { flex-shrink: 0; color: var(--muted); font-size: var(--fs-xs); }
-.sum-leftover { margin: 0; font-size: var(--fs-sm); color: var(--warn-deep); line-height: var(--lh-body); }
 
-/* ---------- 任务监控（右侧，条件出现） ---------- */
-/* 320px 而不是二期能力清单的 340px：这栏只放目标/实时状态/产物，不需要工具目录那么宽。
-   它出现时对话区仍然拿得到绝大部分宽度，1280px 窗口下也不至于把消息挤成窄条。 */
-.monitor { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.monitor { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-7); padding: var(--sp-6); border-left: 1px solid var(--card-border); background: var(--bg); }
 .mon-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); }
 .mon-head b { font-size: var(--fs-sm); }
-.mon-head .st-chip { margin-left: auto; }
+.mon-close { display: grid; place-items: center; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-xs); color: var(--muted); background: transparent; cursor: pointer; }
+.mon-close:hover { color: var(--text); background: var(--well); }
+.mon-close:focus-visible { outline: 2px solid var(--focus-ring); }
 .mon-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: 2px; }
 .mon-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
 .mon-label { font-size: var(--fs-xs); font-weight: 700; color: var(--faint); }
@@ -1331,7 +1343,9 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .mon-goal { margin: 0; max-height: 6.6em; overflow: auto; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); white-space: pre-wrap; word-break: break-word; }
 .mon-now { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); color: var(--text-soft); }
 .mon-now code { padding: 1px var(--sp-1); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-code); }
-.mon-meter { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin: 0; font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
+.mon-meter { display: flex; flex-direction: column; gap: var(--sp-3); margin: var(--sp-2) 0 0; font-size: var(--fs-sm); color: var(--muted); }
+.mon-meter > div { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.mon-meter dd { margin: 0; color: var(--text); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 /* 面板里唯一一句「去哪儿配」的指路，常驻在底部（工具开关在设置页，见 capMoved） */
 .mon-hint { margin: auto 0 0; padding-top: var(--sp-2); font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); border-top: 1px solid var(--card-border); }
 
@@ -1349,20 +1363,30 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .link.xs.danger:hover { color: var(--danger); }
 .link:disabled { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
 
-/* 深色下 --primary 被压深（为了主按钮上的白字达标），文字类链接需要更亮的一档，
-   否则 12.5px 的链接只有 3.67:1（E2E 对比度审计）。同理用于空态的示例按钮文字。 */
-@media (prefers-color-scheme: dark) {
-  .link { color: var(--primary-light); }
-  .link:hover { color: var(--primary-bright); }
-  .ce-ex { color: var(--primary-light); }
-  .ce-ex:hover { color: var(--primary-bright); }
-}
-
-/* 窄窗口：监控面板移到对话列下方，并且不再有并排的两列。
-   同权重下靠源码顺序盖过上面的 .body.with-monitor。 */
-@media (max-width: 1100px) {
+.link { color: var(--primary-hover); }
+.view-banner { margin: var(--sp-3) var(--sp-6) 0; }
+.tl-head, .pl-head, .tl-row { flex-wrap: wrap; }
+.tl-name { flex-shrink: 1; overflow-wrap: anywhere; }
+@container agent (max-width: 960px) {
   .body.with-monitor { grid-template-columns: minmax(0, 1fr); }
-  .body { overflow: auto; }
-  .monitor { min-height: 0; }
+  .monitor { position: absolute; inset: 0 0 0 auto; width: min(300px, 100%); z-index: 2; box-shadow: var(--shadow-pop); }
+}
+@media (max-width: 600px) {
+  .bar { padding: var(--sp-2) var(--sp-3); gap: var(--sp-1); }
+  .thread-title { font-size: var(--fs-sm); }
+  .scroll { padding: var(--sp-6) var(--sp-3); scrollbar-gutter: auto; }
+  .composer { width: calc(100% - 20px); margin-bottom: var(--sp-3); }
+  .goal-hint { font-size: var(--fs-xs); }
+  .composer-mode { display: none; }
+  .ce-slogan { font-size: var(--fs-xl); }
+  .ce-ex { padding-left: 0; padding-right: 0; }
+  .noai { flex-wrap: wrap; }
+  .noai-actions { width: 100%; }
+  .view-banner { flex-wrap: wrap; margin: var(--sp-2); }
+  .vb-actions { width: 100%; justify-content: flex-end; }
+  .msg-av { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot, .tl-card { animation: none; }
 }
 </style>

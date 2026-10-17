@@ -7,7 +7,7 @@
 //
 // 复现场景取自用户实测截图：窄而高的窗口（889×1101）+ 12 条跨越四个时间组的真实感历史。
 import { expect, test } from "@playwright/test";
-import { seedData } from "../helpers.js";
+import { final, mockAI, runGoal, seedData, seedDesktopIpc, seedWithAI } from "../helpers.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -40,8 +40,8 @@ const RUNS = [
 const FIXED = [".new-chat", ".nav-group", ".search-input"];
 
 test("长历史下固定区不动：只有会话列表滚动", async ({ page }) => {
-  // 窄而高的窗口最容易暴露「固定区被滚走」，与用户实拍同尺寸
-  await page.setViewportSize({ width: 889, height: 1101 });
+  // 紧凑行在原来的 1101px 高度已无需滚动，缩短窗口以继续检验固定区与滚动区的分层。
+  await page.setViewportSize({ width: 889, height: 640 });
   // 浏览器形态下 toolboxStore 直接读 localStorage（键 = toolbox-<key>，值为**裸数组**，
   // 不走原生形态的 { v: … } 包装），所以这里手写 localStorage 而不是走 seedData 的 IndexedDB。
   await page.addInitScript(
@@ -110,4 +110,147 @@ test("搜索只过滤会话列表，不影响工作面与底部入口", async ({
   await page.locator(".search-input").fill("绝对不存在的关键词");
   await expect(page.locator(".list-empty")).toContainText("没有匹配的任务");
   await expect(page.locator(".task-item")).toHaveCount(0);
+});
+
+async function seedHistory(page, runs = RUNS) {
+  await page.addInitScript((records) => {
+    localStorage.setItem("toolbox-agentRuns", JSON.stringify(records));
+  }, runs);
+}
+
+test("新任务仅空闲空画布选中，执行及完成后选中当前任务，回看优先", async ({ page }) => {
+  await seedWithAI(page);
+  await seedHistory(page);
+  await mockAI(page, { responses: [final("侧栏选中回归完成")], delayMs: 1200 });
+  await page.goto("/");
+  const newTask = page.locator(".new-chat");
+  await expect(newTask).toHaveClass(/\bon\b/);
+  await runGoal(page, "验证当前任务选中");
+  const current = page.locator(".task-item", { hasText: "验证当前任务选中" });
+  await expect(current).toBeVisible();
+  await expect(newTask).not.toHaveClass(/\bon\b/);
+  await expect(current).toHaveAttribute("aria-current", "page");
+  await expect(current).toHaveClass(/\bon\b/);
+  await expect(page.locator(".answer-card")).toContainText("侧栏选中回归完成");
+  await expect(newTask).not.toHaveClass(/\bon\b/);
+  await expect(current).toHaveAttribute("aria-current", "page");
+
+  const history = page.locator(".task-item", { hasText: "向文件中写入一些数据" });
+  await history.click();
+  await expect(history).toHaveAttribute("aria-current", "page");
+  await expect(current).not.toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".nav [aria-current=page]")).toHaveCount(1);
+  await newTask.click();
+  await expect(newTask).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".task-item.on")).toHaveCount(0);
+});
+
+test("等待用户时新任务不选中，任务状态包含可访问名称", async ({ page }) => {
+  await seedWithAI(page);
+  await seedHistory(page, [
+    { ...RUNS[0], id: "done", input: "完成的任务", status: "completed" },
+    { ...RUNS[0], id: "failed", input: "失败的任务", status: "failed" },
+    { ...RUNS[0], id: "cancelled", input: "取消的任务", status: "cancelled" },
+  ]);
+  await mockAI(page, { responses: [{ type: "ask_user", question: "请提供路径" }] });
+  await page.goto("/");
+  await expect(page.locator(".task-item", { hasText: "完成的任务" })).toHaveAccessibleName(/完成的任务.*已完成/);
+  await expect(page.locator(".task-item", { hasText: "失败的任务" })).toHaveAccessibleName(/失败的任务.*失败/);
+  await expect(page.locator(".task-item", { hasText: "取消的任务" })).toHaveAccessibleName(/取消的任务.*取消/);
+  await runGoal(page, "等待补充路径");
+  await expect(page.locator(".confirm")).toBeVisible();
+  await expect(page.locator(".new-chat")).not.toHaveClass(/\bon\b/);
+  await expect(page.locator(".task-item", { hasText: "等待补充路径" })).toHaveAttribute("aria-current", "page");
+});
+
+test("工作台壳为244/64px侧栏与56px顶栏，底部入口横排且没有装饰光晕", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".new-chat")).toBeVisible();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await expect(page.locator(".topbar")).toHaveCSS("height", "56px");
+  await expect(page.locator(".pt-text h1")).toHaveCSS("font-size", "16px");
+  await expect(page.locator(".brand-logo")).toHaveCSS("width", "32px");
+  await expect(page.locator(".brand-logo")).toHaveCSS("box-shadow", "none");
+  await expect(page.locator(".pt-ico")).toHaveCSS("box-shadow", "none");
+  await expect(page.locator(".orbs")).toHaveCount(0);
+  const foot = page.locator(".side-foot button");
+  await expect(foot).toHaveCount(3);
+  const boxes = await foot.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().y));
+  expect(new Set(boxes).size).toBe(1);
+  await expect(page.locator(".side-foot").getByRole("button", { name: "设置", exact: true })).toBeVisible();
+  await expect(page.locator(".sponsor-btn")).toHaveAttribute("aria-label", /.+/);
+  await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".side-foot").getByRole("button", { name: "展开", exact: true })).toBeVisible();
+});
+
+test("760px自动图标轨道：搜索可展开聚焦且不修改桌面折叠偏好", async ({ page }) => {
+  await seedHistory(page);
+  await page.setViewportSize({ width: 760, height: 720 });
+  await page.goto("/");
+  await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".side-foot").getByRole("button", { name: "设置", exact: true })).toBeVisible();
+  await expect(page.locator(".sponsor-btn")).toBeVisible();
+  await page.locator(".nav").getByRole("button", { name: /搜索历史/ }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await expect(page.locator(".search-input")).toBeFocused();
+  await page.locator(".search-input").fill("csv");
+  await expect(page.locator(".task-item")).toHaveCount(1);
+  await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
+  await expect(page.locator(".search-input")).toHaveValue("csv");
+  await page.setViewportSize({ width: 1000, height: 720 });
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  expect(await page.evaluate(() => localStorage.getItem("tc.sidebar.collapsed"))).toBeNull();
+});
+
+test("760px临时展开的侧栏是浮层：主区始终占满64px轨道之外的宽度", async ({ page }) => {
+  await seedHistory(page);
+  await page.setViewportSize({ width: 760, height: 720 });
+  await page.goto("/");
+  await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
+
+  const mainWidth = () => page.locator(".main").evaluate((el) => el.getBoundingClientRect().width);
+  expect(await mainWidth(), "轨道态主区应占 760-64=696px").toBe(696);
+
+  // 临时展开：侧栏浮在主区上方，而不是让主区掉进 64px 网格列
+  await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  expect(await mainWidth(), "浮层展开不应挤压主区").toBe(696);
+
+  await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  expect(await mainWidth(), "收起后主区宽度不变").toBe(696);
+});
+
+test("760px点击主区收起临时展开的浮层，不改桌面折叠偏好", async ({ page }) => {
+  await seedHistory(page);
+  await page.setViewportSize({ width: 760, height: 720 });
+  await page.goto("/");
+  await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
+
+  await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await page.locator(".topbar").click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  expect(await page.evaluate(() => localStorage.getItem("tc.sidebar.collapsed"))).toBeNull();
+});
+
+test("窄窗顶栏保留搜索及桌面窗口控件，主区不横向溢出", async ({ page }) => {
+  await seedDesktopIpc(page);
+  await seedData(page, { settings: { telemetry: { prompted: true, enabled: false } } });
+  await page.setViewportSize({ width: 560, height: 720 });
+  await page.goto("/");
+  await expect(page.locator(".new-chat")).toBeVisible();
+  await expect(page.locator(".gs-trigger")).toBeVisible();
+  await expect(page.locator(".win-ctrls button")).toHaveCount(3);
+  for (const width of [560, 320]) {
+    await page.setViewportSize({ width, height: 720 });
+    for (const button of await page.locator(".win-ctrls button").all()) await expect(button).toBeInViewport({ ratio: 1 });
+    expect(await page.locator(".main").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await page.locator(".gs-trigger").click();
+  await expect(page.locator(".gs-inputbar input")).toBeFocused();
 });

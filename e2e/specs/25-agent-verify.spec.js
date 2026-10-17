@@ -30,6 +30,8 @@ test.describe("Agent 结果核验", () => {
     await mockTypeSafe(page, { answer: verifyAnswer(0.91) });
     await run(page);
 
+    // 核验通过是时间线里的一条通知：执行日志默认折叠，先展开再断言
+    await page.locator(".execution-head").click();
     const notes = page.locator(".tl-notice");
     await expect(notes.filter({ hasText: "结论已核验" }).first()).toBeVisible({ timeout: 15_000 });
     await expect(notes.filter({ hasText: "结论已核验" }).first()).toContainText("0.91");
@@ -53,7 +55,8 @@ test.describe("Agent 结果核验", () => {
     });
     await run(page);
 
-    const notes = page.locator(".tl-notice");
+    // 存疑提示独立成卡放在日志外：人工复核不该藏在默认折叠的执行记录里
+    const notes = page.locator(".review-notice");
     await expect(notes.filter({ hasText: "需人工复核" }).first()).toBeVisible({ timeout: 15_000 });
     // 点名是哪一项：只说「分低」等于没说
     await expect(notes.filter({ hasText: "需人工复核" }).first()).toContainText("答案里的具体值是否有出处");

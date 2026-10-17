@@ -12,8 +12,9 @@ test("首屏渲染 Agent 工作台，不出现白屏或未解析词条", async (
 
   // 首屏是 Agent 工作台（App.vue 的 MODULES 第一项）
   await expect(page.locator(".agent")).toBeVisible();
-  // 空态：任务导向的标语 + 输入框钉在对话列底部（.composer 存在即骨架正确）
-  await expect(page.getByText("说一件事，剩下的交给我")).toBeVisible();
+  // 空态：任务导向的标语（文案可迭代，断言挂在结构上）+ 输入框钉在对话列底部（.composer 存在即骨架正确）
+  await expect(page.locator(".ce-slogan")).toBeVisible();
+  await expect(page.locator(".ce-slogan")).not.toHaveText("");
   await expect(page.locator(".composer")).toBeVisible();
   // 目标输入框与主按钮可用
   await expect(page.getByPlaceholder(/描述目标/)).toBeVisible();

@@ -22,6 +22,8 @@ test("table.parse 与 schema.validate 真被执行，结果进下一轮 prompt",
   await runGoal(page, "看这段 CSV 有没有重复行，并按 Schema 校验一下这条数据");
 
   // 1) 两个工具都出现在时间线上，且执行状态是成功（b-ok 而不是 b-error）
+  //    时间线收在默认折叠的执行日志里：先展开才谈得上可见
+  await page.locator(".execution-head").click();
   for (const name of ["table.parse", "schema.validate"]) {
     const card = page.locator(".tl-card").filter({ has: page.locator(`.tl-name:text-is("${name}")`) });
     await expect(card).toBeVisible({ timeout: 20_000 });

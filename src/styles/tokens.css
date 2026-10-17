@@ -195,7 +195,7 @@
 
 /* 方式 a：跟随系统 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0d1117;
     --bg-grad: linear-gradient(135deg, #0d1117 0%, #11151d 50%, #0d1219 100%);
     --card: #161b22;
