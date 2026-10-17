@@ -79,7 +79,7 @@ test.describe("工具箱（知识库）", () => {
     await addEntry(page, { title: "Nginx 排障", tags: "运维, 网络", content: "502" });
     await addEntry(page, { title: "JWT 鉴权", tags: "后端", content: "access token" });
 
-    await page.locator('[data-role="tags"] [data-tag="运维"]').click();
+    await page.locator('[data-role="tag-cloud"] [data-tag="运维"]').click();
     await expect(page.locator('[data-role="entry"]')).toHaveCount(1);
     await expect(page.locator('[data-role="list"]')).not.toContainText("JWT 鉴权");
 
@@ -87,7 +87,7 @@ test.describe("工具箱（知识库）", () => {
     await page.locator('[data-role="search"]').fill("token");
     await expect(page.locator('[data-role="entry"]')).toHaveCount(0);
 
-    await page.locator('[data-role="tags"] [data-tag=""]').click();
+    await page.locator('[data-role="tag-cloud"] [data-tag=""]').click();
     await expect(page.locator('[data-role="entry"]')).toHaveCount(1);
   });
 

@@ -36,8 +36,9 @@ export function collectTags(entries) {
       counts.set(tag, (counts.get(tag) || 0) + 1);
     }
   }
+  // 并列次序用码点比较：localeCompare 跟随宿主 locale，同一份数据在不同机器会给出不同顺序
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([tag]) => tag);
 }
 

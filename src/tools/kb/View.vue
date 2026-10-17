@@ -177,7 +177,8 @@ async function storeImported(title, name, text) {
     <aside class="kb-side">
       <input v-model="keyword" class="kb-search" data-role="search" :placeholder="t('toolbox.kb.searchPh')" />
 
-      <div class="kb-chips" data-role="tags">
+      <!-- data-role 不能与编辑表单的 tags 输入框重名：E2E 按这个属性定位，重名会触发 strict mode 歧义 -->
+      <div class="kb-chips" data-role="tag-cloud">
         <button class="kb-chip" :class="{ on: !activeTag }" data-tag="" @click="activeTag = ''">{{ t("toolbox.kb.allTags") }}</button>
         <button
           v-for="tag in tags"
