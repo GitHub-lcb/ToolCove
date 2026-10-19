@@ -234,10 +234,13 @@ function nextContent(queue) {
  * @param {string[]} [options.readFails] 列出的路径读取时报「文件不存在」
  * @param {any[]} [options.responses] AI 动作队列（桌面形态下 AI 走 IPC，队列必须建在这里）
  */
-export async function seedDesktopIpc(page, files = {}, { readFails = [], responses = [], httpRoutes = {} } = {}) {
+export async function seedDesktopIpc(page, files = {}, { readFails = [], responses = [], httpRoutes = {}, dialogs = [] } = {}) {
   const store = new Map(Object.entries(files));
   const ops = [];
   const callbacks = new Map();
+  // 系统文件选择器的预置队列：每调一次 plugin:dialog|open 取一个路径，取完即「用户取消」。
+  // 附件链路要测「选完文件后路径真的进了提示词」，没有这个替身就只能测到 chip 渲染。
+  const pendingDialogs = [...dialogs];
   let nextId = 1;
 
   // ⚠️ 队列必须在 exposeFunction **之前**准备好：Playwright 的回调是首次调用时绑定的，
@@ -280,6 +283,10 @@ export async function seedDesktopIpc(page, files = {}, { readFails = [], respons
     if (name.startsWith("plugin:event|unlisten")) {
       callbacks.delete(Number(args?.eventId ?? args?.id));
       return null;
+    }
+    // 系统文件选择器：从预置队列取路径，取完返回 null 表示用户取消（与 Tauri 一致）。
+    if (name === "plugin:dialog|open") {
+      return pendingDialogs.length ? pendingDialogs.shift() : null;
     }
     const path = String(args?.path ?? args?.name ?? "");
     if (name === "file_tool_read_text") {

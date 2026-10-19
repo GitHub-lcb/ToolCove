@@ -137,16 +137,16 @@ test("切模块与开工具的交互延迟（人眼可感阈值 200ms）", async
 
   // 导航文案：「新任务」是回 Agent 主区的入口（导航重构后 agent 不再是侧边栏的一个模块按钮，
   // 而是默认主区 + 顶部这行「新任务」）。这里量的是「切回主区」的交互成本，语义与原来一致。
-  const NAV_LABELS = ["研发", "记录", "工具箱", "新任务"];
+  const NAV_LABELS = ["研发", "记录", "本地工具", "新任务"];
   const samples = [];
   for (const label of NAV_LABELS) samples.push(await measureNav(label));
 
   // 打开一个工具（工具箱里点第一张卡）
   const toolDelay = await page.evaluate(async () => {
-    const openToolbox = [...document.querySelectorAll(".nav-item")].find((el) => el.textContent.includes("工具箱"));
+    const openToolbox = [...document.querySelectorAll(".nav-item")].find((el) => el.textContent.includes("本地工具"));
     openToolbox?.click();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const card = document.querySelector(".tool-card, .tile, .tb-card");
+    const card = document.querySelector(".lt-row, .tool-card, .tile, .tb-card");
     if (!card) return -1;
     const started = performance.now();
     card.click();

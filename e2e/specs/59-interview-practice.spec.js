@@ -7,11 +7,11 @@ import { expect, test } from "@playwright/test";
 
 /** 打开面试刷题工具。搜「刷题」而不是「面试」——后者会同时命中别的东西。 */
 async function openTool(page) {
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  // 用 .toolbox-search input 而不是 getByRole("searchbox")：工具卡片里也有 type="search" 的输入框，
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  // 用 .lt-search input 而不是 getByRole("searchbox")：工具卡片里也有 type="search" 的输入框，
   // 按角色取会命中多个（其余工具用例同样按这个类名定位）。
-  await page.locator(".toolbox-search input").fill("刷题");
-  const card = page.locator(".tool-item", { hasText: "面试刷题" });
+  await page.locator(".lt-search input").fill("刷题");
+  const card = page.locator(".lt-tool", { hasText: "面试刷题" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   await page.locator('[data-role="question-list"]').waitFor({ state: "visible", timeout: 10_000 });

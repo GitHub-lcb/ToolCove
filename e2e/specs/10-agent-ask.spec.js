@@ -57,6 +57,37 @@ test("提问卡是输入框而不是允许/拒绝，回答会作为文本回灌�
   await expect(page.locator(".timeline")).toContainText(FILE);
 });
 
+test("提问带选项：可多选，并与补充文本一起作为回答发送", async ({ page }) => {
+  await seedWithAI(page);
+  await mockAI(page, {
+    responses: [
+      { type: "ask_user", question: "你更关注哪些优化方向？", options: ["性能", "可维护性", "构建体积"], multiple: true },
+      final("收到优化方向"),
+    ],
+  });
+  await page.goto("/");
+  await runGoal(page, "如何优化本项目？");
+
+  const card = page.locator(".confirm");
+  const perf = card.getByRole("button", { name: "性能", exact: true });
+  const size = card.getByRole("button", { name: "构建体积", exact: true });
+  await expect(perf).toBeVisible();
+  // 只点选项、不补充时也要能发送；什么都没选时按钮禁用
+  await expect(card.getByRole("button", { name: "发送回答" })).toBeDisabled();
+
+  await perf.click();
+  await size.click();
+  await expect(perf).toHaveAttribute("aria-pressed", "true");
+  await expect(size).toHaveAttribute("aria-pressed", "true");
+  await card.locator("textarea.cf-answer").fill("根目录在 E:\\develop-lcb\\workspace-tools\\ToolCove");
+  await card.getByRole("button", { name: "发送回答" }).click();
+
+  await expect(page.locator(".answer-card")).toContainText("收到优化方向", { timeout: 20_000 });
+  // 时间线记录的是「选项 + 补充」组合后的回答
+  await expect(page.locator(".timeline")).toContainText("性能、构建体积");
+  await expect(page.locator(".timeline")).toContainText("根目录在");
+});
+
 test("跳过提问 = 放弃这次目标（不会偷偷继续）", async ({ page }) => {
   await seedWithAI(page);
   await mockAI(page, { responses: [ASK, final("不应该走到这里")] });

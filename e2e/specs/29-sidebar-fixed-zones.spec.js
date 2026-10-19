@@ -59,7 +59,8 @@ test("长历史下固定区不动：只有会话列表滚动", async ({ page }) 
 
   await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
   // 四个时间组都渲染出来了（分组不是只对少数几条生效）
-  await expect(page.locator(".list-group")).toHaveText(["今天", "昨天", "最近 7 天", "更早"]);
+  // 「历史」是分区标题（与「工作面」同级），时间分组仍要四个都在
+  await expect(page.locator(".list-group")).toHaveText(["历史", "今天", "昨天", "最近 7 天", "更早"]);
 
   const before = {};
   for (const sel of FIXED) {
@@ -100,8 +101,8 @@ test("搜索只过滤会话列表，不影响工作面与底部入口", async ({
   await page.locator(".search-input").fill("csv");
   await expect(page.locator(".task-item")).toHaveCount(1);
   await expect(page.locator(".task-item")).toContainText("order.json");
-  // 搜索态下不显示时间分组（少量命中被拆到多个标题下反而更难找）
-  await expect(page.locator(".list-group")).toHaveCount(0);
+  // 搜索态下不显示时间分组（少量命中被拆到多个标题下反而更难找）；只剩「历史」这一个静态分区标题
+  await expect(page.locator(".list-group")).toHaveText(["历史"]);
   // 工作面与底部入口照旧在
   await expect(page.locator(".nav-item", { hasText: "研发" })).toBeVisible();
   await expect(page.locator(".side-foot")).toBeVisible();
@@ -163,13 +164,13 @@ test("等待用户时新任务不选中，任务状态包含可访问名称", as
   await expect(page.locator(".task-item", { hasText: "等待补充路径" })).toHaveAttribute("aria-current", "page");
 });
 
-test("工作台壳为244/64px侧栏与56px顶栏，底部入口横排且没有装饰光晕", async ({ page }) => {
+test("工作台壳为280/56px侧栏与48px顶栏（三栏 AppFrame），底部入口横排且没有装饰光晕", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".new-chat")).toBeVisible();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
-  await expect(page.locator(".topbar")).toHaveCSS("height", "56px");
-  await expect(page.locator(".pt-text h1")).toHaveCSS("font-size", "16px");
-  await expect(page.locator(".brand-logo")).toHaveCSS("width", "32px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
+  await expect(page.locator(".topbar")).toHaveCSS("height", "48px");
+  await expect(page.locator(".page-title h1")).toHaveCSS("font-size", "13.5px");
+  await expect(page.locator(".brand-logo")).toHaveCSS("width", "27px");
   await expect(page.locator(".brand-logo")).toHaveCSS("box-shadow", "none");
   await expect(page.locator(".pt-ico")).toHaveCSS("box-shadow", "none");
   await expect(page.locator(".orbs")).toHaveCount(0);
@@ -180,7 +181,7 @@ test("工作台壳为244/64px侧栏与56px顶栏，底部入口横排且没有�
   await expect(page.locator(".side-foot").getByRole("button", { name: "设置", exact: true })).toBeVisible();
   await expect(page.locator(".sponsor-btn")).toHaveAttribute("aria-label", /.+/);
   await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "56px");
   await expect(page.locator(".side-foot").getByRole("button", { name: "展开", exact: true })).toBeVisible();
 });
 
@@ -189,40 +190,40 @@ test("760px自动图标轨道：搜索可展开聚焦且不修改桌面折叠偏
   await page.setViewportSize({ width: 760, height: 720 });
   await page.goto("/");
   await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "56px");
   await expect(page.locator(".side-foot").getByRole("button", { name: "设置", exact: true })).toBeVisible();
   await expect(page.locator(".sponsor-btn")).toBeVisible();
   await page.locator(".nav").getByRole("button", { name: /搜索历史/ }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
   await expect(page.locator(".search-input")).toBeFocused();
   await page.locator(".search-input").fill("csv");
   await expect(page.locator(".task-item")).toHaveCount(1);
   await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "56px");
   await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
   await expect(page.locator(".search-input")).toHaveValue("csv");
   await page.setViewportSize({ width: 1000, height: 720 });
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
   expect(await page.evaluate(() => localStorage.getItem("tc.sidebar.collapsed"))).toBeNull();
 });
 
-test("760px临时展开的侧栏是浮层：主区始终占满64px轨道之外的宽度", async ({ page }) => {
+test("760px临时展开的侧栏是浮层：主区始终占满56px轨道之外的宽度", async ({ page }) => {
   await seedHistory(page);
   await page.setViewportSize({ width: 760, height: 720 });
   await page.goto("/");
   await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
 
   const mainWidth = () => page.locator(".main").evaluate((el) => el.getBoundingClientRect().width);
-  expect(await mainWidth(), "轨道态主区应占 760-64=696px").toBe(696);
+  expect(await mainWidth(), "轨道态主区应占 760-56=704px").toBe(704);
 
-  // 临时展开：侧栏浮在主区上方，而不是让主区掉进 64px 网格列
+  // 临时展开：侧栏浮在主区上方，而不是让主区掉进 56px 网格列
   await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
-  expect(await mainWidth(), "浮层展开不应挤压主区").toBe(696);
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
+  expect(await mainWidth(), "浮层展开不应挤压主区").toBe(704);
 
   await page.locator(".side-foot").getByRole("button", { name: "收起", exact: true }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
-  expect(await mainWidth(), "收起后主区宽度不变").toBe(696);
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "56px");
+  expect(await mainWidth(), "收起后主区宽度不变").toBe(704);
 });
 
 test("760px点击主区收起临时展开的浮层，不改桌面折叠偏好", async ({ page }) => {
@@ -232,9 +233,9 @@ test("760px点击主区收起临时展开的浮层，不改桌面折叠偏好", 
   await expect(page.locator(".task-item")).toHaveCount(RUNS.length);
 
   await page.locator(".side-foot").getByRole("button", { name: "展开", exact: true }).click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "244px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
   await page.locator(".topbar").click();
-  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "56px");
   expect(await page.evaluate(() => localStorage.getItem("tc.sidebar.collapsed"))).toBeNull();
 });
 

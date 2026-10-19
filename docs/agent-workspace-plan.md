@@ -231,3 +231,71 @@ Agent 汇总本周迭代/需求/发布数据（已有 BUSINESS_ACTIONS）
 - **一期**：全量测试绿（含新增 scope/三栏/预填/Summary 断言）；个人版与企业版（常量开关模拟）画廊内容按 scope 正确分化。
 - **二期**：企业服务器连通后可演示「周五自动周报」全链路；导航迁移测试绿；深链兼容。
 - **三期**：管理面可配权限且权限在 Agent 目录投影中生效；审计留痕可查询。
+
+
+---
+
+## 布局修订（2026-10-18）：三栏 AppFrame + 万物皆本地工具
+
+对标 DSH 的 `ui-layout` / `ui-sidebar`（见 `apps/dsh/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-client-ui-layout`）重做了外壳。
+修订前的问题是**三层 chrome**：应用顶栏 56px + 视图内 thread bar 52px + 页内标题，首屏被吃掉近 110px，
+而「任务监控」是主区内部切走 280px，切到其它模块就一起消失。
+
+### 骨架
+
+```
+┌────────────┬───────────────────────────────┬──────────────┐
+│ 侧栏 280   │ 顶栏 48（标题 · 状态 · 动作） │ 右栏 340     │
+│ 新任务 ⌃N  │ ───────────────────────────── │ （条件出现） │
+│ 工作面     │  对话列（限宽 820 / 居中）    │ 运行监控      │
+│  研发…     │  ⋯                            │ 或 本地工具   │
+│ 历史（滚动）│  composer（钉底）             │              │
+│ 设置       │                               │              │
+└────────────┴───────────────────────────────┴──────────────┘
+```
+
+| 项 | 改前 | 改后 | 硬约束 |
+|---|---|---|---|
+| 侧栏 | 244（收起 64） | **280**（收起 **56** 图标轨道，窄屏 760 浮层） | 固定入口不滚动这条不变（`29-sidebar-fixed-zones`） |
+| 顶栏 | 56，视图再叠一条 52 的 bar | **单条 48**，标题/状态由 AgentView 经 `shellFrame.thread` 投递 | 外壳**不许** import `agent/session.js`（会把引擎拖进 entry chunk） |
+| 右栏 | AgentView 内部 grid 列 280 | 外壳 `<aside class="dock">` **340**，`Teleport to="#shell-dock"` 投递 | 外壳只提供列与开关；`v-show` 而非 `v-if`，否则 Teleport 目标不存在 |
+| 右栏开关 | 画布内「任务监控」按钮 | 顶栏图标（`aria-pressed`），关闭按钮仍在面板头 | 视图卸载时 `dockOpen=false`，否则切模块后留一列空面板 |
+
+投递协议（`src/app/App.vue` provide `shellFrame`）：
+
+```js
+{ dockOpen: Ref<boolean>, thread: { title, status }, setDock(v), toggleDock() }
+```
+
+AgentView 侧：`watch([threadGoal, statusMeta, busy, viewRun])` 写 `thread`；`onBeforeUnmount` 清空并关右栏。
+单独渲染本视图（单测 / 手机端）时 `inject` 拿到 null，退化为本地 `monitorVisible`，行为与旧版一致。
+
+### 万物皆本地工具
+
+「工具箱」画廊（启动台大数字 + 常用工具卡 + 可折叠分组）换成**一份目录**：
+
+- 导航项 `工具箱` → **本地工具**（`nav.toolbox` 的值改了，键保持不变，深链不破）。
+- 目录行 = 图标 / 名称 / 一句能力 / 「Agent 可调」徽标 / 收藏星 / 打开箭头，42px 一行。
+- 顶部三个筛选：**全部 / Agent 可调 / 最近**；「Agent 可调」不是第二份清单，而是同一批工具里
+  被 `AGENT_TOOL_CATALOG` 的 `toolKey` 引用到的那些（当前数据 13 / 18，与目录头部三个数字同源）。
+- 目录末尾列 **Agent 动作**（41 条，等宽名字 + 说明 + 风险 chip），证明「Agent 的动作空间」就是这些工具，
+  不是另一套黑箱；搜索词同时过滤动作。
+- 右栏空闲态展示 6 个可直开的本地工具（与目录同源 `visibleToolboxTools()`），
+  让「这轮它有哪些手」在对话屏就能看到。
+
+淘汰的代码：`buildToolboxQuickList` / `normalizeExpandedGroups` / `toggleExpandedGroup` 不再被本视图引用
+（模块本身保留，手机端与单测仍在用），`expanded-groups` 持久化键停写。
+
+### 测试影响
+
+| 守卫 | 改动 |
+|---|---|
+| `src/views/AgentView.render.test.js` | 新增 `renderWithShell`，把「标题/状态投递」「右栏默认关闭」改成断言 `shellFrame` 的值；空态示例改成胶囊标题（`agent.exampleTitleN`） |
+| `src/i18n/preMigrationKeys.json` | 新增 11 条词条后重生成（5317 键）；`i18nFragments` 的「不许多键」随之刷新 |
+| `e2e/specs/29-sidebar-fixed-zones.spec.js` | 280/56 侧栏、48 顶栏、13.5px 标题、27px logo |
+| `e2e/specs/{01,20,24,50,52,54,56,58,59,63,66,67,71}` | 导航文案 工具箱 → 本地工具；目录行选择器 `.tool-item` → `.lt-tool`，搜索框 `.toolbox-search` → `.lt-search` |
+| `e2e/specs/28-agent-monitor-panel.spec.js` | 开关从画布内按钮改成顶栏 `.dock-toggle`（name 在「显示/收起任务监控」间切换）；窄窗（≤620px）开关收起，只验不溢出 |
+| `e2e/helpers.js` | 无需改：`expectRunFinished` 仍读 `.st-chip`——顶栏状态胶囊在运行结束后**保留终态**（`runStatus` 比 `busy` 活得久），否则所有等待运行结束的用例都会超时 |
+
+**未做**（明确的取舍）：右栏宽度不可拖拽、没有 `shell.bottom` 状态行、没有 `Plugins` 之类的全局面板槽位——
+这三件都属于「等真有第二个占用方再加」，现在只有一个面板，先把列与开关做对。

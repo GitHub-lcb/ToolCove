@@ -18,13 +18,13 @@
 //   2. 历史加搜索与按时间分组（进行中 / 今天 / 昨天 / 最近 7 天 / 更早）。二期是一条
 //      无差别的倒序长列表，20 条原始目标平铺，找不回任何一条。
 //   3. 行内显示**主题**而不是原始目标（conversationTitle 压空白 + 断句处截断）。
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import RunProgress from "../views/RunProgress.vue";
 import { relativeTime } from "../shared/dates.js";
-import { buildTaskItems, filterTaskItems, groupTaskItems } from "./taskListItems.js";
-import { agentSession } from "../agent/session.js";
+import { buildArchivedItems, buildTaskItems, filterTaskItems, groupTaskItems } from "./taskListItems.js";
+import { agentSession, archiveRun, pinRun, renameRun } from "../agent/session.js";
 
 const props = defineProps({
   activeModule: { type: String, default: "agent" },
@@ -63,12 +63,73 @@ const groups = computed(() => groupTaskItems(items.value));
 const sections = computed(() => (searching.value ? [{ key: "", items: filtered.value }] : groups.value));
 
 const GROUP_LABEL = {
+  pinned: "nav.groupPinned",
   running: "nav.groupRunning",
   today: "nav.groupToday",
   yesterday: "nav.groupYesterday",
   week: "nav.groupWeek",
   older: "nav.groupOlder",
 };
+
+// ------- 会话基础操作（重命名 / 置顶 / 归档） -------
+// 菜单位于行内展开而不是浮层：历史区自己滚动，绝对定位弹层会被 overflow 裁掉。
+const menuId = ref("");
+const renamingId = ref("");
+const renameDraft = ref("");
+const renameInput = ref(null);
+const archivedItems = computed(() => buildArchivedItems(agentSession.runs));
+const archivedOpen = ref(false);
+
+function toggleMenu(id) {
+  menuId.value = menuId.value === id ? "" : id;
+}
+function closeMenu() {
+  menuId.value = "";
+}
+function togglePinned(item) {
+  pinRun(item.id, !item.pinned);
+  closeMenu();
+}
+function archiveItem(item) {
+  archiveRun(item.id, true);
+  closeMenu();
+}
+function unarchiveItem(item) {
+  archiveRun(item.id, false);
+  closeMenu();
+}
+function startRename(item) {
+  closeMenu();
+  renamingId.value = item.id;
+  renameDraft.value = item.title || "";
+  nextTick(() => {
+    const el = Array.isArray(renameInput.value) ? renameInput.value[0] : renameInput.value;
+    el?.focus();
+    el?.select?.();
+  });
+}
+function commitRename() {
+  if (!renamingId.value) return;
+  renameRun(renamingId.value, renameDraft.value);
+  renamingId.value = "";
+  renameDraft.value = "";
+}
+function cancelRename() {
+  renamingId.value = "";
+  renameDraft.value = "";
+}
+function onRenameKey(event) {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    commitRename();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    cancelRename();
+  }
+}
+// 点空白处收起菜单；打开菜单 / 点菜单内部都 stop，不会误关
+onMounted(() => document.addEventListener("click", closeMenu));
+onBeforeUnmount(() => document.removeEventListener("click", closeMenu));
 
 // 图形与可访问名称共同表达状态，不能只依赖红/绿颜色辨认结果。
 const RUN_STATUS = {
@@ -81,7 +142,7 @@ const RUN_STATUS = {
   max_steps: { cls: "mute", icon: "alert", key: "agent.statusMaxSteps" },
 };
 const runMeta = (item) => RUN_STATUS[item.status] || { cls: "mute", icon: "circle", key: "agent.statusIdle" };
-const taskLabel = (item) => `${item.input || item.title} · ${t(runMeta(item).key)}`;
+const taskLabel = (item) => `${item.input || item.title} · ${t(runMeta(item).key)}${item.model ? ` · ${item.model}` : ""}`;
 
 // ------- 后台任务监控条 -------
 // agent 正在跑且用户不在 agent 主区时出现；点击整条回 agent（停止按钮不放这里——
@@ -114,19 +175,24 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
     :aria-current="newTaskSelected ? 'page' : undefined"
     @click="requestNewTask"
   >
-    <span class="nav-ico"><Icon name="plus" :size="17" /></span>
+    <span class="nav-ico"><Icon name="plus" :size="15" /></span>
     <span class="nav-label">{{ t("nav.newTask") }}</span>
+    <kbd v-if="!collapsed" class="nt-kbd">{{ t("nav.newTaskHint") }}</kbd>
   </button>
 
   <!-- 「工作面」插槽：模块导航由 App.vue 渲染（它独占 navConfig / hiddenModules 这份真相源），
        但要夹在「新任务」与会话列表之间——见下方 .history 的注释。 -->
   <slot name="workspace" />
 
+  <!-- 历史：与「工作面」同级的分区标题。DSH 的侧栏把会话区明确标成一段，
+       否则「新任务」「工作面」「历史」会连成一条读不出层次的按钮带。 -->
+  <p v-if="!collapsed && (items.length || archivedItems.length)" class="list-group list-head">{{ t("nav.history") }}</p>
+
   <!-- 图标轨道仍保留搜索入口，展开后直接聚焦输入框。 -->
-  <button v-if="collapsed && items.length" class="nav-item hide-text" :title="t('nav.searchHistoryPh')" :aria-label="t('nav.searchHistoryPh')" @click="openHistorySearch">
+  <button v-if="collapsed && (items.length || archivedItems.length)" class="nav-item hide-text" :title="t('nav.searchHistoryPh')" :aria-label="t('nav.searchHistoryPh')" @click="openHistorySearch">
     <span class="nav-ico"><Icon name="search" :size="17" /></span>
   </button>
-  <div v-if="!collapsed && items.length" class="search">
+  <div v-if="!collapsed && (items.length || archivedItems.length)" class="search">
     <Icon name="search" :size="13" class="search-ico" />
     <input
       ref="searchInput"
@@ -149,29 +215,121 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
        负 margin + 同值 padding：把滚动区撑到 .nav 的 padding 边上，
        滚动条才贴着侧边栏边缘，而行内容仍与上面的按钮左对齐。 -->
   <div class="history">
-    <p v-if="!items.length && !collapsed" class="list-empty">{{ t("agent.historyEmpty") }}</p>
+    <p v-if="!items.length && !archivedItems.length && !collapsed" class="list-empty">{{ t("agent.historyEmpty") }}</p>
     <p v-else-if="searching && !filtered.length && !collapsed" class="list-empty">{{ t("nav.searchEmpty") }}</p>
 
     <!-- 搜索态只有一个匿名分段：key 用固定字面量而不是 query，否则每敲一个字都重建整个列表 DOM -->
     <template v-for="section in sections" :key="section.key || 'search'">
       <p v-if="section.key && !collapsed" class="list-group">{{ t(GROUP_LABEL[section.key]) }}</p>
-      <button
+      <div
         v-for="item in section.items"
         :key="item.id"
-        class="task-item"
+        class="task-row"
         :class="{ on: !!selectedRunId && selectedRunId === item.id, 'hide-text': collapsed }"
-        :title="taskLabel(item)"
-        :aria-label="taskLabel(item)"
-        :aria-current="selectedRunId && selectedRunId === item.id ? 'page' : undefined"
-        @click="emit('view', item.id)"
+        data-role="session-row"
       >
-        <span class="task-dot" :class="'dot-' + runMeta(item).cls" aria-hidden="true"><Icon :name="runMeta(item).icon" :size="13" /></span>
-        <span class="task-main">
-          <span class="task-text">{{ item.title }}</span>
-          <span class="task-time">{{ relativeTime(item.updatedAt) }}</span>
-        </span>
-      </button>
+        <input
+          v-if="renamingId === item.id"
+          ref="renameInput"
+          v-model="renameDraft"
+          class="task-rename"
+          :aria-label="t('nav.rename')"
+          :placeholder="t('nav.renamePh')"
+          @keydown="onRenameKey"
+          @blur="commitRename"
+        />
+        <template v-else>
+          <button
+            class="task-item"
+            :title="taskLabel(item)"
+            :aria-label="taskLabel(item)"
+            :aria-current="selectedRunId && selectedRunId === item.id ? 'page' : undefined"
+            @click="emit('view', item.id)"
+          >
+            <span class="task-dot" :class="'dot-' + runMeta(item).cls" aria-hidden="true"><Icon :name="runMeta(item).icon" :size="13" /></span>
+            <span class="task-main">
+              <span class="task-text">{{ item.title }}</span>
+              <span class="task-time">{{ relativeTime(item.updatedAt) }}</span>
+            </span>
+          </button>
+          <button
+            v-if="!collapsed"
+            class="task-more"
+            type="button"
+            :title="t('nav.moreActions')"
+            :aria-label="t('nav.moreActions')"
+            :aria-expanded="menuId === item.id"
+            @click.stop="toggleMenu(item.id)"
+          >
+            <Icon name="more" :size="14" />
+          </button>
+          <div v-if="menuId === item.id && !collapsed" class="task-menu" @click.stop>
+            <button type="button" @click="togglePinned(item)">
+              <Icon name="pin" :size="12" />{{ item.pinned ? t("nav.unpin") : t("nav.pin") }}
+            </button>
+            <button type="button" @click="startRename(item)"><Icon name="edit" :size="12" />{{ t("nav.rename") }}</button>
+            <button type="button" @click="archiveItem(item)"><Icon name="archive" :size="12" />{{ t("nav.archive") }}</button>
+          </div>
+        </template>
+      </div>
     </template>
+
+    <!-- 已归档：默认折叠，避免归档等于删除；这里仍可重命名 / 取消归档 -->
+    <div v-if="!collapsed && !searching && archivedItems.length" class="archived">
+      <button class="list-group archived-head" type="button" :aria-expanded="archivedOpen" @click="archivedOpen = !archivedOpen">
+        <Icon name="chevron-right" :size="12" class="archived-arrow" :class="{ open: archivedOpen }" />
+        <span>{{ t("nav.archived") }}</span>
+        <span class="archived-n">{{ archivedItems.length }}</span>
+      </button>
+      <template v-if="archivedOpen">
+        <div
+          v-for="item in archivedItems"
+          :key="item.id"
+          class="task-row archived-row"
+          data-role="archived-row"
+          :class="{ on: !!selectedRunId && selectedRunId === item.id }"
+        >
+          <input
+            v-if="renamingId === item.id"
+            ref="renameInput"
+            v-model="renameDraft"
+            class="task-rename"
+            :aria-label="t('nav.rename')"
+            :placeholder="t('nav.renamePh')"
+            @keydown="onRenameKey"
+            @blur="commitRename"
+          />
+          <template v-else>
+            <button
+              class="task-item"
+              :title="taskLabel(item)"
+              :aria-label="taskLabel(item)"
+              @click="emit('view', item.id)"
+            >
+              <span class="task-dot" :class="'dot-' + runMeta(item).cls" aria-hidden="true"><Icon :name="runMeta(item).icon" :size="13" /></span>
+              <span class="task-main">
+                <span class="task-text">{{ item.title }}</span>
+                <span class="task-time">{{ relativeTime(item.updatedAt) }}</span>
+              </span>
+            </button>
+            <button
+              class="task-more"
+              type="button"
+              :title="t('nav.moreActions')"
+              :aria-label="t('nav.moreActions')"
+              :aria-expanded="menuId === item.id"
+              @click.stop="toggleMenu(item.id)"
+            >
+              <Icon name="more" :size="14" />
+            </button>
+            <div v-if="menuId === item.id" class="task-menu" @click.stop>
+              <button type="button" @click="startRename(item)"><Icon name="edit" :size="12" />{{ t("nav.rename") }}</button>
+              <button type="button" @click="unarchiveItem(item)"><Icon name="archive" :size="12" />{{ t("nav.unarchive") }}</button>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- 后台任务监控条：position:fixed，与在 DOM 里的位置无关，放这里随面板同生命周期 -->
@@ -228,6 +386,35 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   border-radius: 0 4px 4px 0;
   background: var(--primary);
 }
+
+/* 新任务：侧栏里唯一一个「抬起」的控件。导航行是扁平的，它是动作——
+   与 DSH 的 New Session 同一层级：一眼看得到，但不和主区的「运行」抢注意力。 */
+.new-chat {
+  height: 36px;
+  margin: 2px 0 2px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.05);
+}
+.new-chat:hover { background: var(--card); border-color: var(--border-strong); color: var(--primary-hover); }
+.new-chat.on { background: var(--card); border-color: var(--border-blue); }
+.new-chat.on::before { display: none; }
+.new-chat .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nt-kbd {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--faint);
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 0 5px;
+}
+.new-chat:hover .nt-kbd { color: var(--muted); border-color: var(--border-strong); }
 
 /* 搜索框：与导航行同宽，视觉上更弱（它是筛选器，不是入口） */
 .search { position: relative; display: flex; align-items: center; flex-shrink: 0; }
@@ -289,9 +476,11 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   font-weight: 600;
   color: var(--faint);
 }
+.list-head { margin-top: var(--sp-4); text-transform: uppercase; letter-spacing: 0.6px; }
 .list-empty { flex-shrink: 0; margin: 0; padding: 2px var(--sp-3) 6px; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
 
 /* 会话行：状态图形 + 主题 + 相对时间 */
+.task-row { position: relative; flex-shrink: 0; }
 .task-item {
   display: flex;
   align-items: flex-start;
@@ -299,7 +488,7 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   width: 100%;
   min-height: 34px;
   flex-shrink: 0;
-  padding: 5px 8px;
+  padding: 5px 26px 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: none;
@@ -309,7 +498,87 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 }
 .task-item:hover { background: var(--card); border-color: var(--card-border); }
 .task-item:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
-.task-item.on { background: var(--grad-selected); border-color: var(--border-blue); }
+.task-row.on .task-item { background: var(--grad-selected); border-color: var(--border-blue); }
+
+/* 更多操作：悬停/键盘聚焦时出现；触屏设备常显（没有 hover 可用） */
+.task-more {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.task-row:hover .task-more,
+.task-row:focus-within .task-more,
+.task-more[aria-expanded="true"] { opacity: 1; }
+.task-more:hover { color: var(--text); background: var(--well); }
+.task-more:focus-visible { opacity: 1; outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+@media (hover: none) { .task-more { opacity: 1; } }
+
+/* 行内菜单：历史区自己滚动，浮层会被 overflow 裁掉，所以就地展开 */
+.task-menu { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 6px 28px; }
+.task-menu button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-weak);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.task-menu button:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
+.task-menu button:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+
+.task-rename {
+  width: calc(100% - 4px);
+  margin: 3px 2px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-sm);
+}
+.task-rename:focus { outline: none; }
+
+/* 已归档：默认折叠，归档不等于删除 */
+.archived { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-3); }
+.archived-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 2px var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.archived-head:hover { color: var(--muted); }
+.archived-arrow { flex-shrink: 0; transition: transform 0.15s; }
+.archived-arrow.open { transform: rotate(90deg); }
+.archived-n { font-family: var(--font-num); }
+.archived-row .task-text { color: var(--text-weak); }
 .task-dot { display: grid; place-items: center; flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; color: var(--faint); }
 .task-dot.dot-ok { color: var(--success); }
 .task-dot.dot-fail { color: var(--danger); }
@@ -333,9 +602,9 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 /* 收起态保留状态图形；任务完整名称由 aria-label/title 提供。 */
 .nav-item.hide-text { justify-content: center; padding-left: 0; padding-right: 0; }
 .nav-item.hide-text .nav-label { display: none; }
-.task-item.hide-text { align-items: center; justify-content: center; padding-left: 0; padding-right: 0; }
-.task-item.hide-text .task-main { display: none; }
-.task-item.hide-text .task-dot { margin-top: 0; }
+.task-row.hide-text .task-item { align-items: center; justify-content: center; padding-left: 0; padding-right: 0; }
+.task-row.hide-text .task-main { display: none; }
+.task-row.hide-text .task-dot { margin-top: 0; }
 
 /* 后台任务监控条：主区右下角悬浮卡片，点击整条回 agent 主区 */
 .agent-monitor {

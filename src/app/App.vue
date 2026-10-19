@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent, watch } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, provide, nextTick, defineAsyncComponent, watch } from "vue";
 import { invoke } from "../platform/invoke.js";
 import { getCurrentWindow } from "../platform/window.js";
 import { listen } from "../platform/events.js";
@@ -108,6 +108,39 @@ function onMainClick() {
 }
 onMounted(() => sidebarMedia?.addEventListener("change", onSidebarMediaChange));
 onUnmounted(() => sidebarMedia?.removeEventListener("change", onSidebarMediaChange));
+// ------- 外壳帧（对标 DSH 的三栏 AppFrame）-------
+// 右栏（dock）是**条件出现**的停靠面：默认不占宽度，运行监控等运行期面板挂进来才展开。
+// 内容由占用方（目前是 AgentView 的监控面板）用 <Teleport to="#shell-dock"> 投递，
+// 外壳只负责列宽与开关——这样任何模块都能复用右栏，而不必让外壳知道 agent 的存在
+// （外壳 import agent/session.js 会把整个引擎拖进 entry chunk，见 AgentSidePanel 顶部说明）。
+const dockOpen = ref(false);
+// 顶栏标题：agent 模块由 AgentView 通过 provide 投递当前会话标题与状态（单一顶栏，
+// 不再让视图在顶栏下面再叠一条 52px 的 thread bar——两层 chrome 是旧版最笨重的地方）。
+const thread = reactive({ title: "", status: null });
+const shellFrame = {
+  dockOpen,
+  thread,
+  setDock(value) {
+    dockOpen.value = !!value;
+  },
+  toggleDock() {
+    dockOpen.value = !dockOpen.value;
+  },
+};
+provide("shellFrame", shellFrame);
+
+const pageTitle = computed(() => {
+  if (activeModule.value === "agent") return thread.title || t("nav.newTask");
+  if (activeModule.value === "settings") return t("nav.settings");
+  const mod = MODULES.find((m) => m.key === activeModule.value);
+  return t(mod ? mod.labelKey : "nav.agent");
+});
+const pageIcon = computed(() => {
+  if (activeModule.value === "settings") return "settings";
+  const mod = MODULES.find((m) => m.key === activeModule.value);
+  return mod ? mod.icon : "sparkles";
+});
+
 const toast = ref(null);
 // 视图埋点（节流 10s；可选遥测未开启时只本地计数）
 let viewTrackTs = {};
@@ -316,6 +349,12 @@ function onKeydown(e) {
     gsRef.value?.openPalette();
     return;
   }
+  // Ctrl+N：新任务（与顶栏/侧栏的「新任务」同一入口，DSH 的 New Session 语义）
+  if ((e.ctrlKey || e.metaKey) && (e.key === "n" || e.key === "N")) {
+    e.preventDefault();
+    onNewTask();
+    return;
+  }
   if (!(e.ctrlKey || e.metaKey)) return;
   if (e.key === "0") {
     e.preventDefault();
@@ -502,11 +541,11 @@ onUnmounted(() => {
     <ConfirmDialog />
   </template>
 
-  <div v-else class="shell" :class="{ collapsed: sidebarCollapsed }">
+  <div v-else class="shell" :class="{ collapsed: sidebarCollapsed, 'dock-open': dockOpen }">
     <!-- ============ 侧边栏 ============ -->
     <aside class="sidebar" @keydown.esc="narrowExpanded = false">
       <div class="brand" data-tauri-drag-region>
-        <span class="brand-logo"><Icon name="sparkles" :size="20" /></span>
+        <span class="brand-logo"><Icon name="sparkles" :size="17" /></span>
         <span class="brand-name">ToolCove</span>
       </div>
 
@@ -567,13 +606,25 @@ onUnmounted(() => {
     <div class="main" @click="onMainClick">
       <header class="topbar" data-tauri-drag-region>
         <div class="page-title">
-          <span class="pt-ico"><Icon :name="activeModule === 'settings' ? 'settings' : (MODULES.find((m) => m.key === activeModule) || MODULES[0]).icon" :size="20" /></span>
-          <div class="pt-text">
-            <h1>{{ activeModule === "settings" ? t("nav.settings") : t((MODULES.find((m) => m.key === activeModule) || MODULES[0]).labelKey) }}</h1>
-          </div>
+          <span class="pt-ico"><Icon :name="pageIcon" :size="15" /></span>
+          <h1 :title="pageTitle">{{ pageTitle }}</h1>
+          <span v-if="activeModule === 'agent' && thread.status" class="st-chip sm" :class="thread.status.cls" role="status">
+            <Icon :name="thread.status.icon" :size="11" />{{ t(thread.status.key) }}
+          </span>
         </div>
         <div class="top-actions">
           <GlobalSearch ref="gsRef" :show-toast="showToast" @navigate="onGlobalNavigate" />
+          <!-- 右栏开关：只在有右栏内容的模块出现（当前是 Agent 的任务监控） -->
+          <button
+            v-if="activeModule === 'agent'"
+            class="theme-btn dock-toggle"
+            :class="{ on: dockOpen }"
+            :title="dockOpen ? t('agent.monitorHide') : t('agent.monitorShow')"
+            :aria-pressed="dockOpen"
+            @click="shellFrame.toggleDock()"
+          >
+            <Icon name="layout" :size="15" />
+          </button>
           <button v-if="capabilities.cloudSync" class="theme-btn sync-ind" :class="syncDot" :title="t('sync.statusTitle')" @click="openSettings('sync')">
             <span class="sync-ind-dot"></span>
           </button>
@@ -619,6 +670,14 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- ============ 右栏（条件出现的停靠面）============
+         壳层只负责这一列的宽度与开关；内容由占用方 Teleport 进来（见 #shell-dock）。
+         v-show 而不是 v-if：Teleport 的目标节点必须始终在 DOM 里，否则占用方第一次
+         投递时会因为找不到容器而告警、面板整块丢掉。 -->
+    <aside v-show="dockOpen" class="dock" :aria-label="t('agent.monitorTitle')">
+      <div id="shell-dock" class="dock-body"></div>
+    </aside>
+
     <transition name="fade">
       <div v-if="toast" class="toast">
         {{ toast.text }}
@@ -642,14 +701,18 @@ onUnmounted(() => {
      globals.css（应用级基线 + 旧类名兼容别名）。三者在 main.js 里引入。 -->
 
 <style scoped>
+/* 三栏 AppFrame（对标 DSH 的 ui-layout）：左栏 280 / 中栏自适应 / 右栏 340 条件出现。
+   左栏收起保留 56px 图标轨道；右栏不占宽度时整列消失，中栏独自撑满。 */
 .shell {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
   transition: grid-template-columns 0.22s ease;
 }
-.shell.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+.shell.collapsed { grid-template-columns: 56px minmax(0, 1fr); }
+.shell.dock-open { grid-template-columns: 280px minmax(0, 1fr) 340px; }
+.shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr) 340px; }
 
 /* ============ 侧边栏 ============ */
 .sidebar {
@@ -663,12 +726,12 @@ onUnmounted(() => {
   height: 100dvh;
   overflow: hidden;
 }
-.brand { display: flex; align-items: center; flex-shrink: 0; height: 56px; gap: 10px; padding: 0 4px; }
+.brand { display: flex; align-items: center; flex-shrink: 0; height: 48px; gap: 9px; padding: 0 4px; }
 /* 品牌区子元素不拦截鼠标，拖拽落到 .brand 的 drag-region 上（可拖动窗口） */
 .brand > * { pointer-events: none; }
 .brand-logo {
-  width: 32px;
-  height: 32px;
+  width: 27px;
+  height: 27px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
@@ -676,13 +739,13 @@ onUnmounted(() => {
   background: var(--grad-brand);
   color: var(--text-invert);
 }
-.brand-name { font-size: var(--fs-lg); font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+.brand-name { font-size: var(--fs-base); font-weight: 650; letter-spacing: 0.2px; white-space: nowrap; color: var(--text); }
 
 /* 固定入口不滚动；只把剩余高度交给 AgentSidePanel 的历史列表。 */
 .nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
 .nav-item { flex-shrink: 0; }
 /* 工作面分组与新任务保持清晰分隔。 */
-.nav-group { flex-shrink: 0; margin: 10px 0 2px; padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--faint); letter-spacing: 0.4px; }
+.nav-group { flex-shrink: 0; margin: 14px 0 4px; padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--faint); letter-spacing: 0.6px; text-transform: uppercase; }
 /* 导航行：扁平行 + 悬停填充，而不是默认就带边框与投影的小卡片。
    卡片式行每一条都在抢注意力，侧边栏一旦有 10 条历史就变成一片浮起的方块；
    Qoder / Cursor / VS Code 的侧边栏行都是扁平的，只有选中态才有底色。
@@ -691,20 +754,20 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   border: 1px solid transparent;
   background: none;
-  height: 34px;
+  height: 32px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.nav-ico { display: grid; place-items: center; flex-shrink: 0; width: 22px; color: var(--text-weak); }
+.nav-ico { display: grid; place-items: center; flex-shrink: 0; width: 18px; color: var(--text-weak); }
 .nav-item:hover .nav-ico { color: var(--primary-hover); }
 .nav-item.on .nav-ico { color: var(--primary-hover); }
 .nav-item:hover { color: var(--primary-hover); background: var(--card); border-color: var(--card-border); }
@@ -768,36 +831,43 @@ onUnmounted(() => {
 
 /* ============ 主区 ============ */
 .main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; overflow: hidden; position: relative; background: var(--card); }
+/* 单条顶栏（48px）：标题 + 状态 + 动作。视图不再自带第二条 bar——
+   两层 chrome 是旧版最笨重的地方，DSH 的窗口顶带只有一条。 */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  height: 56px;
-  padding: 0 20px;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--card);
 }
 /* 标题不拦截拖拽；极窄窗口省略文字，不挤掉窗口控件。 */
-.page-title { display: flex; align-items: center; gap: 8px; min-width: 0; pointer-events: none; }
+.page-title { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 auto; overflow: hidden; pointer-events: none; }
 .pt-ico {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  color: var(--text-weak);
+  color: var(--muted);
 }
-.pt-text { display: flex; flex-direction: column; min-width: 0; }
-.pt-text h1 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.top-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.page-title h1 { margin: 0; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.page-title .st-chip { flex-shrink: 0; }
+.top-actions { display: flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 0; }
 /* 仅搜索框收缩；GlobalSearch 是多根组件，选择器直接命中其真实触发按钮。 */
 .top-actions > * { flex-shrink: 0; }
-.top-actions :deep(.gs-trigger) { flex-shrink: 1; width: 220px; min-width: 32px; height: 32px; padding: 0 10px; }
+.top-actions :deep(.gs-trigger) { flex-shrink: 1; width: 200px; min-width: 30px; height: 30px; padding: 0 10px; }
 .top-actions :deep(.gs-trigger > svg) { flex-shrink: 0; }
 .top-actions :deep(.gs-ph) { min-width: 0; }
-.theme-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
-.theme-btn:hover { border-color: var(--primary); color: var(--primary); }
+/* 顶栏动作一律幽灵按钮：默认无边框，悬停才出现底色——一排查边按钮会把
+   标题挤成第二等，而且和窗口控件混成一片看不出层级。 */
+.theme-btn { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.theme-btn:hover { background: var(--ghost); color: var(--text); }
+.theme-btn.on { background: var(--primary-soft); color: var(--primary-hover); border-color: var(--border-blue); }
+.theme-btn:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
 /* 云同步指示灯：灰=未启用/蓝=同步中/绿=已同步/红=失败/琥珀=已吊销 */
 .sync-ind { display: grid; place-items: center; }
 .sync-ind-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); transition: background 0.2s; }
@@ -881,6 +951,24 @@ onUnmounted(() => {
 }
 .user-chip:hover .uc-avatar { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(99, 102, 241, 0.36); }
 
+/* ============ 右栏（停靠面）============ */
+.dock {
+  min-width: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+}
+.dock-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dock-body > * { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+@keyframes dockIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+.dock-body > * { animation: dockIn 0.18s var(--ease-out); }
+
 .body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
 
 /* 视图切换动画：入场淡入 + 上移 6px（组件 key 重建触发；无 leave，reduced-motion 全局降级） */
@@ -925,20 +1013,35 @@ onUnmounted(() => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* 壳层配色完全跟随 token，不用系统媒体查询覆盖用户手动选择的主题。 */
+/* 右栏先让位：窄屏时它缩到 300，再窄就浮起来盖住中栏（不把对话列压到读不动）。 */
+@media (max-width: 1180px) {
+  .shell.dock-open { grid-template-columns: 280px minmax(0, 1fr) 300px; }
+  .shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr) 300px; }
+}
+@media (max-width: 900px) {
+  .shell.dock-open, .shell.collapsed.dock-open { grid-template-columns: 280px minmax(0, 1fr); }
+  .shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr); }
+  .dock { position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 92vw); z-index: 45; box-shadow: var(--shadow-pop); }
+}
 @media (max-width: 1000px) {
   .topbar { padding: 0 12px; gap: 8px; }
   .top-actions :deep(.gs-trigger) { width: 160px; }
   .top-actions :deep(.gs-kbd) { display: none; }
 }
 @media (max-width: 760px) {
-  .shell, .shell.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
-  /* 侧栏浮出后不在流内，主区必须钉在第二列，否则会掉进 64px 的轨道列。 */
+  .shell, .shell.collapsed { grid-template-columns: 56px minmax(0, 1fr); }
+  /* 侧栏浮出后不在流内，主区必须钉在第二列，否则会掉进 56px 的轨道列。 */
   .main { grid-column: 2; }
   /* 临时展开覆盖主区，而不压缩工作台；底部收起和 Escape 均可回到轨道。 */
-  .shell:not(.collapsed) .sidebar { position: absolute; inset: 0 auto 0 0; width: 244px; z-index: 30; }
+  .shell:not(.collapsed) .sidebar { position: absolute; inset: 0 auto 0 0; width: 280px; z-index: 30; }
   .top-actions { flex-shrink: 0; }
   .top-actions :deep(.gs-trigger) { width: 32px; min-width: 32px; justify-content: center; padding: 0; }
   .top-actions :deep(.gs-ph) { display: none; }
+}
+@media (max-width: 620px) {
+  /* 窄窗里顶栏的每一像素都要留给标题与窗口控件；右栏在 <=900px 已经是浮层，
+     这里连开关一起收起（键盘 Ctrl+ 与面板内的关闭按钮仍可用）。 */
+  .topbar .dock-toggle { display: none; }
 }
 @media (max-width: 560px) {
   .topbar { padding: 0 8px; gap: 4px; }

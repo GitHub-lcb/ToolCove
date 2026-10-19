@@ -9,15 +9,24 @@ import { errText } from "../shared/errors.js";
 import { buildAgentRegistry, listAgentTools } from "../agent/tools.js";
 import { riskChip, riskKey } from "../agent/capabilities.js";
 import { foldTimeline, payloadText, COLLAPSE_AT } from "../agent/timeline.js";
+import { motionKind } from "../agent/motion.js";
 import { describePreview, rowKind, rowText } from "../agent/preview.js";
 import { canResume } from "../agent/runStore.js";
 import { extractArtifacts } from "../agent/artifacts.js";
 import { answerToProblemDraft, answerToSnippetDraft } from "../agent/answerDraft.js";
 import { buildContextLine } from "../agent/context.js";
+import { conversationTitle } from "../app/taskListItems.js";
+import { attachmentIcon, attachmentPromptLine, normalizeAttachments } from "../agent/attachments.js";
+import { loadModelChoice } from "../agent/modelPrefs.js";
+import { runToMarkdown } from "../agent/runExport.js";
 import { create as createRecord, load as loadRepo } from "../data/repository.js";
-import { findToolboxTool } from "../toolboxTools.js";
+import { findToolboxTool, visibleToolboxTools } from "../toolboxTools.js";
 import RunProgress from "./RunProgress.vue";
+import ExecutionLanes from "./ExecutionLanes.vue";
+import AgentComposer from "../app/AgentComposer.vue";
 import { askConfirm } from "../ui/confirm.js";
+import { save as saveDialog } from "../platform/dialog.js";
+import { invoke } from "../platform/invoke.js";
 import { openToolWindow, isTauriEnv } from "../app/toolWindow.js";
 import { setToolPrefill } from "../app/toolPrefill.js";
 import { actionDemo, buildDemoScript, isPlayable } from "../app/toolDemo.js";
@@ -29,6 +38,7 @@ import {
   clearTimeline,
   initAgentSession,
   promoteRunToSkill,
+  refreshAgentConfig,
   resolvePending,
   resumeAgentRun,
   startAgentRun,
@@ -46,10 +56,18 @@ const emit = defineEmits(["navigate"]);
 
 const { t } = useI18n();
 const openSettings = inject("openSettings", null);
+// 外壳帧（App.vue provide）：顶栏标题与右栏都由外壳承担，视图只投递状态。
+// 单独渲染本视图（单测 / 手机端）时没有它，退化为本地状态，行为与旧版一致。
+const shell = inject("shellFrame", null);
 
 const busy = computed(() => agentSession.status !== "idle");
 const goal = ref("");
-const goalBox = ref(null);
+// 输入框的 ref（附件 / 指令 / 模型都在 AgentComposer 里，聚焦要经过它暴露的 focus()）
+const composerRef = ref(null);
+// 本轮附件：只有「路径 + 元信息」，正文不进提示词（见 agent/attachments.js 的设计说明）
+const attachments = ref([]);
+// 模型胶囊显示的那三个值：settings.ai 的展示副本，保存后由 @model-changed 回填
+const aiModel = ref({ baseUrl: "", model: "", reasoningEffort: "" });
 
 // ------- 历史任务回看（二期导航重构：会话列表上移侧边栏，画布承接回看） -------
 // viewRunId 非空时画布只读渲染该 run 落盘的 steps；运行中的真实进度由
@@ -87,8 +105,9 @@ watch(
       if (busy.value) return props.showToast(t("agent.busyNew"));
       viewRunId.value = "";
       goal.value = "";
+      attachments.value = [];
       clearTimeline();
-      nextTick(() => goalBox.value?.focus());
+      nextTick(() => composerRef.value?.focus());
       return;
     }
     if (j.action === "view" && j.runId) {
@@ -140,11 +159,68 @@ watch(
 // 等于把对话记录变成日志转储——主流做法是工具调用默认折叠成一行摘要、按需展开
 // （Claude Code 折叠 + Ctrl+O 展开、Claude Desktop 的 Normal 模式、Cursor 的密度档）。
 // 结果是可逆的：想看细节随时点开，卡片本身不会被丢弃。
+
+// ------- 运行态的可见性：执行记录随运行自动开合 -------
+// 运行中展开是「看着它干活」，结束收起是「答案优先」——两者都是设计意图。
+// 之前 details 默认折叠把前半句吞掉了：用户跑完完全没看到卡片动效，演示入口也一起被藏住。
+const executionEl = ref(null);
+const clock = ref(Date.now());
+let clockTimer = null;
+// 用户在运行中手动收起过：这一轮不再强行打开，尊重他的选择
+let userCollapsed = false;
+
+function openExecution(open) {
+  nextTick(() => {
+    if (executionEl.value) executionEl.value.open = open;
+  });
+}
+function onExecutionToggle() {
+  if (!busy.value || !executionEl.value) return;
+  userCollapsed = !executionEl.value.open;
+}
+function startClock() {
+  if (clockTimer || typeof window === "undefined") return;
+  clock.value = Date.now();
+  clockTimer = window.setInterval(() => { clock.value = Date.now(); }, 1000);
+}
+function stopClock() {
+  if (clockTimer) {
+    window.clearInterval(clockTimer);
+    clockTimer = null;
+  }
+  clock.value = Date.now();
+}
+
+// 从别的工作面切回来时组件会重建：既有的运行要接管成「展开 + 计时中」
+onMounted(() => {
+  if (busy.value && !viewRun.value) {
+    startClock();
+    openExecution(true);
+  }
+});
+onBeforeUnmount(stopClock);
+
 watch(busy, (now, before) => {
+  if (now) startClock();
+  else stopClock();
   if (before && !now) {
     openCards.clear();
     openPayloads.clear();
+    userCollapsed = false;
+    openExecution(false);
   }
+});
+// 新运行会换 details 的 key（currentRunId）、第一步会首次挂载 details：
+// 这两种情况都触发一次「运行中展开」，但不覆盖用户手动收起的选择。
+watch(
+  [busy, viewRun, () => agentSession.currentRunId, () => sourceSteps.value.length],
+  () => {
+    if (busy.value && !viewRun.value && !userCollapsed) openExecution(true);
+  }
+);
+// 进入回看时收起执行记录
+watch(viewRun, (viewing) => {
+  if (viewing) openExecution(false);
 });
 
 // 风险语义色 / 词条映射住在 agent/capabilities.js（设置页的工具开关矩阵用同一套，
@@ -170,6 +246,14 @@ const ERROR_KEY = {
 
 const displayedStatus = computed(() => viewRun.value?.status || (busy.value ? agentSession.status : agentSession.runStatus));
 const displayedUsage = computed(() => viewRun.value ? viewRun.value.usage || {} : agentSession.usage);
+// 本轮用的模型：起跑时的快照（run.model），不是当前设置里的模型——切模型不该改写历史。
+const runModelText = computed(() => {
+  const run = viewRun.value || currentRun.value;
+  const model = typeof run?.model === "string" ? run.model : "";
+  const profile = typeof run?.modelProfile === "string" ? run.modelProfile : "";
+  if (!model && !profile) return "";
+  return profile && profile !== model ? `${profile} · ${model}` : model || profile;
+});
 const statusMeta = computed(() => {
   const status = displayedStatus.value;
   if (status === "waiting") return { cls: "st-wait", key: "agent.statusWaiting", icon: "alert" };
@@ -254,9 +338,66 @@ const fmtNum = (n) => {
   return v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v);
 };
 
-const monitorVisible = ref(false);
+// 每次尝试的耗时：收尾后取 endTs；运行中取时钟（1s 刷新），和 DSH 轨迹一样把时间读出来
+const fmtMs = (ms) => {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1000) return Math.round(value) + "ms";
+  if (value < 60000) return (value / 1000).toFixed(1) + "s";
+  const m = Math.floor(value / 60000);
+  const s = Math.round((value % 60000) / 1000);
+  return m + "m" + String(s).padStart(2, "0") + "s";
+};
+const attemptSpan = (a) => {
+  if (!a || !a.ts) return 0;
+  const end = a.endTs || (a.status === "running" ? clock.value : 0);
+  return end > a.ts ? end - a.ts : 0;
+};
+const lastSpan = (item) => (item?.attempts?.length ? attemptSpan(item.attempts[item.attempts.length - 1]) : 0);
+
+// ------- 右栏轨迹：带耗时的工具行 + 搜索 -------
+// 搜索匹配工具名、参数与结果文本：排障时记得的往往是路径或关键字，而不是动作名。
+const trajectoryQuery = ref("");
+const trajectoryRows = computed(() =>
+  executionTimeline.value
+    .filter((item) => item.kind === "tool")
+    .map((item) => {
+      const last = item.attempts[item.attempts.length - 1];
+      return {
+        key: item.id || `${item.tool}@${item.ts}`,
+        tool: item.tool,
+        status: last.status,
+        attempts: item.attempts.length,
+        span: lastSpan(item),
+        text: [item.tool, ...item.attempts.flatMap((a) => [a.argsText, a.resultText])].join(" ").toLowerCase(),
+      };
+    })
+);
+const filteredTrajectory = computed(() => {
+  const q = trajectoryQuery.value.trim().toLowerCase();
+  return q ? trajectoryRows.value.filter((row) => row.text.includes(q)) : trajectoryRows.value;
+});
+
+// 右栏开关直接绑定外壳的 dockOpen：顶栏按钮、面板里的关闭按钮、以及「运行起来自动展开」
+// 必须共用同一份真相，否则三个入口会各自维护一个布尔值。
+const localMonitor = ref(false);
+const monitorVisible = computed({
+  get: () => (shell ? shell.dockOpen.value : localMonitor.value),
+  set: (value) => {
+    if (shell) shell.dockOpen.value = !!value;
+    else localMonitor.value = !!value;
+  },
+});
 function toggleMonitor() {
   monitorVisible.value = !monitorVisible.value;
+}
+
+// 空闲时右栏不是空仪表盘：列出 Agent 能调用的本地工具。
+// 这些工具与「本地工具」目录同源（visibleToolboxTools），打开方式也一致——
+// 右栏因此既是运行监控，也是「这轮它能用哪些手」的答案。
+const localTools = computed(() => visibleToolboxTools().filter((tool) => tool.ready).slice(0, 6));
+function openLocalTool(tool) {
+  openToolWindow(tool, { showToast: props.showToast }).catch(() => {});
 }
 
 // 会话流里的「我说的那句话」。这是三期相对二期最要紧的一处：
@@ -268,6 +409,40 @@ const threadGoal = computed(() => {
   const viewing = viewRun.value;
   const text = viewing ? viewing.input || "" : agentSession.goal || "";
   return typeof text === "string" ? text.trim() : "";
+});
+// 当前这条 run 的落盘记录：顶栏标题要读它的重命名（改名后立即反映，不必等切走再回来）
+const currentRun = computed(() => agentSession.runs.find((r) => r && r.id === agentSession.currentRunId) || null);
+
+// 这一轮附带过哪些文件：回看读 run 快照，实时读会话字段。只用来「说清当时拿到了什么」，
+// 不再参与运行（运行时早把路径拼进提示词了）。
+const threadAttachments = computed(() =>
+  normalizeAttachments(viewRun.value ? viewRun.value.attachments : agentSession.attachments)
+);
+
+// 顶栏投递：标题 = 本轮目标，状态胶囊只在真有运行状态时出现。
+// 空闲时不往顶栏塞一个恒亮的「空闲」——顶栏是导航，不是仪表盘。
+watch(
+  [threadGoal, statusMeta, busy, viewRun, currentRun],
+  () => {
+    if (!shell) return;
+    // 顶栏是导航条：目标原文压成一行主题（与侧栏 conversationTitle 同一投影），
+    // 用户重命名过就用自定义标题；完整输入仍在消息流首条。
+    const named = viewRun.value?.title || currentRun.value?.title || "";
+    shell.thread.title = named || conversationTitle(threadGoal.value);
+    // 终态也要留在顶栏（已完成/已取消/失败）：`runStatus` 比 busy 活得久，clearTimeline（新任务）时才清空。
+    // 只有「从没跑过」的空闲会话不显示状态——那会是一个恒亮的「空闲」。
+    const hasStatus = busy.value || viewRun.value || agentSession.pending || agentSession.runStatus;
+    shell.thread.status = hasStatus ? statusMeta.value : null;
+  },
+  { immediate: true },
+);
+// 视图被 :key 销毁时把外壳上的会话痕迹清掉：否则切到工作面后顶栏还挂着上一轮的目标，
+// 右栏也会空着不关（内容已经随视图卸载了）。
+onBeforeUnmount(() => {
+  if (!shell) return;
+  shell.thread.title = "";
+  shell.thread.status = null;
+  shell.dockOpen.value = false;
 });
 
 // 空态只在「这一轮还没有任何步骤」时出现。回看历史时一律不补空态——
@@ -315,15 +490,57 @@ function dismissHint() {
 const denyBtn = ref(null);
 // 提问卡的回答草稿。与 goal 分开：提问的回答常常是路径这类短文本，不该污染上一条目标。
 const answerDraft = ref("");
+// 提问卡的选项：点选是「快速组成回答」，不是替用户直接发送——问题和补充内容可能同时要答。
+const pickedOptions = ref([]);
+const askOptions = computed(() => (Array.isArray(agentSession.pending?.options) ? agentSession.pending.options : []));
+const askMultiple = computed(() => agentSession.pending?.multiple === true);
+const composedAnswer = computed(() => {
+  const picked = pickedOptions.value.join("、");
+  const text = answerDraft.value.trim();
+  if (picked && text) return picked + "\n" + text;
+  return picked || text;
+});
+function toggleOption(option) {
+  const value = String(option);
+  if (askMultiple.value) {
+    pickedOptions.value = pickedOptions.value.includes(value)
+      ? pickedOptions.value.filter((x) => x !== value)
+      : [...pickedOptions.value, value];
+  } else {
+    pickedOptions.value = pickedOptions.value.includes(value) ? [] : [value];
+  }
+}
 const answerBox = ref(null);
+const askOptionsRef = ref(null);
 
 onMounted(async () => {
+  // 模型胶囊要在首帧显示真名：与 initAgentSession 并行读，两者互不依赖
+  loadAIModel();
   await initAgentSession();
   // 有历史才值得提前建 registry（续跑按钮靠它判定）；没有就等 onResume 里 ensure
   setTimeout(() => {
     if (agentSession.runs.length) ensureAgentRegistry();
   }, 1200);
 });
+
+/** 读 settings.ai 的模型展示字段（不解密密钥，见 agent/modelPrefs.js）。 */
+async function loadAIModel() {
+  try {
+    aiModel.value = await loadModelChoice();
+  } catch {
+    // 模型胶囊是展示与切换入口：读不到就保持空，下次打开仍会重试，不拦主流程
+  }
+}
+
+/** 模型弹层保存成功后回填，并让会话重算 aiReady（首次在这里选模型也能立刻开始运行）。 */
+function onModelChanged(saved) {
+  aiModel.value = saved;
+  refreshAgentConfig().catch(() => {});
+}
+
+function onComposerToast(key, params) {
+  props.showToast(t(key, params));
+}
 
 // ------- 会话绑定当前工作域（三期：上下文） -------
 // 领域/代码池数据在**视图**里读、在这里把 contextLine 拼好传给运行——引擎保持无数据依赖
@@ -393,21 +610,57 @@ async function startRun() {
   track("agent.run");
   // 域绑定：选中域时把领域上下文拼成一行提示，随运行透传（未选域 → 空串，提示词一字不变）
   const contextLine = selectedDomain.value ? buildContextLine(selectedDomain.value, t) : "";
+  // 附件：路径清单拼成提示词里的一段，附件本身随 run 记录落盘（回看与导出日志都读它）
+  const picked = normalizeAttachments(attachments.value);
+  const attachmentLine = attachmentPromptLine(picked);
   goal.value = "";
-  if (!await startAgentRun(input, { contextLine }) && !goal.value) goal.value = input;
+  const started = await startAgentRun(input, { contextLine, attachmentLine, attachments: picked });
+  if (started) {
+    attachments.value = [];
+    return;
+  }
+  // 没起来（空目标 / 已有运行）：把草稿还回去，别让用户白写一遍
+  if (!goal.value) goal.value = input;
 }
 
-function onGoalKey(e) {
-  // isComposing：中文输入法选词的回车不能当成提交；运行中回车退回普通换行，方便先写下一条目标
-  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !busy.value) {
-    e.preventDefault();
-    startRun();
+/** 新建任务：清空画布、草稿与附件。运行中不清（那等于砍掉正在跑的执行现场）。 */
+function onNewTask() {
+  if (busy.value) return props.showToast(t("agent.busyNew"));
+  viewRunId.value = "";
+  goal.value = "";
+  attachments.value = [];
+  clearTimeline();
+  nextTick(() => composerRef.value?.focus());
+}
+
+/**
+ * 导出运行日志（Markdown）：当前运行优先，其次是被回看的那条。
+ * 落盘沿用项目惯例：saveDialog 取目标 → invoke("export_file")（浏览器端转成下载）。
+ */
+async function exportRun() {
+  const run = viewRun.value || agentSession.runs.find((item) => item.id === agentSession.currentRunId);
+  if (!run) return props.showToast(t("agent.exportNothing"));
+  try {
+    const markdown = runToMarkdown(run, t, { noticeText });
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes());
+    const dest = await saveDialog({
+      title: t("agent.exportDlg"),
+      defaultPath: "toolcove-run-" + stamp + ".md",
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!dest) return;
+    await invoke("export_file", { path: dest, content: markdown });
+    props.showToast(t("agent.exportDone"));
+  } catch (e) {
+    props.showToast(t("agent.exportFail", { err: errText(e) }));
   }
 }
 
 function useExample(key) {
   goal.value = t(key);
-  nextTick(() => goalBox.value?.focus());
+  nextTick(() => composerRef.value?.focus());
 }
 
 // 确认卡自动聚焦：批准卡聚焦「拒绝」（Enter 落到拒绝上，不会误批准一个写入）；
@@ -419,7 +672,10 @@ watch(
     await nextTick();
     if (p.kind === "ask") {
       answerDraft.value = "";
-      answerBox.value?.focus();
+      pickedOptions.value = [];
+      // 有选项时焦点落在第一个选项（选择是主路径）；没有选项才直接进输入框
+      if (askOptions.value.length) askOptionsRef.value?.querySelector("button")?.focus();
+      else answerBox.value?.focus();
       return;
     }
     denyBtn.value?.focus();
@@ -432,11 +688,12 @@ function onDecide(approved) {
 
 /** 提交提问卡的回答（文本）。空回答不发：让用户看见提示，而不是把空串回灌给模型。 */
 function onAnswer() {
-  if (!answerPending(answerDraft.value)) {
+  if (!answerPending(composedAnswer.value)) {
     props.showToast(t("agent.answerEmpty"));
     return;
   }
   answerDraft.value = "";
+  pickedOptions.value = [];
 }
 
 function onAnswerKey(e) {
@@ -490,21 +747,51 @@ function demoScriptOf(actionName, args) {
   return isPlayable(script) ? { toolKey, script } : null;
 }
 
+// 工具卡的身份来自工具箱注册表：图标与「本地工具」目录同源，不再一律用终端图标
+function toolIcon(actionName) {
+  const key = toolMeta.value.get(actionName)?.toolKey;
+  return (key && findToolboxTool(key)?.icon) || "terminal";
+}
+
 async function openDemo(item, attempt) {
   const found = demoScriptOf(item.tool, attempt.args);
   if (!found) return;
-  const runId = `${item.id}#${attempt.n}`;
+  return launchDemo({ ...found, action: item.tool }, `${item.id}#${attempt.n}`, attempt.artifacts?.[0]);
+}
+
+/** 演示的统一收尾：可选预填产物 → 投递脚本 → 提示 → 开窗（预填必须等投递落地）。 */
+async function launchDemo(found, runId, artifact) {
   const label = findToolboxTool(found.toolKey)?.labelKey;
   track("tool.demo." + found.toolKey);
   // 结果里有落盘产物的动作（pdf.*）：演示的前提是工具里先有那份文件，
   // 所以顺带把产物预填过去（与「在工具中打开」同一条交接机制），否则演示只能指着一片空白。
-  const artifact = attempt.artifacts?.[0];
   if (artifact) setToolPrefill(found.toolKey, { kind: "open-file", path: artifact.path });
   // 必须**等投递落地**再开窗：写存储是异步的，抢在它之前开窗会让新窗口挂载时读到空，
   // 表现就是「点了没反应」（静默退化）。已开着的工具还会经实时通道额外收到一份。
-  await sendDemo({ toolKey: found.toolKey, action: item.tool, runId, script: found.script });
+  await sendDemo({ toolKey: found.toolKey, action: found.action, runId, script: found.script });
   props.showToast(t("agent.demoOpening", { tool: label ? t(label) : found.toolKey }));
   openManual(found.toolKey);
+}
+
+// ------- 直播：运行到支持演示的工具时，把这步真操作投到工具窗口 -------
+// tool_start 已带 args，所以不必等结果就能生成脚本。只在用户点「在工具中观看」时开窗
+// （自动弹窗会打断阅读），且与事后回放共用同一个播放器与回执通道。
+const liveDemos = computed(() => {
+  const map = new Map();
+  if (viewRun.value) return map;
+  for (const item of timeline.value) {
+    if (item.kind !== "tool" || !item.id) continue;
+    const last = item.attempts[item.attempts.length - 1];
+    if (!last || last.status !== "running" || last.args == null) continue;
+    const found = demoScriptOf(item.tool, last.args);
+    if (found) map.set(item.id, { item, attempt: last, action: item.tool, ...found });
+  }
+  return map;
+});
+
+async function openLiveDemo(found) {
+  if (!found) return;
+  return launchDemo(found, `${found.item.id}#${found.attempt.n}`);
 }
 
 let offDemoSignal = null;
@@ -534,7 +821,9 @@ async function onCopy(text, okKey) {
 function onRerun(rec) {
   viewRunId.value = ""; // 输入框在回看模式下是藏的：先退出回看，重填的目标才看得见
   goal.value = rec.input || "";
-  nextTick(() => goalBox.value?.focus());
+  // 重跑沿用原附件：那次运行拿到过什么，这次也该拿到
+  attachments.value = normalizeAttachments(rec.attachments);
+  nextTick(() => composerRef.value?.focus());
 }
 
 async function onResume(rec) {
@@ -590,12 +879,16 @@ const runSummary = computed(() => {
   const counts = new Map();
   const seen = new Set();
   const artifacts = [];
+  const demos = new Map();
   for (const item of timeline.value) {
     if (item.kind !== "tool") continue;
     // 工具卡一张 = 一次调用（重试是卡内的多次尝试，不重复计数）
     counts.set(item.tool, (counts.get(item.tool) || 0) + 1);
     for (const a of item.attempts) {
       if (a.status !== "ok") continue;
+      // 演示入口属于结果面：交付清单里直接给「看它怎么操作」，不必翻进执行记录
+      const found = demoScriptOf(item.tool, a.args);
+      if (found) demos.set(item.tool, { item, attempt: a });
       for (const art of a.artifacts || []) {
         if (seen.has(art.path)) continue;
         seen.add(art.path);
@@ -606,7 +899,7 @@ const runSummary = computed(() => {
   if (!artifacts.length && (status !== "completed" || !counts.size)) return null;
   return {
     titleKey: status === "completed" ? "agent.summaryTitle" : "agent.partialArtifacts",
-    tools: [...counts].map(([name, count]) => ({ name, count })),
+    tools: [...counts].map(([name, count]) => ({ name, count, demo: demos.get(name) || null })),
     artifacts,
   };
 });
@@ -646,24 +939,9 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 
 <template>
   <div class="agent">
-    <header class="bar">
-      <h2 class="thread-title" :title="threadGoal">{{ threadGoal || t("nav.newTask") }}</h2>
-      <span class="st-chip" :class="statusMeta.cls" role="status">
-        <Icon :name="statusMeta.icon" :size="12" />{{ t(statusMeta.key) }}
-      </span>
-      <button
-        class="btn-ghost sm monitor-toggle"
-        :class="{ 'mon-on': monitorVisible }"
-        :title="monitorVisible ? t('agent.monitorHide') : t('agent.monitorShow')"
-        :aria-pressed="monitorVisible"
-        aria-controls="agent-monitor"
-        @click="toggleMonitor"
-      >
-        <Icon name="layout" :size="14" />{{ t("agent.monitorTitle") }}
-      </button>
-    </header>
-
-    <div class="body" :class="{ 'with-monitor': monitorVisible }">
+    <!-- 会话头已经上移到外壳的单一顶栏（标题 / 状态 / 右栏开关都在那里），
+         这里不再叠第二条 bar。 -->
+    <div class="body">
       <!-- 对话列：消息流占满剩余高度，输入框钉在底部。
            这是主流 agent 产品的固定骨架（Qoder「输入框位于中央区域底部」、
            VS Code Chat view 的 sessions/对话/输入三段、Zed 的 message editor 在面板底部），
@@ -691,6 +969,13 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <div class="msg-body">
               <span class="msg-who">{{ t("agent.you") }}</span>
               <p class="msg-text">{{ threadGoal }}</p>
+              <!-- 附件与目标放在一起：翻历史时要能看出「这一轮它手里有过哪些文件」 -->
+              <div v-if="threadAttachments.length" class="msg-atts">
+                <span v-for="item in threadAttachments" :key="item.id || item.path || item.name" class="msg-att" :title="item.path || item.name">
+                  <Icon :name="attachmentIcon(item.kind)" :size="12" />
+                  <span class="msg-att-name">{{ item.name }}</span>
+                </span>
+              </div>
             </div>
           </article>
 
@@ -710,19 +995,36 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                  旧实现把它画成同一张确认卡，于是「允许」把布尔当答案回灌，模型只会再问一遍。 -->
             <template v-if="agentSession.pending.kind === 'ask'">
               <p class="cf-question">{{ agentSession.pending.question }}</p>
+              <!-- 候选项：点选只是快速组成回答，发送仍由用户确认；自由文本入口始终保留 -->
+              <div v-if="askOptions.length" ref="askOptionsRef" class="cf-options" role="group" :aria-label="t('agent.askOptionsLabel')">
+                <button
+                  v-for="option in askOptions"
+                  :key="option"
+                  type="button"
+                  class="cf-option"
+                  :class="{ on: pickedOptions.includes(option) }"
+                  :aria-pressed="pickedOptions.includes(option)"
+                  @click="toggleOption(option)"
+                >
+                  <Icon v-if="pickedOptions.includes(option)" name="check" :size="12" />
+                  {{ option }}
+                </button>
+              </div>
               <textarea
                 ref="answerBox"
                 v-model="answerDraft"
                 class="cf-answer"
                 rows="3"
                 :aria-label="agentSession.pending.question"
-                :placeholder="t('agent.answerPlaceholder')"
+                :placeholder="askOptions.length ? t('agent.answerExtraPh') : t('agent.answerPlaceholder')"
                 @keydown="onAnswerKey"
               ></textarea>
-              <p class="cf-hint">{{ t("agent.answerHint") }}</p>
+              <p class="cf-hint">
+                {{ askOptions.length ? t(askMultiple ? "agent.askOptionsHintMulti" : "agent.askOptionsHint") : t("agent.answerHint") }}
+              </p>
               <div class="cf-actions">
                 <button class="btn-ghost sm" @click="onAnswerSkip">{{ t("agent.answerSkip") }}</button>
-                <button class="btn-primary sm" :disabled="!answerDraft.trim()" @click="onAnswer">{{ t("agent.answerSend") }}</button>
+                <button class="btn-primary sm" :disabled="!composedAnswer" @click="onAnswer">{{ t("agent.answerSend") }}</button>
               </div>
             </template>
             <template v-else>
@@ -766,7 +1068,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </template>
           </section>
 
-          <details v-if="executionTimeline.length" :key="viewRunId || agentSession.currentRunId" class="execution">
+          <details v-if="executionTimeline.length" :key="viewRunId || agentSession.currentRunId" ref="executionEl" class="execution" @toggle="onExecutionToggle">
             <summary class="execution-head">
               <Icon name="chevron-right" :size="13" class="execution-arrow" />
               <span>{{ t("agent.executionTitle") }}</span>
@@ -776,31 +1078,42 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <div class="execution-meta">
               <span>{{ t("agent.toolCallsCount", { n: toolCount }) }}</span>
               <span>{{ t("agent.modelCallsCount", { n: displayedUsage.calls || 0 }) }}</span>
+              <span v-if="runModelText">{{ t("agent.runModel", { model: runModelText }) }}</span>
             </div>
+            <!-- 泳道：模型 / 工具 / 确认三条时间道，运行中随事件生长 -->
+            <ExecutionLanes :steps="sourceSteps" :running="busy && !viewRun" :now="clock" />
             <section class="timeline">
             <template v-for="(item, index) in executionTimeline" :key="cardKey(item, index)">
-              <article v-if="item.kind === 'tool'" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" data-role="tool-card">
+              <article v-if="item.kind === 'tool'" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" :data-motion="motionKind(item.tool)" data-role="tool-card">
                 <button
                   class="tl-head"
                   :aria-expanded="openCards.has(cardKey(item, index))"
                   @click="toggle(openCards, cardKey(item, index))"
                 >
                   <Icon name="chevron-right" :size="13" class="tl-arrow" :class="{ open: openCards.has(cardKey(item, index)) }" />
-                  <Icon name="terminal" :size="14" class="tl-ico" />
+                  <Icon :name="toolIcon(item.tool)" :size="14" class="tl-ico" />
                   <code class="tl-name">{{ item.tool }}</code>
                   <span class="tc-chip sm" :class="riskChip(toolMeta.get(item.tool)?.risk)">
                     {{ t(riskKey(toolMeta.get(item.tool)?.risk)) }}
                   </span>
                   <span v-if="item.attempts.length > 1" class="tl-n">{{ t("agent.attempt", { n: item.attempts.length }) }}</span>
+                  <span v-if="lastSpan(item)" class="tl-dur" :title="t('agent.toolDuration', { dur: fmtMs(lastSpan(item)) })">{{ fmtMs(lastSpan(item)) }}</span>
                   <span class="tl-badge" :class="'b-' + item.attempts[item.attempts.length - 1].status">
                     {{ t(ATTEMPT_KEY[item.attempts[item.attempts.length - 1].status]) }}
                   </span>
                 </button>
+                <!-- 直播入口：这一步还在跑、且动作有演示脚本时出现。点开才开窗，不自动打扰 -->
+                <div v-if="liveDemos.get(item.id)" class="tl-live-row">
+                  <button class="link xs demo-in-tool" data-role="watch-live" @click="openLiveDemo(liveDemos.get(item.id))">
+                    <Icon name="sparkles" :size="12" />{{ t("agent.watchLive") }}
+                  </button>
+                </div>
                 <div v-if="openCards.has(cardKey(item, index))" class="tl-body">
                   <div v-for="a in item.attempts" :key="a.n" class="tl-attempt">
                     <div class="ta-head">
                       <span class="ta-n">{{ t("agent.attempt", { n: a.n }) }}</span>
                       <span class="tl-badge sm" :class="'b-' + a.status">{{ t(ATTEMPT_KEY[a.status]) }}</span>
+                      <span v-if="attemptSpan(a)" class="ta-dur">{{ fmtMs(attemptSpan(a)) }}</span>
                     </div>
                     <div v-if="a.args != null" class="payload">
                       <div class="pl-head">
@@ -937,11 +1250,12 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <span class="ce-mark"><Icon name="sparkles" :size="24" /></span>
             <h2 class="ce-slogan">{{ t("agent.emptySlogan") }}</h2>
             <p class="ce-hint">{{ t("agent.emptyHint") }}</p>
+            <!-- 三个例子收成一排胶囊：空态的主角是「说一句话」这件事，
+                 三行带箭头的条目会让首屏读起来像工具目录（DSH 的空态同样只有标语 + 少数入口）。 -->
             <div class="ce-examples">
-              <button v-for="(icon, index) in ['braces', 'zap', 'git-compare']" :key="icon" class="ce-ex" @click="useExample('agent.example' + (index + 1))">
-                <Icon :name="icon" :size="16" />
-                <span><b>{{ t('agent.exampleTitle' + (index + 1)) }}</b><span>{{ t('agent.example' + (index + 1)) }}</span></span>
-                <Icon name="chevron-right" :size="14" class="ce-arrow" />
+              <button v-for="(icon, index) in ['braces', 'zap', 'git-compare']" :key="icon" class="ce-chip" @click="useExample('agent.example' + (index + 1))">
+                <Icon :name="icon" :size="13" />
+                {{ t('agent.exampleTitle' + (index + 1)) }}
               </button>
             </div>
             <!-- 首启说明：确认行为是这个产品最需要提前讲清楚的一件事（写文件会先问）。
@@ -970,7 +1284,17 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </div>
             <div v-if="runSummary.tools.length" class="sum-row">
               <span class="sum-label">{{ t("agent.summaryTools") }}</span>
-              <span v-for="x in runSummary.tools" :key="x.name" class="tc-chip sm tc-neutral">{{ x.name }} × {{ x.count }}</span>
+              <span v-for="x in runSummary.tools" :key="x.name" class="sum-tool">
+                <span class="tc-chip sm tc-neutral">{{ x.name }} × {{ x.count }}</span>
+                <button
+                  v-if="x.demo"
+                  class="link xs demo-in-tool"
+                  data-role="watch-demo-summary"
+                  @click="openDemo(x.demo.item, x.demo.attempt)"
+                >
+                  <Icon name="sparkles" :size="12" />{{ t("agent.watchDemo") }}
+                </button>
+              </span>
             </div>
             <div v-if="runSummary.artifacts.length" class="sum-row">
               <span class="sum-label">{{ t("agent.summaryArtifacts") }}</span>
@@ -1022,44 +1346,39 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             :tokens="usageText"
           />
 
-          <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史 -->
-          <div v-if="!viewRun" class="goal-box">
-            <!-- 域选择器（三期上下文）：没有领域数据时不显示；选定后给一行预览并可一键清除 -->
-            <div v-if="domains.length" class="goal-domain">
-              <label class="gd-label" :title="t('agent.domain')"><Icon name="layers" :size="13" />{{ t("agent.domain") }}</label>
-              <select v-model="agentSession.contextDomain" class="gd-select">
-                <option value="">{{ t("agent.domainNone") }}</option>
-                <option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}</option>
-              </select>
-              <span v-if="selectedDomain" class="gd-context">{{ domainContextText }}</span>
-              <button v-if="selectedDomain" class="link xs" @click="agentSession.contextDomain = ''">{{ t("agent.domainClear") }}</button>
-            </div>
-            <label for="agent-goal" class="goal-label">{{ t("agent.goalLabel") }}</label>
-            <textarea
-              id="agent-goal"
-              ref="goalBox"
-              v-model="goal"
-              class="goal"
-              rows="2"
-              :aria-label="t('agent.goalLabel')"
-              :placeholder="t(busy ? 'agent.nextGoalPh' : 'agent.goalPh')"
-              @keydown="onGoalKey"
-            ></textarea>
-            <div class="goal-actions">
-              <span class="composer-mode"><Icon name="sparkles" :size="13" />Agent</span>
-              <span class="goal-hint">Enter {{ t("agent.run") }} · Shift+Enter {{ t("agent.newline") }}</span>
-              <button v-if="busy" class="btn-outline danger sm" @click="stopAgentRun('user')">
-                <Icon name="square" :size="13" />{{ t("agent.stop") }}
-              </button>
-              <button v-else class="btn-primary sm" :disabled="!goal.trim()" @click="startRun">
-                <Icon name="send" :size="15" />{{ t("agent.run") }}
-              </button>
-            </div>
-          </div>
+          <!-- 目标输入框在回看模式下隐藏：历史是只读的，留着输入框会让人以为在编辑历史。
+               附件 / 指令 / 模型 / 工作域 / 发送全部收在 AgentComposer 这一条横带上。 -->
+          <AgentComposer
+            v-if="!viewRun"
+            ref="composerRef"
+            v-model:goal="goal"
+            v-model:attachments="attachments"
+            v-model:context-domain="agentSession.contextDomain"
+            :busy="busy"
+            :ai-ready="agentSession.aiReady"
+            :domains="domains"
+            :context-note="domainContextText"
+            :model-name="aiModel.model"
+            :model-base="aiModel.baseUrl"
+            :effort="aiModel.reasoningEffort"
+            :profiles="aiModel.profiles || []"
+            :profile-id="aiModel.profileId || ''"
+            :placeholder="t(busy ? 'agent.nextGoalPh' : 'agent.goalPh')"
+            @submit="startRun"
+            @stop="stopAgentRun('user')"
+            @new-task="onNewTask"
+            @export-run="exportRun"
+            @open-settings="goSettings('ai')"
+            @model-changed="onModelChanged"
+            @toast="onComposerToast"
+          />
         </footer>
       </div>
 
-      <aside v-if="monitorVisible" id="agent-monitor" class="monitor" :aria-label="t('agent.monitorTitle')">
+      <!-- 任务监控投递到外壳右栏（#shell-dock）：它属于「运行期才出现的面板」，
+           不该在对话列里再切走 280px。没有外壳时（单测/手机端）留在原地。 -->
+      <Teleport to="#shell-dock" :disabled="!shell">
+        <aside v-if="monitorVisible" id="agent-monitor" class="monitor" :aria-label="t('agent.monitorTitle')">
         <div class="mon-head">
           <Icon name="activity" :size="14" />
           <b>{{ t("agent.monitorTitle") }}</b>
@@ -1070,6 +1389,28 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <span class="mon-label">{{ t("agent.goalLabel") }}</span>
             <p class="mon-goal">{{ threadGoal || t("agent.emptyTimeline") }}</p>
           </div>
+          <!-- 轨迹：运行时的泳道 + 带耗时的工具行；结束后仍可回查 -->
+          <div v-if="trajectoryRows.length" class="mon-sec">
+            <span class="mon-label">{{ t("agent.trajectoryTitle") }}</span>
+            <ExecutionLanes :steps="sourceSteps" :running="busy && !viewRun" :now="clock" flush />
+            <input
+              v-model="trajectoryQuery"
+              class="mon-search"
+              type="search"
+              :placeholder="t('agent.trajectorySearch')"
+              :aria-label="t('agent.trajectorySearch')"
+            />
+            <div class="mon-rows">
+              <div v-for="row in filteredTrajectory" :key="row.key" class="mon-row">
+                <Icon :name="toolIcon(row.tool)" :size="12" class="mon-row-ico" />
+                <code class="mon-row-name" :title="row.tool">{{ row.tool }}</code>
+                <span v-if="row.attempts > 1" class="mon-row-n">×{{ row.attempts }}</span>
+                <span class="mon-row-dur">{{ fmtMs(row.span) }}</span>
+                <span class="mon-row-badge" :class="'b-' + row.status">{{ t(ATTEMPT_KEY[row.status]) }}</span>
+              </div>
+              <p v-if="!filteredTrajectory.length" class="mon-row-empty">{{ t("agent.trajectoryEmpty") }}</p>
+            </div>
+          </div>
           <div class="mon-sec">
             <span class="mon-label">{{ t("agent.monitorActivity") }}</span>
             <p class="mon-now">
@@ -1077,11 +1418,29 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               <template v-else><Icon :name="statusMeta.icon" :size="12" />{{ t(statusMeta.key) }}</template>
             </p>
             <dl class="mon-meter">
+              <div v-if="runModelText"><dt>{{ t("agent.runModelLabel") }}</dt><dd :title="runModelText">{{ runModelText }}</dd></div>
               <div><dt>{{ t("agent.summaryTools") }}</dt><dd>{{ toolCount }}</dd></div>
               <div><dt>{{ t("agent.modelCalls") }}</dt><dd>{{ displayedUsage.calls || 0 }}</dd></div>
               <div><dt>Tokens</dt><dd>{{ fmtNum(displayedUsage.totalTokens) }}</dd></div>
             </dl>
           </div>
+          <!-- 空闲态：不摆一排 0，而是回答「这轮它有哪些本地工具可用」 -->
+          <div v-if="!busy && !viewRun && !agentSession.pending" class="mon-sec">
+            <span class="mon-label">{{ t("nav.localTools") }}</span>
+            <div class="mon-tools">
+              <button
+                v-for="tool in localTools"
+                :key="tool.key"
+                class="m-chip"
+                :title="t(tool.descKey)"
+                @click="openLocalTool(tool)"
+              >
+                <Icon :name="tool.icon" :size="12" />{{ t(tool.labelKey) }}
+              </button>
+            </div>
+            <p class="mon-hint-inline">{{ t("toolbox.gallery.dockToolsHint") }}</p>
+          </div>
+
           <div v-if="runSummary && runSummary.artifacts.length" class="mon-sec">
             <span class="mon-label">{{ t("agent.summaryArtifacts") }}</span>
             <div class="manual-chips">
@@ -1097,37 +1456,39 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             </div>
           </div>
           <p class="mon-hint">{{ t("agent.capMoved") }}</p>
-        </div>
-      </aside>
+          </div>
+        </aside>
+      </Teleport>
     </div>
   </div>
 </template>
 
 <style scoped>
 .agent { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--card); container: agent / inline-size; }
-.bar { flex-shrink: 0; min-height: 52px; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-7); border-bottom: 1px solid var(--card-border); }
-.thread-title { min-width: 0; margin: 0; font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar .st-chip { flex-shrink: 0; font-size: var(--fs-xs); }
-.monitor-toggle { margin-left: auto; flex-shrink: 0; }
 .agent-progress { flex-shrink: 0; }
-.canvas-empty { flex: 1; min-height: 330px; margin: 0; padding: var(--sp-7) 0; display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; justify-content: center; }
-.ce-mark { display: grid; place-items: center; width: 48px; height: 48px; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); margin-bottom: var(--sp-2); }
-.ce-slogan { margin: 0; font-size: var(--fs-num); line-height: var(--lh-tight); font-weight: 600; color: var(--text); letter-spacing: -0.5px; }
-.ce-hint { margin: 0; font-size: var(--fs-md); color: var(--muted); line-height: var(--lh-body); }
-.ce-examples { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-7); width: 100%; max-width: 600px; }
-.ce-ex { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); color: var(--text-weak); text-align: left; background: transparent; border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer; transition: background var(--dur-fast), border-color var(--dur-fast); }
-.ce-ex > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.ce-ex b { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
-.ce-ex span span { font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-tight); }
-.ce-ex .icon { flex-shrink: 0; }
-.ce-arrow { margin-left: auto; }
-.ce-ex:hover { background: var(--bg); border-color: var(--card-border); }
-.ce-ex:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* 空态居中：先说「这是什么」，再给三个一键可点的例子，最后一行安全说明。
+   垂直居中而不是贴顶——空态是这一屏唯一的正文，贴顶会让下半屏空成一片。 */
+.canvas-empty { flex: 1; min-height: 320px; margin: 0; padding: var(--sp-7) 0 var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; justify-content: center; text-align: center; }
+.ce-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); margin-bottom: var(--sp-3); }
+.ce-slogan { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 650; color: var(--text); letter-spacing: -0.6px; }
+.ce-hint { margin: 0; max-width: 46ch; font-size: var(--fs-md); color: var(--muted); line-height: var(--lh-body); }
+.ce-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-5); max-width: 560px; }
+.ce-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 var(--sp-4);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--text-weak);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-pill);
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.ce-chip .icon { flex-shrink: 0; color: var(--muted); }
+.ce-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
+.ce-chip:hover .icon { color: var(--primary-hover); }
+.ce-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 /* 确认行为说明：低调的一段，且自带「知道了」——它讲的是安全边界，不是卖点。
    刻意不用 flex（图标会在大段文字里被挤到单独一行），图标用 vertical-align 跟首行对齐。 */
 .ce-note {
-  margin: var(--sp-2) 0 0; max-width: 60ch;
-  font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body);
+  margin: var(--sp-5) 0 0; max-width: 52ch; text-align: center;
+  font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body);
 }
 .ce-note .icon { vertical-align: -2px; margin-right: 4px; }
 .ce-note .link { margin-left: var(--sp-2); }
@@ -1146,7 +1507,6 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .noai-actions { flex-shrink: 0; display: flex; gap: var(--sp-2); }
 
 .body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; position: relative; overflow: hidden; }
-.body.with-monitor { grid-template-columns: minmax(0, 1fr) 280px; }
 .canvas { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-7); padding: 28px 24px; scrollbar-gutter: stable both-edges; overscroll-behavior: contain; }
 .scroll > * { width: 100%; max-width: 820px; align-self: center; flex-shrink: 0; }
@@ -1169,6 +1529,16 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   background: var(--card-soft); border: 1px solid var(--card-border); border-radius: var(--r-md);
   white-space: pre-wrap; word-break: break-word;
 }
+/* 附件跟在那句话下面，做成小胶囊：它们是「这一轮的输入材料」，不是另一条消息 */
+.msg-atts { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: 2px; }
+.msg-att {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 240px;
+  padding: 2px var(--sp-2); color: var(--text-weak);
+  background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+}
+.msg-att .icon { color: var(--muted); }
+.msg-att-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .composer { width: calc(100% - 48px); max-width: 820px; align-self: center; flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-7); }
 .background-run { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-weak); }
@@ -1191,22 +1561,8 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .vb-input { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-weak); }
 .vb-actions { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); }
 
-.goal-box { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 4%, transparent); transition: border-color var(--dur-fast), box-shadow var(--dur-fast); }
-.goal-box:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
-.goal-label { color: var(--text-weak); font-size: var(--fs-xs); font-weight: 500; }
-.goal { width: 100%; resize: vertical; min-height: 52px; max-height: min(180px, 25dvh); padding: 0; font-family: inherit; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text); background: transparent; border: 0; border-radius: 0; }
-.goal::placeholder { color: var(--muted); }
-.goal:focus { outline: none; }
-.goal-actions { display: flex; align-items: center; gap: var(--sp-3); }
-.composer-mode { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); color: var(--text-weak); }
-.goal-hint { flex: 1; text-align: right; font-size: var(--fs-xs); color: var(--muted); }
-
-/* ---------- 域选择器（三段同色系小控件，与目标输入同卡） ---------- */
-.goal-domain { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.gd-label { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
-.gd-select { max-width: 220px; padding: 3px var(--sp-2); font-size: var(--fs-sm); color: var(--text); background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--r-sm); }
-.gd-select:focus { outline: none; border-color: var(--primary); }
-.gd-context { font-size: var(--fs-xs); color: var(--primary-hover); background: var(--primary-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); }
+/* 输入框本体（.goal-box / .goal / 弹层）住在 AgentComposer.vue：同一份状态在三个入口
+   （加号 / 斜杠指令 / 模型胶囊）之间流转，样式分家就会先在两处漂移。 */
 
 /* ---------- 内联确认卡 ---------- */
 .confirm { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); background: var(--card); border: 1px solid var(--border-strong); border-left: 3px solid var(--muted); border-radius: var(--r-md); box-shadow: var(--shadow); }
@@ -1218,6 +1574,28 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .cf-tool { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-code); }
 /* 提问卡：问题是正文（不是工具名），回答是文本（不是允许/拒绝） */
 .cf-question { margin: 0; font-size: var(--fs-base); line-height: var(--lh-body); color: var(--text); white-space: pre-wrap; word-break: break-word; }
+/* 候选项：可点选的胶囊；选中态用主色 + 勾，不靠颜色单独表达状态 */
+.cf-options { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cf-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-weak);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.cf-option:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
+.cf-option.on { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--primary); font-weight: 600; }
+.cf-option:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cf-option .icon { flex-shrink: 0; }
 .cf-answer { width: 100%; padding: var(--sp-3); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); resize: vertical; }
 .cf-args { margin: 0; max-height: 260px; overflow: auto; padding: var(--sp-3); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); white-space: pre-wrap; word-break: break-word; }
 .cf-hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
@@ -1248,7 +1626,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .execution-meta { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding: 0 var(--sp-4) var(--sp-3); font-size: var(--fs-xs); color: var(--muted); }
 .timeline { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-3) var(--sp-3); }
 
-.tl-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
+.tl-card { position: relative; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); overflow: hidden; }
 
 /* 工具卡的「正在动手 / 已落地」反馈（动效第一层体感，不需要工具侧改造就生效）。
    呼吸动画只在允许动效时播：prefers-reduced-motion 下退化为静态主色描边。 */
@@ -1256,6 +1634,27 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .tl-card[data-status="ok"] { animation: tlCardSettle 0.42s var(--ease-out); }
 @media (prefers-reduced-motion: no-preference) {
   .tl-card[data-status="running"] { animation: tlCardBreath 1.4s ease-in-out infinite; }
+
+  /* 四类动作原型：只回答「这只手在做什么」，不承担信息。
+     扫描＝高光扫过卡头；流动＝底部流光；落章＝图标脉冲；拉取＝状态徽标走马灯。 */
+  .tl-card[data-status="running"][data-motion="scan"] .tl-head::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 38%;
+    background: linear-gradient(90deg, transparent, var(--primary-soft), transparent);
+    pointer-events: none;
+    animation: tlScan 1.5s linear infinite;
+  }
+  .tl-card[data-status="running"][data-motion="flow"]::after {
+    content: ""; position: absolute; left: 0; bottom: 0; width: 30%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    pointer-events: none;
+    animation: tlFlow 1.3s linear infinite;
+  }
+  .tl-card[data-status="running"][data-motion="stamp"] .tl-ico { animation: tlStamp 1.05s ease-in-out infinite; }
+  .tl-card[data-status="running"][data-motion="stream"] .tl-badge {
+    background-image: linear-gradient(90deg, var(--primary-soft), var(--border-blue), var(--primary-soft));
+    background-size: 250% 100%;
+    animation: tlStream 1.1s linear infinite;
+  }
 }
 @keyframes tlCardBreath {
   0%, 100% { box-shadow: 0 0 0 0 var(--primary-soft); }
@@ -1265,13 +1664,30 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   0% { transform: translateY(-1px); box-shadow: 0 0 0 3px var(--primary-soft); }
   100% { transform: none; box-shadow: none; }
 }
-.tl-head { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-4); background: transparent; border: none; cursor: pointer; text-align: left; transition: background 0.15s; }
+@keyframes tlScan {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+@keyframes tlFlow {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(400%); }
+}
+@keyframes tlStamp {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.22); }
+}
+@keyframes tlStream {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+.tl-head { position: relative; display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-4); background: transparent; border: none; cursor: pointer; text-align: left; transition: background 0.15s; overflow: hidden; }
 .tl-head:hover { background: var(--card-soft); }
 .tl-arrow { flex-shrink: 0; color: var(--muted); transition: transform 0.15s; }
 .tl-arrow.open { transform: rotate(90deg); }
 .tl-ico { flex-shrink: 0; color: var(--primary); }
 .tl-name { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 .tl-n { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
+.tl-dur { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .tl-badge { margin-left: auto; flex-shrink: 0; padding: 1px var(--sp-2); font-size: var(--fs-xs); font-weight: 600; border-radius: var(--r-pill); color: var(--text-soft); background: var(--well); }
 .tl-badge.sm { padding: 0 var(--sp-1); }
 .tl-badge.b-running { color: var(--primary); background: var(--primary-soft); }
@@ -1279,9 +1695,11 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .tl-badge.b-retry { color: var(--warn-deep); background: var(--amber-soft); }
 .tl-badge.b-error { color: var(--danger-deep); background: var(--danger-soft); }
 .tl-body { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4) var(--sp-4); border-top: 1px solid var(--card-border); background: var(--card-soft); }
+.tl-live-row { display: flex; justify-content: flex-end; padding: 0 var(--sp-4) var(--sp-2); }
 .tl-attempt { display: flex; flex-direction: column; gap: var(--sp-2); }
 .ta-head { display: flex; align-items: center; gap: var(--sp-2); }
 .ta-n { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); }
+.ta-dur { margin-left: auto; font-size: var(--fs-xs); color: var(--faint); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .ta-error { display: flex; align-items: center; gap: 5px; margin: 0; font-size: var(--fs-sm); color: var(--danger-deep); line-height: var(--lh-body); }
 .ta-demo { display: flex; align-items: center; gap: 5px; margin: var(--sp-1) 0 0; font-size: var(--fs-sm); color: var(--primary); line-height: var(--lh-body); }
 
@@ -1325,13 +1743,24 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .outcome h3 { margin: var(--sp-1) 0 var(--sp-2); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
 .outcome p { margin: 0 0 var(--sp-4); font-size: var(--fs-md); line-height: var(--lh-body); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-weak); }
 .sum-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); background: var(--card-soft); border: 1px solid var(--card-border); border-radius: var(--r-sm); }
+/* 产物 chip 入场：完成态唯一的「抵达」动效——轻微上浮，不庆祝、不抢答案 */
+@media (prefers-reduced-motion: no-preference) {
+  .sum-card .m-chip { animation: artifactIn 0.32s var(--ease-out) both; }
+}
+@keyframes artifactIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
 .sum-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); }
 .sum-head b { font-size: var(--fs-md); }
 .sum-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-sm); }
+.sum-tool { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .sum-label { flex-shrink: 0; color: var(--muted); font-size: var(--fs-xs); }
 
-.monitor { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-7); padding: var(--sp-6); border-left: 1px solid var(--card-border); background: var(--bg); }
-.mon-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); }
+/* 面板本体住在外壳右栏里：分隔线与底色由 .dock 提供，这里只管内容节奏。
+   没有外壳时（:disabled 的 Teleport）它会退回对话列内，靠 .dock 缺失也不至于糊成一团。 */
+.monitor { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-5); padding: var(--sp-4) var(--sp-5) var(--sp-6); }
+.mon-head { display: flex; align-items: center; gap: var(--sp-2); height: 44px; flex-shrink: 0; color: var(--text-weak); border-bottom: 1px solid var(--border); }
 .mon-head b { font-size: var(--fs-sm); }
 .mon-close { display: grid; place-items: center; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-xs); color: var(--muted); background: transparent; cursor: pointer; }
 .mon-close:hover { color: var(--text); background: var(--well); }
@@ -1349,11 +1778,28 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 /* 面板里唯一一句「去哪儿配」的指路，常驻在底部（工具开关在设置页，见 capMoved） */
 .mon-hint { margin: auto 0 0; padding-top: var(--sp-2); font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); border-top: 1px solid var(--card-border); }
 
+.mon-tools { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+/* 轨迹行：与执行记录同一份数据，密度更高——右栏是黑匣子，不是第二份日志墙 */
+.mon-search { width: 100%; height: 28px; padding: 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: var(--r-xs); }
+.mon-search:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.mon-rows { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
+.mon-row { display: flex; align-items: center; gap: var(--sp-2); padding: 3px var(--sp-2); border-radius: var(--r-xs); font-size: var(--fs-xs); }
+.mon-row:hover { background: var(--well); }
+.mon-row-ico { flex-shrink: 0; color: var(--primary); }
+.mon-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); color: var(--text-code); }
+.mon-row-n { flex-shrink: 0; color: var(--muted); }
+.mon-row-dur { margin-left: auto; flex-shrink: 0; font-family: var(--font-num); font-variant-numeric: tabular-nums; color: var(--faint); }
+.mon-row-badge { flex-shrink: 0; padding: 0 5px; border-radius: var(--r-pill); font-size: 10px; color: var(--text-soft); background: var(--well); }
+.mon-row-badge.b-running { color: var(--primary); background: var(--primary-soft); }
+.mon-row-badge.b-ok { color: var(--success-deep); background: var(--success-soft); }
+.mon-row-badge.b-retry { color: var(--warn-deep); background: var(--amber-soft); }
+.mon-row-badge.b-error { color: var(--danger-deep); background: var(--danger-soft); }
+.mon-row-empty { margin: 0; padding: var(--sp-1) 0; font-size: var(--fs-xs); color: var(--faint); }
+.mon-hint-inline { margin: var(--sp-1) 0 0; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
 .manual-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .m-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-soft); background: var(--ghost); border: 1px solid var(--border); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .m-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
-/* 顶栏的「任务监控」按钮：面板开着时留一个按下态，否则点了没反馈 */
-.mon-on { color: var(--primary-hover); border-color: var(--border-blue); background: var(--primary-soft); }
+
 
 /* ---------- 局部链接按钮（全局按钮体系里没有 xs 文字钮） ---------- */
 .link { padding: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--primary); background: none; border: none; cursor: pointer; transition: color 0.15s; }
@@ -1367,13 +1813,8 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .view-banner { margin: var(--sp-3) var(--sp-6) 0; }
 .tl-head, .pl-head, .tl-row { flex-wrap: wrap; }
 .tl-name { flex-shrink: 1; overflow-wrap: anywhere; }
-@container agent (max-width: 960px) {
-  .body.with-monitor { grid-template-columns: minmax(0, 1fr); }
-  .monitor { position: absolute; inset: 0 0 0 auto; width: min(300px, 100%); z-index: 2; box-shadow: var(--shadow-pop); }
-}
+
 @media (max-width: 600px) {
-  .bar { padding: var(--sp-2) var(--sp-3); gap: var(--sp-1); }
-  .thread-title { font-size: var(--fs-sm); }
   .scroll { padding: var(--sp-6) var(--sp-3); scrollbar-gutter: auto; }
   .composer { width: calc(100% - 20px); margin-bottom: var(--sp-3); }
   .goal-hint { font-size: var(--fs-xs); }

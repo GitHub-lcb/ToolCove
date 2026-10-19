@@ -11,7 +11,7 @@ describe("foldTimeline 工具卡折叠", () => {
     const items = foldTimeline([start("a", "json.format"), ok("a", "json.format", { output: "{}" })]);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ kind: "tool", id: "a", tool: "json.format" });
-    expect(items[0].attempts).toEqual([{ n: 1, args: {}, status: "ok", result: { output: "{}" }, error: "", code: "", ts: 1 }]);
+    expect(items[0].attempts).toEqual([{ n: 1, args: {}, status: "ok", result: { output: "{}" }, error: "", code: "", ts: 1, endTs: 1 }]);
   });
 
   it("重试不新开卡：tool_retry 标记当前尝试，下一次 start 追加新尝试", () => {
@@ -24,12 +24,15 @@ describe("foldTimeline 工具卡折叠", () => {
     expect(items).toHaveLength(1);
     expect(items[0].attempts).toHaveLength(2);
     expect(items[0].attempts[0]).toMatchObject({ n: 1, status: "retry", error: "boom" });
+    // 重试即这一次尝试的收尾：endTs 是重试事件的时间，不是下一次 start 的
+    expect(items[0].attempts[0].endTs).toBe(1);
     expect(items[0].attempts[1]).toMatchObject({ n: 2, status: "ok", result: "same" });
+    expect(items[0].attempts[1].endTs).toBe(2);
   });
 
   it("tool_error 收尾为 error 并保留错误码", () => {
     const items = foldTimeline([start("a", "file.write_text"), bad("a", "file.write_text", "需要 Pro 授权", "FORBIDDEN")]);
-    expect(items[0].attempts[0]).toMatchObject({ status: "error", error: "需要 Pro 授权", code: "FORBIDDEN" });
+    expect(items[0].attempts[0]).toMatchObject({ status: "error", error: "需要 Pro 授权", code: "FORBIDDEN", endTs: 9 });
   });
 
   it("没有 start 的 result / error 也建卡，不丢事件", () => {

@@ -2,6 +2,7 @@
 // agent 不可隐藏语义。
 import { describe, it, expect } from "vitest";
 import {
+  buildArchivedItems,
   buildTaskItems,
   conversationTitle,
   filterTaskItems,
@@ -27,13 +28,39 @@ describe("buildTaskItems", () => {
 
   it("只投影渲染所需字段，updatedAt 缺时退回 createdAt", () => {
     const items = buildTaskItems([run("r1", { history: [1], steps: [2], usage: { calls: 3 } }), run("r2", { updatedAt: 0, createdAt: 50 })]);
-    expect(items[0]).toEqual({ id: "r1", status: "completed", input: "目标 r1", title: "目标 r1", updatedAt: 200 });
+    expect(items[0]).toEqual({ id: "r1", status: "completed", input: "目标 r1", title: "目标 r1", pinned: false, model: "", updatedAt: 200 });
     expect(items[1].updatedAt).toBe(50);
   });
 
   it("limit 可配；缺字段与脏记录有兜底", () => {
     expect(buildTaskItems([run("r1"), run("r2"), run("r3")], { limit: 2 }).map((x) => x.id)).toEqual(["r1", "r2"]);
-    expect(buildTaskItems([{ id: "r9" }, null, {}])[0]).toEqual({ id: "r9", status: "", input: "", title: "", updatedAt: 0 });
+    expect(buildTaskItems([{ id: "r9" }, null, {}])[0]).toEqual({ id: "r9", status: "", input: "", title: "", pinned: false, model: "", updatedAt: 0 });
+  });
+
+  it("重命名优先于自动主题；归档记录不进当前列表", () => {
+    const items = buildTaskItems([
+      run("r1", { input: "原始目标很长很长", title: "  我起的名字  " }),
+      run("r2", { archived: true }),
+      run("r3", { pinned: true }),
+    ]);
+    expect(items.map((x) => x.id)).toEqual(["r1", "r3"]);
+    expect(items[0].title).toBe("我起的名字");
+    expect(items[1].pinned).toBe(true);
+  });
+
+  it("模型快照随行投影（只用于 tooltip，不占行内空间）", () => {
+    const [item] = buildTaskItems([run("r1", { model: "deepseek-chat" })]);
+    expect(item.model).toBe("deepseek-chat");
+    const [archived] = buildArchivedItems([run("r2", { archived: true, model: "gpt-4o-mini" })]);
+    expect(archived.model).toBe("gpt-4o-mini");
+  });
+
+  it("已归档单独投影（默认折叠区只吃 archived）", () => {
+    const runs = [run("r1", { archived: true, title: "旧会话" }), run("r2"), run("r3", { archived: true })];
+    const archived = buildArchivedItems(runs);
+    expect(archived.map((x) => x.id)).toEqual(["r1", "r3"]);
+    expect(archived[0].title).toBe("旧会话");
+    expect(buildArchivedItems(null)).toEqual([]);
   });
 
   it("非数组输入返回空数组", () => {
@@ -133,8 +160,20 @@ describe("groupKeyFor / groupTaskItems", () => {
     expect(groupTaskItems([], { now: NOW })).toEqual([]);
   });
 
+  it("置顶项优先于时间与运行状态，单独成组并排在最前", () => {
+    const items = [
+      item("new", at(2026, 3, 10, 14)),
+      { ...item("pinned-old", at(2026, 3, 1)), pinned: true },
+      item("run", at(2026, 3, 10, 13), "running"),
+    ];
+    const groups = groupTaskItems(items, { now: NOW });
+    expect(groups.map((g) => g.key)).toEqual(["pinned", "running", "today"]);
+    expect(groups[0].items.map((x) => x.id)).toEqual(["pinned-old"]);
+    expect(groupKeyFor({ id: "x", pinned: true, status: "running", updatedAt: NOW }, NOW)).toBe("pinned");
+  });
+
   it("分组 key 集合稳定（组件按它渲染顺序与词条）", () => {
-    expect([...HISTORY_GROUPS]).toEqual(["running", "today", "yesterday", "week", "older"]);
+    expect([...HISTORY_GROUPS]).toEqual(["pinned", "running", "today", "yesterday", "week", "older"]);
   });
 });
 

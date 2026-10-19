@@ -22,6 +22,10 @@ function withWindow(result, offset, limit) {
 
 export default {
   "file.inspect": { execute: ({ paths }) => desktopInvoke("file_tool_inspect", { paths }) },
+  // 任意文件的 MD5（流式读盘，PDF/图片等二进制也能算）。与文本哈希 crypto.hash 分工明确。
+  "file.md5": { execute: ({ path }) => desktopInvoke("file_tool_calculate_md5", { path }) },
+  // 生成「MD5 不同」的副本：Rust 侧保证源文件不动、输出与源不同路径、失败回滚（见 file_tool.rs）。
+  "file.modify_md5": { execute: ({ sourcePath, outputPath }) => desktopInvoke("file_tool_modify_md5", { sourcePath, outputPath }) },
   "file.read_text": { execute: async ({ path, encoding = "AUTO", offset, limit }) => withWindow(await desktopInvoke("file_tool_read_text", { path, encoding }), offset, limit) },
   "file.write_text": { execute: ({ path, text }) => desktopInvoke("file_tool_write_text", { path, text, encoding: "UTF-8", bom: false }) },
   "file.preview_write": {

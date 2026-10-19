@@ -7,12 +7,14 @@ test("监控由用户打开，空闲与运行时点击均有反馈", async ({ pa
   await seedWithAI(page);
   await mockAI(page, { responses: FLOW, delayMs: 700 });
   await page.goto("/");
-  const toggle = page.getByRole("button", { name: "任务监控", exact: true });
+  // 右栏开关已上移到外壳顶栏（图标按钮，name 来自 title）：关闭态「显示任务监控」/ 打开态「收起任务监控」
+  const toggle = page.getByRole("button", { name: "显示任务监控", exact: true });
   await expect(page.locator(".monitor")).toHaveCount(0);
+  await expect(page.locator(".dock")).toBeHidden();
   await toggle.click();
   await expect(page.locator(".monitor")).toBeVisible();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "收起任务监控", exact: true }).click();
+  await expect(page.locator(".dock-toggle")).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#agent-monitor").getByRole("button", { name: "收起任务监控", exact: true }).click();
   await runGoal(page, "解析这段 JSON");
   await expect(page.locator(".working")).toBeVisible();
   await expect(page.locator(".monitor")).toHaveCount(0);
@@ -77,9 +79,12 @@ test("长内容、窄窗口、监控展开不挤走输入框，手动主题保�
   await page.locator(".goal").fill("长目标".repeat(300));
   for (const width of [1440, 960, 640, 390]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.getByRole("button", { name: "任务监控", exact: true }).click();
-    await expect(page.locator(".monitor")).toBeVisible();
-    await page.getByRole("button", { name: "收起任务监控", exact: true }).click();
+    // <=620px 顶栏收起右栏开关（面板此时是浮层）：窄窗只验证「不开面板也不溢出」
+    if (width > 620) {
+      await page.getByRole("button", { name: "显示任务监控", exact: true }).click();
+      await expect(page.locator(".monitor")).toBeVisible();
+      await page.locator("#agent-monitor").getByRole("button", { name: "收起任务监控", exact: true }).click();
+    }
     const composer = await page.locator(".composer").boundingBox();
     expect(composer.y + composer.height).toBeLessThanOrEqual(800);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);

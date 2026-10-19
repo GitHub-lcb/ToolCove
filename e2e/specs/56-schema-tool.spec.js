@@ -5,8 +5,8 @@
 import { expect, test } from "@playwright/test";
 
 async function openSchemaTool(page) {
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  const card = page.locator(".tool-item", { hasText: "JSON Schema" });
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  const card = page.locator(".lt-tool", { hasText: "JSON Schema" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   await page.locator('[data-role="json"]').waitFor({ state: "visible", timeout: 10_000 });

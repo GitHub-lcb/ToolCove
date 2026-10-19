@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateJoinInput, validateSettings } from "./settingsForm.js";
+import { applyAiForm, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateJoinInput, validateSettings } from "./settingsForm.js";
 
 describe("formFromSettings", () => {
   it("缺字段时给安全默认值（不能把 undefined 塞进表单）", () => {
@@ -38,6 +38,51 @@ describe("formFromSettings", () => {
     const form = formFromSettings(source);
     form.ui.hiddenModules.push("db");
     expect(source.ui.hiddenModules).toEqual(["rail"]);
+  });
+
+  it("多套配置时读当前默认那套（与桌面端同一份 activeId）", () => {
+    const form = formFromSettings({
+      ai: {
+        enabled: true,
+        activeId: "b",
+        profiles: [
+          { id: "a", name: "主力", baseUrl: "https://a/v1", model: "ma", apiKey: "ka" },
+          { id: "b", name: "备用", baseUrl: "https://b/v1", model: "mb", apiKey: "kb", temperature: 0.3, reasoningEffort: "low" },
+        ],
+      },
+    });
+    expect(form.ai).toMatchObject({ baseUrl: "https://b/v1", model: "mb", temperature: 0.3, reasoningEffort: "low", enabled: true });
+  });
+});
+
+describe("applyAiForm", () => {
+  it("只写回当前配置，其余配置与名字原样保留", () => {
+    const stored = {
+      enabled: true,
+      activeId: "b",
+      profiles: [
+        { id: "a", name: "主力", baseUrl: "https://a/v1", apiKey: "ka", model: "ma", temperature: 0.7, reasoningEffort: "" },
+        { id: "b", name: "备用", baseUrl: "https://b/v1", apiKey: "kb", model: "mb", temperature: 0.7, reasoningEffort: "" },
+      ],
+    };
+    const ai = applyAiForm(stored, { enabled: true, baseUrl: "https://c/v1/", model: "mc", temperature: 0.2, reasoningEffort: "low" }, { apiKey: "kc" });
+    expect(ai.activeId).toBe("b");
+    expect(ai.profiles).toHaveLength(2);
+    expect(ai.profiles[0]).toMatchObject({ id: "a", name: "主力", baseUrl: "https://a/v1", model: "ma", apiKey: "ka" });
+    expect(ai.profiles[1]).toMatchObject({ id: "b", name: "备用", baseUrl: "https://c/v1", model: "mc", apiKey: "kc", reasoningEffort: "low", temperature: 0.2 });
+    // 扁平镜像跟着当前配置走（旧代码/手改配置仍能读）
+    expect(ai).toMatchObject({ baseUrl: "https://c/v1", model: "mc", apiKey: "kc" });
+  });
+
+  it("旧扁平配置保存后变成一条配置", () => {
+    const ai = applyAiForm(
+      { baseUrl: "https://a/v1", apiKey: "ka", model: "ma", temperature: 0.7 },
+      { enabled: true, baseUrl: "https://b/v1", model: "mb", temperature: 0.5, reasoningEffort: "" },
+      { apiKey: "kb" }
+    );
+    expect(ai.profiles).toHaveLength(1);
+    expect(ai.profiles[0]).toMatchObject({ baseUrl: "https://b/v1", model: "mb", apiKey: "kb" });
+    expect(ai.activeId).toBe("default");
   });
 });
 

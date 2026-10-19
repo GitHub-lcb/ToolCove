@@ -10,7 +10,8 @@
 //     存进去要 encryptValue——两端共用同一份 secure.js。
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { AI_PRESETS, testAI } from "../../src/ai.js";
+import { AI_PRESETS, PROVIDER_GROUPS, testAI } from "../../src/ai.js";
+import { activeProfile, normalizeAi } from "../../src/agent/modelProfiles.js";
 import { mergeSettingsSnapshot } from "../../src/app/settingsConfig.js";
 import { decryptValue, encryptValue } from "../../src/secure.js";
 import { invoke } from "../../src/platform/invoke.js";
@@ -21,7 +22,7 @@ import { nativeAvailable, pickFile } from "./platform/bridge.js";
 import { currentVersion, decideUpdate, downloadApk, fetchManifest, installApk } from "./platform/update.js";
 import { capabilities } from "../../src/platform/env.js";
 import { formatReport, runOne, runSelfTest } from "./selfTest.js";
-import { REASONING_EFFORTS, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
+import { REASONING_EFFORTS, applyAiForm, emptySettings, formFromSettings, matchPreset, normalizeBaseUrl, syncStatusKey, validateSettings } from "./settingsForm.js";
 
 const { t } = useI18n();
 
@@ -164,6 +165,15 @@ const join = ref({ collectionId: "", code: "", password: "" });
 const devices = ref([]);
 
 const currentPreset = computed(() => matchPreset(form.value.ai.baseUrl, AI_PRESETS));
+const providerGroups = computed(() =>
+  PROVIDER_GROUPS.map((group) => ({ ...group, items: AI_PRESETS.filter((preset) => preset.group === group.key) }))
+);
+function onPresetSelect(event) {
+  const key = event.target.value;
+  if (key === "custom") return;
+  const preset = AI_PRESETS.find((item) => item.key === key);
+  if (preset) applyPreset(preset);
+}
 const syncStatusText = computed(() => t(syncStatusKey(syncCfg.value?.status)));
 
 // ---------- 检查更新（安卓） ----------
@@ -249,7 +259,8 @@ async function load() {
     //   解不出来 → 只提示，**照常允许保存**——安卓上的 Keystore 在"卸载重装/清应用数据/
     //   换签名重装"之后密钥会失效，若跟着一起禁止保存，用户就再也填不回 KEY，页面变死结。
     let decryptedKey = "";
-    const storedKey = snapshot.ai?.apiKey || "";
+    // 当前默认配置的密钥（桌面端会把它镜像到扁平字段；这里优先读 profiles，兼容手改配置）
+    const storedKey = activeProfile(normalizeAi(snapshot.ai))?.apiKey || "";
     if (storedKey) {
       try {
         decryptedKey = await decryptValue(storedKey);
@@ -278,12 +289,14 @@ onMounted(async () => {
 });
 
 function applyPreset(preset) {
+  const changed = form.value.ai.baseUrl !== preset.baseUrl;
   form.value = {
     ...form.value,
     ai: {
       ...form.value.ai,
       baseUrl: preset.baseUrl,
-      model: form.value.ai.model || preset.model,
+      // 换厂商时模型跟着换；同厂商不覆盖用户手动选的模型
+      model: changed || !form.value.ai.model ? preset.model : form.value.ai.model,
       apiKey: form.value.ai.apiKey || preset.apiKey || "",
       enabled: true,
     },
@@ -367,14 +380,12 @@ async function save() {
     // 密钥解不出来时输入框是空的（keyError 那条提示）。此时**不能**把原密文覆盖成空：
     // 用户可能只是进来换个模型，覆盖等于把密钥悄悄删了。只有真的填了内容才重写。
     const typedKey = form.value.ai.apiKey;
-    const storedKey = rawSnapshot.value?.ai?.apiKey || "";
+    const storedKey = activeProfile(normalizeAi(rawSnapshot.value?.ai))?.apiKey || "";
     const apiKey = !typedKey && keyError.value && storedKey ? storedKey : await encryptValue(typedKey);
+    // 多模型：只写回当前默认那一条，其余配置与名字原样保留（见 settingsForm.applyAiForm）
+    const ai = applyAiForm(rawSnapshot.value?.ai, form.value.ai, { apiKey });
     const payload = mergeSettingsSnapshot(JSON.parse(JSON.stringify(rawSnapshot.value || {})), {
-      ai: {
-        ...form.value.ai,
-        baseUrl: normalizeBaseUrl(form.value.ai.baseUrl),
-        apiKey,
-      },
+      ai,
       ui: form.value.ui,
     });
     await invoke("save_data", { key: "settings", data: payload });
@@ -492,18 +503,15 @@ async function renameDevice(event) {
 
       <p class="m-hint-sm">{{ t("settings.aiDesc") }}</p>
 
-      <div class="m-chips" data-role="presets">
-        <button
-          v-for="preset in AI_PRESETS"
-          :key="preset.key"
-          class="m-chip"
-          :class="{ on: currentPreset?.key === preset.key }"
-          :data-preset="preset.key"
-          @click="applyPreset(preset)"
-        >
-          {{ t(preset.labelKey) }}
-        </button>
-      </div>
+      <label class="m-field">
+        <span>{{ t("settings.aiProvider") }}</span>
+        <select :value="currentPreset?.key || 'custom'" data-role="preset" @change="onPresetSelect">
+          <optgroup v-for="group in providerGroups" :key="group.key" :label="t(group.labelKey)">
+            <option v-for="preset in group.items" :key="preset.key" :value="preset.key">{{ t(preset.labelKey) }}</option>
+          </optgroup>
+          <option value="custom">{{ t("settings.aiProviderCustom") }}</option>
+        </select>
+      </label>
 
       <label class="m-field">
         <span>{{ t("settings.aiBaseUrl") }}</span>

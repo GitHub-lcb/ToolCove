@@ -51,8 +51,14 @@ function cutAtBoundary(text, max) {
   return cut > 0 ? window.slice(0, cut) : text.slice(0, max) + "…";
 }
 
+/** 行标题：用户重命名优先，否则用目标派生主题。 */
+function titleOf(rec) {
+  const custom = typeof rec?.title === "string" ? rec.title.replace(/\s+/g, " ").trim() : "";
+  return custom || conversationTitle(rec?.input);
+}
+
 /**
- * agentSession.runs → 侧边栏会话行。
+ * agentSession.runs → 侧边栏会话行（当前列表：不含已归档）。
  * runs 已是最新在前（session.js 用 unshift 落记录），这里只截前 limit 条、不重排，
  * 避免侧边栏与引擎落盘顺序出现两套真相。
  * 只带渲染所需字段；now 是时间基准注入点（测试可固定），当前行数据不派生时间文本——
@@ -62,15 +68,39 @@ export function buildTaskItems(runs, { limit = TASK_LIST_LIMIT, now = Date.now()
   void now; // 预留：行内若将来要派生「进行中时长」等时间文本，从这里取基准
   if (!Array.isArray(runs)) return [];
   const cap = Number.isInteger(limit) && limit > 0 ? limit : 0;
-  return runs.slice(0, cap).map((rec) => ({
-    id: rec && rec.id ? String(rec.id) : "",
-    status: rec && typeof rec.status === "string" ? rec.status : "",
-    // 目标原文（搜索要匹配它，行内 title 属性也给全文）
-    input: rec && typeof rec.input === "string" ? rec.input : "",
-    // 行内显示的主题
-    title: conversationTitle(rec?.input),
-    updatedAt: Number(rec?.updatedAt || rec?.createdAt) || 0,
-  }));
+  return runs
+    .filter((rec) => rec && !rec.archived)
+    .slice(0, cap)
+    .map((rec) => ({
+      id: rec && rec.id ? String(rec.id) : "",
+      status: rec && typeof rec.status === "string" ? rec.status : "",
+      // 目标原文（搜索要匹配它，行内 title 属性也给全文）
+      input: rec && typeof rec.input === "string" ? rec.input : "",
+      // 行内显示的主题：用户重命名优先，否则目标派生
+      title: titleOf(rec),
+      pinned: rec?.pinned === true,
+      // 模型快照：只进 title/tooltip，不占列表行的视觉空间
+      model: rec && typeof rec.model === "string" ? rec.model : "",
+      updatedAt: Number(rec?.updatedAt || rec?.createdAt) || 0,
+    }));
+}
+
+/** 已归档会话：与当前列表同一投影，单独成区（默认折叠）。 */
+export function buildArchivedItems(runs, { limit = TASK_LIST_LIMIT } = {}) {
+  if (!Array.isArray(runs)) return [];
+  const cap = Number.isInteger(limit) && limit > 0 ? limit : 0;
+  return runs
+    .filter((rec) => rec && rec.archived)
+    .slice(0, cap)
+    .map((rec) => ({
+      id: rec && rec.id ? String(rec.id) : "",
+      status: rec && typeof rec.status === "string" ? rec.status : "",
+      input: rec && typeof rec.input === "string" ? rec.input : "",
+      title: titleOf(rec),
+      pinned: rec?.pinned === true,
+      model: rec && typeof rec.model === "string" ? rec.model : "",
+      updatedAt: Number(rec?.updatedAt || rec?.createdAt) || 0,
+    }));
 }
 
 /** 搜索结果上限：搜索是「找回某一条」，不是第二份完整列表。 */
@@ -91,7 +121,7 @@ export function filterTaskItems(items, query, { limit = SEARCH_LIMIT } = {}) {
 }
 
 /** 分组顺序即渲染顺序；key 只做 i18n 查表，中文标签在词条里。 */
-export const HISTORY_GROUPS = Object.freeze(["running", "today", "yesterday", "week", "older"]);
+export const HISTORY_GROUPS = Object.freeze(["pinned", "running", "today", "yesterday", "week", "older"]);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -111,8 +141,9 @@ function dayDiff(ts, now) {
   return Math.round((startOfDay(now) - startOfDay(ts)) / DAY_MS);
 }
 
-/** 一条记录落到哪个分组。运行中/等待中的单独成组——它们最需要被看见（旧实现只有状态点）。 */
+/** 一条记录落到哪个分组。置顶优先；运行中/等待中的单独成组——它们最需要被看见。 */
 export function groupKeyFor(item, now = Date.now()) {
+  if (item?.pinned) return "pinned";
   const status = item?.status || "";
   if (status === "running" || status === "pending") return "running";
   const ts = Number(item?.updatedAt) || 0;

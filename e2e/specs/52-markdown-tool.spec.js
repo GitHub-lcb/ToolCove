@@ -5,8 +5,8 @@ import { expect, test } from "@playwright/test";
 
 /** 打开 Markdown 工具（桌面端工具卡片是 .tool-item，按文本定位）。 */
 async function openMarkdownTool(page) {
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  const card = page.locator(".tool-item", { hasText: "Markdown 文档" });
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  const card = page.locator(".lt-tool", { hasText: "Markdown 文档" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   await page.locator('[data-role="input"]').waitFor({ state: "visible", timeout: 10_000 });

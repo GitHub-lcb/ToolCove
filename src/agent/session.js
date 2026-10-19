@@ -7,9 +7,10 @@
 import { reactive } from "vue";
 import { loadToolbox, saveToolbox, saveToolboxNow } from "../toolboxStore.js";
 import { cloneJsonData } from "../jsonData.js";
-import { isAIConfigured } from "../ai.js";
+import { isAIConfigured, loadAIConfig } from "../ai.js";
 import { loadAgentConfig, saveAgentConfig } from "./config.js";
 import { createApprovalPolicy } from "./approval.js";
+import { attachmentPromptLine, normalizeAttachments } from "./attachments.js";
 import { buildAgentRegistry, listAgentTools, resolveRunOptions } from "./tools.js";
 import { runAIAgent } from "./index.js";
 import { resolveTypeSafeTransport } from "../typesafe.js";
@@ -46,6 +47,9 @@ const INITIAL = () => ({
   // 领域/代码池数据由视图（AgentView）持有并把 contextLine 拼好透传，引擎不查数据。
   contextDomain: "",
   pending: null, // { kind:"tool"|"ask", tool, risk, question, args, resolve }
+  // 本轮的附件（输入框挂上来的文件）。与 goal 同生命周期：运行开始时落下、清空时间线时清掉。
+  // 它同时写进 run 记录，历史回看读的是 run.attachments，不依赖这份易失状态。
+  attachments: [],
 });
 
 export const agentSession = reactive(INITIAL());
@@ -72,6 +76,7 @@ function pushEvent(event) {
 
 function resetTimeline() {
   agentSession.steps = [];
+  agentSession.attachments = [];
   agentSession.answer = "";
   agentSession.error = "";
   agentSession.errorCode = "";
@@ -133,6 +138,18 @@ export async function setToolEnabled(name, enabled) {
   return saved;
 }
 
+// 模型给的选项也要防脏：只认非空字符串，去重、限 6 个、每个 ≤80 字。
+function askOptionsOf(meta) {
+  const list = Array.isArray(meta?.options) ? meta.options : [];
+  const out = [];
+  for (const raw of list) {
+    const text = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+    if (text && !out.includes(text)) out.push(text);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
 // runtime 的两处确认调用点：
 //   工具确认 → 传 (message, {action, tool, decision, id})，回答是布尔；
 //   ask_user → 传 (question, action)，回答是**文本**（模型问的是「哪两个文件」这类内容）。
@@ -148,6 +165,9 @@ function handleConfirm(message, meta) {
       tool: isTool ? meta.tool.name || "" : "",
       risk: isTool ? meta.tool.risk || "" : "",
       question: isTool ? "" : String(meta?.question || message || ""),
+      // 提问卡的候选项：模型有明确选项时给按钮，自由文本入口始终保留
+      options: isTool ? [] : askOptionsOf(meta),
+      multiple: !isTool && meta?.multiple === true,
       args: isTool ? sanitizeRun(meta.action?.args ?? {}) : null,
       preview: isTool && meta?.preview ? sanitizeRun(meta.preview) : null,
       resolve,
@@ -227,17 +247,22 @@ async function launch(input, resumeRun, extra = {}) {
 
   agentSession.goal = goal;
   resetTimeline();
+  // resetTimeline 会清掉上一轮的附件，这里紧接着落本轮：顺序反了会让消息流里的 chip 闪一下才出现
+  agentSession.attachments = Array.isArray(extra.attachments) ? extra.attachments : [];
   agentSession.status = "running";
   stopFlag = false;
 
   // 注册表与技能库都在**运行开始前**才准备：工具实现层是动态加载的（首屏不带 luxon/js-yaml 等），
   // 技能库读取失败不该拦住运行。
-  const [registry, skills, typesafe] = await Promise.all([
+  const [registry, skills, typesafe, aiConfig] = await Promise.all([
     buildAgentRegistry(agentSession.cfg),
     agentSession.skills?.length ? Promise.resolve(agentSession.skills) : loadSkills().catch(() => []),
     // TypeSafe 语义匹配是**可选增强**：没配就是 null，规划器据此退回关键词匹配。
     // 解析本身失败（设置读不到等）也退回 null——一个可选的增强不该拦住整次运行。
     resolveTypeSafeTransport().catch(() => null),
+    // 起跑时快照模型配置：运行中切模型/改档位只影响下一次运行，本次每一步用同一套配置。
+    // 读不到就退回逐次读取（旧行为），不让一个可选快照拦住运行。
+    loadAIConfig().catch(() => null),
   ]);
   const runOptions = resolveRunOptions(agentSession.cfg);
   // 技能：命中者的正文进 prompt（目录不进）。设置里关掉的技能在这里就被排除，
@@ -258,11 +283,21 @@ async function launch(input, resumeRun, extra = {}) {
       registry,
       ...runOptions,
       ...skillOptions,
+      // 模型快照：config 固定本次运行的端点/密钥/模型/档位；modelInfo 只用于落盘与展示
+      ...(aiConfig
+        ? {
+            modelOptions: { config: aiConfig },
+            modelInfo: { model: aiConfig.model, profileName: aiConfig.profileName },
+          }
+        : {}),
       approvalPolicy,
       ...(resumeRun ? { resume: resumeRun } : {}),
       // 会话上下文（工作域绑定）：视图拼好的 contextLine 原样透传，一路到规划器提示词。
       // 为空（不选域）时**不加这个键**，规划器读到的仍是空 → 提示词零变化。
       ...(extra.contextLine ? { contextLine: extra.contextLine } : {}),
+      // 附件：附件段进提示词，附件本身落到 run 记录（历史回看 / 导出日志都要用）。
+      ...(extra.attachments?.length ? { attachments: extra.attachments } : {}),
+      ...(extra.attachmentLine ? { attachmentLine: extra.attachmentLine } : {}),
       confirm: handleConfirm,
       // ask_user 要的是文本答案（路径、SQL、口令…），走单独入口，不复用布尔确认
       askUser: handleAskUser,
@@ -315,7 +350,13 @@ export async function startAgentRun(goal, extra = {}) {
 
 export async function resumeAgentRun(run) {
   if (!run?.input) return false;
-  return launch(run.input, run);
+  // 续跑要沿用原附件：原提示词里带着它们，续跑时丢掉等于「同一个目标、少了一半材料」。
+  // 附件正文不在 run 里（见 agent/index.js），所以续跑时只剩路径，这是有意的取舍。
+  const attachments = normalizeAttachments(run.attachments);
+  return launch(run.input, run, {
+    attachments,
+    ...(attachments.length ? { attachmentLine: attachmentPromptLine(attachments) } : {}),
+  });
 }
 
 /** 请求停止。run 上记为 "user"，历史列表据此区分「停止」与「取消」。 */
@@ -358,6 +399,37 @@ export function resolvePending(approved) {
 export function discardRun(id) {
   agentSession.runs = agentSession.runs.filter((r) => r.id !== id);
   persistRuns();
+}
+
+/** 会话重命名：空标题 = 恢复自动主题。改名不是新活动，不动 updatedAt。 */
+export function renameRun(id, title) {
+  const run = agentSession.runs.find((r) => r && r.id === id);
+  if (!run) return false;
+  const next = String(title || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  if (next) run.title = next;
+  else delete run.title;
+  persistRuns();
+  return true;
+}
+
+/** 置顶 / 取消置顶：只影响列表排序，不动时间与状态。 */
+export function pinRun(id, pinned) {
+  const run = agentSession.runs.find((r) => r && r.id === id);
+  if (!run) return false;
+  if (pinned) run.pinned = true;
+  else delete run.pinned;
+  persistRuns();
+  return true;
+}
+
+/** 归档 / 取消归档：记录与步骤原样保留，只从当前列表隐藏。 */
+export function archiveRun(id, archived) {
+  const run = agentSession.runs.find((r) => r && r.id === id);
+  if (!run) return false;
+  if (archived) run.archived = true;
+  else delete run.archived;
+  persistRuns();
+  return true;
 }
 
 /**

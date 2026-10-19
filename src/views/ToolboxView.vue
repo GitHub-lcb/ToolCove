@@ -12,9 +12,9 @@ import { createJsonHandoffQueue, JSON_HANDOFF_EVENT } from "../tools/jsonHandoff
 import { prepareJsonHandoff } from "../tools/jsonWorkspace.js";
 import { groupToolboxTools, searchToolboxTools, toolKeywords, visibleToolboxTools } from "../toolboxTools.js";
 import { AGENT_TOOL_CATALOG } from "../agent/catalog.js";
+import { riskChip, riskKey } from "../agent/capabilities.js";
 import { isSemanticWorthy, suggestTools } from "../toolboxSemantic.js";
 import { resolveTypeSafeTransport } from "../typesafe.js";
-import { buildToolboxQuickList, normalizeExpandedGroups, toggleExpandedGroup } from "../toolboxViewState.js";
 import { getToolComponent } from "../toolComponents.js";
 import { track } from "../app/telemetry.js";
 
@@ -25,14 +25,12 @@ const props = defineProps({
 
 const isTauri = isTauriEnv();
 const RECENT_MAX = 8;
-const QUICK_MAX = 6;
 
 const { t } = useI18n();
 
 // 工具注册表：ready=true 可打开，false 为规划中占位卡（key/label/icon 与独立窗口共用）；
 // 浏览器端过滤掉依赖原生能力的工具（见 toolboxTools.js 的 desktopOnly）
 const TOOLS = visibleToolboxTools();
-const ALL_GROUPS = groupToolboxTools(TOOLS);
 
 // 首页检索：按注册表字段与关键词过滤，空关键词回落到完整列表
 const query = ref("");
@@ -41,12 +39,37 @@ const filteredTools = computed(() => {
   const keyword = query.value.trim();
   return keyword ? searchToolboxTools(keyword, TOOLS) : TOOLS;
 });
-const GROUPS = computed(() => groupToolboxTools(filteredTools.value));
+// 目录只有一个（万物皆本地工具）：搜索之上再叠一层「全部 / Agent 可调 / 最近」的视图筛选。
+// 「Agent 可调」不是另一份清单，而是同一批工具里被 Agent 动作引用到的那些——两处永远一致。
+const filter = ref("all");
+const FILTERS = [
+  { key: "all", labelKey: "toolbox.gallery.filterAll" },
+  { key: "agent", labelKey: "toolbox.gallery.filterAgent" },
+  { key: "recent", labelKey: "toolbox.gallery.filterRecent" },
+];
+const agentToolKeys = computed(() => new Set(AGENT_TOOL_CATALOG.map((action) => action.toolKey)));
+const modeTools = computed(() => {
+  if (filter.value === "agent") return filteredTools.value.filter((tool) => agentToolKeys.value.has(tool.key));
+  if (filter.value === "recent") {
+    const order = new Map(recent.value.map((item, index) => [item.key, index]));
+    return filteredTools.value.filter((tool) => order.has(tool.key)).sort((a, b) => order.get(a.key) - order.get(b.key));
+  }
+  return filteredTools.value;
+});
+const GROUPS = computed(() => groupToolboxTools(modeTools.value));
+// 动作也吃同一个搜索词：搜「json」时却把 41 条动作全列出来，等于告诉用户"你的检索没生效"。
+const filteredActions = computed(() => {
+  const keyword = query.value.trim().toLowerCase();
+  if (!keyword) return AGENT_TOOL_CATALOG;
+  return AGENT_TOOL_CATALOG.filter((action) => {
+    const text = t(action.descriptionKey) || action.description || "";
+    return action.name.toLowerCase().includes(keyword) || String(text).toLowerCase().includes(keyword);
+  });
+});
 
 // 启动台上的三个数字：都可打开的工具数 / Agent 动作数 / 其中能被 Agent 调用的工具数。
 // 刻意与 Agent 侧共用同一份目录（agent/catalog.js），于是"工具箱有多少、Agent 能驱动多少"
 // 这两个数永远一致——它们本来就是同一件事的两面，各自维护一份必然会漂。
-const readyCount = computed(() => TOOLS.filter((tool) => tool.ready).length);
 const agentActionCount = computed(() => AGENT_TOOL_CATALOG.length);
 const agentToolCount = computed(() => {
   const keys = new Set(AGENT_TOOL_CATALOG.map((t) => t.toolKey));
@@ -124,25 +147,20 @@ watch(query, (value) => {
 const activeTool = ref(""); // "" = 画廊首页
 const recent = ref([]); // [{ key, ts }]
 const pinned = ref([]); // 收藏的工具 key，按收藏顺序保存
-const usage = ref({}); // { key: { count, ts } } 使用次数——「常用」排序的依据（与 recent 分开：那份只留 8 条）
-const expandedGroups = ref([]); // 允许同时展开多个大类
+const usage = ref({}); // { key: { count, ts } } 使用次数（最近使用之外的第二档排序依据）
 
 let mounted = false;
 let disposed = false;
 onMounted(async () => {
-  const [savedRecent, savedPinned, savedExpanded, savedUsage] = await Promise.all([
+  const [savedRecent, savedPinned, savedUsage] = await Promise.all([
     loadToolbox("recent", []),
     loadToolbox("pinned", []),
-    loadToolbox("expanded-groups", []),
     loadToolbox("toolUsage", {}),
   ]);
   if (disposed) return;
   recent.value = Array.isArray(savedRecent) ? savedRecent.filter((r) => TOOLS.some((t) => t.key === r.key)) : [];
   pinned.value = Array.isArray(savedPinned) ? savedPinned.filter((key) => TOOLS.some((t) => t.key === key)) : [];
   usage.value = savedUsage && typeof savedUsage === "object" ? savedUsage : {};
-  // 首次进入（无历史）默认展开第一个大类，避免首页只剩分类头
-  const restored = normalizeExpandedGroups(savedExpanded, ALL_GROUPS);
-  expandedGroups.value = restored.length ? restored : ALL_GROUPS[0] ? [ALL_GROUPS[0].key] : [];
   mounted = true;
   tryJump();
 });
@@ -154,12 +172,6 @@ onBeforeUnmount(() => {
 const recentList = computed(() =>
   recent.value.map((r) => ({ ...r, tool: TOOLS.find((t) => t.key === r.key) })).filter((r) => r.tool)
 );
-// 常用工具：收藏 → 常用（用得多）→ 最近使用 → 注册表顺序补位，保证入口始终可用
-const quickTools = computed(() => buildToolboxQuickList(TOOLS, pinned.value, recent.value, QUICK_MAX, usage.value));
-// 最近使用记录的第一位即上次打开的工具，画廊里给它一个视觉焦点
-function isLastUsed(t) {
-  return recent.value.length > 0 && recent.value[0].key === t.key;
-}
 const activeMeta = computed(() => TOOLS.find((t) => t.key === activeTool.value) || null);
 // 详情区动态组件：组件映射见 toolComponents.js（与独立窗口共用）
 const toolComp = computed(() => (activeMeta.value ? getToolComponent(activeMeta.value.key) : null));
@@ -219,14 +231,6 @@ function clearRecent() {
 }
 function saveRecent() {
   saveToolbox("recent", recent.value);
-}
-// 大类展开：允许同时展开多个；检索时统一展开，避免结果被折叠藏起来
-function isGroupExpanded(key) {
-  return hasSearch.value || expandedGroups.value.includes(key);
-}
-function toggleGroup(key) {
-  expandedGroups.value = toggleExpandedGroup(expandedGroups.value, key);
-  saveToolbox("expanded-groups", expandedGroups.value);
 }
 function isPinned(tool) {
   return pinned.value.includes(tool.key);
@@ -306,163 +310,153 @@ function openInJson(text) {
       </section>
     </template>
 
-    <!-- 画廊首页：启动台 → 检索 → 常用工具 → 分类列表 + 侧栏 -->
+    <!-- 本地工具目录：Agent 的动作空间与人的手动入口是同一批能力，所以只有一份清单 -->
     <template v-else>
-      <!-- 启动台：把"这里有 N 件工具、每一件都能被 Agent 调用"这件事放在第一屏最显眼处。
-           工具箱是本产品区别于通用 Agent 的地方——通用 Agent 只有对话，
-           这里每一个工具都是可被规划器调用的真实动作空间，所以值得占一整块。 -->
-      <section class="launchpad">
-        <div class="lp-copy">
-          <b>{{ t("toolbox.launchpad.title") }}</b>
-          <span>{{ t("toolbox.launchpad.subtitle") }}</span>
+      <header class="lt-head">
+        <div class="lt-copy">
+          <h1>{{ t("nav.localTools") }}</h1>
+          <p>{{ t("nav.localToolsHint") }}</p>
         </div>
-        <div class="lp-stats">
-          <span class="lp-stat"><b>{{ readyCount }}</b><i>{{ t("toolbox.launchpad.statTools") }}</i></span>
-          <span class="lp-stat"><b>{{ agentActionCount }}</b><i>{{ t("toolbox.launchpad.statActions") }}</i></span>
-          <span class="lp-stat"><b>{{ agentToolCount }}</b><i>{{ t("toolbox.launchpad.statDriven") }}</i></span>
+        <div class="lt-stats">
+          <span class="lt-stat"><b>{{ TOOLS.length }}</b>{{ t("toolbox.launchpad.statTools") }}</span>
+          <span class="lt-stat"><b>{{ agentActionCount }}</b>{{ t("toolbox.launchpad.statActions") }}</span>
+          <span class="lt-stat"><b>{{ agentToolCount }}</b>{{ t("toolbox.launchpad.statDriven") }}</span>
         </div>
-      </section>
+      </header>
 
-      <div class="home-toolbar">
-        <div class="toolbox-search">
-          <Icon name="search" :size="16" class="search-icon" />
+      <div class="lt-toolbar">
+        <div class="lt-search">
+          <Icon name="search" :size="15" class="search-icon" />
           <input v-model="query" type="search" :aria-label="t('toolbox.gallery.searchAria')" :placeholder="t('toolbox.gallery.searchPlaceholder')" />
           <button v-if="hasSearch" class="search-clear" type="button" :title="t('toolbox.gallery.searchClear')" :aria-label="t('toolbox.gallery.searchClear')" @click="query = ''">
-            <Icon name="x" :size="14" />
+            <Icon name="x" :size="13" />
           </button>
         </div>
-        <span v-if="hasSearch" class="search-summary">{{ t("toolbox.gallery.searchFound", { n: filteredTools.length }) }}</span>
+        <div class="lt-filters" role="tablist" :aria-label="t('nav.localTools')">
+          <button
+            v-for="f in FILTERS"
+            :key="f.key"
+            class="lt-filter"
+            :class="{ on: filter === f.key }"
+            role="tab"
+            :aria-selected="filter === f.key"
+            @click="filter = f.key"
+          >
+            {{ t(f.labelKey) }}
+          </button>
+        </div>
+        <span v-if="hasSearch" class="lt-found">{{ t("toolbox.gallery.searchFound", { n: filteredTools.length }) }}</span>
       </div>
 
-      <section v-if="!hasSearch" class="quick-section">
-        <div class="quick-head">
-          <div class="quick-title">
-            <Icon name="star" :size="16" />
-            <b>{{ t("toolbox.gallery.quickTitle") }}</b>
-            <span>{{ t("toolbox.gallery.quickSubtitle") }}</span>
+      <div class="lt-body">
+        <div class="lt-list">
+          <div v-if="!hasSearch && !GROUPS.length" class="lt-empty-block">
+            <span class="empty-ico"><Icon name="clock" :size="20" /></span>
+            <b>{{ t("toolbox.gallery.empty") }}</b>
           </div>
-          <span class="quick-count">{{ t("toolbox.gallery.quickCount", { n: quickTools.length }) }}</span>
-        </div>
-        <div class="quick-list">
-          <button v-for="tool in quickTools" :key="tool.key" class="quick-item" :class="{ pinned: isPinned(tool) }" :title="t(tool.descKey)" @click="openTool(tool)">
-            <span class="quick-tile"><Icon :name="tool.icon" :size="19" /></span>
-            <span class="quick-info">
-              <b>{{ t(tool.labelKey) }}</b>
-              <small>{{ t(tool.descKey) }}</small>
-            </span>
-            <span v-if="isPinned(tool)" class="quick-pin" :title="t('toolbox.gallery.pinTip')"><Icon name="star" :size="13" /></span>
-          </button>
-        </div>
-      </section>
 
-      <div class="home">
-        <div class="home-main">
-          <div v-if="hasSearch && !filteredTools.length" class="search-empty">
+          <div v-if="hasSearch && !filteredTools.length" class="lt-empty-block">
             <template v-if="semanticHits.length">
               <b class="semantic-title">{{ t("toolbox.gallery.semanticTitle") }}</b>
               <div class="semantic-list">
                 <button
                   v-for="hit in semanticHits"
                   :key="hit.tool.key"
-                  class="quick-item semantic-item"
+                  class="lt-row semantic-item"
                   :title="t(hit.tool.descKey)"
                   @click="openTool(hit.tool)"
                 >
-                  <span class="quick-tile"><Icon :name="hit.tool.icon" :size="19" /></span>
-                  <span class="quick-info">
-                    <b>{{ t(hit.tool.labelKey) }}</b>
-                    <small>{{ t(hit.tool.descKey) }}</small>
+                  <span class="lt-ico"><Icon :name="hit.tool.icon" :size="16" /></span>
+                  <span class="lt-main">
+                    <span class="lt-name">{{ t(hit.tool.labelKey) }}</span>
+                    <span class="lt-desc">{{ t(hit.tool.descKey) }}</span>
                   </span>
-                  <!-- 概率原样给出：这是模型的把握，不是匹配度百分比，藏起来反而误导 -->
                   <span class="semantic-score">{{ hit.score.toFixed(2) }}</span>
                 </button>
               </div>
               <span class="semantic-hint">{{ t("toolbox.gallery.semanticHint") }}</span>
             </template>
             <template v-else>
-              <span class="empty-ico"><Icon name="search" :size="26" /></span>
+              <span class="empty-ico"><Icon name="search" :size="22" /></span>
               <b>{{ t("toolbox.gallery.searchEmptyTitle") }}</b>
               <span>{{ semanticBusy ? t("toolbox.gallery.semanticBusy") : t("toolbox.gallery.searchEmptyHint") }}</span>
               <span v-if="semanticNoteText" class="semantic-note">{{ semanticNoteText }}</span>
-              <button class="btn-outline" type="button" @click="query = ''">{{ t("toolbox.gallery.searchClear") }}</button>
+              <button class="btn-outline sm" type="button" @click="query = ''">{{ t("toolbox.gallery.searchClear") }}</button>
             </template>
           </div>
-          <div v-else class="tool-groups">
-            <section v-for="group in GROUPS" :key="group.key" class="tool-group">
-              <button
-                class="group-head"
-                :class="{ open: isGroupExpanded(group.key) }"
-                :aria-expanded="isGroupExpanded(group.key)"
-                :aria-controls="'tool-group-' + group.key"
-                :disabled="hasSearch"
-                @click="toggleGroup(group.key)"
-              >
-                <span class="group-icon"><Icon :name="group.icon" :size="21" /></span>
-                <span class="group-info">
-                  <b class="group-name">{{ t(group.labelKey) }}</b>
-                  <span class="group-desc" :title="t(group.descKey)">{{ t(group.descKey) }}</span>
-                </span>
-                <span class="group-count">{{ t("toolbox.gallery.count", { n: group.tools.length }) }}</span>
-                <Icon name="chevron-right" :size="17" class="group-arrow" />
-              </button>
 
-              <Transition name="group-reveal">
-                <div v-if="isGroupExpanded(group.key)" :id="'tool-group-' + group.key" class="tool-list">
-                  <div v-for="tool in group.tools" :key="tool.key" class="tool-item-wrap">
-                    <button class="tool-item" :class="{ coming: !tool.ready, last: isLastUsed(tool) }" @click="openTool(tool)">
-                      <span class="tile"><Icon :name="tool.icon" :size="24" /></span>
-                      <span class="info">
-                        <span class="info-top">
-                          <b class="name">{{ t(tool.labelKey) }}</b>
-                          <span v-if="isLastUsed(tool)" class="last-tag" :title="t('toolbox.gallery.lastUsedTip')">{{ t("toolbox.gallery.lastUsed") }}</span>
-                        </span>
-                        <span class="desc" :title="t(tool.descKey)">{{ t(tool.descKey) }}</span>
-                      </span>
-                      <Icon v-if="tool.ready" name="chevron-right" :size="16" class="go" />
-                      <span v-else class="go-txt">{{ t("toolbox.gallery.coming") }}</span>
-                    </button>
-                    <button
-                      v-if="tool.ready"
-                      class="tool-pin"
-                      :class="{ pinned: isPinned(tool) }"
-                      type="button"
-                      :title="t(isPinned(tool) ? 'toolbox.gallery.unpin' : 'toolbox.gallery.pin')"
-                      :aria-label="t(isPinned(tool) ? 'toolbox.gallery.unpinAria' : 'toolbox.gallery.pinAria', { name: t(tool.labelKey) })"
-                      @click="togglePinned(tool, $event)"
-                    >
-                      <Icon name="star" :size="14" />
-                    </button>
-                  </div>
-                </div>
-              </Transition>
-            </section>
-          </div>
+          <section v-for="group in GROUPS" :key="group.key" class="lt-group">
+            <p class="lt-group-title">
+              <Icon :name="group.icon" :size="13" />
+              {{ t(group.labelKey) }}
+              <span class="lt-group-count">{{ group.tools.length }}</span>
+            </p>
+            <div v-for="tool in group.tools" :key="tool.key" class="lt-row-wrap">
+              <button class="lt-row lt-tool" :class="{ coming: !tool.ready }" @click="openTool(tool)">
+                <span class="lt-ico"><Icon :name="tool.icon" :size="16" /></span>
+                <span class="lt-main">
+                  <span class="lt-name">{{ t(tool.labelKey) }}</span>
+                  <span class="lt-desc" :title="t(tool.descKey)">{{ t(tool.descKey) }}</span>
+                </span>
+                <span v-if="agentToolKeys.has(tool.key)" class="lt-badge">{{ t("toolbox.gallery.agentable") }}</span>
+                <span v-if="!tool.ready" class="lt-coming">{{ t("toolbox.gallery.coming") }}</span>
+                <Icon v-else name="chevron-right" :size="14" class="lt-go" />
+              </button>
+              <button
+                v-if="tool.ready"
+                class="lt-pin"
+                :class="{ pinned: isPinned(tool) }"
+                type="button"
+                :title="t(isPinned(tool) ? 'toolbox.gallery.unpin' : 'toolbox.gallery.pin')"
+                :aria-label="t(isPinned(tool) ? 'toolbox.gallery.unpinAria' : 'toolbox.gallery.pinAria', { name: t(tool.labelKey) })"
+                @click="togglePinned(tool, $event)"
+              >
+                <Icon name="star" :size="13" />
+              </button>
+            </div>
+          </section>
+
+          <!-- Agent 动作：同一批能力的另一面。列在这里是为了让「万物皆本地工具」可核对——
+               每个动作都指向上面某个工具的 key（toolKey），不是另一套黑箱。 -->
+          <section v-if="filter !== 'recent' && filteredActions.length" class="lt-group lt-actions">
+            <p class="lt-group-title">
+              <Icon name="zap" :size="13" />
+              {{ t("toolbox.gallery.actionsTitle") }}
+              <span class="lt-group-count">{{ filteredActions.length }}</span>
+              <span class="lt-group-hint">{{ t("toolbox.gallery.actionsHint") }}</span>
+            </p>
+            <div v-for="action in filteredActions" :key="action.name" class="lt-row lt-action">
+              <code class="lt-action-name">{{ action.name }}</code>
+              <span class="lt-main">
+                <span class="lt-desc" :title="action.description">{{ t(action.descriptionKey) }}</span>
+              </span>
+              <span class="tc-chip sm" :class="riskChip(action.risk)">{{ t(riskKey(action.risk)) }}</span>
+            </div>
+          </section>
         </div>
 
-        <aside class="home-side">
-          <div class="side-card">
-            <div class="side-head">
+        <aside class="lt-side">
+          <div class="lt-card">
+            <div class="lt-card-head">
               <b>{{ t("toolbox.gallery.recent") }}</b>
-              <button v-if="recentList.length" class="side-clear" @click="clearRecent">{{ t("toolbox.gallery.clear") }}</button>
+              <button v-if="recentList.length" class="lt-card-act" @click="clearRecent">{{ t("toolbox.gallery.clear") }}</button>
             </div>
-            <div v-if="recentList.length" class="recent-list">
-              <button v-for="r in recentList" :key="r.key" class="recent-item" @click="openTool(r.tool)">
-                <span class="ri-ico"><Icon :name="r.tool.icon" :size="16" /></span>
-                <span class="ri-name" :title="t(r.tool.labelKey)">{{ t(r.tool.labelKey) }}</span>
-                <span class="ri-time">{{ relativeTime(r.ts) }}</span>
+            <div v-if="recentList.length" class="lt-recent">
+              <button v-for="r in recentList" :key="r.key" class="lt-recent-row" @click="openTool(r.tool)">
+                <span class="lt-ico sm"><Icon :name="r.tool.icon" :size="14" /></span>
+                <span class="lt-recent-name" :title="t(r.tool.labelKey)">{{ t(r.tool.labelKey) }}</span>
+                <span class="lt-recent-time">{{ relativeTime(r.ts) }}</span>
               </button>
             </div>
-            <p v-else class="side-empty">{{ t("toolbox.gallery.empty") }}</p>
+            <p v-else class="lt-empty-text">{{ t("toolbox.gallery.empty") }}</p>
           </div>
 
-          <div class="side-card">
-            <div class="side-head">
-              <b>{{ t("toolbox.gallery.tip") }}</b>
-            </div>
-            <ul class="tip-list">
+          <div class="lt-card">
+            <div class="lt-card-head"><b>{{ t("toolbox.gallery.tip") }}</b></div>
+            <ul class="lt-tips">
               <li>{{ t("toolbox.gallery.tip1") }}</li>
               <li>{{ t("toolbox.gallery.tip2") }}</li>
-              <li><b>Ctrl</b> + <b>K</b> {{ t("toolbox.gallery.tip3") }}</li>
+              <li>{{ t("toolbox.gallery.tip3") }}</li>
             </ul>
           </div>
         </aside>
@@ -472,10 +466,10 @@ function openInJson(text) {
 </template>
 
 <style scoped>
-/* 页面留白对齐全局惯例：水平 28px（同 HomeView/TaskView 等内容区），与顶栏标题起点对齐 */
-.toolbox { display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; gap: var(--sp-3); padding: var(--sp-2) 28px 18px; }
+/* 页面留白对齐全局惯例：水平 28px，与顶栏标题起点对齐 */
+.toolbox { display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; gap: var(--sp-3); padding: var(--sp-4) 28px 0; overflow: hidden; }
 
-/* 面包屑 */
+/* 面包屑（工具详情） */
 .crumbs { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-2); }
 .crumb-back { display: inline-flex; align-items: center; gap: 4px; padding: 5px var(--sp-3); font-size: var(--fs-md); border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .crumb-back:hover { color: var(--primary-hover); background: var(--primary-soft); }
@@ -483,190 +477,107 @@ function openInJson(text) {
 .crumb-ico { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-xs); background: var(--primary-soft); color: var(--primary-hover); }
 .crumb-cur { font-size: var(--fs-md); font-weight: 600; }
 .crumb-desc { font-size: var(--fs-sm); color: var(--muted); }
-.detail-body { flex: 1; min-width: 0; min-height: 0; }
+.detail-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
 
-/* 首页检索栏：与分类卡同宽上限，右侧提示命中数量 */
-/* 启动台：工具箱是本产品与通用 Agent 的差别所在，所以它在第一屏就该自报家门。
-   三个数字（工具数 / 动作数 / 可被 Agent 驱动的工具数）回答的正是"它到底有什么"。 */
-.launchpad {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-6);
-  flex-wrap: wrap;
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-lg);
-  background:
-    radial-gradient(520px 180px at 6% 0%, var(--primary-soft), transparent 62%),
-    var(--card);
-  box-shadow: var(--shadow);
-}
-.lp-copy { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; flex: 1; }
-.lp-copy b { font-size: var(--fs-lg); color: var(--text); }
-.lp-copy span { font-size: var(--fs-md); color: var(--text-soft); line-height: var(--lh-body); }
-.lp-stats { display: flex; align-items: stretch; gap: var(--sp-5); }
-.lp-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 74px;
-  padding: var(--sp-2) var(--sp-4);
-  border-radius: var(--r-md);
-  background: var(--primary-soft);
-}
-.lp-stat b {
-  font-family: var(--font-num);
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  line-height: 1.15;
-  color: var(--primary-hover);
-}
-.lp-stat i { font-size: var(--fs-xs); font-style: normal; color: var(--text-soft); white-space: nowrap; }
+/* ---------- 目录头：标题 + 三个数字 ---------- */
+.lt-head { flex-shrink: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-5); flex-wrap: wrap; padding-bottom: var(--sp-1); }
+.lt-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lt-copy h1 { margin: 0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.3px; color: var(--text); }
+.lt-copy p { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
+.lt-stats { display: flex; align-items: center; gap: var(--sp-4); flex-shrink: 0; }
+.lt-stat { display: inline-flex; align-items: baseline; gap: 5px; font-size: var(--fs-xs); color: var(--muted); }
+.lt-stat b { font-family: var(--font-num); font-size: var(--fs-lg); font-weight: 700; color: var(--text); }
 
-.home-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
-.toolbox-search { min-height: 40px; flex: 1; display: flex; align-items: center; gap: var(--sp-2); max-width: 640px; padding: 0 var(--sp-3); border: 1px solid transparent; border-radius: var(--r-sm); background: var(--well); color: var(--text-dim); transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
-.toolbox-search:focus-within { border-color: var(--primary); background: var(--card); box-shadow: 0 0 0 3px var(--primary-soft); }
+/* ---------- 工具栏：搜索 + 视图筛选 ---------- */
+.lt-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.lt-search { flex: 1; max-width: 460px; min-height: 34px; display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); color: var(--text-dim); transition: border-color 0.15s, box-shadow 0.15s; }
+.lt-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .search-icon { flex-shrink: 0; color: var(--muted); }
-.toolbox-search input { width: 100%; min-width: 0; padding: var(--sp-3) 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: var(--fs-base); }
-.toolbox-search input::-webkit-search-cancel-button { display: none; }
-.search-clear { width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); color: var(--muted); background: transparent; cursor: pointer; }
+.lt-search input { width: 100%; min-width: 0; padding: var(--sp-2) 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: var(--fs-md); }
+.lt-search input::-webkit-search-cancel-button { display: none; }
+.search-clear { width: 24px; height: 24px; flex-shrink: 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-xs); color: var(--muted); background: transparent; cursor: pointer; }
 .search-clear:hover { color: var(--danger); background: var(--danger-soft); }
-.search-summary { flex-shrink: 0; color: var(--muted); font-size: var(--fs-sm); }
+.lt-filters { display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding: 2px; background: var(--well); border-radius: var(--r-sm); }
+.lt-filter { height: 28px; padding: 0 var(--sp-3); border: 0; border-radius: var(--r-xs); background: transparent; color: var(--text-weak); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.lt-filter:hover { color: var(--text); }
+.lt-filter.on { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(31, 35, 40, 0.08); }
+.lt-filter:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+.lt-found { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); }
 
-/* 常用工具：收藏 + 最近使用的一行式快捷入口，宽窗口三列 */
-.quick-section { flex-shrink: 0; min-width: 0; }
-.quick-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-2); }
-.quick-title { display: flex; align-items: center; gap: var(--sp-2); color: var(--text); }
-.quick-title > svg { color: var(--amber); }
-.quick-title b { font-size: var(--fs-base); }
-.quick-title span { color: var(--muted); font-size: var(--fs-sm); }
-.quick-count { color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); }
-.quick-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
-.quick-item { min-width: 0; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--card-border); border-radius: var(--r-md); color: var(--text); background: var(--card); cursor: pointer; text-align: left; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
-.quick-item:hover { border-color: var(--border-blue); box-shadow: var(--shadow); transform: translateY(-1px); }
-.quick-item.pinned { border-color: var(--amber-border); }
-.quick-tile { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--primary-hover); background: var(--primary-soft); }
-.quick-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
-.quick-info b { overflow: hidden; font-size: var(--fs-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.quick-info small { overflow: hidden; color: var(--muted); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
-.quick-pin { flex-shrink: 0; display: grid; place-items: center; color: var(--amber); }
+/* ---------- 主体：目录 + 右栏 ---------- */
+.lt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 244px; gap: var(--sp-5); padding-top: var(--sp-1); }
+.lt-list { min-width: 0; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-7); display: flex; flex-direction: column; gap: var(--sp-5); scrollbar-width: thin; }
 
-/* 常用工具是跳转条，不是第二份卡片网格：同一批工具的完整卡片就在下面的分组里，
-   这里再画一遍大卡就成了「同屏两遍」。所以只留图标 + 名字、宽度贴合内容。
-   注意作用域限定在 .quick-list —— .quick-item 还被搜索结果复用，那里要留描述。 */
-.quick-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.quick-list .quick-item { gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
-.quick-list .quick-item .quick-tile { width: 24px; height: 24px; }
-.quick-list .quick-item .quick-info { flex: none; gap: 0; }
-.quick-list .quick-item .quick-info small { display: none; }
+.lt-group { display: flex; flex-direction: column; gap: 1px; }
+.lt-group-title { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--sp-2); padding: 0 2px; font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.4px; color: var(--faint); }
+.lt-group-title .icon { color: var(--faint); }
+.lt-group-count { margin-left: 2px; padding: 1px 6px; border-radius: var(--r-pill); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: 10.5px; }
+.lt-group-hint { margin-left: var(--sp-2); font-weight: 400; letter-spacing: 0; color: var(--faint); }
 
-/* 首页两栏 */
-.home { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--sp-5); align-items: start; }
-.home-main { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-5); }
-
-/* 工具大类：可同时展开，分类头与工具列表分层，避免把卡片套进卡片 */
-.tool-groups { display: flex; flex-direction: column; gap: var(--sp-3); }
-.tool-group { min-width: 0; }
-.group-head { display: flex; align-items: center; gap: var(--sp-4); width: 100%; padding: var(--sp-4); color: var(--text); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
-.group-head:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
-.group-head.open { border-color: var(--border-blue); background: color-mix(in srgb, var(--primary) 2.5%, var(--card)); }
-.group-head:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
-/* 检索时分类固定展开，分类头仅作分组标题，不可点击折叠 */
-.group-head:disabled { cursor: default; }
-.group-icon { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); }
-.group-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
-.group-name { font-size: var(--fs-lg); font-weight: 700; line-height: var(--lh-tight); }
-.group-desc { min-width: 0; overflow: hidden; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-tight); text-overflow: ellipsis; white-space: nowrap; }
-.group-count { flex-shrink: 0; padding: var(--sp-1) var(--sp-3); color: var(--text-soft); background: var(--well); border-radius: var(--r-pill); font-family: var(--font-num); font-size: var(--fs-xs); white-space: nowrap; }
-.group-arrow { flex-shrink: 0; color: var(--muted); transition: transform 0.15s, color 0.15s; }
-.group-head.open .group-arrow { color: var(--primary); transform: rotate(90deg); }
-
-/* 展开的工具列表：宽窗口两列，左侧引导线表达归属；工具本身仍是独立重复项 */
-.tool-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-2) var(--sp-7); padding-left: var(--sp-5); border-left: 2px solid var(--border-blue); }
-.group-reveal-enter-active, .group-reveal-leave-active { transition: opacity 0.15s, transform 0.15s; }
-.group-reveal-enter-from, .group-reveal-leave-to { opacity: 0; transform: translateY(-4px); }
-
-/* 工具列表：紧凑行卡（图标 + 信息 + 前进箭头），整行可点，右上角收藏。
-   右侧留出「收藏钮 + 前进箭头」两段车道（2 × sp-7），文字与两者都不会互相压盖。 */
-.tool-item-wrap { position: relative; min-width: 0; }
-.tool-item { display: flex; align-items: center; gap: var(--sp-4); width: 100%; min-width: 0; padding: var(--sp-4) calc(var(--sp-7) * 2) var(--sp-4) var(--sp-4); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); color: var(--text); cursor: pointer; text-align: left; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s; }
-.tool-item-wrap:hover .tool-item:not(.coming) { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow); }
-.tool-item.coming { cursor: default; }
-/* tile：线性图标 + 主色柔和底（UI 2.0 单主色体系，不装饰着色），固定 52px 方形 */
-.tile { width: 52px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary-hover); }
-/* 上次使用过的工具：描边 + 极淡主色底，形成画廊视觉焦点 */
-.tool-item.last { border-color: color-mix(in srgb, var(--primary) 30%, var(--card-border)); background: color-mix(in srgb, var(--primary) 2.5%, var(--card)); }
-.info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
-.info-top { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-.name { min-width: 0; overflow: hidden; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); text-overflow: ellipsis; white-space: nowrap; }
-.last-tag { flex-shrink: 0; padding: 0 7px; font-size: var(--fs-xs); font-weight: 600; line-height: 1.7; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-pill); }
-/* 描述允许两行：一行放不下的时候被 ellipsis 切掉的正好是「这工具能干什么」的后半句
-   （「…导出 J…」「…造样例…」），而这句话就是用户决定点不点进去的依据。 */
-.desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-tight); }
-.go { flex-shrink: 0; color: var(--faint); transition: color 0.15s, transform 0.15s; }
-.tool-item-wrap:hover .tool-item:not(.coming) .go { color: var(--primary); transform: translateX(2px); }
-.go-txt { flex-shrink: 0; font-size: var(--fs-sm); color: var(--muted); }
-/* 收藏钮：常态隐藏，悬停/键盘聚焦/已收藏时显示，避免干扰阅读。
-   贴右上角但避开卡片圆角与行尾箭头（glyph 之间留出间距）。 */
-.tool-pin { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--r-sm); color: var(--muted); background: transparent; cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s; }
-.tool-item-wrap:hover .tool-pin, .tool-pin:focus-visible, .tool-pin.pinned { opacity: 1; }
-.tool-pin:hover { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-border); }
-.tool-pin.pinned { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-border); }
-/* 子组件根元素（Icon 的 svg）：收藏态用实心星，和未收藏的描边星拉开差异 */
-.tool-pin.pinned :deep(.icon), .quick-pin :deep(.icon) { fill: currentColor; }
-
-/* 搜索空态 */
-.search-empty { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); color: var(--muted); text-align: center; }
-.search-empty .empty-ico { margin-bottom: var(--sp-2); }
-.search-empty b { color: var(--text); font-size: var(--fs-lg); }
-.search-empty .btn-outline { margin-top: var(--sp-2); }
-/* 语义推荐：字面检索空手而归时的「按说法找到」。整块左对齐并撑满，
-   否则继承自 .search-empty 的居中列会把可点的工具卡压成一串窄条。 */
-.semantic-list { width: 100%; display: grid; gap: var(--sp-2); margin-top: var(--sp-3); }
-.semantic-item { width: 100%; }
-.semantic-item:hover { border-color: var(--accent); }
-.semantic-score { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
-.semantic-hint { font-size: var(--fs-xs); }
-.semantic-note { font-size: var(--fs-xs); color: var(--muted); }
-
-/* 右侧栏 */
-.home-side { display: flex; flex-direction: column; gap: var(--sp-5); }
-.side-card { padding: var(--sp-5); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); }
-.side-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
-.side-head b { font-size: var(--fs-base); }
-.side-clear { padding: 2px var(--sp-2); font-size: var(--fs-sm); border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
-.side-clear:hover { color: var(--danger); background: var(--danger-soft); }
-.recent-list { display: flex; flex-direction: column; gap: 2px; }
-.recent-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px var(--sp-2); border: none; background: transparent; border-radius: var(--r-sm); cursor: pointer; text-align: left; transition: background 0.15s; }
-.recent-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
-.ri-ico { width: 26px; height: 26px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--r-xs); background: var(--primary-soft); color: var(--primary); }
-.ri-name { flex: 1; min-width: 0; font-size: var(--fs-md); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ri-time { flex-shrink: 0; font-size: var(--fs-sm); color: var(--muted); }
-.side-empty { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
-
-/* 小贴士列表：圆点 + 弱化文字，静态内容平衡侧栏高度 */
-.tip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.tip-list li { position: relative; padding-left: var(--sp-5); font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
-.tip-list li::before { content: ""; position: absolute; left: 0; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--primary); opacity: 0.55; }
-.tip-list b { font-weight: 600; color: var(--text); }
-
-/* 窄窗口：侧栏移到主列下方；两列工具卡与三列快捷入口逐级降列 */
-@media (max-width: 1180px) {
-  .quick-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* 目录行：扁平列表，悬停才出现底色——与 DSH 的插件清单同一种密度，
+   一屏能看到 10 件以上工具，而不是四张浮起的大卡。 */
+.lt-row-wrap { display: flex; align-items: center; gap: 2px; }
+.lt-row {
+  flex: 1; min-width: 0;
+  display: grid; grid-template-columns: 28px 132px minmax(0, 1fr) auto 16px; align-items: center; gap: var(--sp-3);
+  min-height: 42px; padding: 5px var(--sp-3);
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: none; color: var(--text); text-align: left; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
-@media (max-width: 900px) {
-  .home { grid-template-columns: 1fr; }
-  .tool-list { grid-template-columns: 1fr; }
-}
-@media (max-width: 620px) {
-  .quick-list { grid-template-columns: 1fr; }
-  .home-toolbar { align-items: stretch; flex-direction: column; }
-  .toolbox-search { max-width: none; }
-}
-/* 矮窗口：快捷入口去掉副标题行，把高度让给下面的分类列表 */
-@media (max-height: 640px) {
-  .quick-info small { display: none; }
+.lt-row:hover { background: var(--card); border-color: var(--card-border); }
+.lt-row:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+.lt-row.coming { opacity: 0.55; cursor: default; }
+.lt-ico { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); }
+.lt-ico.sm { width: 22px; height: 22px; border-radius: var(--r-xs); }
+.lt-main { display: contents; }
+.lt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+.lt-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--muted); }
+.lt-badge { flex-shrink: 0; padding: 1px 7px; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: 10.5px; font-weight: 600; }
+.lt-coming { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
+.lt-go { flex-shrink: 0; color: var(--faint); }
+.lt-row:hover .lt-go { color: var(--primary-hover); }
+.lt-pin { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--border-steel); cursor: pointer; opacity: 0; transition: opacity 0.12s, color 0.12s, background 0.12s; }
+.lt-row-wrap:hover .lt-pin, .lt-pin.pinned { opacity: 1; }
+.lt-pin:hover { background: var(--warn-soft); color: var(--amber); }
+.lt-pin.pinned { color: var(--amber); }
+.lt-pin:focus-visible { opacity: 1; outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
+
+/* Agent 动作行：等宽名字 + 一句说明 + 风险等级 */
+.lt-action { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); cursor: default; min-height: 38px; padding: 5px var(--sp-3); border-radius: var(--r-sm); }
+.lt-action:hover { background: var(--card-soft); }
+.lt-action-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-code); }
+
+/* 空结果 / 语义推荐 */
+.lt-empty-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-7) var(--sp-3); color: var(--text-weak); }
+.lt-empty-block b { font-size: var(--fs-base); color: var(--text); }
+.lt-empty-block > span { font-size: var(--fs-sm); color: var(--muted); }
+.empty-ico { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-md); background: var(--well); color: var(--muted); }
+.semantic-title { font-size: var(--fs-md); }
+.semantic-list { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.semantic-item { border: 1px solid var(--card-border); display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); }
+.semantic-item .lt-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.semantic-score { flex-shrink: 0; font-family: var(--font-num); font-size: var(--fs-xs); color: var(--faint); }
+.semantic-hint { font-size: var(--fs-xs); color: var(--faint); }
+.semantic-note { font-size: var(--fs-xs); color: var(--warn); }
+
+/* ---------- 右栏：最近使用 + 提示 ---------- */
+.lt-side { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-7); }
+.lt-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); background: var(--card-soft); border: 1px solid var(--card-border); border-radius: var(--r-md); }
+.lt-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.lt-card-head b { font-size: var(--fs-sm); color: var(--text); }
+.lt-card-act { padding: 0; border: 0; background: none; font-size: var(--fs-xs); color: var(--muted); cursor: pointer; }
+.lt-card-act:hover { color: var(--primary-hover); }
+.lt-recent { display: flex; flex-direction: column; gap: 1px; }
+.lt-recent-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding: 4px; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-weak); text-align: left; cursor: pointer; }
+.lt-recent-row:hover { background: var(--card); color: var(--text); }
+.lt-recent-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.lt-recent-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
+.lt-empty-text { margin: 0; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
+.lt-tips { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body); }
+
+@media (max-width: 1100px) {
+  .lt-body { grid-template-columns: minmax(0, 1fr); }
+  .lt-side { display: none; }
 }
 </style>

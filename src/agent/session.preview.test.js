@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // 会话级链路：session → runtime → pending。
 // 单测里 runtime 与 session 各自都有用例，但「写文件时确认卡到底拿没拿到 diff」只有把两者连起来才测得到
 // ——用户实测反馈「没看到写入前预览」，就是这一层没有覆盖。
-vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
+vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true), loadAIConfig: vi.fn(async () => null) }));
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("../platform/invoke.js", () => ({ invoke: invokeMock, createChannel: () => ({}) }));

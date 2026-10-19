@@ -65,8 +65,14 @@ export function accumulateUsage(usage, delta = {}) {
   };
 }
 
-export function createRun(input) {
-  return { id: crypto.randomUUID(), input: String(input || ''), status: 'pending', steps: [], history: [], usage: emptyUsage(), createdAt: Date.now(), updatedAt: Date.now() };
+// meta.attachments：本次目标附带文件（输入框挂上去的那些）。落在 run 上而不是只在界面上，
+// 历史回看与导出日志才说得清「这一轮到底拿到过什么」。附件是路径 + 元信息，体积可控。
+export function createRun(input, meta = {}) {
+  const attachments = Array.isArray(meta.attachments) ? meta.attachments : [];
+  // 模型快照：起跑时定下，运行中切模型不影响本次；历史与导出据此说明「这轮是谁跑的」。
+  const model = typeof meta.model === "string" ? meta.model.trim() : '';
+  const modelProfile = typeof meta.modelProfile === 'string' ? meta.modelProfile.trim() : '';
+  return { id: crypto.randomUUID(), input: String(input || ''), status: 'pending', steps: [], history: [], usage: emptyUsage(), attachments, ...(model ? { model } : {}), ...(modelProfile ? { modelProfile } : {}), createdAt: Date.now(), updatedAt: Date.now() };
 }
 // 把一次模型调用的用量就地累加到 run 上；持久化由调用方负责。
 // 旧的已存 run 没有 usage 字段，accumulateUsage 会按空值补齐，因此不需要数据迁移。

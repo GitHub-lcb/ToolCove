@@ -14,8 +14,8 @@ const TSV = ["name\tcity\tamount", "张三\t北京\t100", "李四\t上海\t200",
  * 所以这里按可见文本定位。先点导航进工具箱，再点「表格处理」。
  */
 async function openTableTool(page) {
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  const card = page.locator(".tool-item", { hasText: "表格处理" });
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  const card = page.locator(".lt-tool", { hasText: "表格处理" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   // 工具页里输入框出现即认为打开完成

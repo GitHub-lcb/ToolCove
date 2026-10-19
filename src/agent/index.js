@@ -42,10 +42,14 @@ export function parseAction(text) {
 function buildPrompt(input, history, tools, repairs, options = {}) {
   const lines = [
     "你是 ToolCove 本地开发智能体。只能从工具列表中选择工具。",
-    "每次只返回一个 JSON 动作，不要 Markdown：tool_call {type,id,tool,args}、final {type,answer} 或 ask_user {type,question}。",
+    "每次只返回一个 JSON 动作，不要 Markdown：tool_call {type,id,tool,args}、final {type,answer} 或 ask_user {type,question,options?,multiple?}。",
+    "ask_user 用法：问题有明确候选项时给 2-6 个短选项（options 字符串数组），多选把 multiple 设为 true；路径、SQL、口令等自由文本不要编选项。",
     `目标：${input}`,
-    `工具：${JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description, risk: t.risk, inputSchema: t.inputSchema })))}`,
   ];
+  // 附件紧跟目标，而不是塞在工具清单后面：用户附了文件却还被追问路径，是最刺眼的失败模式。
+  // 位置 + 措辞一起改（见 agent/attachments.js 的附件段）。
+  if (options.attachmentLine) lines.push(options.attachmentLine);
+  lines.push(`工具：${JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description, risk: t.risk, inputSchema: t.inputSchema })))}`);
   // 技能：只把**命中**的正文放进来，目录（未命中的技能）刻意不进 prompt——
   // 否则每次运行都要为全部技能付 token（见 skills.js 的设计取舍）。
   // 命中来源可能是 TypeSafe 的语义判断，也可能是关键词兜底，这里只认结果（见 skillSuggest.js）。
@@ -57,6 +61,7 @@ function buildPrompt(input, history, tools, repairs, options = {}) {
   // 会话上下文（工作域绑定，三期）：与 clarifyLine 同范式——有才 push、无则不加，
   // 保证「不选域」时提示词一字不变。内容由会话侧按选中的领域拼好透传（见 src/agent/context.js）。
   if (options.contextLine) lines.push(options.contextLine);
+  // 附件段已在「目标」之后插入（见函数开头）：这里不再重复 push，避免同一段出现两次。
   // 早期步骤折叠成摘要而不是直接丢弃：长任务里模型反复重试同一件事，
   // 往往就是因为第 3 步的失败原因已经被 slice(-8) 丢掉了（见 history.js）。
   lines.push(`历史：${historyPromptText(history, options.historyOptions || {})}`);
@@ -78,6 +83,8 @@ export function createAIPlanner(options = {}) {
     // 会话上下文行（工作域绑定）：收进 plannerOptions 即可一路到 buildPrompt；
     // 默认空串 → buildPrompt 不加这一行，提示词与之前完全一致。
     contextLine: typeof options.contextLine === "string" ? options.contextLine : "",
+    // 附件段：与 contextLine 同一条通道，避免再给规划器加一个上下文参数。
+    attachmentLine: typeof options.attachmentLine === "string" ? options.attachmentLine : "",
   };
   // TypeSafe 的旋钮来自配置（settings.typesafe），没配就用 skillSuggest.js 里的默认值。
   const tuning = options.typesafeTuning && typeof options.typesafeTuning === "object" ? options.typesafeTuning : {};
@@ -153,7 +160,14 @@ export function createRepairingPlanner(planner, options = {}) {
 export async function runAIAgent(input, options = {}) {
   const registry = options.registry || (await buildAgentRegistry(options.cfg));
   if (options.resume && !canResume(options.resume, registry)) throw Error('该任务包含脱敏信息或副作用步骤，无法安全恢复');
-  const run = createRun(input);
+  // 附件正文（浏览器端内联的文本）只服务于这一次提示词，不随 run 落盘：
+  // 历史记录会进 agentRuns.json 并被每日备份带走，8 个 6KB 文本 = 一次运行 48KB 的长期负担。
+  const attachments = (Array.isArray(options.attachments) ? options.attachments : []).map(({ content, truncated, ...rest }) => rest);
+  const run = createRun(input, {
+    attachments,
+    model: options.modelInfo?.model,
+    modelProfile: options.modelInfo?.profileName,
+  });
   if (options.resume) { run.parentId = options.resume.id; run.history = structuredClone(options.resume.history || []); }
   const save = async () => { await options.onRun?.(structuredClone(run)); };
   const onEvent = async (event) => { appendStep(run, { ...event, status: event.type === 'final' ? 'success' : event.type === 'tool_error' ? 'failed' : 'running' }); run.history = structuredClone(run.history || []); await save(); await options.onEvent?.(event, run); };

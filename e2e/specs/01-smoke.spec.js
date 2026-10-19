@@ -38,7 +38,7 @@ test("工作面三个模块都能切换并渲染出内容，新任务能回到 A
   const modules = [
     { label: "研发", marker: /概览|迭代进度|待产品确认/ },
     { label: "记录", marker: /速记|问题/ },
-    { label: "工具箱", marker: /工具箱|常用工具|数据与文本/ },
+    { label: "本地工具", marker: /本地工具|数据与文本|Agent 可调/ },
   ];
   for (const item of modules) {
     await page.locator(".nav-item", { hasText: item.label }).first().click();

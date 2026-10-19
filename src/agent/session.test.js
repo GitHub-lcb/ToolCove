@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // session.js 只用到 ai.js 的 aiComplete（经 index.js 的默认 planner）与 isAIConfigured；
 // mock 掉整个模块，既避开真实 IPC，也让规划脚本可控。
-vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
+vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true), loadAIConfig: vi.fn(async () => null) }));
 // TypeSafe 传输层解析：单测里不碰真实设置与 IPC，直接控制「配好了 / 没配」两种结果
 vi.mock("../typesafe.js", () => ({ resolveTypeSafeTransport: vi.fn(async () => null) }));
 
-import { aiComplete } from "../ai.js";
+import { aiComplete, loadAIConfig } from "../ai.js";
 import { resolveTypeSafeTransport } from "../typesafe.js";
 import { buildAgentRegistry } from "./tools.js";
 import { canResume } from "./runStore.js";
@@ -14,10 +14,13 @@ import { foldTimeline } from "./timeline.js";
 import {
   agentSession,
   answerPending,
+  archiveRun,
   clearTimeline,
   discardRun,
   initAgentSession,
+  pinRun,
   promoteRunToSkill,
+  renameRun,
   resolvePending,
   startAgentRun,
   stopAgentRun,
@@ -47,6 +50,57 @@ describe("initAgentSession", () => {
     expect(agentSession.ready).toBe(true);
     expect(agentSession.aiReady).toBe(true);
     expect(agentSession.cfg).toMatchObject({ maxSteps: 12, retries: 1, requireConfirmation: "risky", disabledTools: [] });
+  });
+});
+
+describe("会话基础操作", () => {
+  const seed = () => {
+    agentSession.runs = [
+      { id: "r1", input: "第一条", status: "completed", steps: [], usage: {}, createdAt: 1, updatedAt: 1 },
+      { id: "r2", input: "第二条", status: "completed", steps: [], usage: {}, createdAt: 2, updatedAt: 2 },
+    ];
+  };
+  const find = (id) => agentSession.runs.find((r) => r.id === id);
+
+  it("重命名写入自定义标题；空标题恢复自动主题；未知 id 返回 false", () => {
+    seed();
+    expect(renameRun("r1", "  发布检查  ")).toBe(true);
+    expect(find("r1").title).toBe("发布检查");
+    renameRun("r1", "   ");
+    expect(find("r1").title).toBeUndefined();
+    expect(renameRun("ghost", "x")).toBe(false);
+  });
+
+  it("置顶 / 归档是可逆标记，且不改 updatedAt（改名与整理不是新活动）", () => {
+    seed();
+    pinRun("r2", true);
+    archiveRun("r2", true);
+    expect(find("r2")).toMatchObject({ pinned: true, archived: true, updatedAt: 2 });
+    pinRun("r2", false);
+    archiveRun("r2", false);
+    expect(find("r2").pinned).toBeUndefined();
+    expect(find("r2").archived).toBeUndefined();
+    expect(pinRun("ghost", true)).toBe(false);
+    expect(archiveRun("ghost", true)).toBe(false);
+  });
+});
+
+describe("运行模型快照", () => {
+  it("起跑时固定模型：规划器拿快照配置，run 记录模型与配置名", async () => {
+    loadAIConfig.mockResolvedValueOnce({
+      baseUrl: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      model: "deepseek-chat",
+      profileId: "p1",
+      profileName: "主力",
+      temperature: 0.7,
+      reasoningEffort: "",
+    });
+    scriptPlanner([final("done")]);
+    await startAgentRun("任务");
+    expect(agentSession.runs[0]).toMatchObject({ model: "deepseek-chat", modelProfile: "主力" });
+    // 规划器拿到的是起跑时的快照配置，而不是每一步重新读设置
+    expect(aiComplete.mock.calls[0][1].config).toMatchObject({ model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1" });
   });
 });
 
@@ -392,6 +446,25 @@ describe("ask_user 的文本回答", () => {
     expect(agentSession.runStatus).toBe("completed");
   });
 
+  it("模型给的选项随 pending 下发：去脏、去重、限 6 个；多选标记保留", async () => {
+    scriptPlanner([
+      {
+        type: "ask_user",
+        question: "更关注哪些方向？",
+        options: ["性能", " 性能 ", "可维护性", "", 3, "安全", "测试", "构建体积", "代码结构", "其他"],
+        multiple: true,
+      },
+      final("done"),
+    ]);
+    const run = startAgentRun("如何优化本项目");
+    await vi.waitFor(() => expect(agentSession.pending?.kind).toBe("ask"));
+    expect(agentSession.pending.options).toEqual(["性能", "可维护性", "安全", "测试", "构建体积", "代码结构"]);
+    expect(agentSession.pending.multiple).toBe(true);
+    expect(answerPending("性能、安全")).toBe(true);
+    await run;
+    expect(agentSession.runStatus).toBe("completed");
+  });
+
   it("工具确认卡不接受文本回答（两条路径不互相串）", async () => {
     // 用写类工具（默认 risky 策略会弹确认卡），但不落文件系统：http.request 只出站请求，
     // 既避开读后写门禁，也避开真实文件副作用。这里验证的是两条确认路径不互相串。
@@ -549,5 +622,35 @@ describe("沉淀准入（语义判断复用性）", () => {
     resolveTypeSafeTransport.mockResolvedValue({ transport });
     expect(await promoteRunToSkill(goodRun.id)).toMatchObject({ ok: false, reason: "run_not_skillable" });
     expect(transport).not.toHaveBeenCalled();
+  });
+});
+
+describe("附件接线：从输入框到规划器提示词", () => {
+  it("attachmentLine 进提示词，附件随 run 落盘，正文不落盘", async () => {
+    scriptPlanner([final("done")]);
+    const attachments = [
+      { id: "a1", name: "plan.md", path: "E:/docs/plan.md", kind: "text", size: 2048, content: "x".repeat(40) },
+    ];
+    await startAgentRun("看看这份计划", {
+      attachmentLine: "附件（用户本次目标附带）：\n1. E:/docs/plan.md（2.0 KB，文本）",
+      attachments,
+    });
+    const prompt = aiComplete.mock.calls[0][0];
+    expect(prompt).toContain("E:/docs/plan.md");
+    expect(prompt).toContain("附件（用户本次目标附带");
+    // run 记录留下「这一轮拿到过什么」，但正文只服务本次提示词，不跟历史无限期落盘
+    const run = agentSession.runs[0];
+    expect(run.attachments).toHaveLength(1);
+    expect(run.attachments[0].path).toBe("E:/docs/plan.md");
+    expect(run.attachments[0].content).toBeUndefined();
+    // 会话级状态也留着，消息流里的 chip 要读它
+    expect(agentSession.attachments).toHaveLength(1);
+  });
+
+  it("不带附件时提示词里没有附件段（默认行为零变化）", async () => {
+    scriptPlanner([final("done")]);
+    await startAgentRun("普通目标");
+    expect(aiComplete.mock.calls[0][0]).not.toContain("附件（用户本次目标附带");
+    expect(agentSession.attachments).toEqual([]);
   });
 });

@@ -40,9 +40,10 @@ test.describe("手机端设置页", () => {
     await expect(page.locator('[data-role="base-url"]')).toHaveValue("https://api.deepseek.com/v1");
     await expect(page.locator('[data-role="model"]')).toHaveValue("deepseek-chat");
     await expect(page.locator('[data-role="ai-enable"]')).toHaveClass(/on/);
-    // 预设高亮：说明"当前用的是哪个服务商"一眼可见
-    await expect(page.locator('[data-preset="deepseek"]')).toHaveClass(/on/);
-    await expect(page.locator('[data-preset="openai"]')).not.toHaveClass(/on/);
+    // 厂商下拉的值就是"当前用的是哪个服务商"
+    const preset = page.locator('[data-role="preset"]');
+    await expect(preset).toHaveValue("deepseek");
+    await expect(preset).not.toHaveValue("openai");
   });
 
   test("点预设一键填好地址与模型", async ({ page }) => {
@@ -50,7 +51,7 @@ test.describe("手机端设置页", () => {
     await page.goto(MOBILE);
     await goSettings(page);
 
-    await page.locator('[data-preset="deepseek"]').click();
+    await page.locator('[data-role="preset"]').selectOption("deepseek");
     await expect(page.locator('[data-role="base-url"]')).toHaveValue("https://api.deepseek.com/v1");
     await expect(page.locator('[data-role="model"]')).not.toHaveValue("");
     await expect(page.locator('[data-role="ai-enable"]')).toHaveClass(/on/);

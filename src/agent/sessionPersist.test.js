@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const saved = vi.hoisted(() => []);
 
-vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
+vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true), loadAIConfig: vi.fn(async () => null) }));
 vi.mock("../typesafe.js", () => ({ resolveTypeSafeTransport: vi.fn(async () => null) }));
 vi.mock("../toolboxStore.js", () => ({
   loadToolbox: async (_key, fallback) => fallback,

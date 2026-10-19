@@ -4,6 +4,10 @@
 // 桌面端专门用 mergeSettingsSnapshot 合并快照，就是因为「表单只渲染 ai/ui，
 // 保存时把 sync/telemetry 整段覆盖掉」踩过坑。手机端沿用同一套语义，
 // 并把判断放在可单测的纯函数里（组件只负责渲染与调用）。
+//
+// 多模型：桌面端 settings.ai 已经升级成 profiles + activeId。手机端仍只编辑一套，
+// 但必须读/写「当前默认」那一条，否则会把桌面端刚存的多套配置覆盖成一套。
+import { activeProfile, normalizeAi, toStoredAi } from "../../src/agent/modelProfiles.js";
 
 /**
  * 桌面端与手机端共用的设置形状（键名必须与桌面一致，否则两端读同一份 settings 会互相丢字段）。
@@ -20,11 +24,13 @@ const isPlainObject = (value) => !!value && typeof value === "object" && !Array.
 
 /**
  * 把磁盘上的 settings 归一成表单形状。
+ * 多套配置时取当前默认（activeId）那套；旧扁平字段由 normalizeAi 自动迁移。
  * 注意 apiKey 传进来时应已解密（decryptValue 是异步的，放在组件里做）。
  */
 export function formFromSettings(raw, { decryptedKey = "" } = {}) {
   const s = isPlainObject(raw) ? raw : {};
-  const ai = isPlainObject(s.ai) ? s.ai : {};
+  const aiCfg = normalizeAi(s.ai);
+  const ai = activeProfile(aiCfg) || {};
   const ui = isPlainObject(s.ui) ? s.ui : {};
   return {
     ai: {
@@ -33,7 +39,8 @@ export function formFromSettings(raw, { decryptedKey = "" } = {}) {
       model: String(ai.model || ""),
       temperature: typeof ai.temperature === "number" && Number.isFinite(ai.temperature) ? ai.temperature : 0.7,
       reasoningEffort: String(ai.reasoningEffort || ""),
-      enabled: !!ai.enabled,
+      // 手机端沿用旧的宽松归一（历史数据里可能有 1/字符串）；保存时统一写布尔
+      enabled: !!s.ai?.enabled,
     },
     ui: {
       density: ui.density === "comfort" ? "comfort" : "compact",
@@ -41,6 +48,25 @@ export function formFromSettings(raw, { decryptedKey = "" } = {}) {
       locale: ["system", "zh-CN", "en-US"].includes(ui.locale) ? ui.locale : "system",
     },
   };
+}
+
+/**
+ * 手机端保存：把表单写回「当前默认」那条配置，其余配置与名字原样保留。
+ * 密钥为空时调用方传入原密文（keyError 场景），这里只负责落盘形状。
+ */
+export function applyAiForm(rawAi, formAi, { apiKey = "" } = {}) {
+  const aiCfg = normalizeAi(rawAi);
+  const current = activeProfile(aiCfg);
+  const edit = {
+    baseUrl: normalizeBaseUrl(formAi.baseUrl),
+    apiKey,
+    model: String(formAi.model || "").trim(),
+    temperature: typeof formAi.temperature === "number" ? formAi.temperature : 0.7,
+    reasoningEffort: String(formAi.reasoningEffort || ""),
+  };
+  let profiles = aiCfg.profiles.map((profile) => (profile.id === current?.id ? { ...profile, ...edit } : profile));
+  if (!profiles.length) profiles = [{ id: "default", name: "", ...edit }];
+  return toStoredAi({ enabled: !!formAi.enabled, activeId: current?.id || profiles[0].id, profiles });
 }
 
 /**

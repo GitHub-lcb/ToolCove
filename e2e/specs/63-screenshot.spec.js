@@ -37,7 +37,7 @@ async function stubScreenshot(page, { settings = SETTINGS } = {}) {
 }
 
 /** 工具箱里名为「截图」的那张卡（「截图」二字也出现在别的工具描述里，按卡片标题精确匹配）。 */
-const screenshotCard = (page) => page.locator(".tool-item .name", { hasText: /^截图$/ });
+const screenshotCard = (page) => page.locator(".lt-tool .lt-name", { hasText: /^截图$/ });
 
 const shotCalls = (page) => page.evaluate(() => window.__shotCalls);
 
@@ -57,8 +57,8 @@ test.describe("工具（截图）", () => {
 
     // 工具箱里能搜到（desktopOnly 工具在桌面形态可见）
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("截图");
     await expect(screenshotCard(page)).toHaveCount(1);
@@ -115,8 +115,8 @@ test.describe("工具（截图）", () => {
     await expect(page.locator('[data-role="capture-now"]')).toBeDisabled();
 
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("截图");
     await expect(screenshotCard(page)).toHaveCount(0);

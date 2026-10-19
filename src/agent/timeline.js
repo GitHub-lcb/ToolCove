@@ -28,7 +28,8 @@ export function payloadText(value) {
 /**
  * 折叠事件流。入参应为已脱敏的事件（调用方推入前过 sanitizeRun）。
  * 返回条目：
- *   { kind:"tool", id, tool, ts, attempts:[{ n, args, status:"running"|"ok"|"retry"|"error", result, error, code, ts }] }
+ *   { kind:"tool", id, tool, ts, attempts:[{ n, args, status:"running"|"ok"|"retry"|"error", result, error, code, ts, endTs }] }
+ *   endTs 为空表示这次尝试仍在跑（视图据此算实时耗时）；retry/result/error 都会收尾。
  *   { kind:"confirm", tool, question, answer, ts }
  *   { kind:"final", answer, ts }
  *   { kind:"notice", code, text, ts }
@@ -77,6 +78,7 @@ export function foldTimeline(events = []) {
           error: "",
           code: "",
           ts,
+          endTs: null,
         });
         break;
       }
@@ -88,6 +90,7 @@ export function foldTimeline(events = []) {
           attempt.status = "retry";
           attempt.error = raw.error || "";
           attempt.code = raw.code || "";
+          attempt.endTs = ts;
         }
         break;
       }
@@ -98,8 +101,9 @@ export function foldTimeline(events = []) {
           attempt.status = "ok";
           attempt.result = raw.result ?? null;
           attempt.args = raw.args ?? attempt.args;
+          attempt.endTs = ts;
         } else {
-          card.attempts.push({ n: 1, args: raw.args ?? null, status: "ok", result: raw.result ?? null, error: "", code: "", ts });
+          card.attempts.push({ n: 1, args: raw.args ?? null, status: "ok", result: raw.result ?? null, error: "", code: "", ts, endTs: ts });
         }
         break;
       }
@@ -111,8 +115,9 @@ export function foldTimeline(events = []) {
           attempt.error = raw.error || "";
           attempt.code = raw.code || "";
           attempt.args = raw.args ?? attempt.args;
+          attempt.endTs = ts;
         } else {
-          card.attempts.push({ n: 1, args: raw.args ?? null, status: "error", result: null, error: raw.error || "", code: raw.code || "", ts });
+          card.attempts.push({ n: 1, args: raw.args ?? null, status: "error", result: null, error: raw.error || "", code: raw.code || "", ts, endTs: ts });
         }
         break;
       }

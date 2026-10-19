@@ -1,6 +1,7 @@
 // 平台门禁：Node 测试环境默认无 window（按桌面处理），这里显式 stub 出
 // 「有 window 但无 __TAURI_INTERNALS__」的浏览器态，验证桌面独占能力被正确过滤。
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AGENT_TOOL_CATALOG } from "../agent/catalog.js";
 
 // 注册表在导入时即读取 isDesktop，必须 resetModules 后重新动态导入才能拿到浏览器分支
 function stubBrowser() {
@@ -13,21 +14,11 @@ afterEach(() => {
   vi.resetModules();
 });
 
-const DESKTOP_ONLY_TOOLS = [
-  "db.query_readonly",
-  "file.inspect",
-  "file.list_directory",
-  "file.preview_write",
-  "file.read_text",
-  "file.write_text",
-  "network.dns",
-  "network.ping",
-  "network.tcp_check",
-  "network.trace",
-  "pdf.extract_pages",
-  "pdf.merge",
-  "pdf.split",
-];
+// 桌面独占清单从工具目录派生，而不是手写一份：这里曾经写死 13 个名字，
+// 新增两个 file 动作后就假红了一次。目录才是唯一真相源（catalog.test 保证它与实现一一对应）。
+const DESKTOP_ONLY_TOOLS = AGENT_TOOL_CATALOG.filter((tool) => tool.desktopOnly)
+  .map((tool) => tool.name)
+  .sort();
 
 describe("平台判定", () => {
   it("无 window 时按桌面处理，既有测试继续走 IPC 分支", async () => {
@@ -152,7 +143,7 @@ describe("Agent 工具注册表平台过滤", () => {
     expect(registry.get("json.parse")).toBeTruthy();
   });
 
-  it("浏览器可用集是桌面可用集的真子集，差异恰为 13 个桌面独占工具", async () => {
+  it("浏览器可用集是桌面可用集的真子集，差异恰为目录里的桌面独占工具", async () => {
     const desktop = (await import("../agent/tools.js")).listAgentTools(null).map((tool) => tool.name);
     stubBrowser();
     const browser = (await import("../agent/tools.js")).listAgentTools(null).map((tool) => tool.name);

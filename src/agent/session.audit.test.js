@@ -9,7 +9,7 @@ vi.mock("../platform/invoke.js", () => ({
     return command === "load_data" ? [] : null;
   }),
 }));
-vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true) }));
+vi.mock("../ai.js", () => ({ aiComplete: vi.fn(), isAIConfigured: vi.fn(async () => true), loadAIConfig: vi.fn(async () => null) }));
 vi.mock("../typesafe.js", () => ({ resolveTypeSafeTransport: vi.fn(async () => null) }));
 
 import { aiComplete } from "../ai.js";

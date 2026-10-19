@@ -21,14 +21,14 @@ function rankAnswer(top, { value = 0.91, rest = 0.04 } = {}) {
 }
 
 async function search(page, text) {
-  const box = page.locator(".toolbox-search input");
+  const box = page.locator(".lt-search input");
   await box.waitFor({ state: "visible", timeout: 10_000 });
   await box.fill(text);
 }
 
 async function gotoToolbox(page) {
   await page.goto("/");
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
 }
 
 test.describe("自然语言找工具", () => {
@@ -68,7 +68,7 @@ test.describe("自然语言找工具", () => {
     await search(page, GOAL);
     await expect(page.locator(".semantic-item")).toHaveCount(1, { timeout: 15_000 });
     // 删掉再打回同一句：命中缓存，不该有第二次请求
-    const box = page.locator(".toolbox-search input");
+    const box = page.locator(".lt-search input");
     await box.fill("");
     await search(page, GOAL);
     await page.waitForTimeout(900);
@@ -79,7 +79,7 @@ test.describe("自然语言找工具", () => {
     await seedWithAI(page);
     await gotoToolbox(page);
     await search(page, GOAL);
-    await expect(page.locator(".search-empty")).toContainText("没有找到匹配的工具", { timeout: 10_000 });
+    await expect(page.locator(".lt-empty-block")).toContainText("没有找到匹配的工具", { timeout: 10_000 });
     await expect(page.locator(".semantic-list")).toHaveCount(0);
     expect(await typeSafeCalls(page)).toHaveLength(0);
   });
@@ -109,7 +109,7 @@ test.describe("自然语言找工具", () => {
     // 「zzzzzz」够长但没有意义：不配 isSemanticWorthy 的形态（纯 ASCII 且不足三个词）
     await search(page, "zzzzzz");
     await page.waitForTimeout(900);
-    await expect(page.locator(".search-empty")).toBeVisible();
+    await expect(page.locator(".lt-empty-block")).toBeVisible();
     expect(await typeSafeCalls(page)).toHaveLength(0);
   });
 });

@@ -30,8 +30,8 @@ function mapAnswer(byColumn) {
 
 async function openTableTool(page) {
   await page.goto("/");
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  const card = page.locator(".tool-item", { hasText: "表格处理" });
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  const card = page.locator(".lt-tool", { hasText: "表格处理" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   await page.locator('[data-role="input"]').first().waitFor({ state: "visible", timeout: 10_000 });

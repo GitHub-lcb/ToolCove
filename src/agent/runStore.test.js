@@ -23,6 +23,20 @@ describe("agent run store", () => {
   it("createRun 初始化零用量", () => {
     expect(createRun("demo").usage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 });
   });
+  it("createRun 记下本轮附件，缺省是空数组（历史回看与导出日志都读它）", () => {
+    expect(createRun("demo").attachments).toEqual([]);
+    const attachments = [{ id: "a1", name: "plan.md", path: "E:\\docs\\plan.md", kind: "text", size: 2048 }];
+    expect(createRun("demo", { attachments }).attachments).toEqual(attachments);
+    // 脏值不落进 run 记录
+    expect(createRun("demo", { attachments: "nope" }).attachments).toEqual([]);
+  });
+  it("createRun 记下模型快照；空值不落字段", () => {
+    expect(createRun("demo", { model: "deepseek-chat", modelProfile: "主力" }))
+      .toMatchObject({ model: "deepseek-chat", modelProfile: "主力" });
+    const plain = createRun("demo", { model: "  " });
+    expect(plain.model).toBeUndefined();
+    expect(plain.modelProfile).toBeUndefined();
+  });
   it("addUsage 就地累加并刷新 updatedAt", () => {
     const run = createRun("demo");
     run.updatedAt = 0;

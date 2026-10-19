@@ -13,9 +13,19 @@ import { isDesktop } from "./env.js";
  */
 export async function watchFileDrop({ onFiles, onActive } = {}) {
   if (!isDesktop) return null;
+  // Tauri 的 event 插件把注销入口挂在 window.__TAURI_EVENT_PLUGIN_INTERNALS__ 上。
+  // 缺这个对象时 onDragDropEvent 仍能注册，但卸载时四个内部监听会各自抛一次
+  // "reading 'unregisterListener' of undefined"，而且是 async 里抛的，外层 try/catch 兜不住
+  // （实测：e2e 的桌面 IPC 替身不注入 internals，视图一销毁就冒 4 个未处理异常）。
+  // 这种环境干脆不注册：拖放是增强能力，宁可不生效，也不能让视图销毁时炸掉。
+  const canUnlisten =
+    typeof window !== "undefined" &&
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ &&
+    typeof window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener === "function";
+  if (!canUnlisten) return null;
   try {
     const { getCurrentWebview } = await import("@tauri-apps/api/webview");
-    return await getCurrentWebview().onDragDropEvent((event) => {
+    const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
       const payload = event?.payload;
       if (payload?.type === "enter") onActive?.(true);
       else if (payload?.type === "leave") onActive?.(false);
@@ -25,6 +35,15 @@ export async function watchFileDrop({ onFiles, onActive } = {}) {
         if (paths.length) onFiles?.(paths);
       }
     });
+    // 注销失败不该打断组件销毁：event 插件的 internals 在测试替身 / 非完整壳里可能缺字段，
+    // 真实的 unlisten 抛错也只会让监听多留一会儿，比在 onBeforeUnmount 里炸掉整个视图好。
+    return () => {
+      try {
+        unlisten?.();
+      } catch {
+        /* 忽略：见上 */
+      }
+    };
   } catch {
     return null;
   }

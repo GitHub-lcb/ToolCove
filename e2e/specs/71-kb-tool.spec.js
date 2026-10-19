@@ -8,8 +8,8 @@ import { readKv, seedData } from "../helpers.js";
 
 /** 打开知识库工具：桌面端卡片是 button.tool-item（没有 data-tool 属性），按可见文本定位。 */
 async function openKbTool(page) {
-  await page.locator(".nav-item", { hasText: "工具箱" }).click();
-  const card = page.locator(".tool-item", { hasText: "知识库" });
+  await page.locator(".nav-item", { hasText: "本地工具" }).click();
+  const card = page.locator(".lt-tool", { hasText: "知识库" });
   await card.waitFor({ state: "visible", timeout: 10_000 });
   await card.click();
   await page.locator('[data-role="search"]').waitFor({ state: "visible", timeout: 10_000 });

@@ -620,11 +620,11 @@ test.describe("工具（磁盘分析）", () => {
   test("工具页可从工具箱搜到", async ({ page }) => {
     await stubDisk(page);
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("磁盘");
-    await expect(page.locator(".tool-item .name", { hasText: /^磁盘分析$/ })).toHaveCount(1);
+    await expect(page.locator(".lt-tool .lt-name", { hasText: /^磁盘分析$/ })).toHaveCount(1);
   });
 
   test("浏览器形态：直达链接显示桌面专属错误，工具箱里不出现该卡片", async ({ page }) => {
@@ -634,10 +634,10 @@ test.describe("工具（磁盘分析）", () => {
     await expect(page.locator('[data-role="pick-folder"]')).toBeVisible();
 
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("磁盘");
-    await expect(page.locator(".tool-item .name", { hasText: /^磁盘分析$/ })).toHaveCount(0);
+    await expect(page.locator(".lt-tool .lt-name", { hasText: /^磁盘分析$/ })).toHaveCount(0);
   });
 });

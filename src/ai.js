@@ -2,13 +2,18 @@
 // 桌面端经 Rust 命令 ai_chat/ai_chat_stream 透传到 OpenAI 兼容的 /chat/completions（规避浏览器 CORS）；
 // 浏览器端直连同一端点（要求该端点允许 CORS）。
 // 两端都会为 OpenCode 网关（opencode.ai）补 x-opencode-session 会话头，缺失会被该网关 400 拒绝。
-// 配置存放在 settings.ai：{ baseUrl, apiKey, model, temperature, enabled }
+// 配置存放在 settings.ai：多套配置 profiles + activeId（旧扁平字段会自动迁移，见 agent/modelProfiles.js）
 import { invoke, createChannel } from "./platform/invoke.js";
 import { isDesktop } from "./platform/env.js";
 import { decryptValue } from "./secure.js";
 import { parsePartialJson } from "./streamJson.js";
 import { throttleFlush } from "./throttle.js";
 import { i18n } from "./i18n/index.js";
+import { activeProfile, normalizeAi, profileLabel } from "./agent/modelProfiles.js";
+import { AI_PRESETS, PROVIDER_GROUPS } from "./agent/modelCatalog.js";
+
+// 服务商目录住在 agent/modelCatalog.js（设置页、对话弹层、手机端共用一份）。
+export { AI_PRESETS, PROVIDER_GROUPS };
 
 const t = (key, params) => i18n.global.t(key, params);
 
@@ -50,22 +55,7 @@ export function isOpencodeBase(baseUrl) {
   return host === "opencode.ai" || host.endsWith(".opencode.ai");
 }
 
-// 常见服务商预设（baseUrl 已含 /v1 等版本段，直接拼 /chat/completions）
-export const AI_PRESETS = [
-  { key: "openai", labelKey: "settings.aiPresetOpenai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
-  { key: "deepseek", labelKey: "settings.aiPresetDeepseek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
-  { key: "moonshot", labelKey: "settings.aiPresetMoonshot", baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
-  { key: "dashscope", labelKey: "settings.aiPresetDashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus" },
-  { key: "siliconflow", labelKey: "settings.aiPresetSiliconflow", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
-  // OpenCode Zen / Go 订阅网关：Go 端点强制校验 x-opencode-session（缺失即 400），
-  // 会话头已由本服务层与 Rust 代理自动补上，选预设后只需填 API Key 与模型名。
-  { key: "opencode", labelKey: "settings.aiPresetOpencode", baseUrl: "https://opencode.ai/zen/go/v1", model: "deepseek-v4.1-flash" },
-  // 本地 Ollama：Agent 首屏的零成本兜底，不需要第三方 key。
-  // Ollama 的 OpenAI 兼容端点接受任意非空密钥，而 isAIConfigured() 要求 apiKey 非空，故自带占位值。
-  { key: "ollama", labelKey: "settings.aiPresetOllama", baseUrl: "http://localhost:11434/v1", model: "qwen2.5:7b", apiKey: "ollama" },
-];
-
-// 读取 settings.ai 配置
+// 读取当前使用的模型配置（多配置时取 activeId 指向的那套；旧格式自动迁移）
 export async function loadAIConfig() {
   let s = {};
   try {
@@ -73,14 +63,17 @@ export async function loadAIConfig() {
   } catch (e) {
     s = {};
   }
-  const a = s.ai || {};
+  const ai = normalizeAi(s.ai);
+  const profile = activeProfile(ai);
   return {
-    baseUrl: (a.baseUrl || "").trim().replace(/\/$/, ""),
-    apiKey: (await decryptValue(a.apiKey || "")).trim(),
-    model: (a.model || "").trim(),
-    temperature: typeof a.temperature === "number" ? a.temperature : 0.7,
-    reasoningEffort: (a.reasoningEffort || "").trim(),
-    enabled: !!a.enabled,
+    baseUrl: (profile?.baseUrl || "").trim().replace(/\/$/, ""),
+    apiKey: (await decryptValue(profile?.apiKey || "")).trim(),
+    model: (profile?.model || "").trim(),
+    temperature: typeof profile?.temperature === "number" ? profile.temperature : 0.7,
+    reasoningEffort: (profile?.reasoningEffort || "").trim(),
+    enabled: ai.enabled,
+    profileId: profile?.id || "",
+    profileName: profile ? profileLabel(profile) : "",
   };
 }
 
@@ -88,6 +81,53 @@ export async function loadAIConfig() {
 export async function isAIConfigured() {
   const c = await loadAIConfig();
   return !!(c.baseUrl && c.apiKey && c.model);
+}
+
+/** 解析 /models 响应：兼容 OpenAI（data[].id）、Ollama（models[].name/model）与纯字符串数组。 */
+export function parseModelsResponse(body) {
+  let data = body;
+  if (typeof body === "string") {
+    try {
+      data = JSON.parse(body);
+    } catch {
+      throw new Error("模型列表不是合法 JSON");
+    }
+  }
+  const list = Array.isArray(data?.data)
+    ? data.data
+    : Array.isArray(data?.models)
+      ? data.models
+      : Array.isArray(data)
+        ? data
+        : [];
+  const out = [];
+  for (const item of list) {
+    const id = typeof item === "string" ? item : String(item?.id || item?.name || item?.model || "").trim();
+    if (id && !out.includes(id)) out.push(id);
+  }
+  if (!out.length) throw new Error("响应里没有模型列表");
+  return out;
+}
+
+/**
+ * 拉取当前离线端点可用的模型：GET {baseUrl}/models（OpenAI 兼容）。
+ * 与聊天请求同一通道（platform/invoke 的 http_request）：桌面走 Rust 代理、手机走原生桥，
+ * 都不受浏览器 CORS 约束。地址或 Key 缺失时调用方应先拦住，这里只做防御性报错。
+ */
+export async function listAIModels({ baseUrl, apiKey, timeoutMs = 15000 } = {}) {
+  const base = String(baseUrl || "").trim().replace(/\/+$/, "");
+  if (!base) throw configError("toolbox.ai.errNoBaseUrl");
+  const key = String(apiKey || "").trim();
+  const headers = [["Accept", "application/json"]];
+  if (key) headers.push(["Authorization", `Bearer ${key}`]);
+  if (isOpencodeBase(base)) headers.push(["x-opencode-session", APP_SESSION_ID]);
+  const res = await invoke("http_request", { method: "GET", url: `${base}/models`, headers, timeout_ms: timeoutMs });
+  const status = Number(res?.status) || 0;
+  if (status < 200 || status >= 300) {
+    const detail = String(res?.body || "").replace(/\s+/g, " ").slice(0, 200);
+    throw new Error(`HTTP ${status}${detail ? `：${detail}` : ""}`);
+  }
+  return parseModelsResponse(res?.body);
 }
 
 // 组装请求参数：校验配置 + 推理档位/温度二选一（两端实现共用，保证行为一致）

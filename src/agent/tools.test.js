@@ -33,6 +33,9 @@ describe("buildAgentRegistry / listAgentTools", () => {
     expect(names).toContain("file.write_text");
     expect(names).toContain("db.query_readonly");
     expect(typeof registry.get("file.write_text").execute).toBe("function");
+    // 附件能用了还不够：二进制文件的 MD5 校验与「改 MD5 生成副本」也得是 Agent 的手
+    expect(typeof registry.get("file.md5").execute).toBe("function");
+    expect(typeof registry.get("file.modify_md5").execute).toBe("function");
   });
 
   it("停用清单把工具从 registry 移除，能力清单同步反映", async () => {

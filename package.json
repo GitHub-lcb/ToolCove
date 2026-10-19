@@ -17,6 +17,8 @@
     "gen:tools": "node scripts/gen-tool-registry.mjs && node scripts/gen-tool-i18n.mjs",
     "//gen:i18n": "工具词条片段生成器（gen:tools 已含它，这里留作单独重跑）：扫 src/tools/<key>/i18n.<locale>.json，深合并写出 src/i18n/tools.generated.js（新增/改动工具词条后必须重跑；i18nFragments.test.js 会把漏跑变成红灯）。",
     "gen:i18n": "node scripts/gen-tool-i18n.mjs",
+    "//gen:i18n-baseline": "迁移安全性快照重生成：新增/删除 i18n 词条后跑一次（合并分支后统一跑一次），刷新 src/i18n/preMigrationKeys.json；不要手改。",
+    "gen:i18n-baseline": "node scripts/gen-i18n-baseline.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

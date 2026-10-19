@@ -159,6 +159,8 @@
     }
   },
   "agent": {
+    "toolFileMd5": "Compute the MD5 of any file (PDFs, images and other binaries)",
+    "toolFileModifyMd5": "Create a copy with a different MD5 (source untouched)",
     "toolFileInspect": "Inspect file metadata (no content)",
     "toolFileListDirectory": "List directory contents",
     "toolFilePreviewWrite": "Preview a write as a diff (no side effects)",

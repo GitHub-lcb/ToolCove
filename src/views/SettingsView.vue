@@ -1,7 +1,7 @@
 <script setup>
 // 设置页（UI 2.0 工作台式）：左侧分类导航 + 右侧内容区，替代原设置弹窗。
 // 分类：AI 模型 / 系统设置；保存后 dispatch settings-saved 供全局刷新。
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../platform/invoke.js";
 import { capabilities, isEnterprise } from "../platform/env.js";
@@ -16,7 +16,8 @@ import { relaunch } from "../platform/shell.js";
 import { openUrl } from "../platform/shell.js";
 import Icon from "../ui/Icon.vue";
 import MembersPanel from "../enterprise/MembersPanel.vue";
-import { testAI, AI_PRESETS } from "../ai.js";
+import { testAI, listAIModels, AI_PRESETS, PROVIDER_GROUPS } from "../ai.js";
+import { newProfileId, normalizeAi, profileLabel, toStoredAi } from "../agent/modelProfiles.js";
 import { testTypeSafe } from "../typesafe.js";
 import { checkForUpdate } from "../app/updater.js";
 import { encryptValue, decryptValue } from "../secure.js";
@@ -96,6 +97,36 @@ const showKey = ref(false);
 const showTypeSafeKey = ref(false);
 const fieldErr = ref({});
 const form = ref(newSettings());
+// 设置页里的「正在编辑哪条模型配置」：纯界面状态，不进 dirty 与落盘
+const editingProfileId = ref("");
+const editingProfile = computed(() => {
+  const list = form.value.ai.profiles || [];
+  return list.find((p) => p.id === editingProfileId.value) || list[0] || null;
+});
+
+// ------- 模型列表自动拉取 -------
+// 按「地址 + Key」缓存：地址或 Key 一变，旧列表自动作废（fetchedModels 比对 key）。
+const modelsByProfile = ref({}); // profileId -> { key, list }
+const fetchingModels = ref(false);
+const modelFetchError = ref("");
+let modelFetchToken = 0;
+
+const cacheKeyOf = (profile) =>
+  `${(profile?.baseUrl || "").trim().replace(/\/+$/, "")}\u0000${(profile?.apiKey || "").trim()}`;
+
+const fetchedModels = computed(() => {
+  const profile = editingProfile.value;
+  if (!profile) return [];
+  const entry = modelsByProfile.value[profile.id];
+  return entry && entry.key === cacheKeyOf(profile) ? entry.list : [];
+});
+
+/** 下拉候选：当前模型不在端点返回里也要保留，否则一保存就被悄悄换掉。 */
+const modelChoices = computed(() => {
+  const list = fetchedModels.value;
+  const current = String(editingProfile.value?.model || "").trim();
+  return current && !list.includes(current) ? [current, ...list] : list;
+});
 const settingsLoadError = ref("");
 // 开机启动是系统状态不是应用数据：进入页面时读真实状态，保存时写回，不落 settings.json
 const autostartOn = ref(false);
@@ -592,12 +623,31 @@ async function pickAccent(key) {
   props.showToast(key ? t("settings.accentApplied") : t("settings.accentReset"));
 }
 
+/** 第一条不完整的配置（启用 AI 时所有已保存配置都必须是可用的）。 */
+function invalidProfile(profiles = form.value.ai.profiles) {
+  return profiles.find((p) => !(p.baseUrl || "").trim() || !(p.apiKey || "").trim() || !(p.model || "").trim()) || null;
+}
+
 function validate() {
   const err = {};
   if (form.value.ai.enabled) {
-    if (!(form.value.ai.baseUrl || "").trim()) err.aiBase = t("settings.errAiBase");
-    if (!(form.value.ai.apiKey || "").trim()) err.aiKey = t("settings.errAiKey");
-    if (!(form.value.ai.model || "").trim()) err.aiModel = t("settings.errAiModel");
+    const profiles = form.value.ai.profiles;
+    if (!profiles.length) {
+      err.aiProfile = t("settings.errAiProfiles");
+    } else {
+      const bad = invalidProfile(profiles);
+      if (bad) {
+        err.aiProfile = t("settings.errAiProfileIncomplete", {
+          name: profileLabel(bad) || t("settings.aiProfileUntitled"),
+        });
+        // 字段级错误只对「正在编辑的那条」可见；其他条目由上面这条汇总提示点名
+        if (bad.id === editingProfileId.value) {
+          if (!(bad.baseUrl || "").trim()) err.aiBase = t("settings.errAiBase");
+          if (!(bad.apiKey || "").trim()) err.aiKey = t("settings.errAiKey");
+          if (!(bad.model || "").trim()) err.aiModel = t("settings.errAiModel");
+        }
+      }
+    }
   }
   if (form.value.typesafe.enabled) {
     // 地址留空是合法的（用官方端点），只有填了却不合法才拦
@@ -610,9 +660,14 @@ function validate() {
   return err;
 }
 
+function blankProfile() {
+  return { id: newProfileId(), name: "", baseUrl: "", apiKey: "", model: "", temperature: 0.7, reasoningEffort: "" };
+}
+
 function newSettings() {
+  const profile = blankProfile();
   return {
-    ai: { baseUrl: "", apiKey: "", model: "", temperature: 0.7, reasoningEffort: "", enabled: false },
+    ai: { enabled: false, activeId: profile.id, profiles: [profile] },
     // 归一后的**完整形状**：保存是整组替换，表单里没有的字段会被写没，
     // 所以高级旋钮（bodyChars/stateBudget/置信度分档）即使不给渲染也要带上原值。
     typesafe: normalizeTypeSafe({}),
@@ -642,15 +697,16 @@ async function readSettingsForm() {
     // TypeSafe 的高级旋钮只在这两处渲染其中几项，但表单必须持有**全部**归一后的值：
     // 保存时整组替换，漏带一项就会把用户在 settings.json 里手调过的高级值抹掉。
     const typesafeCfg = normalizeTypeSafe(s.typesafe);
+    // 旧版单模型字段由 normalizeAi 迁成一条配置；这里逐条解密，编辑器拿到的都是明文草稿
+    const aiCfg = normalizeAi(s.ai);
+    const aiProfiles = [];
+    for (const profile of aiCfg.profiles) {
+      aiProfiles.push({ ...profile, apiKey: await decryptValue(profile.apiKey || "") });
+    }
+    if (!aiProfiles.length) aiProfiles.push(blankProfile());
+    const aiActiveId = aiProfiles.some((p) => p.id === aiCfg.activeId) ? aiCfg.activeId : aiProfiles[0].id;
     form.value = {
-      ai: {
-        baseUrl: s.ai?.baseUrl || "",
-        apiKey: await decryptValue(s.ai?.apiKey || ""),
-        model: s.ai?.model || "",
-        temperature: typeof s.ai?.temperature === "number" ? s.ai.temperature : 0.7,
-        reasoningEffort: s.ai?.reasoningEffort || "",
-        enabled: !!s.ai?.enabled,
-      },
+      ai: { enabled: aiCfg.enabled, activeId: aiActiveId, profiles: aiProfiles },
       ui: {
         density: s.ui?.density === "comfort" ? "comfort" : "compact",
         hiddenModules: normalizeHiddenModules(NAV_MODULE_OPTIONS.map((m) => m.key), s.ui?.hiddenModules),
@@ -658,8 +714,12 @@ async function readSettingsForm() {
       },
       typesafe: { ...typesafeCfg, apiKey: await decryptValue(typesafeCfg.apiKey) },
     };
+    editingProfileId.value = aiActiveId;
+    // 已有 Key 的配置：进页面就把模型列表拉出来（静默失败则保持手动输入）
+    nextTick(maybeFetchModels);
   } catch (e) {
     form.value = newSettings();
+    editingProfileId.value = form.value.ai.activeId;
     settingsLoadError.value = e && e.message ? e.message : String(e);
     props.showToast(t("settings.loadFailed", { err: settingsLoadError.value }));
   }
@@ -721,6 +781,14 @@ async function save() {
   }
   fieldErr.value = validate();
   if (Object.keys(fieldErr.value).length) {
+    // 出问题的不是当前编辑的配置时，自动切过去，否则用户看不到是哪个字段
+    if (fieldErr.value.aiProfile) {
+      const bad = invalidProfile();
+      if (bad) {
+        editingProfileId.value = bad.id;
+        fieldErr.value = validate();
+      }
+    }
     props.showToast(t("settings.fixRequired", { err: Object.values(fieldErr.value)[0] }));
     return;
   }
@@ -728,7 +796,18 @@ async function save() {
   try {
     // 在独立副本里加密，失败时不污染表单中的明文草稿。
     const formCopy = cloneJsonData(form.value);
-    formCopy.ai.apiKey = await encryptValue(formCopy.ai.apiKey);
+    // 完全空白的草稿不落盘（用户点了「添加模型」但没填任何字段）
+    const encryptedProfiles = [];
+    for (const profile of formCopy.ai.profiles) {
+      const blank = !(profile.name || "").trim() && !(profile.baseUrl || "").trim()
+        && !(profile.apiKey || "").trim() && !(profile.model || "").trim();
+      if (blank) continue;
+      encryptedProfiles.push({ ...profile, apiKey: await encryptValue(profile.apiKey) });
+    }
+    const activeId = encryptedProfiles.some((p) => p.id === formCopy.ai.activeId)
+      ? formCopy.ai.activeId
+      : encryptedProfiles[0]?.id || "";
+    formCopy.ai = toStoredAi({ enabled: formCopy.ai.enabled, activeId, profiles: encryptedProfiles });
     formCopy.typesafe.apiKey = await encryptValue(formCopy.typesafe.apiKey);
     // 重读磁盘作为合并基底：本页的云同步与遥测开关是即改即存、不经表单的，
     // 进页面时缓存的快照此时已过期，直接写会抹掉用户刚开启的配置。
@@ -742,6 +821,8 @@ async function save() {
     const payload = mergeSettingsSnapshot(cloneJsonData(base), formCopy);
     await invoke("save_data", { key: "settings", data: payload });
     rawSnapshot = payload;
+    // 空白草稿被丢弃后，表单里的默认指向也要跟着收敛
+    form.value.ai.activeId = activeId;
     try {
       if (capabilities.autostart) await invoke("autostart_set", { enabled: autostartOn.value });
     } catch (e) {}
@@ -758,22 +839,123 @@ async function save() {
   }
 }
 
+// ------- 多模型配置：列表选中 / 新增 / 删除 / 设为默认 -------
+function selectProfile(id) {
+  editingProfileId.value = id;
+  showKey.value = false;
+  fieldErr.value = {};
+  modelFetchError.value = "";
+  // 切到另一套配置：已有地址与 Key 就顺手拉一次列表（有缓存则不重复请求）
+  nextTick(maybeFetchModels);
+}
+function addProfile() {
+  const profile = blankProfile();
+  form.value.ai.profiles.push(profile);
+  if (!form.value.ai.activeId) form.value.ai.activeId = profile.id;
+  editingProfileId.value = profile.id;
+  modelFetchError.value = "";
+}
+function removeProfile(id) {
+  form.value.ai.profiles = form.value.ai.profiles.filter((p) => p.id !== id);
+  if (form.value.ai.activeId === id) form.value.ai.activeId = form.value.ai.profiles[0]?.id || "";
+  if (editingProfileId.value === id) editingProfileId.value = form.value.ai.profiles[0]?.id || "";
+  const rest = { ...modelsByProfile.value };
+  delete rest[id];
+  modelsByProfile.value = rest;
+}
+function setActiveProfile(id) {
+  form.value.ai.activeId = id;
+}
+
+/** 厂商下拉的分组（国际 / 国内 / 聚合 / 本地），目录来自 agent/modelCatalog.js。 */
+const providerGroups = computed(() =>
+  PROVIDER_GROUPS.map((group) => ({ ...group, items: AI_PRESETS.filter((p) => p.group === group.key) }))
+);
+
+/** 当前配置对应的服务商键：匹配内置预设，匹配不上就是自定义端点。 */
+const editingProviderKey = computed({
+  get: () => {
+    const base = (editingProfile.value?.baseUrl || "").trim().replace(/\/+$/, "");
+    return AI_PRESETS.find((p) => p.baseUrl === base)?.key || "custom";
+  },
+  set: (key) => {
+    const target = editingProfile.value;
+    if (!target) return;
+    if (key === "custom") {
+      // 从预设切到自定义：清掉预设地址，让输入框直接可用；本来就是自定义则保留
+      if (AI_PRESETS.some((p) => p.baseUrl === target.baseUrl)) target.baseUrl = "";
+      modelFetchError.value = "";
+      return;
+    }
+    const preset = AI_PRESETS.find((p) => p.key === key);
+    if (preset) applyAIPreset(preset);
+  },
+});
+
+/**
+ * 从端点拉模型列表（GET /models）。静默模式用于「填完 Key 失焦/换预设/进页面」的自动获取：
+ * 失败不弹错、不占提示位——手动输入框还在，用户不会卡住。
+ */
+async function fetchModels({ silent = false } = {}) {
+  const profile = editingProfile.value;
+  if (!profile) return;
+  const baseUrl = (profile.baseUrl || "").trim();
+  const apiKey = (profile.apiKey || "").trim();
+  if (!baseUrl || !apiKey) {
+    if (!silent) props.showToast(t("settings.aiFetchNeedConfig"));
+    return;
+  }
+  const token = ++modelFetchToken;
+  fetchingModels.value = true;
+  if (!silent) modelFetchError.value = "";
+  try {
+    const list = await listAIModels({ baseUrl, apiKey });
+    if (token !== modelFetchToken) return;
+    modelsByProfile.value = { ...modelsByProfile.value, [profile.id]: { key: cacheKeyOf(profile), list } };
+    if (!String(profile.model || "").trim()) profile.model = list[0];
+    if (!silent) props.showToast(t("settings.aiFetchOk", { n: list.length }));
+  } catch (e) {
+    if (token !== modelFetchToken) return;
+    if (!silent) modelFetchError.value = t("settings.aiFetchFail", { err: e?.message || String(e) });
+  } finally {
+    if (token === modelFetchToken) fetchingModels.value = false;
+  }
+}
+
+function maybeFetchModels() {
+  const profile = editingProfile.value;
+  if (!profile || fetchingModels.value) return;
+  if (!(profile.baseUrl || "").trim() || !(profile.apiKey || "").trim()) return;
+  const entry = modelsByProfile.value[profile.id];
+  if (entry && entry.key === cacheKeyOf(profile)) return;
+  fetchModels({ silent: true });
+}
+
 function applyAIPreset(p) {
-  form.value.ai.baseUrl = p.baseUrl;
-  if (!form.value.ai.model) form.value.ai.model = p.model;
+  const target = editingProfile.value;
+  if (!target) return;
+  const changed = target.baseUrl !== p.baseUrl;
+  target.baseUrl = p.baseUrl;
+  // 换厂商时模型名跟着换（旧厂商的模型名在新端点上通常必然 404）；同厂商不覆盖用户选择
+  if (changed || !target.model) target.model = p.model;
   // 本地服务（Ollama）不需要真实密钥，但配置校验要求非空；不覆盖用户已填的值
-  if (p.apiKey && !form.value.ai.apiKey) form.value.ai.apiKey = p.apiKey;
+  if (p.apiKey && !target.apiKey) target.apiKey = p.apiKey;
+  // 换了端点：旧列表自然作废；Key 已在的话顺手拉一次
+  modelFetchError.value = "";
+  nextTick(maybeFetchModels);
 }
 
 async function testAIConn() {
+  const target = editingProfile.value;
+  if (!target) return;
   testingAI.value = true;
   try {
     const cfg = {
-      baseUrl: (form.value.ai.baseUrl || "").trim().replace(/\/$/, ""),
-      apiKey: (form.value.ai.apiKey || "").trim(),
-      model: (form.value.ai.model || "").trim(),
+      baseUrl: (target.baseUrl || "").trim().replace(/\/$/, ""),
+      apiKey: (target.apiKey || "").trim(),
+      model: (target.model || "").trim(),
       temperature: 0,
-      reasoningEffort: (form.value.ai.reasoningEffort || "").trim(),
+      reasoningEffort: (target.reasoningEffort || "").trim(),
     };
     const reply = await testAI(cfg);
     props.showToast(t("settings.aiTestOk", { reply }));
@@ -917,65 +1099,139 @@ async function restoreNow() {
           </div>
           <p class="sect-desc">{{ t("settings.aiDesc") }}</p>
 
-          <div class="presets">
-            <button
-              v-for="p in AI_PRESETS"
-              :key="p.key"
-              type="button"
-              class="preset-chip"
-              :class="{ on: form.ai.baseUrl === p.baseUrl }"
-              @click="applyAIPreset(p)"
-            >{{ t(p.labelKey) }}</button>
-          </div>
-
-          <label class="field" :class="{ err: fieldErr.aiBase }">
-            <span>{{ t("settings.aiBaseUrl") }}</span>
-            <input v-model="form.ai.baseUrl" :placeholder="t('settings.aiBaseUrlPh')" />
-            <span v-if="fieldErr.aiBase" class="field-err">{{ fieldErr.aiBase }}</span>
-          </label>
-
-          <label class="field" :class="{ err: fieldErr.aiModel }">
-            <span>{{ t("settings.aiModel") }}</span>
-            <input v-model="form.ai.model" :placeholder="t('settings.aiModelPh')" />
-            <span v-if="fieldErr.aiModel" class="field-err">{{ fieldErr.aiModel }}</span>
-          </label>
-
-          <label class="field" :class="{ err: fieldErr.aiKey }">
-            <span>{{ t("settings.aiKey") }}</span>
-            <div class="token-row">
-              <input
-                :type="showKey ? 'text' : 'password'"
-                v-model="form.ai.apiKey"
-                :placeholder="t('settings.aiKeyPh')"
-                autocomplete="off"
-              />
-              <button type="button" class="btn-ghost sm" @click="showKey = !showKey">
-                <Icon :name="showKey ? 'x' : 'open'" :size="14" /> {{ showKey ? t("settings.hide") : t("settings.show") }}
+          <!-- 已保存的配置：一行一套；点行编辑，「设为默认」决定下一次运行用哪套 -->
+          <div class="ai-profiles" role="list">
+            <div
+              v-for="p in form.ai.profiles"
+              :key="p.id"
+              class="ai-profile"
+              :class="{ on: editingProfileId === p.id }"
+              role="listitem"
+              data-role="ai-profile"
+            >
+              <button type="button" class="ai-profile-main" @click="selectProfile(p.id)">
+                <span class="ai-profile-name">{{ profileLabel(p) || t("settings.aiProfileUntitled") }}</span>
+                <span class="ai-profile-meta">
+                  {{ p.model || t("settings.aiModelUnset") }}<template v-if="p.baseUrl"> · {{ p.baseUrl }}</template>
+                </span>
+              </button>
+              <span v-if="form.ai.activeId === p.id" class="ai-profile-badge">{{ t("settings.aiProfileActive") }}</span>
+              <button v-else type="button" class="btn-ghost sm" data-role="ai-profile-use" @click="setActiveProfile(p.id)">{{ t("settings.aiProfileUse") }}</button>
+              <button
+                type="button"
+                class="btn-ghost sm"
+                data-role="ai-profile-remove"
+                :title="t('settings.aiProfileRemove')"
+                :aria-label="t('settings.aiProfileRemove')"
+                @click="removeProfile(p.id)"
+              >
+                <Icon name="trash" :size="13" />
               </button>
             </div>
-            <span v-if="fieldErr.aiKey" class="field-err">{{ fieldErr.aiKey }}</span>
-          </label>
-
-          <label class="field">
-            <span>{{ t("settings.aiReason") }}</span>
-            <select v-model="form.ai.reasoningEffort" class="select">
-              <option value="">{{ t("settings.aiReasonNone") }}</option>
-              <option value="minimal">{{ t("settings.aiReasonFastest") }}</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">{{ t("settings.aiReasonXhigh") }}</option>
-            </select>
-          </label>
-
-          <label class="field" v-if="!form.ai.reasoningEffort">
-            <span>{{ t("settings.aiTemp", { value: Number(form.ai.temperature).toFixed(1) }) }}</span>
-            <input type="range" min="0" max="1" step="0.1" v-model.number="form.ai.temperature" class="range" />
-          </label>
-
-          <div class="sect-foot">
-            <button class="btn-ghost sm" :disabled="testingAI" @click="testAIConn"><Icon name="sparkles" :size="14" /> {{ testingAI ? t("settings.aiTesting") : t("settings.aiTest") }}</button>
+            <p v-if="!form.ai.profiles.length" class="ai-profile-empty">{{ t("settings.aiProfileEmpty") }}</p>
           </div>
+          <button type="button" class="btn-ghost sm" data-role="ai-profile-add" @click="addProfile">
+            <Icon name="plus" :size="14" /> {{ t("settings.aiProfileAdd") }}
+          </button>
+
+          <template v-if="editingProfile">
+            <p v-if="fieldErr.aiProfile" class="field-err ai-profile-err">{{ fieldErr.aiProfile }}</p>
+
+            <!-- 厂商下拉：选中即填好内置地址；只有「自定义端点」才需要手填地址 -->
+            <label class="field">
+              <span>{{ t("settings.aiProvider") }}</span>
+              <select v-model="editingProviderKey" class="select" data-role="ai-provider">
+                <optgroup v-for="group in providerGroups" :key="group.key" :label="t(group.labelKey)">
+                  <option v-for="p in group.items" :key="p.key" :value="p.key">{{ t(p.labelKey) }}</option>
+                </optgroup>
+                <option value="custom">{{ t("settings.aiProviderCustom") }}</option>
+              </select>
+              <span v-if="editingProviderKey !== 'custom'" class="field-hint">{{ editingProfile.baseUrl }}</span>
+            </label>
+
+            <label v-if="editingProviderKey === 'custom'" class="field" :class="{ err: fieldErr.aiBase }">
+              <span>{{ t("settings.aiBaseUrl") }}</span>
+              <input v-model="editingProfile.baseUrl" :placeholder="t('settings.aiBaseUrlPh')" @blur="maybeFetchModels" />
+              <span v-if="fieldErr.aiBase" class="field-err">{{ fieldErr.aiBase }}</span>
+            </label>
+
+            <label class="field" :class="{ err: fieldErr.aiKey }">
+              <span>{{ t("settings.aiKey") }}</span>
+              <div class="token-row">
+                <input
+                  :type="showKey ? 'text' : 'password'"
+                  v-model="editingProfile.apiKey"
+                  :placeholder="t('settings.aiKeyPh')"
+                  autocomplete="off"
+                  @blur="maybeFetchModels"
+                />
+                <button type="button" class="btn-ghost sm" @click="showKey = !showKey">
+                  <Icon :name="showKey ? 'x' : 'open'" :size="14" /> {{ showKey ? t("settings.hide") : t("settings.show") }}
+                </button>
+              </div>
+              <span v-if="fieldErr.aiKey" class="field-err">{{ fieldErr.aiKey }}</span>
+            </label>
+
+            <!-- 模型：填完 Key 自动从端点拉取；拉不到就退回手动输入 -->
+            <label class="field" :class="{ err: fieldErr.aiModel }">
+              <span>{{ t("settings.aiModel") }}</span>
+              <div class="token-row">
+                <select v-if="modelChoices.length" v-model="editingProfile.model" class="select" data-role="ai-model-select">
+                  <option v-for="m in modelChoices" :key="m" :value="m">{{ m }}</option>
+                </select>
+                <input v-else v-model="editingProfile.model" :placeholder="t('settings.aiModelPh')" />
+                <button
+                  type="button"
+                  class="btn-ghost sm"
+                  :disabled="fetchingModels"
+                  data-role="ai-fetch-models"
+                  @click="fetchModels()"
+                >
+                  <Icon name="refresh" :size="14" />
+                  {{ fetchingModels ? t("settings.aiFetching") : fetchedModels.length ? t("settings.aiRefreshModels") : t("settings.aiFetchModels") }}
+                </button>
+              </div>
+              <span v-if="modelFetchError" class="field-err">{{ modelFetchError }}</span>
+              <span v-if="fieldErr.aiModel" class="field-err">{{ fieldErr.aiModel }}</span>
+              <span v-else-if="fetchedModels.length" class="field-hint">{{ t("settings.aiModelsFound", { n: fetchedModels.length }) }}</span>
+            </label>
+
+            <!-- 低频项收进高级：名称、手动覆盖模型、推理档位、温度、连接测试 -->
+            <details class="ai-advanced">
+              <summary>{{ t("settings.aiAdvanced") }}</summary>
+
+              <label class="field">
+                <span>{{ t("settings.aiProfileName") }}</span>
+                <input v-model="editingProfile.name" :placeholder="t('settings.aiProfileNamePh')" />
+              </label>
+
+              <label class="field">
+                <span>{{ t("settings.aiModelManual") }}</span>
+                <input v-model="editingProfile.model" :placeholder="t('settings.aiModelPh')" />
+              </label>
+
+              <label class="field">
+                <span>{{ t("settings.aiReason") }}</span>
+                <select v-model="editingProfile.reasoningEffort" class="select">
+                  <option value="">{{ t("settings.aiReasonNone") }}</option>
+                  <option value="minimal">{{ t("settings.aiReasonFastest") }}</option>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="xhigh">{{ t("settings.aiReasonXhigh") }}</option>
+                </select>
+              </label>
+
+              <label class="field" v-if="!editingProfile.reasoningEffort">
+                <span>{{ t("settings.aiTemp", { value: Number(editingProfile.temperature).toFixed(1) }) }}</span>
+                <input type="range" min="0" max="1" step="0.1" v-model.number="editingProfile.temperature" class="range" />
+              </label>
+
+              <div class="sect-foot">
+                <button class="btn-ghost sm" :disabled="testingAI" @click="testAIConn"><Icon name="sparkles" :size="14" /> {{ testingAI ? t("settings.aiTesting") : t("settings.aiTest") }}</button>
+              </div>
+            </details>
+          </template>
         </div>
         <!-- ============ TypeSafe 语义判断（可选增强，未启用/失败自动退回关键词匹配） ============ -->
         <div v-show="section === 'ai'" class="sect">
@@ -1569,6 +1825,22 @@ async function restoreNow() {
 .preset-chip { padding: var(--sp-1) var(--sp-4); border-radius: var(--r-pill); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: var(--fs-sm); cursor: pointer; transition: all 0.15s; }
 .preset-chip:hover { border-color: var(--primary); color: var(--primary-hover); }
 .preset-chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); font-weight: 600; }
+
+/* 多模型配置：列表一行一套；选中行进入下方编辑器 */
+.ai-profiles { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.ai-profile { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); transition: border-color 0.15s, background 0.15s; }
+.ai-profile.on { border-color: var(--primary); background: var(--primary-soft); }
+.ai-profile-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; text-align: left; background: none; border: none; cursor: pointer; }
+.ai-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.ai-profile-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--muted); }
+.ai-profile-badge { flex-shrink: 0; padding: 1px 8px; font-size: var(--fs-xs); font-weight: 600; color: var(--primary-hover); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-pill); }
+.ai-profile-empty { margin: 0; padding: var(--sp-2) 0; font-size: var(--fs-xs); color: var(--faint); }
+.ai-profile-err { margin: var(--sp-2) 0 0; }
+.field-hint { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--faint); }
+/* 低频配置收进高级：默认不占视觉，展开后仍是完整表单 */
+.ai-advanced { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px dashed var(--border); }
+.ai-advanced > summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.ai-advanced[open] > summary { margin-bottom: var(--sp-2); }
 
 .field { display: block; margin-bottom: var(--sp-5); }
 /* 并排的短数值旋钮（gate/floor/limit）：三个等宽，标签在上，与 .field 的纵向排布同一套间距 */

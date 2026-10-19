@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { buildI18n, checkI18n, ROOT, LOCALES } from "../../scripts/gen-tool-i18n.mjs";
+import { buildBaseline } from "../../scripts/gen-i18n-baseline.mjs";
 import { flatKeys, mergeMessages } from "./index.js";
 import zhRaw from "./zh-CN.json";
 import enRaw from "./en-US.json";
@@ -162,5 +163,13 @@ describe("迁移安全性：合并结果 == 迁移前字典", () => {
   it("合并后两种语言的值摘要与迁移前一致（不许改值）", () => {
     expect(messagesHash(MERGED["zh-CN"])).toBe(baseline.zhMessagesSha256);
     expect(messagesHash(MERGED["en-US"])).toBe(baseline.enMessagesSha256);
+  });
+
+  it("基线能由脚本重生成且与当前一致（改词条后跑 npm run gen:i18n-baseline）", () => {
+    const { data } = buildBaseline();
+    expect(data.count).toBe(baseline.count);
+    expect(data.zhKeys).toEqual(baseline.zhKeys);
+    expect(data.zhMessagesSha256).toBe(baseline.zhMessagesSha256);
+    expect(data.enMessagesSha256).toBe(baseline.enMessagesSha256);
   });
 });

@@ -437,11 +437,11 @@ test.describe("工具（提示词）", () => {
   test("工具页可从工具箱搜到", async ({ page }) => {
     await stubPrompt(page);
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("提示词");
-    await expect(page.locator(".tool-item .name", { hasText: /^提示词$/ })).toHaveCount(1);
+    await expect(page.locator(".lt-tool .lt-name", { hasText: /^提示词$/ })).toHaveCount(1);
   });
 
   test("浏览器形态：直达链接显示桌面专属说明，工具箱里不出现该卡片", async ({ page }) => {
@@ -449,10 +449,10 @@ test.describe("工具（提示词）", () => {
     await expect(page.locator('[data-role="desktop-error"]')).toContainText("仅在桌面端可用");
 
     await page.goto("/");
-    await page.locator(".nav-item", { hasText: "工具箱" }).click();
-    const box = page.locator(".toolbox-search input");
+    await page.locator(".nav-item", { hasText: "本地工具" }).click();
+    const box = page.locator(".lt-search input");
     await box.waitFor({ state: "visible", timeout: 10_000 });
     await box.fill("提示词");
-    await expect(page.locator(".tool-item .name", { hasText: /^提示词$/ })).toHaveCount(0);
+    await expect(page.locator(".lt-tool .lt-name", { hasText: /^提示词$/ })).toHaveCount(0);
   });
 });

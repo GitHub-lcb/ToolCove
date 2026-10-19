@@ -22,6 +22,7 @@ vi.mock("../agent/session.js", () => ({
   },
   clearTimeline: vi.fn(),
   discardRun: vi.fn(),
+  refreshAgentConfig: vi.fn(async () => {}),
   initAgentSession: vi.fn(async () => {}),
   resolvePending: vi.fn(() => true),
   resumeAgentRun: vi.fn(async () => true),
@@ -84,15 +85,36 @@ function session(over = {}) {
     cfg: { maxSteps: 12, retries: 1, requireConfirmation: "risky", disabledTools: [], disabledSkills: [] },
     contextDomain: "",
     pending: null,
+    attachments: [],
     ...over,
   };
 }
 
 async function render(over = {}, props = {}) {
+  return (await renderWithShell(over, props)).html;
+}
+
+/**
+ * 带外壳帧的渲染：AgentView 把会话标题 / 状态 / 右栏开关投递给外壳（App.vue provide 的 shellFrame），
+ * 单顶栏与右栏都属于外壳。这里给一个最小的同形对象，验证投递契约本身。
+ */
+async function renderWithShell(over = {}, props = {}) {
   state.current = session(over);
+  const shell = {
+    dockOpen: { value: false },
+    thread: { title: "", status: null },
+    setDock(value) {
+      shell.dockOpen.value = !!value;
+    },
+    toggleDock() {
+      shell.dockOpen.value = !shell.dockOpen.value;
+    },
+  };
   const app = createSSRApp({ render: () => h(AgentView, { showToast: () => {}, ...props }) });
+  app.provide("shellFrame", shell);
   app.use(i18n);
-  return (await renderToString(app)).replace(/<!--[\s\S]*?-->/g, "");
+  const html = (await renderToString(app)).replace(/<!--[\s\S]*?-->/g, "");
+  return { html, shell };
 }
 
 describe("AgentView 渲染", () => {
@@ -105,7 +127,6 @@ describe("AgentView 渲染", () => {
     expect(html).toContain(t("agent.rerun"));
     expect(html).not.toContain(t("agent.summaryTitle"));
     expect(html).not.toContain('class="sum-card"');
-    expect(html).toMatch(/class="(?=[^"]*\bst-chip\b)(?=[^"]*\btc-neutral\b)[^"]*"/);
   });
 
   it("没有事件的失败任务也有明确结束说明，不显示欢迎空态", async () => {
@@ -139,25 +160,26 @@ describe("AgentView 渲染", () => {
   });
 
   it("回看标题与统计来自历史记录，不混入后台运行的数据", async () => {
-    const html = await render({
+    // 会话头已上移到外壳顶栏：标题与状态经 shellFrame 投递，所以断言投递值而不是页面里的 <header>。
+    const { html, shell } = await renderWithShell({
       status: "running", goal: "后台任务", usage: { totalTokens: 9999, calls: 8 },
       runs: [{ id: "old", input: "历史任务", status: "cancelled", usage: { totalTokens: 120, calls: 1 },
         steps: [{ type: "notice", code: "stopped" }], createdAt: 1, updatedAt: 2 }],
     }, { jumpId: { module: "agent", action: "view", runId: "old" } });
-    const bar = html.match(/<header class="bar"[^>]*>[\s\S]*?<\/header>/)?.[0];
-    expect(bar).toContain("历史任务");
-    expect(bar).toContain(t("agent.statusCancelled"));
-    expect(bar).not.toContain(t("agent.statusRunning"));
+    expect(shell.thread.title).toBe("历史任务");
+    expect(shell.thread.status.key).toBe("agent.statusCancelled");
+    expect(shell.thread.status.key).not.toBe("agent.statusRunning");
     const execution = html.match(/<details\b[^>]*class="execution"[^>]*>[\s\S]*?<\/details>/)?.[0];
     expect(execution).toContain("120 tokens");
     expect(execution).not.toContain("10.0k");
   });
 
   it("运行中不自动挤出监控栏，等待用户时确认卡始终可见", async () => {
-    const html = await render({ status: "waiting", pending: { kind: "ask", question: "文件在哪里？" } });
+    const { html, shell } = await renderWithShell({ status: "waiting", pending: { kind: "ask", question: "文件在哪里？" } });
+    // 右栏默认关闭（外壳的 dockOpen=false），运行开始不会自己占掉四分之一宽度
+    expect(shell.dockOpen.value).toBe(false);
     expect(html).not.toContain('class="monitor"');
     expect(html).toMatch(/class="[^"]*\bconfirm\b/);
-    expect(html).toContain('aria-pressed="false"');
   });
 
   it("输入框有可访问名称，工具开始前不显示欢迎标语", async () => {
@@ -178,7 +200,8 @@ describe("AgentView 渲染", () => {
 
   it("空态渲染任务导向的标语与示例，且不再有常驻能力清单", async () => {
     const html = await render();
-    for (const key of ["agent.emptySlogan", "agent.emptyHint", "agent.example1", "agent.example2", "agent.example3"]) {
+    // 三个例子现在渲染成胶囊，只放标题（完整示例文本由 useExample 填进输入框）
+    for (const key of ["agent.emptySlogan", "agent.emptyHint", "agent.exampleTitle1", "agent.exampleTitle2", "agent.exampleTitle3"]) {
       expect(html, key).toContain(t(key));
     }
     expect(html).not.toContain("undefined");
@@ -199,6 +222,46 @@ describe("AgentView 渲染", () => {
     // 断言 class 而不是裸词 "sessions"：SSR 会把模板注释一起输出，
     // 注释里提一句 "VS Code Chat view 的 sessions/对话/输入三段" 就会把裸词断言打成假红。
     expect(html).not.toContain('class="sessions"');
+  });
+
+  it("输入框一条横带上有附件入口、工作域、模型胶囊与发送（不再只有一个运行按钮）", async () => {
+    const html = await render();
+    expect(html).toContain("add-btn");
+    expect(html).toContain("mode-pill");
+    expect(html).toContain("model-btn");
+    expect(html).toContain("send-btn");
+    // 没配置模型时如实说，而不是画一个空胶囊
+    expect(html).toContain(t("agent.modelUnset"));
+  });
+
+  it("本轮附件跟在「我说的那句话」下面（输入材料要留在会话流里）", async () => {
+    const html = await render({
+      goal: "整理这份表",
+      attachments: [{ id: "a1", name: "订单.xlsx", path: "E:\\in\\订单.xlsx", kind: "file", size: 2048 }],
+    });
+    expect(html).toContain("msg-atts");
+    expect(html).toContain("订单.xlsx");
+  });
+
+  it("回看历史时附件读该 run 的快照，而不是当前输入框", async () => {
+    const html = await render(
+      {
+        runs: [
+          {
+            id: "r9",
+            input: "分析这份报告",
+            status: "completed",
+            steps: [{ type: "final", answer: "看完了", ts: 1 }],
+            attachments: [{ id: "b1", name: "报告.md", path: "E:\\docs\\报告.md", kind: "text", size: 1024 }],
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        ],
+      },
+      { jumpId: { module: "agent", action: "view", runId: "r9", ts: 1 } }
+    );
+    expect(html).toContain("msg-atts");
+    expect(html).toContain("报告.md");
   });
 
   it("用户的目标作为「我说的那句话」进入消息流首条", async () => {
@@ -282,8 +345,46 @@ describe("AgentView 渲染", () => {
     expect(html).toContain("pdf.merge");
     expect(html).toContain("merged.pdf"); // 产物 chip（basename）
     expect(html).toContain(t("agent.openInTool"));
+    // 结果面直接给演示入口：不必翻进执行记录才知道这一步可以看
+    expect(html).toContain('data-role="watch-demo-summary"');
+    expect(html).toContain(t("agent.watchDemo"));
     // 词条缺失不该漏出 key 原文
     expect(html).not.toMatch(/agent\.[a-zA-Z]+\.[a-zA-Z]/);
+  });
+
+  it("运行中的工具卡提供直播入口：参数齐就能在工具里看它操作", async () => {
+    const html = await render({
+      status: "running",
+      goal: "转换数据",
+      steps: [
+        {
+          type: "tool_start",
+          id: "c1",
+          tool: "table.convert",
+          attempt: 1,
+          ts: Date.now(),
+          args: { text: "a,b\n1,2", delimiter: ",", format: "sql" },
+        },
+      ],
+    });
+    expect(html).toContain('data-role="watch-live"');
+    expect(html).toContain(t("agent.watchLive"));
+    // 工具身份来自工具箱注册表：table 工具用自己的图标，而不是统一的 terminal
+    expect(html).toContain("tl-ico");
+  });
+
+  it("执行记录显示本轮模型快照（不随之后的模型设置漂移）", async () => {
+    const html = await render(
+      {
+        runs: [{ id: "r1", input: "任务", status: "completed", model: "deepseek-chat", modelProfile: "主力", steps: [
+          { type: "tool_start", id: "c1", tool: "file.read_text", args: { path: "a.txt" }, attempt: 1, ts: 1 },
+          { type: "tool_result", id: "c1", tool: "file.read_text", result: "ok", ts: 2 },
+          { type: "final", answer: "完成", ts: 3 },
+        ] }],
+      },
+      { jumpId: { module: "agent", action: "view", runId: "r1" } }
+    );
+    expect(html).toContain(t("agent.runModel", { model: "主力 · deepseek-chat" }));
   });
 
   it("非终态不渲染交付清单", async () => {
@@ -416,6 +517,33 @@ describe("AgentView 渲染", () => {
     expect(html).not.toContain(`>${t("agent.confirmDeny")}<`);
   });
 
+  it("提问卡带候选项：渲染可点选胶囊，同时保留自由补充入口", async () => {
+    const html = await render({
+      status: "waiting",
+      pending: {
+        kind: "ask",
+        callId: "",
+        tool: "",
+        risk: "",
+        question: "你更关注哪些优化方向？",
+        options: ["性能", "可维护性", "构建体积"],
+        multiple: true,
+        args: null,
+        preview: null,
+      },
+    });
+    expect(html).toContain("cf-options");
+    expect(html).toContain("性能");
+    expect(html).toContain("可维护性");
+    expect(html).toContain("构建体积");
+    expect(html).toContain('aria-pressed="false"');
+    // 多选提示 + 自由补充占位符（选项之上仍能补充路径这类自由文本）
+    expect(html).toContain(t("agent.askOptionsHintMulti"));
+    expect(html).toContain(t("agent.answerExtraPh"));
+    expect(html).toContain("textarea");
+    expect(html).not.toMatch(/agent\.[a-zA-Z]+\.[a-zA-Z]/);
+  });
+
   it("运行成功后给出「沉淀为技能」入口", async () => {    const html = await render({ runStatus: "completed", currentRunId: "run-1", steps: [{ type: "final", answer: "完成", ts: 1 }] });
     expect(html).toContain(t("agent.skillPromote"));
   });
@@ -437,23 +565,23 @@ describe("AgentView 渲染", () => {
     expect(html).not.toContain(t("agent.savedProblem"));
   });
 
-  it("域选择器：有领域时渲染下拉与「不指定」，选中后显示上下文预览", async () => {
+  it("工作域胶囊：选中后显示领域名，上下文预览挂在同一颗胶囊的 title 上", async () => {
     const html = await render({ contextDomain: "d1" });
-    expect(html).toContain(t("agent.domain"));
-    expect(html).toContain(t("agent.domainNone"));
+    expect(html).toContain("mode-pill");
     expect(html).toContain("云仓");
     // 预览行走带 {name,n} 参数的词条（n = 该领域代码池数，这里 d1 有 2 个）
     expect(html).toContain(t("agent.domainContext", { name: "云仓", n: 2 }));
-    expect(html).toContain(t("agent.domainClear"));
+    // 下拉选项只在点开弹层后渲染（SSR 拿不到交互），入口本身是一颗带图标的胶囊
+    expect(html).toContain('class="mode-pill"');
   });
 
-  it("未选域时不显示上下文预览（默认零变化的界面侧）", async () => {
+  it("未选域时胶囊显示「不指定」，不出现上下文预览（默认零变化的界面侧）", async () => {
     const html = await render();
     expect(html).toContain(t("agent.domainNone"));
     expect(html).not.toContain(t("agent.domainContext", { name: "云仓", n: 2 }));
   });
 
-  it("回看历史时域选择器随之隐藏（它在目标输入卡内，历史只读）", async () => {
+  it("回看历史时输入框（含工作域胶囊）随之隐藏，历史只读", async () => {
     const html = await render(
       {
         runs: [
