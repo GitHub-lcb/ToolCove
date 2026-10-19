@@ -52,6 +52,7 @@ const emit = defineEmits([
   "export-run",
   "open-settings",
   "model-changed",
+  "create-domain",
   "toast",
 ]);
 
@@ -123,6 +124,41 @@ watch(
 // ---------- 工作域 ----------
 const domainLabel = computed(() => props.domains.find((item) => item.id === props.contextDomain)?.name || t("agent.domainNone"));
 
+// 新建工作域收在弹层里：没领域时原本只能去研发模块建完再回来，这个入口就是给那次往返兜底的。
+// 创建交给视图（数据归它持有），成功后再关表单并绑定——失败时表单留着，输入不白写。
+const domainCreating = ref(false);
+const domainName = ref("");
+const domainSaving = ref(false);
+
+function startDomainCreate() {
+  domainCreating.value = true;
+  domainName.value = "";
+  nextTick(() => shellEl.value?.querySelector(".domain-pop .dp-input")?.focus?.());
+}
+function cancelDomainCreate() {
+  domainCreating.value = false;
+  domainName.value = "";
+}
+function submitDomainCreate() {
+  const name = domainName.value.trim();
+  if (!name || domainSaving.value) return;
+  domainSaving.value = true;
+  emit("create-domain", { name }, (error, record) => {
+    domainSaving.value = false;
+    if (error || !record) return;
+    domainCreating.value = false;
+    domainName.value = "";
+    domainOpen.value = false;
+    emit("update:contextDomain", record.id);
+  });
+}
+// 中文输入法里回车是「确认候选」，不能当提交（isComposing 为真时放行给输入法）
+function onDomainNameEnter(event) {
+  if (event.isComposing) return;
+  event.preventDefault();
+  submitDomainCreate();
+}
+
 // ---------- 模型 ----------
 // 没填服务地址时不说「自定义端点」：那会让人以为已经配好了
 const providerText = computed(() => (props.modelBase ? providerLabel(props.modelBase) : t("agent.modelProviderUnset")));
@@ -189,7 +225,7 @@ function closeMenu() {
 
 function toggleMenu() {
   modelOpen.value = false;
-  domainOpen.value = false;
+  closeDomain();
   menuOpen.value = !menuOpen.value;
   if (menuOpen.value) {
     activeIndex.value = 0;
@@ -383,7 +419,7 @@ function focusModelPopover() {
 }
 function toggleModel() {
   menuOpen.value = false;
-  domainOpen.value = false;
+  closeDomain();
   modelOpen.value = !modelOpen.value;
   if (modelOpen.value) {
     customDraft.value = props.modelName;
@@ -395,7 +431,7 @@ function closeModel() {
   modelOpen.value = false;
 }
 function openModel() {
-  domainOpen.value = false;
+  closeDomain();
   menuOpen.value = false;
   modelOpen.value = true;
   customDraft.value = props.modelName;
@@ -463,11 +499,18 @@ function toggleDomain() {
   domainOpen.value = !domainOpen.value;
   if (domainOpen.value) {
     nextTick(() => shellEl.value?.querySelector(".domain-pop .pop-item")?.focus?.());
+  } else {
+    cancelDomainCreate();
   }
+}
+// 弹层所有关闭路径共用：表单状态不跨次打开残留
+function closeDomain() {
+  domainOpen.value = false;
+  cancelDomainCreate();
 }
 function chooseDomain(id) {
   emit("update:contextDomain", id);
-  domainOpen.value = false;
+  closeDomain();
 }
 
 function onDocPointerDown(event) {
@@ -475,7 +518,7 @@ function onDocPointerDown(event) {
   if (shellEl.value.contains(event.target)) return;
   menuOpen.value = false;
   modelOpen.value = false;
-  domainOpen.value = false;
+  closeDomain();
 }
 
 // 焦点在正文里时 Esc 也要能关掉弹层：模型弹层打开会把焦点拿走，但用户点回正文后
@@ -485,7 +528,7 @@ function onDocKeydown(event) {
   if (!menuOpen.value && !modelOpen.value && !domainOpen.value) return;
   closeMenu();
   modelOpen.value = false;
-  domainOpen.value = false;
+  closeDomain();
 }
 
 onMounted(() => {
@@ -697,7 +740,42 @@ defineExpose({
             <span class="pi-label">{{ item.name }}</span>
             <Icon v-if="item.id === contextDomain" name="check" :size="14" class="pi-check" />
           </button>
-          <p v-if="!domains.length" class="pop-empty">{{ t("agent.domainEmpty") }}</p>
+          <p v-if="!domains.length && !domainCreating" class="pop-empty">{{ t("agent.domainEmpty") }}</p>
+
+          <form
+            v-if="domainCreating"
+            class="dp-form"
+            @submit.prevent="submitDomainCreate"
+            @keydown.esc.stop.prevent="cancelDomainCreate"
+          >
+            <input
+              v-model="domainName"
+              class="dp-input"
+              type="text"
+              maxlength="40"
+              :placeholder="t('agent.domainNamePh')"
+              :aria-label="t('agent.domainName')"
+              autocomplete="off"
+              data-role="domain-new-name"
+              @keydown.enter="onDomainNameEnter"
+            />
+            <div class="dp-actions">
+              <button type="button" class="dp-cancel" @click="cancelDomainCreate">{{ t("common.cancel") }}</button>
+              <button
+                type="submit"
+                class="dp-create"
+                :disabled="!domainName.trim() || domainSaving"
+                data-role="domain-new-submit"
+              >
+                {{ domainSaving ? t("agent.domainCreating") : t("agent.domainCreate") }}
+              </button>
+            </div>
+          </form>
+          <button v-else type="button" class="pop-item dp-new" data-role="domain-new" @click="startDomainCreate">
+            <span class="pi-ico"><Icon name="plus" :size="15" /></span>
+            <span class="pi-label">{{ t("agent.domainNew") }}</span>
+          </button>
+
           <p class="pop-note">{{ t("agent.domainNote") }}</p>
         </div>
       </div>
@@ -1123,6 +1201,52 @@ defineExpose({
   font-size: var(--fs-xs);
   line-height: var(--lh-body);
 }
+
+/* ---------- 工作域弹层 ---------- */
+.domain-pop { width: 300px; }
+.dp-new { color: var(--primary); }
+.dp-new:hover { background: var(--primary-soft); }
+.dp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: 2px;
+  padding: var(--sp-2);
+  border-top: 1px solid var(--card-border);
+}
+.dp-input {
+  height: 30px;
+  padding: 0 var(--sp-2);
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+.dp-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.dp-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.dp-cancel,
+.dp-create {
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.dp-cancel { color: var(--text-weak); background: var(--card-soft); border: 1px solid var(--card-border); }
+.dp-cancel:hover { color: var(--text); border-color: var(--border-strong); }
+.dp-create {
+  color: var(--text-invert);
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  font-weight: 600;
+}
+.dp-create:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.dp-create:disabled { color: var(--muted); background: var(--well); border-color: var(--card-border); cursor: not-allowed; }
+.dp-cancel:focus-visible,
+.dp-create:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
 /* ---------- 模型弹层 ---------- */
 .model-pop { width: 344px; padding: var(--sp-3); }

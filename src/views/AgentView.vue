@@ -569,6 +569,19 @@ async function loadDomains() {
     // 领域是可选上下文：读不到就不显示选择器，绝不拦住 Agent 主流程
   }
 }
+// 输入框里直接新建工作域：数据归视图持有（composer 只发草稿），建成后由 composer 发出选中事件。
+// 走 repository.create 而不是整表裸写：与研发模块共用同一写入口，data.* 动作看到的也是它。
+async function onCreateDomain(draft, done) {
+  try {
+    const record = await createRecord("domains", { name: draft.name, note: "" }, { source: "agent" });
+    domains.value = [...domains.value, record];
+    props.showToast(t("agent.domainCreated", { name: record.name }));
+    done?.(null, record);
+  } catch (e) {
+    props.showToast(t("settings.saveFailed", { err: errText(e) }));
+    done?.(e);
+  }
+}
 // onMounted 是真实运行路径；onServerPrefetch 只服务 SSR 渲染测试（浏览器里是空操作），
 // 让渲染测试能把假 domains 真正喂进选择器断言（SSR 的 onMounted 不跑，见 render 测试顶部注释）。
 onMounted(loadDomains);
@@ -1370,6 +1383,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             @export-run="exportRun"
             @open-settings="goSettings('ai')"
             @model-changed="onModelChanged"
+            @create-domain="onCreateDomain"
             @toast="onComposerToast"
           />
         </footer>

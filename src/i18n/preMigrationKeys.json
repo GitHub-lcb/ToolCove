@@ -2,7 +2,7 @@
   "//": "工具词条归包（i18n 片段机制）**之前**手写字典 src/i18n/<locale>.json 的扁平键集合与键→值摘要快照。",
   "//why": "JSON 手术若把词条悄悄删掉，界面只会把键名显示给用户、没有任何测试会反应——所以这里冻结一份迁移前记录。",
   "//how": "由 src/i18n/i18nFragments.test.js 断言：合并后的 zh 扁平键集合与 zhKeys 完全相等（不少键、不许多键）；zh/en 的键→值摘要与迁移前一致（不许改值）。新增/删除词条或合并分支后重生成：npm run gen:i18n-baseline（不要手改）。（2026-10-19：Agent 输入框改版新增附件、斜杠指令、模型胶囊与运行日志导出词条后重生成，键集合与摘要随之刷新。）",
-  "count": 5470,
+  "count": 5476,
   "zhKeys": [
     "agent.answerEmpty",
     "agent.answerExtraPh",
@@ -86,8 +86,14 @@
     "agent.domain",
     "agent.domainClear",
     "agent.domainContext",
+    "agent.domainCreate",
+    "agent.domainCreated",
+    "agent.domainCreating",
     "agent.domainEmpty",
     "agent.domainHint",
+    "agent.domainName",
+    "agent.domainNamePh",
+    "agent.domainNew",
     "agent.domainNone",
     "agent.domainNote",
     "agent.domainPill",
@@ -5475,6 +5481,6 @@
     "welcome.body",
     "welcome.title"
   ],
-  "zhMessagesSha256": "324862f3ad9b240b05067d7d3193a81de3ed7727d190750f29715009c3a6312f",
-  "enMessagesSha256": "16ac1b5d0dba8dad643ed42182ecfd718e70916c6c20bfb0b290def00b8209fb"
+  "zhMessagesSha256": "abb2ce091330f73fe4ffee30ab3ad14fd5ef9dc742121ef7468da10ece525473",
+  "enMessagesSha256": "1f00505e579546ae9ec5985b52171294692104a145ebf72f6b52088b556ae6ee"
 }
