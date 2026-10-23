@@ -739,6 +739,7 @@ onBeforeUnmount(() => {
       <PromptWorkflowDialog
         :open="wfDialogOpen"
         :initial="wfDialogInitial"
+        :base-url="config.comfy.baseUrl"
         @close="wfDialogOpen = false"
         @save="saveWorkflow"
       />

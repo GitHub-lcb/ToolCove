@@ -3,12 +3,14 @@
 // API 格式校验、自动映射建议都来自 comfy.js 的纯函数；本组件只做交互与展示。
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { parseWorkflowGraph } from "./comfy.js";
+import { parseWorkflowGraph, fillMissingDefaults, textInputFor, uiToApiWorkflow } from "./comfy.js";
+import { fetchObjectInfo, fetchUserWorkflow, listUserWorkflows } from "./comfyClient.js";
 import Icon from "../../ui/Icon.vue";
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   initial: { type: Object, default: null }, // 编辑映射模式：已有工作流记录（{ id, name, workflow, mapping }）
+  baseUrl: { type: String, default: "" }, // 本机 ComfyUI 地址：扫描已保存工作流用
 });
 const emit = defineEmits(["close", "save"]);
 
@@ -21,7 +23,12 @@ const fileName = ref("");
 const errorKey = ref("");
 const errorDetail = ref("");
 const parsed = ref(null); // { workflow, nodes, suggestion }
+const rawSource = ref(null); // 界面格式原文：保存时还要用 object_info 重新对齐一次 widget 值
 const mapping = ref({ positive: "", negative: "", params: "", latent: "" });
+const localNames = ref([]);
+const localScanning = ref(false);
+const localScanned = ref(false);
+const localError = ref("");
 
 const ERR_KEY = {
   empty: "toolbox.prompt.wfErrEmpty",
@@ -57,6 +64,10 @@ watch(
       text.value = "";
       fileName.value = "";
       parsed.value = null;
+      rawSource.value = null;
+      localNames.value = [];
+      localScanned.value = false;
+      localError.value = "";
       mapping.value = { positive: "", negative: "", params: "", latent: "" };
     }
   }
@@ -77,7 +88,7 @@ function onFile(event) {
 function parseNow() {
   errorKey.value = "";
   errorDetail.value = "";
-  const result = parseWorkflowGraph(text.value);
+  const result = parseAny(text.value);
   if (!result.ok) {
     errorKey.value = ERR_KEY[result.error] ?? "toolbox.prompt.wfErrBadShape";
     errorDetail.value = result.error === "badJson" ? String(result.detail ?? "") : "";
@@ -94,31 +105,99 @@ function parseNow() {
   step.value = "mapping";
 }
 
+/** 界面格式（ComfyUI 直接保存的文件）先转成 API 格式再走原有解析。 */
+function parseAny(source) {
+  const result = parseWorkflowGraph(source);
+  if (result.ok || result.error !== "uiFormat") return result;
+  let data = source;
+  if (typeof source === "string") {
+    try {
+      data = JSON.parse(source);
+    } catch {
+      return result;
+    }
+  }
+  const converted = uiToApiWorkflow(data);
+  rawSource.value = converted ? data : null;
+  return converted ? parseWorkflowGraph(converted) : result;
+}
+
+async function scanLocal() {
+  localError.value = "";
+  localScanning.value = true;
+  try {
+    const result = await listUserWorkflows(props.baseUrl);
+    localScanned.value = true;
+    if (!result.ok) {
+      localError.value = result.error;
+      localNames.value = [];
+      return;
+    }
+    localNames.value = result.names;
+  } finally {
+    localScanning.value = false;
+  }
+}
+
+async function pickLocal(workflowName) {
+  errorKey.value = "";
+  errorDetail.value = "";
+  const result = await fetchUserWorkflow(props.baseUrl, workflowName);
+  if (!result.ok) {
+    localError.value = result.error;
+    return;
+  }
+  const converted = uiToApiWorkflow(result.data);
+  rawSource.value = converted ? result.data : null;
+  const parseResult = converted ? parseWorkflowGraph(converted) : parseWorkflowGraph(result.data);
+  if (!parseResult.ok) {
+    errorKey.value = ERR_KEY[parseResult.error] ?? "toolbox.prompt.wfErrBadShape";
+    return;
+  }
+  parsed.value = parseResult;
+  name.value = workflowName.replace(/\.json$/i, "");
+  mapping.value = {
+    positive: parseResult.suggestion?.positive?.node ?? "",
+    negative: parseResult.suggestion?.negative?.node ?? "",
+    params: parseResult.suggestion?.params?.node ?? "",
+    latent: parseResult.suggestion?.latent?.node ?? "",
+  };
+  step.value = "mapping";
+}
+
 function nodeById(id) {
   return (parsed.value?.nodes ?? []).find((node) => node.id === id) || null;
 }
 
 function buildMapping() {
-  const entry = (id, withInput) => {
+  const entry = (id, side) => {
     if (!id) return null;
     const node = nodeById(id);
     if (!node) return null;
-    return withInput ? { node: id, input: node.textKey || "text" } : { node: id };
+    if (!side) return { node: id };
+    return { node: id, input: textInputFor(node, side) || "text" };
   };
   return {
-    positive: entry(mapping.value.positive, true),
-    negative: entry(mapping.value.negative, true),
-    params: entry(mapping.value.params, false),
-    latent: entry(mapping.value.latent, false),
+    positive: entry(mapping.value.positive, "positive"),
+    negative: entry(mapping.value.negative, "negative"),
+    params: entry(mapping.value.params, ""),
+    latent: entry(mapping.value.latent, ""),
   };
 }
 
-function save() {
+async function save() {
   if (!parsed.value || !canSave.value) return;
+  // 保存前按本机 object_info 重新对齐一次：界面格式的 widget 顺序、缺失默认值都靠它修正。
+  const info = await fetchObjectInfo(props.baseUrl);
+  let workflow = parsed.value.workflow;
+  if (info.ok) {
+    const realigned = rawSource.value ? uiToApiWorkflow(rawSource.value, info.data) : null;
+    workflow = fillMissingDefaults(realigned ?? workflow, info.data).workflow;
+  }
   emit("save", {
     id: props.initial?.id ?? "",
     name: name.value.trim(),
-    workflow: parsed.value.workflow,
+    workflow,
     mapping: buildMapping(),
   });
 }
@@ -147,6 +226,21 @@ function save() {
           <input id="wf-file" class="file" type="file" accept=".json,application/json" data-role="wf-file" @change="onFile" />
           <label for="wf-file" class="ghost">{{ t("toolbox.prompt.impChooseFile") }}</label>
           <span v-if="fileName" class="hint">{{ fileName }}</span>
+        </div>
+        <div class="local-block">
+          <div class="row">
+            <button type="button" class="ghost" data-role="wf-scan" :disabled="localScanning" @click="scanLocal">
+              <Icon name="search" :size="13" />{{ localScanning ? t("toolbox.prompt.wfScanning") : t("toolbox.prompt.wfScanLocal") }}
+            </button>
+            <span class="hint">{{ t("toolbox.prompt.wfLocalHint") }}</span>
+          </div>
+          <p v-if="localError" class="err" data-role="wf-local-error">{{ localError }}</p>
+          <p v-else-if="localScanned && !localNames.length" class="hint">{{ t("toolbox.prompt.wfLocalEmpty") }}</p>
+          <div v-if="localNames.length" class="local-list" data-role="wf-local-list">
+            <button v-for="item in localNames" :key="item" type="button" class="local-item" :data-name="item" @click="pickLocal(item)">
+              {{ item.replace(/\.json$/i, "") }}
+            </button>
+          </div>
         </div>
         <p v-if="errorKey" class="err" data-role="wf-error">{{ t(errorKey) }}<span v-if="errorDetail">（{{ errorDetail }}）</span></p>
         <div class="actions">
@@ -286,6 +380,34 @@ function save() {
 }
 .file {
   display: none;
+}
+.local-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  background: var(--well);
+  border-radius: var(--r-sm, 8px);
+}
+.local-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  max-height: 120px;
+  overflow: auto;
+}
+.local-item {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: var(--r-xs, 6px);
+  padding: 3px var(--sp-2);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  text-align: left;
+}
+.local-item:hover {
+  background: var(--ghost);
 }
 .err {
   margin: 0;

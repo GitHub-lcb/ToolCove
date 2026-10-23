@@ -12,9 +12,9 @@ import { useI18n } from "vue-i18n";
 import { invoke } from "../../platform/invoke.js";
 import { askConfirm } from "../../ui/confirm.js";
 import Icon from "../../ui/Icon.vue";
-import { buildTxt2ImgWorkflow, injectMapping, normalizeComfyBase, SAMPLER_OPTIONS, SCHEDULER_OPTIONS } from "./comfy.js";
-import { cancelRemote, listCheckpoints, probe, runJob } from "./comfyClient.js";
-import { cloudConfigReady, genErrorKeyOf, mediaName, normalizeExt } from "./promptGen.js";
+import { buildSplitTxt2ImgWorkflow, buildTxt2ImgWorkflow, injectMapping, normalizeComfyBase, pickModelName, SAMPLER_OPTIONS, SCHEDULER_OPTIONS } from "./comfy.js";
+import { cancelRemote, listModels, probe, runJob } from "./comfyClient.js";
+import { cloudConfigReady, DEFAULT_GEN_CONFIG, genErrorKeyOf, mediaName, normalizeExt } from "./promptGen.js";
 import { extractVariables, fillTemplate } from "./promptLib.js";
 import PromptMediaCard from "./PromptMediaCard.vue";
 
@@ -44,7 +44,9 @@ const errorRows = ref([]);
 const result = ref(null);
 const currentPromptId = ref("");
 const comfyState = ref({ probing: false, checked: false, ok: false, version: "", error: "" });
-const checkpoints = ref([]);
+const models = ref({ checkpoints: [], diffusionModels: [], textEncoders: [], vaes: [], loras: [] });
+// 本机 ComfyUI 的后端能力：有没有 Qwen 分体编码节点、CLIPLoader 支持哪些 type
+const caps = ref({ qwenEncoder: false, clipTypes: [], clipType: "default" });
 
 let abortController = null;
 let elapsedTimer = null;
@@ -55,6 +57,22 @@ const filledPositive = computed(() => fillTemplate(positive.value, varValues.val
 const filledNegative = computed(() => fillTemplate(negative.value, varValues.value));
 const cloudReady = computed(() => cloudConfigReady(props.config.cloud));
 const selectedWorkflow = computed(() => props.workflows.find((w) => w.id === props.config.comfy.workflowId) || null);
+// 内置文生图仍只支持整包 checkpoint；其余模型（扩散模型/CLIP/VAE）用于提示与自定义工作流。
+const checkpoints = computed(() => models.value.checkpoints);
+// 没有整包 checkpoint、但扩散模型 / 文本编码器 / VAE 都在：走分体式工作流（ComfyUI 里同样可直接跑）
+const splitReady = computed(
+  () =>
+    !checkpoints.value.length &&
+    models.value.diffusionModels.length > 0 &&
+    models.value.textEncoders.length > 0 &&
+    models.value.vaes.length > 0
+);
+const otherModels = computed(() => [
+  { kind: "diffusionModels", list: models.value.diffusionModels },
+  { kind: "textEncoders", list: models.value.textEncoders },
+  { kind: "vaes", list: models.value.vaes },
+  { kind: "loras", list: models.value.loras },
+].filter((item) => item.list.length));
 const progressPercent = computed(() =>
   progress.value.max > 0 ? Math.min(100, Math.round((progress.value.step / progress.value.max) * 100)) : 0
 );
@@ -193,23 +211,42 @@ async function runComfy(mode, pos, neg) {
   const seed = seedValue();
   let workflow = null;
   if (mode === "txt2img") {
-    if (!comfy.checkpoint) {
+    if (comfy.checkpoint) {
+      workflow = buildTxt2ImgWorkflow({
+        checkpoint: comfy.checkpoint,
+        positive: pos,
+        negative: neg,
+        width: comfy.width,
+        height: comfy.height,
+        steps: comfy.steps,
+        cfg: comfy.cfg,
+        seed,
+        samplerName: comfy.sampler,
+        scheduler: comfy.scheduler,
+        denoise: comfy.denoise,
+      });
+    } else if (splitReady.value) {
+      workflow = buildSplitTxt2ImgWorkflow({
+        unet: comfy.unet,
+        clip: comfy.clip,
+        vae: comfy.vae,
+        clipType: caps.value.clipType,
+        encoder: caps.value.qwenEncoder ? "qwen" : "plain",
+        positive: pos,
+        negative: neg,
+        width: comfy.width,
+        height: comfy.height,
+        steps: comfy.steps,
+        cfg: comfy.cfg,
+        seed,
+        samplerName: comfy.sampler,
+        scheduler: comfy.scheduler,
+        denoise: comfy.denoise,
+      });
+    } else {
       error.value = t("toolbox.prompt.noCheckpointHint");
       return;
     }
-    workflow = buildTxt2ImgWorkflow({
-      checkpoint: comfy.checkpoint,
-      positive: pos,
-      negative: neg,
-      width: comfy.width,
-      height: comfy.height,
-      steps: comfy.steps,
-      cfg: comfy.cfg,
-      seed,
-      samplerName: comfy.sampler,
-      scheduler: comfy.scheduler,
-      denoise: comfy.denoise,
-    });
   } else {
     const wf = selectedWorkflow.value;
     if (!wf) {
@@ -329,16 +366,33 @@ function saveToLib() {
   emit("save-to-lib", { positive: positive.value, negative: negative.value });
 }
 
+function pickModel(list, current, family = "") {
+  return pickModelName(list, { current, family });
+}
+
 async function refreshComfy() {
   comfyState.value = { ...comfyState.value, probing: true };
   const probed = await probe(props.config.comfy.baseUrl);
   comfyState.value = { probing: false, checked: true, ok: probed.ok, version: probed.version, error: probed.error };
-  if (probed.ok) {
-    const list = await listCheckpoints(props.config.comfy.baseUrl);
-    checkpoints.value = list.checkpoints;
-    if (!props.config.comfy.checkpoint || !list.checkpoints.includes(props.config.comfy.checkpoint)) {
-      props.config.comfy.checkpoint = list.checkpoints[0] ?? "";
-    }
+  if (!probed.ok) return;
+  const list = await listModels(props.config.comfy.baseUrl);
+  models.value = list.models;
+  const comfy = props.config.comfy;
+  if (!list.models.checkpoints.includes(comfy.checkpoint)) comfy.checkpoint = list.models.checkpoints[0] ?? "";
+  caps.value = {
+    qwenEncoder: list.classTypes?.includes("TextEncodeQwenImage21") === true,
+    clipTypes: list.clipTypes ?? [],
+    clipType: (list.clipTypes ?? []).some((type) => /qwen/i.test(type)) ? "qwen_image" : ((list.clipTypes ?? [])[0] ?? "default"),
+  };
+  if (!splitReady.value) return;
+  // 分体式：以扩散模型为基准，挑同家族的编码器 / VAE（同目录常混装多套模型）。
+  comfy.unet = pickModel(list.models.diffusionModels, comfy.unet);
+  comfy.clip = pickModel(list.models.textEncoders, comfy.clip, comfy.unet);
+  comfy.vae = pickModel(list.models.vaes, comfy.vae, comfy.unet);
+  if (comfy.cfg === DEFAULT_GEN_CONFIG.comfy.cfg && comfy.scheduler === DEFAULT_GEN_CONFIG.comfy.scheduler) {
+    comfy.cfg = 1;
+    comfy.scheduler = "simple";
+    comfy.steps = 25;
   }
 }
 
@@ -417,15 +471,50 @@ watch(
         <button type="button" class="link" data-role="comfy-probe" @click="refreshComfy">{{ t("toolbox.prompt.comfyProbe") }}</button>
       </div>
       <p v-if="comfyState.checked && !comfyState.ok" class="hint hint-warn">{{ t("toolbox.prompt.comfyFailHint") }}</p>
+      <p v-if="comfyState.checked && !comfyState.ok && comfyState.error" class="hint detail" data-role="comfy-error-detail">
+        {{ comfyState.error }}
+      </p>
 
-      <label v-if="backend === 'builtin'" class="field">
+      <label v-if="backend === 'builtin' && checkpoints.length" class="field">
         <span>{{ t("toolbox.prompt.checkpoint") }}</span>
         <select v-model="config.comfy.checkpoint" data-role="comfy-checkpoint">
-          <option v-if="!checkpoints.length" value="">{{ t("toolbox.prompt.noCheckpoint") }}</option>
           <option v-for="name in checkpoints" :key="name" :value="name">{{ name }}</option>
         </select>
       </label>
-      <p v-if="backend === 'builtin' && comfyState.ok && !checkpoints.length" class="hint">{{ t("toolbox.prompt.noCheckpointHint") }}</p>
+
+      <template v-if="backend === 'builtin' && !checkpoints.length && splitReady">
+        <p class="hint" data-role="comfy-split-hint">{{ t("toolbox.prompt.splitHint") }}</p>
+        <label class="field">
+          <span>{{ t("toolbox.prompt.splitUnet") }}</span>
+          <select v-model="config.comfy.unet" data-role="comfy-unet">
+            <option v-for="name in models.diffusionModels" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ t("toolbox.prompt.splitClip") }}</span>
+          <select v-model="config.comfy.clip" data-role="comfy-clip">
+            <option v-for="name in models.textEncoders" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ t("toolbox.prompt.splitVae") }}</span>
+          <select v-model="config.comfy.vae" data-role="comfy-vae">
+            <option v-for="name in models.vaes" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </label>
+      </template>
+
+      <p v-if="backend === 'builtin' && comfyState.ok && !checkpoints.length && !splitReady" class="hint hint-warn" data-role="comfy-no-checkpoint">
+        {{ t("toolbox.prompt.noCheckpointHint") }}
+      </p>
+      <div v-if="comfyState.ok && otherModels.length" class="model-scan" data-role="comfy-models">
+        <p class="hint">{{ t("toolbox.prompt.modelsFound") }}</p>
+        <p v-for="group in otherModels" :key="group.kind" class="model-line">
+          <span class="model-kind">{{ t(`toolbox.prompt.model_${group.kind}`) }}（{{ group.list.length }}）</span>
+          <span class="model-names">{{ group.list.join("、") }}</span>
+        </p>
+        <p v-if="!checkpoints.length && !splitReady" class="hint">{{ t("toolbox.prompt.modelsNoCheckpoint") }}</p>
+      </div>
 
       <label v-if="backend === 'workflow'" class="field">
         <span>{{ t("toolbox.prompt.wfSelect") }}</span>
@@ -686,6 +775,30 @@ watch(
 }
 .hint.detail {
   color: var(--text-weak);
+  word-break: break-all;
+}
+.model-scan {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--well);
+  border-radius: var(--r-sm, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.model-line {
+  margin: 0;
+  font-size: var(--fs-xs);
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.model-kind {
+  flex: none;
+  color: var(--text-weak);
+}
+.model-names {
+  color: var(--text);
   word-break: break-all;
 }
 .nodes {

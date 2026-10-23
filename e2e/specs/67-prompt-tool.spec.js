@@ -26,8 +26,39 @@ const API_WORKFLOW = {
   "9": { class_type: "SaveImage", inputs: { filename_prefix: "x", images: ["3", 0] } },
 };
 
-const IMAGE_RESULT = {
-  outputs: { "9": { images: [{ filename: "a.png", subfolder: "", type: "output" }] } },
+// ComfyUI「保存」默认产物的界面格式（nodes/links）：本机工作流扫描要能直接吃下它。
+const LOCAL_UI_WORKFLOW = {
+  nodes: [
+    { id: 4, type: "CheckpointLoaderSimple", inputs: [{ name: "ckpt_name", widget: { name: "ckpt_name" }, link: null }], widgets_values: ["sd_xl_base_1.0.safetensors"] },
+    { id: 6, type: "CLIPTextEncode", inputs: [{ name: "clip", link: 11 }, { name: "text", widget: { name: "text" }, link: null }], widgets_values: ["本地正向"] },
+    { id: 7, type: "CLIPTextEncode", inputs: [{ name: "clip", link: 12 }, { name: "text", widget: { name: "text" }, link: null }], widgets_values: ["本地负向"] },
+    { id: 5, type: "EmptyLatentImage", inputs: [{ name: "width", widget: { name: "width" }, link: null }, { name: "height", widget: { name: "height" }, link: null }], widgets_values: [832, 1216] },
+    {
+      id: 3,
+      type: "KSampler",
+      inputs: [
+        { name: "model", link: 13 },
+        { name: "positive", link: 14 },
+        { name: "negative", link: 15 },
+        { name: "latent_image", link: 16 },
+        { name: "seed", widget: { name: "seed" }, link: null },
+      ],
+      widgets_values: [1, "randomize", 20, 7, "euler", "normal", 1],
+    },
+    { id: 9, type: "SaveImage", inputs: [{ name: "images", link: 17 }], widgets_values: ["local"] },
+  ],
+  links: [
+    [11, 4, 1, 6, 0, "CLIP"],
+    [12, 4, 1, 7, 0, "CLIP"],
+    [13, 4, 0, 3, 0, "MODEL"],
+    [14, 6, 0, 3, 1, "CONDITIONING"],
+    [15, 7, 0, 3, 2, "CONDITIONING"],
+    [16, 5, 0, 3, 3, "LATENT"],
+    [17, 3, 0, 9, 0, "IMAGE"],
+  ],
+};
+
+const IMAGE_RESULT = { outputs: { "9": { images: [{ filename: "a.png", subfolder: "", type: "output" }] } },
   status: { status_str: "success" },
 };
 const IMAGE_VIDEO_RESULT = {
@@ -54,10 +85,14 @@ function makeScenario(overrides = {}) {
 
 function comfyRoutes(scenario) {
   // 注意：helpers 只在「对象路由」上补默认 status，函数路由必须自带完整响应形状
-  return {
+  const routes = {
     "/system_stats": { body: JSON.stringify({ system: { comfyui_version: "0.3.40" } }) },
     "/object_info": {
-      body: JSON.stringify({ CheckpointLoaderSimple: { input: { required: { ckpt_name: [["sd_xl_base_1.0.safetensors"]] } } } }),
+      body: JSON.stringify(
+        scenario.objectInfo ?? {
+          CheckpointLoaderSimple: { input: { required: { ckpt_name: [["sd_xl_base_1.0.safetensors"]] } } },
+        }
+      ),
     },
     "/prompt": (args) => {
       try {
@@ -90,6 +125,20 @@ function comfyRoutes(scenario) {
       return { status: 200, body: "{}" };
     },
   };
+  if (scenario.localWorkflows) {
+    // 顺序有讲究：helpers 用 includes 匹配，列表路由必须排在文件路由前面。
+    routes["/userdata?dir=workflows"] = {
+      body: JSON.stringify(Object.keys(scenario.localWorkflows).map((n) => `/${n}`)),
+    };
+    routes["/userdata/"] = (args) => {
+      const url = String(args?.url ?? "");
+      const raw = decodeURIComponent(url.slice(url.indexOf("/userdata/") + "/userdata/".length));
+      const name = raw.replace(/^workflows\//, "").replace(/^\//, "");
+      const body = scenario.localWorkflows[name];
+      return body ? { status: 200, body: JSON.stringify(body) } : { status: 404, body: "{}" };
+    };
+  }
+  return routes;
 }
 
 /**
@@ -354,6 +403,47 @@ test.describe("工具（提示词）", () => {
     expect(downloads).toHaveLength(2);
   });
 
+  test("内置文生图（分体模型）：无 checkpoint 时自动选 UNET/CLIP/VAE 并提交", async ({ page }) => {
+    const scenario = makeScenario({
+      historyResult: IMAGE_RESULT,
+      objectInfo: {
+        CheckpointLoaderSimple: { input: { required: { ckpt_name: [[]] } } },
+        UNETLoader: { input: { required: { unet_name: [["qwen_image_2.1_int8_convrot.safetensors", "minimax_h3_fl2va.safetensors"]] } } },
+        UnetLoaderGGUF: { input: { required: { unet_name: [["qwen-image-2.1-Q8_0.gguf"]] } } },
+        CLIPLoader: {
+          input: {
+            required: {
+              clip_name: [["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "qwen3vl_8b_bf16.safetensors"]],
+              type: [["qwen_image", "stable_diffusion"]],
+            },
+          },
+        },
+        VAELoader: { input: { required: { vae_name: [["minimax_h3_video_vae_fp16.safetensors", "qwen_image_2.1_vae_bf16.safetensors"]] } } },
+        TextEncodeQwenImage21: {},
+      },
+    });
+    await stubPrompt(page, { scenario, seeds: { prompts: [R1] } });
+    await openTool(page);
+    await page.locator('[data-role="lib-row"]').click();
+    await page.locator('[data-role="gen-backend-builtin"]').click();
+    await expect(page.locator('[data-role="comfy-state"]')).toContainText("已连接");
+    // 自动选型：扩散模型优先非 minimax 家族的，编码器跟着扩散模型走
+    await expect(page.locator('[data-role="comfy-unet"]')).toHaveValue("qwen_image_2.1_int8_convrot.safetensors");
+    await expect(page.locator('[data-role="comfy-clip"]')).toHaveValue("qwen3vl_8b_bf16.safetensors");
+    await expect(page.locator('[data-role="comfy-vae"]')).toHaveValue("qwen_image_2.1_vae_bf16.safetensors");
+    await page.locator('[data-role="gen-var-名字"]').fill("阿狸");
+    await page.locator('[data-role="gen-run"]').click();
+    await expect(page.locator('[data-role="gen-result"]')).toBeVisible({ timeout: 20_000 });
+
+    const graph = scenario.promptBody.prompt;
+    expect(graph["1"]).toEqual({ class_type: "UNETLoader", inputs: { unet_name: "qwen_image_2.1_int8_convrot.safetensors", weight_dtype: "default" } });
+    expect(graph["2"].inputs).toEqual({ clip_name: "qwen3vl_8b_bf16.safetensors", type: "qwen_image" });
+    expect(graph["3"].inputs).toEqual({ vae_name: "qwen_image_2.1_vae_bf16.safetensors" });
+    expect(graph["4"].inputs.prompt).toBe("portrait of 阿狸");
+    expect(graph["7"].inputs.positive).toEqual(["4", 0]);
+    expect(graph["7"].inputs.negative).toEqual(["4", 1]);
+  });
+
   test("取消：运行中弹确认 → 打断当前任务", async ({ page }) => {
     const scenario = makeScenario({ queue: { queue_running: [[0, "pid-1"]], queue_pending: [] } });
     await stubPrompt(page, { scenario, seeds: { prompts: [R1] } });
@@ -407,6 +497,22 @@ test.describe("工具（提示词）", () => {
     await expect(page.locator('[data-role="gen-result"]')).toBeVisible({ timeout: 20_000 });
     expect(scenario.promptBody.prompt["12"].inputs.text).toBe("注入的新文本");
     expect(scenario.promptBody.prompt["13"].inputs.text).toBe("注入的新负向");
+  });
+
+  test("本机工作流：扫描 → 选择 → 自动映射 → 保存", async ({ page }) => {
+    const scenario = makeScenario({ localWorkflows: { "local_ui.json": LOCAL_UI_WORKFLOW } });
+    await stubPrompt(page, { scenario, seeds: { prompts: [R1] } });
+    await openTool(page);
+    await page.locator('[data-role="tab-settings"]').click();
+    await page.locator('[data-role="wf-import"]').click();
+    await page.locator('[data-role="wf-scan"]').click();
+    await page.locator('[data-role="wf-local-list"] .local-item').first().click();
+    // 界面格式自动转 API 格式后，正负提示词仍要落在两个文本节点上
+    await expect(page.locator('[data-role="wf-map-positive"]')).toHaveValue("6");
+    await expect(page.locator('[data-role="wf-map-negative"]')).toHaveValue("7");
+    await page.locator('[data-role="wf-name"]').fill("本机工作流");
+    await page.locator('[data-role="wf-save"]').click();
+    await expect(page.locator('[data-role="wf-row"]')).toContainText("本机工作流");
   });
 
   test("历史重跑：按原提示词与参数再次提交", async ({ page }) => {

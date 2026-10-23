@@ -5,9 +5,11 @@ vi.mock("../../platform/invoke.js", () => ({ invoke: invokeMock }));
 
 import {
   cancelRemote,
+  fetchUserWorkflow,
   historyOf,
   interrupt,
-  listCheckpoints,
+  listModels,
+  listUserWorkflows,
   probe,
   queueDelete,
   queueState,
@@ -43,21 +45,48 @@ describe("comfyClient：探活与列举", () => {
     expect(await probe(BASE)).toEqual({ ok: false, version: "", error: "连接被拒绝" });
   });
 
-  it("listCheckpoints 走单节点路由；404 回落全量 /object_info", async () => {
+  it("listModels 从全量 /object_info 收集各类模型；HTTP 错误与传输异常都降级为空清单", async () => {
     routeHttp({
-      "/object_info/CheckpointLoaderSimple": json(200, {
-        CheckpointLoaderSimple: { input: { required: { ckpt_name: [["a.safetensors"]] } } },
-      }),
-    });
-    expect(await listCheckpoints(BASE)).toEqual({ ok: true, checkpoints: ["a.safetensors"], error: "" });
-
-    routeHttp({
-      "/object_info/CheckpointLoaderSimple": json(404, { error: "not found" }),
       "/object_info": json(200, {
-        CheckpointLoaderSimple: { input: { required: { ckpt_name: [["fallback.ckpt"]] } } },
+        CheckpointLoaderSimple: { input: { required: { ckpt_name: [[]] } } },
+        UNETLoader: { input: { required: { unet_name: [["qwen.safetensors"]] } } },
+        CLIPLoader: { input: { required: { clip_name: [["qwen3vl.safetensors"]] } } },
+        VAELoader: { input: { required: { vae_name: [["qwen_vae.safetensors"]] } } },
       }),
     });
-    expect(await listCheckpoints(BASE)).toEqual({ ok: true, checkpoints: ["fallback.ckpt"], error: "" });
+    const ok = await listModels(BASE);
+    expect(ok.ok).toBe(true);
+    expect(ok.models.checkpoints).toEqual([]);
+    expect(ok.models.diffusionModels).toEqual(["qwen.safetensors"]);
+    expect(ok.models.textEncoders).toEqual(["qwen3vl.safetensors"]);
+    expect(ok.models.vaes).toEqual(["qwen_vae.safetensors"]);
+
+    routeHttp({ "/object_info": json(500, { error: { message: "boom" } }) });
+    expect(await listModels(BASE)).toMatchObject({ ok: false, error: "HTTP 500：boom" });
+
+    invokeMock.mockRejectedValue(new Error("连接被拒绝"));
+    expect(await listModels(BASE)).toMatchObject({ ok: false, error: "连接被拒绝" });
+  });
+
+  it("listUserWorkflows 读 /userdata 工作流目录；兼容字符串与对象两种条目", async () => {
+    routeHttp({ "/userdata?dir=workflows": json(200, ["a.json", { name: "sub/b.json" }]) });
+    expect(await listUserWorkflows(BASE)).toEqual({ ok: true, names: ["a.json", "sub/b.json"], error: "" });
+
+    routeHttp({ "/userdata?dir=workflows": json(404, { error: "nope" }) });
+    expect(await listUserWorkflows(BASE)).toMatchObject({ ok: false, names: [], error: "HTTP 404：nope" });
+  });
+
+  it("fetchUserWorkflow 整段编码 workflows/ 前缀（斜杠也必须编码）", async () => {
+    routeHttp({ "/userdata/": json(200, { nodes: [], links: [] }) });
+    expect(await fetchUserWorkflow(BASE, "（越狱版）a.json")).toEqual({
+      ok: true,
+      data: { nodes: [], links: [] },
+      error: "",
+    });
+    expect(invokeMock.mock.calls[0][1].url).toBe(
+      `${BASE}/userdata/${encodeURIComponent("workflows/（越狱版）a.json")}`
+    );
+    expect(invokeMock.mock.calls[0][1].url).toContain("workflows%2F");
   });
 });
 

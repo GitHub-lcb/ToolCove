@@ -8,6 +8,9 @@ export const DEFAULT_GEN_CONFIG = Object.freeze({
   comfy: {
     baseUrl: "http://127.0.0.1:8188",
     checkpoint: "",
+    unet: "",
+    clip: "",
+    vae: "",
     steps: 20,
     cfg: 7,
     sampler: "euler",
@@ -66,6 +69,9 @@ export function normalizeGenConfig(raw) {
     comfy: {
       baseUrl: trimBase(comfy.baseUrl) || DEFAULT_GEN_CONFIG.comfy.baseUrl,
       checkpoint: String(comfy.checkpoint ?? "").trim(),
+      unet: String(comfy.unet ?? "").trim(),
+      clip: String(comfy.clip ?? "").trim(),
+      vae: String(comfy.vae ?? "").trim(),
       steps: clampInt(comfy.steps, 1, 150, DEFAULT_GEN_CONFIG.comfy.steps),
       cfg: clampNum(comfy.cfg, 0, 30, DEFAULT_GEN_CONFIG.comfy.cfg),
       sampler: String(comfy.sampler ?? "").trim() || DEFAULT_GEN_CONFIG.comfy.sampler,

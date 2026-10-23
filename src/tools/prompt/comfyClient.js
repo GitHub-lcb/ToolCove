@@ -11,7 +11,8 @@ import { mediaName, normalizeExt } from "./promptGen.js";
 import {
   classifyHistoryOutputs,
   decideCancel,
-  extractCheckpoints,
+  extractClipTypes,
+  extractModels,
   historyErrorText,
   newClientId,
   normalizeComfyBase,
@@ -67,22 +68,77 @@ export async function probe(base) {
   }
 }
 
-/** 本机 checkpoints（/object_info/CheckpointLoaderSimple，404 回落全量 /object_info）。 */
-export async function listCheckpoints(base) {
+/**
+ * 本机全部模型（checkpoint / 扩散模型 / 文本编码器 / VAE / LoRA）。
+ * 全量 /object_info 体积可达数 MB，单独放宽超时，仍远低于 http_request 的 120s 硬顶。
+ */
+export async function listModels(base) {
+  const empty = extractModels(null);
   try {
-    let response = await requestJson(base, "/object_info/CheckpointLoaderSimple");
-    if (response.status === 404 || response.status === 405 || response.status === 501) {
-      response = await requestJson(base, "/object_info");
-    }
-    const { status, data, text } = response;
+    const { status, data, text } = await requestJson(base, "/object_info", { timeoutMs: 30000 });
     if (status < 200 || status >= 300) {
-      return { ok: false, checkpoints: [], error: `HTTP ${status}：${errorTextOf(data, text)}` };
+      return { ok: false, models: empty, classTypes: [], clipTypes: [], error: `HTTP ${status}：${errorTextOf(data, text)}` };
     }
-    return { ok: true, checkpoints: extractCheckpoints(data), error: "" };
+    return {
+      ok: true,
+      models: extractModels(data),
+      classTypes: Object.keys(data ?? {}),
+      clipTypes: extractClipTypes(data),
+      error: "",
+    };
   } catch (error) {
-    return { ok: false, checkpoints: [], error: transportMessage(error) };
+    return { ok: false, models: empty, classTypes: [], clipTypes: [], error: transportMessage(error) };
   }
 }
+
+/** 全量节点定义：界面格式转 API 格式、补默认值都要用；失败静默降级。 */
+export async function fetchObjectInfo(base) {
+  try {
+    const { status, data, text } = await requestJson(base, "/object_info", { timeoutMs: 30000 });
+    if (status < 200 || status >= 300) {
+      return { ok: false, data: null, error: `HTTP ${status}：${errorTextOf(data, text)}` };
+    }
+    return { ok: true, data, error: "" };
+  } catch (error) {
+    return { ok: false, data: null, error: transportMessage(error) };
+  }
+}
+
+/** 本机 ComfyUI 已保存的工作流名（/userdata 路由，子目录以 / 分隔）。 */
+export async function listUserWorkflows(base) {
+  try {
+    const { status, data, text } = await requestJson(base, "/userdata?dir=workflows&recurse=true");
+    if (status < 200 || status >= 300) {
+      return { ok: false, names: [], error: `HTTP ${status}：${errorTextOf(data, text)}` };
+    }
+    const list = Array.isArray(data) ? data : [];
+    const names = list
+      .map((item) => (typeof item === "string" ? item : item?.name))
+      .filter((name) => typeof name === "string" && name.trim());
+    return { ok: true, names, error: "" };
+  } catch (error) {
+    return { ok: false, names: [], error: transportMessage(error) };
+  }
+}
+
+/**
+ * 读本机工作流原文（界面格式；调用方用 uiToApiWorkflow 转换）。
+ * 注意：/userdata/{file} 的 {file} 是 aiohttp 的单段路径参数，必须整段编码
+ * （`workflows/x.json` → `workflows%2Fx.json`），否则带斜杠的路径会 404。
+ */
+export async function fetchUserWorkflow(base, name) {
+  const path = encodeURIComponent(`workflows/${String(name ?? "").replace(/^\/+/, "")}`);
+  try {
+    const { status, data, text } = await requestJson(base, `/userdata/${path}`);
+    if (status < 200 || status >= 300) {
+      return { ok: false, data: null, error: `HTTP ${status}：${errorTextOf(data, text)}` };
+    }
+    return { ok: true, data, error: "" };
+  } catch (error) {
+    return { ok: false, data: null, error: transportMessage(error) };
+  }
+}
+
 
 /** 提交任务（POST /prompt，秒回）。返回 { ok, promptId, nodeErrors, error }。 */
 export async function submitWorkflow(base, workflow, clientId) {
