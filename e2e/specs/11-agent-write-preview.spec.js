@@ -5,7 +5,7 @@
 // 这条用例跑在「桌面形态」下（见 helpers.seedDesktopIpc）：file.* 是 desktopOnly 工具，
 // 浏览器端会把它们剔除，而写前预览正好挂在这些工具上。
 import { expect, test } from "@playwright/test";
-import { aiCalls, desktopOps, final, mockAI, runGoal, seedDesktopIpc, seedWithAI, toolCall } from "../helpers.js";
+import { aiCalls, final, runGoal, seedDesktopIpc, seedWithAI, toolCall } from "../helpers.js";
 
 const FILE = String.raw`C:\Users\e2e\Downloads\test\1.txt`;
 /**

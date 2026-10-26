@@ -103,6 +103,42 @@ function isForeign(name) {
   return name.startsWith("--m-");
 }
 
+/**
+ * `tokens.css` 里某段选择器之后的第一对花括号内容。
+ * 必须自己配平花括号：深色块嵌套在 `@media` 里，正则截不干净。
+ */
+function blockAfter(code, selectorIndex) {
+  const open = code.indexOf("{", selectorIndex);
+  if (open < 0) return "";
+  let depth = 0;
+  for (let i = open; i < code.length; i += 1) {
+    if (code[i] === "{") depth += 1;
+    else if (code[i] === "}") {
+      depth -= 1;
+      if (!depth) return code.slice(open + 1, i);
+    }
+  }
+  return "";
+}
+
+const varsIn = (body) => new Set([...body.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+
+/**
+ * 深色有**两套**触发方式（见 tokens.css 顶部与规范 §6.1）：
+ * 跟随系统的 media query，以及用户显式选择时的 `[data-theme="dark"]`。
+ * 注释先剥掉，免得把说明文字里举的变量名算进来。
+ */
+function darkThemeVars() {
+  const css = stripComments(fs.readFileSync(path.join(ROOT, "src/styles/tokens.css"), "utf8"));
+  const mediaAt = css.search(/@media \(prefers-color-scheme: dark\)/);
+  const mediaSel = mediaAt < 0 ? -1 : css.indexOf(':root:not([data-theme="light"])', mediaAt);
+  const attrSel = css.search(/^\[data-theme="dark"\]\s*\{/m);
+  return {
+    byMedia: mediaSel < 0 ? new Set() : varsIn(blockAfter(css, mediaSel)),
+    byAttr: attrSel < 0 ? new Set() : varsIn(blockAfter(css, attrSel)),
+  };
+}
+
 describe("CSS 变量：引用必有定义，定义必有人用", () => {
   it("扫描到的文件数合理（防止正则或路径写错导致空扫描静默通过）", () => {
     expect(FILES.length, "没扫到任何样式文件，检查 SCAN 目录").toBeGreaterThan(50);
@@ -170,6 +206,22 @@ describe("CSS 变量：引用必有定义，定义必有人用", () => {
       unexpected,
       "以下令牌定义了却没有任何地方引用（死令牌）：确认无用后请从 tokens.css 删除；" +
         "若是有意保留，请加进 KNOWN 例外并写明原因",
+    ).toEqual([]);
+  });
+
+  it("深色两套触发的变量集合必须一致（少补一处 = 半深半浅，没有别的东西会红）", () => {
+    const { byMedia, byAttr } = darkThemeVars();
+    // 扫描规模兜底：解析正则写坏了不能静默变绿
+    expect(byMedia.size, "没解析到「跟随系统」分支的深色变量").toBeGreaterThan(50);
+    expect(byAttr.size, "没解析到 [data-theme=dark] 分支的深色变量").toBeGreaterThan(50);
+
+    expect(
+      [...byMedia].filter((n) => !byAttr.has(n)),
+      "这些变量只在「跟随系统」分支里定义，用户手动切深色时会退回浅色值",
+    ).toEqual([]);
+    expect(
+      [...byAttr].filter((n) => !byMedia.has(n)),
+      "这些变量只在 [data-theme=dark] 分支里定义，跟随系统深色时会退回浅色值",
     ).toEqual([]);
   });
 });

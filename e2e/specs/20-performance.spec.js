@@ -89,7 +89,6 @@ test("首屏性能基线（3 次取中位数）", async ({ browser }) => {
   const sizes = new Map();
   for (const run of runs) for (const s of run.scripts) sizes.set(s.name, s.kb);
   const critical = refs.map((ref) => ref.split("/").pop()).map((name) => ({ name, kb: sizes.get(name) ?? 0 }));
-  const totalKb = critical.reduce((sum, s) => sum + s.kb, 0);
   await probeContext.close();
 
   console.log("== 首屏性能（3 次） ==");

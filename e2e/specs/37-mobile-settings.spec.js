@@ -69,6 +69,26 @@ test.describe("手机端设置页", () => {
     await expect(page.locator('[data-role="err-key"]')).toBeVisible();
     await expect(page.locator('[data-role="err-model"]')).toBeVisible();
 
+    // 读屏拿得到"哪个框错了、错在哪句"：aria-invalid 挂在控件上，
+    // aria-describedby 指向的就是**那句看得见的文案自己**（v-field-error 给它补 id 再指过去，
+    // 不是抄一份文案——文案改了，读屏里跟着改）。见 src/ui/fieldError.js。
+    await expect(page.locator('[data-role="base-url"]')).toHaveAttribute("aria-invalid", "true");
+    const errId = await page.locator('[data-role="base-url"]').getAttribute("aria-describedby");
+    expect(errId, "缺字段时控件要有 aria-describedby").toBeTruthy();
+    await expect(page.locator(`#${errId}`)).toHaveCount(1);
+    await expect(page.locator(`#${errId}`)).toBeVisible();
+    await expect(page.locator(`#${errId}`)).not.toHaveText("");
+    // 三个字段各自指向不同的句子（复制粘贴写重了会在这里红）
+    const keyId = await page.locator('[data-role="api-key"]').getAttribute("aria-describedby");
+    expect(keyId).toBeTruthy();
+    expect(keyId).not.toBe(errId);
+
+    // 错误消失后关联必须撤回，否则读屏会一直报"无效"
+    await page.locator('[data-role="base-url"]').fill("https://api.deepseek.com/v1");
+    await expect(page.locator('[data-role="err-base"]')).toHaveCount(0);
+    await expect(page.locator('[data-role="base-url"]')).not.toHaveAttribute("aria-invalid");
+    await expect(page.locator('[data-role="base-url"]')).not.toHaveAttribute("aria-describedby");
+
     // 没有保存成功提示（不能"报错还提示已保存"）
     await expect(page.locator('[data-role="notice"]')).toHaveCount(0);
 

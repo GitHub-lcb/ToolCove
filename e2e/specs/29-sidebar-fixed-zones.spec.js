@@ -131,7 +131,10 @@ test("新任务仅空闲空画布选中，执行及完成后选中当前任务�
   await expect(current).toBeVisible();
   await expect(newTask).not.toHaveClass(/\bon\b/);
   await expect(current).toHaveAttribute("aria-current", "page");
-  await expect(current).toHaveClass(/\bon\b/);
+  // 选中高亮挂在**外层 .task-row**（样式是 `.task-row.on .task-item`），不在 .task-item 自己身上。
+  // 原先这条盯在内层元素上，查的是一个从来不存在的类名——重构后一直没红，
+  // 因为它断言的东西与实现无关。改成断言"这一行确实被标记为选中"。
+  await expect(page.locator(".task-row.on", { hasText: "验证当前任务选中" })).toHaveCount(1);
   await expect(page.locator(".answer-card")).toContainText("侧栏选中回归完成");
   await expect(newTask).not.toHaveClass(/\bon\b/);
   await expect(current).toHaveAttribute("aria-current", "page");
@@ -143,7 +146,7 @@ test("新任务仅空闲空画布选中，执行及完成后选中当前任务�
   await expect(page.locator(".nav [aria-current=page]")).toHaveCount(1);
   await newTask.click();
   await expect(newTask).toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".task-item.on")).toHaveCount(0);
+  await expect(page.locator(".task-row.on")).toHaveCount(0);
 });
 
 test("等待用户时新任务不选中，任务状态包含可访问名称", async ({ page }) => {

@@ -10,6 +10,15 @@ import { seedData } from "../helpers.js";
 
 const UI_SETTINGS = (locale) => ({ ui: { locale }, ai: { baseUrl: "", apiKey: "", model: "", enabled: false } });
 
+/**
+ * 首屏一定会渲染的中文正文：`agent.emptySlogan`（zh-CN.json）。
+ * ⚠️ 这条断言原先盯的是「说一件事，剩下的交给我」，那句文案在
+ * 「工作台以对话为中心重构」那笔提交里已经改成现在的空态标语，
+ * 于是用例在 HEAD 上就是红的——**断言写死了文案字面量，文案改了没人跟**。
+ * 这里换成常量，两条用例共用一个来源，下次改文案只需改一处。
+ */
+const ZH_SLOGAN = "从一个目标开始";
+
 test("英文偏好：界面是英文，且没有漏出词条 key", async ({ page }) => {
   await page.emulateMedia({ locale: "en-US" });
   await seedData(page, { settings: UI_SETTINGS("en-US") });
@@ -20,8 +29,8 @@ test("英文偏好：界面是英文，且没有漏出词条 key", async ({ page
   // 英文界面必须真的出现英文（懒加载包装配失败时这里会全是中文或词条 key）
   expect(body, "英文偏好下应渲染英文").toMatch(/Agent|Tools|Settings|Capabilities/i);
   expect(body, "不该漏出词条 key").not.toMatch(/\b(agent|nav|toolbox|settings)\.[a-zA-Z]+\.[a-zA-Z]+/);
-  // 中文专有文案不应出现在英文界面里（用空态标语：它是首屏一定会渲染的中文正文）
-  expect(body).not.toContain("说一件事，剩下的交给我");
+  // 中文专有文案不应出现在英文界面里
+  expect(body).not.toContain(ZH_SLOGAN);
 });
 
 test("中文系统下切到英文：运行时切换生效", async ({ page }) => {
@@ -29,7 +38,7 @@ test("中文系统下切到英文：运行时切换生效", async ({ page }) => 
   await seedData(page, { settings: UI_SETTINGS("system") });
   await page.goto("/");
   await page.locator(".agent").waitFor();
-  await expect(page.locator("body")).toContainText("说一件事，剩下的交给我");
+  await expect(page.locator("body")).toContainText(ZH_SLOGAN);
 
   // 走设置页的语言切换（保存后 applyLocale 会 await 字典加载）
   const switched = await page.evaluate(async () => {
