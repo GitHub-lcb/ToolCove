@@ -1,7 +1,7 @@
 {
   "name": "toolcove",
   "private": true,
-  "version": "0.15.0",
+  "version": "0.15.1",
   "//mobileVersion": "手机端（安卓 App）的独立版本号：与桌面 version 各走各的发版线。改这里即可，app/build.gradle 的 versionName 会从它读取（单一真相源，避免两处手改不一致）。发版：推 apk-v<版本> 标签触发 mobile-release.yml。",
   "mobileVersion": "1.3.13",
   "type": "module",
@@ -19,6 +19,8 @@
     "gen:i18n": "node scripts/gen-tool-i18n.mjs",
     "//gen:i18n-baseline": "迁移安全性快照重生成：新增/删除 i18n 词条后跑一次（合并分支后统一跑一次），刷新 src/i18n/preMigrationKeys.json；不要手改。",
     "gen:i18n-baseline": "node scripts/gen-i18n-baseline.mjs",
+    "//gen:ui-scale": "规范刻度表生成器：从 src/styles/tokens.css 的浅色段与舒适档段读出 docs/ui-ux-spec.md §2.1 那张表（标记对之间别手改）。改令牌取值后必须重跑——uiSpec.test.js 会把漏跑变成红灯，因为『文档抄代码』正是本仓漂过两次的形态。",
+    "gen:ui-scale": "node scripts/ui-scale-table.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
