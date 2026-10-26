@@ -31,6 +31,18 @@ a testable module instead of a component.
 ## Before opening a PR
 
 - `npm test` passes, and `cargo check` passes if you touched `src-tauri/`.
+- **UI changes follow [`docs/ui-ux-spec.md`](docs/ui-ux-spec.md).** Tokens live in
+  `src/styles/tokens.css`, component styles in `src/styles/primitives.css` (the only place a
+  component family may be defined), and `src/styles/uiSpec.test.js` enforces it: some rules are hard
+  zeros, the rest are ratcheted against `src/styles/uiDebtBaseline.json` — you may lower a number,
+  never raise it. Run `npx vitest run src/styles/` before pushing a style change.
+  If you change a token's value in `tokens.css`, also run `npm run gen:ui-scale` — the scale table
+  in §2.1 of the spec is generated from the tokens, and a stale one fails the suite by design.
+  Mobile is a separate layer (`mobile/app/styles/shell.css`, it does not import `primitives.css`),
+  so a mobile button family that can be `:disabled` needs its own disabled affordance there.
+  Paste the checklist in §13 of the spec into the PR description and tick it line by line.
+  If you need to extend the spec itself (new token, new component family, new metric),
+  follow §14 — in particular never hand-edit `src/styles/uiDebtBaseline.json`.
 - Keep the two locales in sync: `src/i18n/zh-CN.json` and `src/i18n/en-US.json` must have
   identical key sets (`src/i18n/i18n.test.js` enforces this).
 - Follow the existing commit style (`feat: …`, `fix: …`, `docs: …`), one logical change per commit.
