@@ -1,38 +1,59 @@
 /* ============================================================
-   ToolCove 组件原语（Primitives）
+   ToolCove 组件原语（Primitives）—— 组件样式**只有这一份**
    ============================================================
-   这里放**跨视图复用**的组件级样式。建它的直接原因是审计的一组实测数字：
+   建它的直接原因是审计的一组实测数字：
 
      · `.mode-tabs / .mode-tab / :hover / .on`   在 9 个工具文件里逐字节相同
      · `.empty / .empty-ico / h2 / p`            在 7 个视图里逐字重复
      · `.panel / .panel-head`                    在 8–12 个文件里同值重复
      · `.spinner` + `@keyframes spin`            在 4–10 个文件里各写一份
      · `.btn-*` 禁令（App.vue 原注释）被 37 个自造按钮体系绕过
-     · 11 套互不复用的遮罩、4 套开关、7 套进度条、≥6 套分段控件
+     · 15 套互不复用的遮罩、4 套开关、7 套进度条、≥6 套分段控件
 
    这些不是风格差异，是**同一件事被实现了 N 次**。每多一份，改一次就要改 N 处，
    而漏掉的那一处不会有任何测试报错——只会在某个界面里长得不一样。
 
+   ── 为什么一个组件写两个名字 ────────────────────────────────
+   `.btn-primary / .empty / .modal` 是历史名，实测调用点约 1000 处；
+   `.tc-btn / .tc-empty / .tc-mask` 是 2026-10 重建时的现代名。
+   原计划"新代码用新名、旧的逐屏迁移"，但 globals.css 当时**另抄了一份数值**，
+   于是两份定义开始漂移：同一个"主按钮"，旧名是 `padding: 9px var(--sp-6)`（内容撑高），
+   新名是 `height: var(--control-h)`（钉高 30px）——两套按钮几何并不一致。
+   而"新代码请用 .tc-*"这条承诺，全仓 .vue 里实际兑现了 11 处。
+
+   现在改成**同一份声明、两个可寻址的名字**（选择器组里并列写）：
+   不存在"改一处忘另一处"，`.btn-ghost` 与 `.tc-btn--ghost` 保证长得一样。
+   选哪个名字都行，规范的要求是**用这一族里的，不要新造**。
+   守卫：src/styles/uiSpec.test.js（组件族底座只许在本文件定义）。
+
    ── 约定 ────────────────────────────────────────────────────
-   · 前缀统一 `tc-`，与旧的自造类名（.md-btn / .x-btn …）明确区分
    · 只定义**结构与状态**，具体尺寸由调用方通过 modifier 或局部覆盖调整
-   · 所有颜色/间距/圆角一律走 token，不写字面量
+   · 颜色/字号/圆角一律走 token；少数历史几何值（9px、7px 11px、26px、56px）保留原值，
+     因为"就近对齐到刻度"会改动 450+ 个按钮与 239 个空态的观感——那是需要对着
+     界面逐屏确认的独立改造，不能混在"收敛数值源"这一步里做。已计入 uiDebt 棘轮，只减不增。
+   · 本文件之外（含各 .vue 的 <style scoped>）不得再定义这些族的**底座**规则；
+     视图要差异化就在自己的 scoped 块里覆盖具体属性，而不是重写一份。
    ============================================================ */
 
 /* ============================================================
    1. 按钮
    ============================================================
-   旧体系有 .btn-primary/.btn-outline/.btn-ghost/.icon-btn 四个全局类，
-   但各视图另造了 37 套。这里补齐语义槽位并把尺寸与变体做成 modifier，
-   让"想要一个次要按钮"不再需要新造一个类名。
+   语义槽位先想清楚再选：
+     primary        = 这一屏唯一的主行动（一个视图里不该有两个）
+     outline        = 主行动之外的可点项，带主色描边
+     ghost          = 中性操作，量大且不抢注意力
+     quiet          = 行内/工具条里的低强调操作（无边框，hover 才出底）
+     danger / danger-outline = 破坏性操作；不可逆的一律配 askConfirm()
    ============================================================ */
-.tc-btn {
+.tc-btn,
+.btn-primary,
+.btn-outline,
+.btn-ghost,
+.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
-  height: var(--control-h);
-  padding: 0 var(--sp-4);
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: transparent;
@@ -48,33 +69,121 @@
               color var(--dur-fast) var(--ease-out),
               transform var(--dur-fast) var(--ease-out);
 }
-.tc-btn:active:not(:disabled) { transform: translateY(1px); }
-.tc-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.tc-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.tc-btn:active:not(:disabled),
+.btn-primary:active,
+.btn-outline:active,
+.btn-ghost:active,
+.icon-btn:active { transform: translateY(1px); }
+.tc-btn:disabled,
+.btn-primary:disabled,
+.btn-outline:disabled,
+.btn-ghost:disabled,
+.icon-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* 元素级底线：兜住"换个名字再拼一遍"的按钮。
+   实测本仓有 6 处自定义按钮类被 :disabled 用过却没有禁用态口径
+   （AgentComposer 的 .mp-item/.effort-chip、App.vue 的 .theme-btn、
+   DB 连接的 .mini-btn、TaskView 的 .chip×2）——禁用了看起来跟能点一模一样。
+   给每个名字补一条是重复实现，所以让"禁用了就该看得出"成为底线；
+   手机端不引本文件，那边的口径在 mobile/app/styles/shell.css 里按族给（守卫同一个指标分层判）。 */
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+.tc-btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-outline:focus-visible,
+.btn-ghost:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
 
-/* 变体 */
-.tc-btn--primary { background: var(--primary); color: var(--text-invert); border-color: var(--primary); }
-.tc-btn--primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.tc-btn--outline { background: var(--card); color: var(--primary); border-color: var(--border-blue); }
-.tc-btn--outline:hover:not(:disabled) { background: var(--primary-soft); }
-.tc-btn--ghost { background: var(--ghost); color: var(--text); border-color: var(--border-strong); }
-.tc-btn--ghost:hover:not(:disabled) { background: var(--well-hover); }
-.tc-btn--quiet { background: transparent; color: var(--text-weak); border-color: transparent; }
+/* 变体：取值沿用历史按钮那套（内容撑高 + padding），本步不改几何模型 */
+.tc-btn--primary,
+.btn-primary {
+  padding: 9px var(--sp-6);
+  background: var(--primary);
+  color: var(--text-invert);
+  border: none;
+  font-size: var(--fs-base);
+}
+.tc-btn--primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+.tc-btn--outline,
+.btn-outline {
+  padding: var(--sp-2) var(--sp-5);
+  background: var(--card);
+  color: var(--primary);
+  border: 1px solid var(--border-blue);
+  font-size: var(--fs-md);
+}
+.tc-btn--outline:hover:not(:disabled),
+.btn-outline:hover:not(:disabled) { background: var(--primary-soft); }
+
+.tc-btn--ghost,
+.btn-ghost {
+  padding: 7px 11px;
+  background: var(--ghost);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: var(--fs-md);
+}
+.tc-btn--ghost:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) { background: var(--well-hover); }
+.btn-outline.danger { color: var(--danger); border-color: var(--border-danger); }
+.btn-outline.danger:hover:not(:disabled) { background: var(--danger-soft); }
+
+.tc-btn--quiet {
+  background: transparent;
+  color: var(--text-weak);
+  border-color: transparent;
+}
 .tc-btn--quiet:hover:not(:disabled) { background: var(--ghost); color: var(--text); }
-.tc-btn--danger { background: var(--danger); color: var(--text-invert); border-color: var(--danger); }
-.tc-btn--danger:hover:not(:disabled) { background: var(--danger-deep); }
-.tc-btn--danger-outline { background: var(--card); color: var(--danger); border-color: var(--border-danger); }
+
+.tc-btn--danger,
+.btn-danger {
+  background: var(--danger);
+  color: var(--text-invert);
+  border-color: var(--danger);
+}
+.tc-btn--danger:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) { background: var(--danger-deep); }
+
+.tc-btn--danger-outline {
+  background: var(--card);
+  color: var(--danger);
+  border-color: var(--border-danger);
+}
 .tc-btn--danger-outline:hover:not(:disabled) { background: var(--danger-soft); }
 
-/* 尺寸 */
-.tc-btn--sm { height: var(--control-h-sm); padding: 0 var(--sp-3); font-size: var(--fs-sm); }
-.tc-btn--xs { height: 22px; padding: 0 var(--sp-2); font-size: var(--fs-xs); border-radius: var(--r-xs); }
+/* 尺寸：modifier 只改内边距与字号（这一族全是"内容撑高 + padding"，钉高会打架） */
+.btn-primary.sm,
+.tc-btn--primary.tc-btn--sm { padding: 7px var(--sp-4); font-size: var(--fs-md); }
+.btn-outline.lg { padding: var(--sp-3) 18px; font-size: var(--fs-base); }
+.btn-ghost.sm,
+.tc-btn--sm { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); }
+.btn-ghost.xs,
+.tc-btn--xs { padding: var(--sp-05) var(--sp-2); font-size: var(--fs-xs); border-radius: var(--r-xs); }
 .tc-btn--block { width: 100%; }
 
-/* 纯图标按钮：正方形，无内边距 */
-.tc-btn--icon { width: var(--control-h); padding: 0; }
-.tc-btn--icon.tc-btn--sm { width: var(--control-h-sm); }
-.tc-btn--icon.tc-btn--xs { width: 22px; }
+/* 纯图标按钮：正方形，无内边距。
+   尺寸取 --control-h / --control-h-sm，默认档与历史值 30px/24px **等值**。
+   ⚠️ 唯一的观感变化：切到舒适档时密度令牌抬到 34/28，130 处图标按钮会一起长高。
+   这是"密度档应当影响控件"的正解（此前 .icon-btn 写死 30px，舒适档对它无效），
+   但只在舒适档可见，需要真机确认后再决定是保留还是钉死。 */
+.icon-btn,
+.tc-btn--icon {
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  background: var(--card);
+  color: var(--text-dim);
+  border: 1px solid var(--border-strong);
+}
+.icon-btn:hover:not(:disabled),
+.tc-btn--icon:hover:not(:disabled) { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+.icon-btn:disabled:hover,
+.tc-btn--icon:disabled:hover { color: var(--text-dim); border-color: var(--border-strong); background: var(--card); }
+.icon-btn.xs,
+.tc-btn--icon.tc-btn--xs { width: var(--control-h-sm); height: var(--control-h-sm); border-radius: var(--r-xs); }
 
 /* ============================================================
    2. 分段控件（Segmented control）
@@ -83,27 +192,36 @@
    .type-opt / .dom-toggle / .rail-tabs / .vt-btn …）。
    统一成一个：容器 tc-seg，子项 tc-seg__item，选中态 .is-on。
    ============================================================ */
+/* 分段控件。档位按现存三套自造实现对齐（crypto / file 的 `.segmented`、label 的 `.seg`）：
+   容器 = `--control-h` + 上下 `--sp-0` + 1px 描边，项目 = `--control-h` 高、`--fs-sm` 字号、`--muted` 字色。
+   ⚠️ 这里原来写的是 `calc(--control-h-sm - 4px)`＝20px 高配 `--fs-md`，
+   比应用里任何控件都矮，所以**没有任何工具采用过它**（`unusedPrimitives` 里躺着）。
+   一个没人能用的原语不是"待采用"，是写错了的规格——调档时它零引用，所以不改变任何界面。
+   等宽那种形状（现存两例用 `grid-auto-columns`）先不给新 modifier：
+   `.tc-*` 每加一个名字就进 `unusedPrimitives` 这根棘轮，**空放着没人用的词表不算合规**，
+   等真的迁移一个实现进来时再一起加。 */
 .tc-seg {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--sp-0);
+  padding: var(--sp-0);
   background: var(--well);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
 }
 .tc-seg__item {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sp-1);
   padding: 0 var(--sp-3);
-  height: calc(var(--control-h-sm) - 4px);
+  min-height: var(--control-h);
   border: none;
   border-radius: var(--r-xs);
   background: transparent;
-  color: var(--text-weak);
+  color: var(--muted);
   font-family: inherit;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -113,27 +231,44 @@
 .tc-seg__item.is-on {
   background: var(--card);
   color: var(--primary-hover);
-  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.08);
+  box-shadow: var(--shadow);
 }
 .tc-seg__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
 /* ============================================================
    3. 卡片 / 面板
    ============================================================
-   `.panel` + `.panel-head` 在 8–12 个文件里同值重复。
+   ⚠️ `.panel` 与 `.tc-panel` 是**不同职责**，刻意不合并：
+     · `.panel`（工具面板）嵌在工具窗口里，无阴影、标题条带底色，靠描边分区
+     · `.tc-panel`（悬浮卡片）浮在页面上，有阴影、标题条只有一条分隔线
+   合并的结局要么是工具窗口里所有面板长出阴影，要么是卡片丢掉层次。
+   真正重复的底座（外框、圆角、标题条最小高度）已写成选择器组，只有一份。
    ============================================================ */
-.tc-panel {
-  background: var(--card);
+.tc-panel,
+.panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow);
+  background: var(--card);
 }
-.tc-panel__head {
+.tc-panel { box-shadow: var(--shadow); }
+.tc-panel__head,
+.panel-head {
+  flex-shrink: 0;
+  min-height: 38px;
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.panel-head { background: var(--card-soft); }
+.tc-panel__head {
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
-  border-bottom: 1px solid var(--card-border);
+  border-bottom-color: var(--card-border);
 }
 .tc-panel__head h2,
 .tc-panel__head h3 {
@@ -142,7 +277,6 @@
   font-weight: 700;
 }
 .tc-panel__head > span { font-size: var(--fs-sm); color: var(--muted); }
-.tc-panel__head .tc-spacer { flex: 1; }
 .tc-panel__body { padding: var(--sp-5); }
 .tc-panel__foot {
   display: flex;
@@ -151,25 +285,30 @@
   padding: var(--sp-4) var(--sp-5);
   border-top: 1px solid var(--card-border);
 }
-.tc-spacer { flex: 1; }
+.tc-spacer,
+.spacer { flex: 1; }
 
 /* ============================================================
    4. 空状态
    ============================================================
    同一段（64px 圆形图标底 + 标题 + 说明）在 7 个视图里逐字重复；
    另有 40 多个语义相同但类名各异的实现。
+   56px 的纵向留白是各视图沿用了很久的取值，收敛时**保持不变**——
+   "抽公共样式"顺带改观感，是本类改造最难定位的回归。
    ============================================================ */
-.tc-empty {
+.tc-empty,
+.empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--sp-3);
-  padding: var(--sp-7) var(--sp-6);
+  padding: 56px var(--sp-7);
   text-align: center;
   color: var(--muted);
 }
-.tc-empty__ico {
+.tc-empty__ico,
+.empty-ico {
   display: grid;
   place-items: center;
   width: 64px;
@@ -179,26 +318,41 @@
   color: var(--primary);
 }
 .tc-empty h2,
-.tc-empty h3 {
+.tc-empty h3,
+.empty h2,
+.empty h3 {
   margin: 0;
   font-size: var(--fs-xl);
   color: var(--text);
 }
-.tc-empty p {
+.tc-empty p,
+.empty p {
   margin: 0;
   max-width: 420px;
   font-size: var(--fs-base);
   line-height: var(--lh-body);
 }
-.tc-empty--sm .tc-empty__ico { width: 44px; height: 44px; }
-.tc-empty--sm h2, .tc-empty--sm h3 { font-size: var(--fs-lg); }
+.tc-empty--sm .tc-empty__ico,
+.empty.sm .empty-ico,
+.empty-ico.sm { width: 44px; height: 44px; }
+.tc-empty--sm h2,
+.tc-empty--sm h3,
+.empty.sm h2,
+.empty.sm h3 { font-size: var(--fs-lg); }
 
 /* ============================================================
    5. 加载态
    ============================================================
-   `.spinner` + `@keyframes spin` 在 4–10 个文件里各写一份，尺寸还不一样。
+   `@keyframes tc-spin` 此前在 **10 个文件里各写一份**（DomainView / PoolStatus /
+   PoolPublish / IterationView / RequirementBoardView / ReleaseView / CryptoTool /
+   DbTool / FileTool / NetworkTool），两个全局样式文件又各定义了一遍同名关键帧。
+   现在全仓只剩这一处。
+   `.spin` 旋转任意已有图标，`.tc-spinner` 是独立的圈圈控件——不是一回事，都保留。
    ============================================================ */
 @keyframes tc-spin { to { transform: rotate(360deg); } }
+.spin { animation: tc-spin 0.9s linear infinite; }
+.spin.slow { animation-duration: 1.4s; }
+
 .tc-spinner {
   display: inline-block;
   width: 16px;
@@ -221,8 +375,9 @@
   font-size: var(--fs-md);
 }
 
-/* 骨架屏：旧体系只有一个 `.skel-block` 且全局仅 1 处使用 */
-.tc-skel {
+/* 骨架屏：一条声明，两个名字（.skel-block 是历史名，全局仅 1 处使用） */
+.tc-skel,
+.skel-block {
   background: linear-gradient(90deg, var(--well) 25%, var(--well-hover) 37%, var(--well) 63%);
   background-size: 400% 100%;
   animation: tc-skel-shimmer 1.4s ease infinite;
@@ -236,20 +391,24 @@
 /* ============================================================
    6. 遮罩 / 弹窗
    ============================================================
-   审计实测有 11 个各自实现的遮罩、4 种不同的遮罩色。
-   统一到 --overlay 一个来源。
+   审计实测有 15 个各自实现的遮罩类名、4 种遮罩底色。
+   底色统一到 --overlay：深色下它是 rgba(0,0,0,.62)，
+   而此前写死的 rgba(17,24,39,.4/.5) 与 rgba(0,0,0,.4) 在深色下纹丝不动——
+   等于用户切主题时只有一半遮罩真的变深。本轮 6 处已一起改掉。
    ============================================================ */
-.tc-mask {
+.tc-mask,
+.modal-mask {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--sp-7);
   background: var(--overlay);
 }
-.tc-modal {
+.tc-modal,
+.modal {
   width: 540px;
   max-width: 100%;
   max-height: 90vh;
@@ -257,12 +416,16 @@
   overscroll-behavior: contain;
   padding: 26px;
   background: var(--card);
+  /* .modal 历史上没有描边（深色下靠 --card 与遮罩的明度差浮起来），.tc-modal 有。
+     这里统一取"有"：浅色下多出一条 1px 极淡的边，换来两种主题、两端一致的弹窗边界。 */
   border: 1px solid var(--card-border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-pop);
 }
-.tc-modal h2 { margin: 0 0 var(--sp-7); font-size: var(--fs-xl); }
-.tc-modal__foot {
+.tc-modal h2,
+.modal h2 { margin: 0 0 var(--sp-7); font-size: var(--fs-xl); }
+.tc-modal__foot,
+.modal-foot {
   display: flex;
   justify-content: flex-end;
   gap: var(--sp-3);
@@ -272,30 +435,71 @@
 .tc-modal--lg { width: 760px; }
 
 /* ============================================================
-   7. 状态徽标
+   7. 状态徽标 / 类型胶囊
    ============================================================
-   注意命名：`.tc-chip` 在本项目里**已经是"类型/风险"胶囊**（见 globals.css，
-   AgentView 的 riskChip 与 ProblemView 的 typeMeta 都在用 tc-primary/tc-danger/
-   tc-teal/tc-sky/tc-neutral）。所以状态语义另起名字 `.tc-status`，
-   避免与既有类名撞车——撞车的后果是两个文件各定义一半属性，谁赢取决于引入顺序。
-   语义固定为跨页面一致的五态：运行中 / 等待 / 完成 / 失败 / 空闲。
+   `.tc-status` 与 `.st-chip` 是同一个东西（状态色 + 圆底），合并成一份声明。
+   ⚠️ 命名冲突的历史：`.tc-chip` 早就被"类型/风险"胶囊占用（AgentView 的
+   riskChip、ProblemView 的 typeMeta 都在用 tc-primary/tc-danger/tc-teal/
+   tc-sky/tc-neutral），所以状态语义另起 `.tc-status`——撞车的后果是两个文件
+   各定义一半属性，谁赢取决于引入顺序。
+   `.tc-chip` 与状态胶囊只差 padding 4px vs 3px、gap 5px vs 4px，
+   但调用点已固定在各自语境里，并成一条会让 10 处标签同时位移；
+   差异记录在此，由 uiDebt 棘轮盯住不再新增第三种胶囊。
+   状态语义固定为跨页面一致的五态：运行中 / 等待 / 完成 / 失败 / 空闲。
    ============================================================ */
-.tc-status {
+.tc-status,
+.st-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 3px var(--sp-3);
   border-radius: var(--r-pill);
   font-size: var(--fs-sm);
   font-weight: 600;
   white-space: nowrap;
 }
-.tc-status--xs { padding: 2px var(--sp-2); font-size: var(--fs-xs); }
+.tc-status--xs,
+.st-chip.sm { padding: var(--sp-0) var(--sp-2); font-size: var(--fs-xs); flex-shrink: 0; }
 .tc-status--run  { color: var(--run-deep);  background: var(--run-soft); }
 .tc-status--wait { color: var(--wait-deep); background: var(--wait-soft); }
 .tc-status--done { color: var(--done-deep); background: var(--done-soft); }
 .tc-status--fail { color: var(--fail-deep); background: var(--fail-soft); }
 .tc-status--idle { color: var(--idle-deep); background: var(--idle-soft); }
+
+/* 研发管理面的生命周期色：把 plan/dev/test/pending/live 映射到同一套状态层，
+   于是"待上线"在任何页面都是同一个橙，不再有第 4 份定义。 */
+.st-plan    { color: var(--run-deep);  background: var(--run-soft); }
+.st-dev     { color: var(--primary);   background: var(--primary-soft); }
+.st-test    { color: var(--sky-deep);  background: var(--sky-soft); }
+.st-pending { color: var(--wait-deep); background: var(--wait-soft); }
+.st-wait    { color: var(--sky-deep);  background: var(--sky-soft); }
+.st-live,
+.st-done    { color: var(--done-deep); background: var(--done-soft); }
+.st-fail    { color: var(--fail-deep); background: var(--fail-soft); }
+
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--sp-05) var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tc-chip.sm { padding: 3px 9px; font-size: var(--fs-xs); }
+.tc-danger  { color: var(--fail-deep);  background: var(--fail-soft); }
+.tc-primary { color: var(--primary);    background: var(--primary-soft); }
+.tc-amber   { color: var(--wait-deep);  background: var(--wait-soft); }
+.tc-neutral { color: var(--text-soft);  background: var(--well); }
+.tc-teal    { color: var(--teal-deep);  background: var(--teal-soft); }
+.tc-sky     { color: var(--sky-deep);   background: var(--sky-soft); }
+.tc-accent  { color: var(--accent-hover); background: var(--accent-soft); }
+/* 这里原来还有一行 `.tc-note { color: --wait-deep; background: --wait-soft }`——
+   它是**胶囊配色表**里误加的一目，而 `.tc-note` 是第 14 节提示条的名字。
+   后果是同一条声明被写了两遍，且提示条的字色被这一行漏过来变成 `--wait-deep`：
+   无论 `--info/--done/--fail` 哪一档，文字都是琥珀色（`background` 反而被后面的定义盖掉，
+   所以这个 bug 只在字色上现形）。删掉它；一个名字只能有一个家。 */
 
 /* 状态圆点：运行中会呼吸，等待/完成/失败静态 */
 .tc-dot {
@@ -342,7 +546,7 @@
   content: "";
   position: absolute;
   top: 50%;
-  left: 2px;
+  left: var(--sp-0);
   width: 14px;
   height: 14px;
   margin-top: -7px;
@@ -385,7 +589,12 @@
 /* ============================================================
    10. 表单字段
    ============================================================
-   `.field` + `.field > span` 是重复度最高的类名（18 / 11 个文件）。
+   关于 `.field`：这里**刻意不提供**旧名别名。
+   审计统计 `.field` 出现在 18 个文件里，其实是两个不同的东西：
+     A. 工具面板里的纵向表单字段（7 个工具逐字相同：flex column + gap --sp-1）
+     B. 工作台视图里的裸标签容器（`display:block; margin-bottom`）
+   同名不同义。若图省事统一成一个全局 `.field`，A 的 flex 会毁掉 B 里依赖块级换行的排版。
+   需要共用时显式改用 `.tc-field`，把语义写进类名里。
    ============================================================ */
 .tc-field {
   display: flex;
@@ -465,7 +674,7 @@
    13. 代码 / 预格式文本
    ============================================================ */
 .tc-code {
-  padding: 2px var(--sp-1);
+  padding: var(--sp-0) var(--sp-1);
   background: var(--code-bg);
   border: 1px solid var(--code-border);
   border-radius: var(--r-xs);

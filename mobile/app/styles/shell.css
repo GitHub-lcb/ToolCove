@@ -77,7 +77,7 @@ body,
 .m-tabbar {
   position: sticky;
   bottom: 0;
-  z-index: 20;
+  z-index: var(--z-raised);
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
@@ -98,7 +98,7 @@ body,
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 6px 2px 4px;
+  padding: var(--sp-1) var(--sp-0) var(--sp-05);
   border: 0;
   background: none;
   color: var(--m-muted);
@@ -171,7 +171,7 @@ body,
 /* ---------- 记录页 ---------- */
 .m-seg {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1);
   margin-bottom: var(--m-gap);
 }
 
@@ -198,14 +198,14 @@ body,
   /* 「返回 + 标题」是两条不同高矮的东西：按钮是 44px 的触摸目标、标题只有一行文字。
      默认的 align-items: stretch 会把标题拉成 44px 高，文字因此贴在顶边——看起来就是"箭头与标题没对齐"。 */
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-bottom: var(--m-gap);
 }
 
 .m-search {
   flex: 1;
   min-height: var(--m-touch);
-  padding: 0 12px;
+  padding: 0 var(--sp-4);
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-card);
@@ -227,14 +227,13 @@ body,
 
 .m-chips {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-bottom: var(--m-gap);
-  overflow-x: auto;
 }
 
 .m-chip {
   min-height: 36px;
-  padding: 0 14px;
+  padding: 0 var(--sp-5);
   border: 1px solid var(--m-border);
   border-radius: 999px;
   background: var(--m-card);
@@ -248,6 +247,11 @@ body,
   border-color: var(--m-primary);
   color: var(--m-primary);
   background: var(--m-primary-soft);
+}
+
+.m-chip[disabled] {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* 常用工具（收藏 / 用得多 / 最近用过）：手机上放在第一屏，省掉滑分组找工具那一步。
@@ -282,9 +286,9 @@ body,
 .m-quick-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   min-height: 36px;
-  padding: 0 12px;
+  padding: 0 var(--sp-4);
   border: 1px solid var(--m-border);
   border-radius: 999px;
   background: var(--m-card);
@@ -321,7 +325,7 @@ body,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .m-item {
@@ -336,8 +340,8 @@ body,
   min-height: var(--m-touch);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: var(--sp-0);
+  padding: var(--sp-3) var(--sp-4);
   border: 0;
   background: none;
   text-align: left;
@@ -386,6 +390,14 @@ body,
   color: var(--m-danger);
 }
 
+/* 手机端行内操作按钮的禁用态：此前只有 .m-btn 有口径，
+   .m-op 禁用后看起来和能点一模一样（自检的"单独跑一项"就踩在这个洞上）。
+   取值与桌面 primitives.css 的 .55 统一（此前手机是 0.5，同一件事两个口径）。 */
+.m-op[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .m-empty,
 .m-empty-box {
   padding: 24px 0;
@@ -394,7 +406,7 @@ body,
 }
 
 .m-empty-title {
-  margin: 0 0 12px;
+  margin: 0 0 var(--sp-4);
 }
 
 .m-empty-btn {
@@ -409,7 +421,7 @@ body,
 
 .m-err {
   margin: 0 0 var(--m-gap);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--m-radius);
   background: var(--m-danger-soft);
   color: var(--m-danger);
@@ -420,7 +432,7 @@ body,
 .m-sheet {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   background: var(--m-bg);
@@ -432,7 +444,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: var(--m-tabbar);
   padding: 0 var(--m-pad);
   border-bottom: 1px solid var(--m-border);
@@ -469,7 +481,7 @@ body,
 .m-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: 0.85rem;
   color: var(--m-muted);
 }
@@ -479,7 +491,7 @@ body,
 .m-field select {
   width: 100%;
   min-height: var(--m-touch);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-card);
@@ -497,7 +509,7 @@ body,
 .m-modal {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: var(--z-front);
   display: grid;
   place-items: center;
   padding: var(--m-pad);
@@ -514,14 +526,14 @@ body,
 }
 
 .m-modal-card p {
-  margin: 8px 0 16px;
+  margin: var(--sp-2) 0 var(--sp-6);
   color: var(--m-muted);
   font-size: 0.9rem;
 }
 
 .m-modal-ops {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .m-modal-cancel,
@@ -547,7 +559,7 @@ body,
 
 /* ---------- 占位页 ---------- */
 .m-todo-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--sp-2);
   font-size: 1.1rem;
 }
 .m-todo-body {
@@ -619,8 +631,8 @@ body,
 
 .m-status-chip {
   display: inline-block;
-  padding: 1px 8px;
-  margin-right: 6px;
+  padding: 1px var(--sp-2);
+  margin-right: var(--sp-1);
   border-radius: 999px;
   border: 1px solid var(--m-border);
   font-size: 0.75rem;
@@ -633,11 +645,6 @@ body,
 /* 进度条：细条 + 主色填充，宽度由需求完成率驱动 */
 .m-bar {
   display: block;
-  height: 4px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--m-soft);
-  overflow: hidden;
 }
 
 .m-bar i {
@@ -648,15 +655,15 @@ body,
 
 .m-size {
   display: inline-block;
-  padding: 0 6px;
-  margin-right: 6px;
+  padding: 0 var(--sp-1);
+  margin-right: var(--sp-1);
   border-radius: 4px;
   background: var(--m-soft);
   font-size: 0.75rem;
 }
 
 .m-over {
-  margin-left: 6px;
+  margin-left: var(--sp-1);
   color: var(--m-danger);
   font-size: 0.78rem;
 }
@@ -672,8 +679,8 @@ body,
 .m-group-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 6px;
+  gap: var(--sp-1);
+  margin: 0 0 var(--sp-1);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--m-muted);
@@ -763,20 +770,14 @@ body,
 .m-toolbox .m-item-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   min-width: 0;
 }
 
 /* 未迁移的条目：可读但不可点，并带一枚角标说明原因 */
 .m-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 4px;
   background: var(--m-soft);
   color: var(--m-muted);
-  font-size: 0.7rem;
-  font-weight: 400;
 }
 
 .m-item-main[disabled] {
@@ -797,8 +798,8 @@ body,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 
 .m-zone {
@@ -823,13 +824,13 @@ body,
 .m-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: var(--m-gap) 0 0;
 }
 
 .m-btn {
   min-height: var(--m-touch);
-  padding: 0 14px;
+  padding: 0 var(--sp-5);
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-card);
@@ -846,7 +847,7 @@ body,
 }
 
 .m-btn[disabled] {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: default;
 }
 
@@ -861,16 +862,16 @@ body,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 
 .m-stats li {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--sp-3);
   border: 1px solid var(--m-border);
   border-radius: 8px;
   background: var(--m-card);
@@ -884,7 +885,7 @@ body,
 
 .m-ok {
   margin: 0 0 var(--m-gap);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--m-radius);
   background: var(--m-soft);
   color: var(--m-ok);
@@ -910,8 +911,8 @@ body,
 
 .m-diff-row {
   display: flex;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: var(--sp-1);
+  padding: var(--sp-05) var(--sp-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   line-height: 1.5;
@@ -946,7 +947,7 @@ body,
 /* ---------- 两列并排的小字段（手机上也常常需要两个短输入并排） ---------- */
 .m-field-row {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .m-field-row .m-field {
@@ -960,7 +961,7 @@ body,
   padding: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: var(--sp-1);
 }
 
 .m-station {
@@ -968,9 +969,9 @@ body,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: var(--sp-0);
   min-height: var(--m-touch);
-  padding: 4px;
+  padding: var(--sp-05);
   border: 1px solid var(--m-border);
   border-radius: 8px;
   background: var(--m-card);
@@ -1000,7 +1001,7 @@ body,
 .m-verdict[data-tone="danger"] { border-color: var(--m-danger); }
 
 .m-verdict-text {
-  margin: 8px 0 0;
+  margin: var(--sp-2) 0 0;
   font-size: 1.1rem;
   font-weight: 600;
   line-height: 1.5;
@@ -1013,11 +1014,11 @@ body,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .m-advice li {
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--m-border);
   border-left-width: 3px;
   border-radius: 8px;
@@ -1030,7 +1031,7 @@ body,
 
 .m-advice b {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-05);
   font-size: 0.9rem;
 }
 
@@ -1042,7 +1043,7 @@ body,
 }
 
 .m-advice-detail {
-  margin-top: 4px;
+  margin-top: var(--sp-05);
 }
 
 .m-method {
@@ -1072,7 +1073,7 @@ body,
 .m-palette {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--sp-2);
   margin: var(--m-gap) 0;
 }
 
@@ -1083,14 +1084,14 @@ body,
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 4px;
+  padding: var(--sp-05);
 }
 
 /* 色块上的文字用半透明底衬，浅色与深色背景都可读 */
 .m-swatch span {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;
-  padding: 0 4px;
+  padding: 0 var(--sp-05);
   border-radius: 4px;
   /* 色板上的代码标签：底是固定的半透明白，文字就必须是固定的深色——
      换成 --m-text 会在深色模式变成近白字压在白底上。这里**不该**跟随主题。 */
@@ -1104,7 +1105,7 @@ body,
 
 /* 字段级错误：紧贴在输入框下方，用红色文字 + 左移小标记，不只靠颜色 */
 .m-field-err {
-  margin-top: 4px;
+  margin-top: var(--sp-05);
   color: var(--m-danger);
   font-size: 0.78rem;
 }
@@ -1125,14 +1126,14 @@ body,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-1);
 }
 
 .m-tl-row {
   border: 1px solid var(--m-border);
   border-radius: 8px;
   background: var(--m-card);
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .m-tl-head {
@@ -1140,7 +1141,7 @@ body,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
   border: 0;
   background: none;
   color: var(--m-text);
@@ -1150,7 +1151,7 @@ body,
 }
 
 .m-tl-body {
-  margin: 6px 0 0;
+  margin: var(--sp-1) 0 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   line-height: 1.6;
@@ -1161,7 +1162,7 @@ body,
 }
 
 .m-tl-more {
-  margin-top: 6px;
+  margin-top: var(--sp-1);
   min-height: 32px;
   border: 1px dashed var(--m-border);
   border-radius: 6px;
@@ -1189,8 +1190,8 @@ body,
 }
 
 .m-args {
-  margin: 8px 0;
-  padding: 8px;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2);
   max-height: 200px;
   overflow: auto;
   border-radius: 6px;
@@ -1213,7 +1214,7 @@ body,
   overflow-x: auto;
   border: 1px solid var(--m-border);
   border-radius: 8px;
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 
 .m-table {
@@ -1225,7 +1226,7 @@ body,
 
 .m-table th,
 .m-table td {
-  padding: 6px 10px;
+  padding: var(--sp-1) var(--sp-3);
   border-bottom: 1px solid var(--m-border);
   border-right: 1px solid var(--m-border);
   text-align: left;
@@ -1249,8 +1250,8 @@ body,
 }
 
 .m-pk {
-  margin-left: 4px;
-  padding: 0 4px;
+  margin-left: var(--sp-05);
+  padding: 0 var(--sp-05);
   border-radius: 3px;
   background: var(--m-primary-soft);
   color: var(--m-primary);
@@ -1263,7 +1264,7 @@ body,
 .m-canvas-wrap {
   display: flex;
   justify-content: center;
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
   background: var(--m-soft);
   border-radius: 8px;
 }
@@ -1281,15 +1282,15 @@ body,
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 8px 0;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
   margin-bottom: var(--m-gap);
 }
 
 .m-msg {
   border: 1px solid var(--m-border);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   background: var(--m-card);
 }
 
@@ -1306,7 +1307,7 @@ body,
 
 .m-msg-role {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-05);
   font-size: 0.7rem;
   color: var(--m-muted);
 }
@@ -1328,7 +1329,7 @@ body,
 
 .m-md pre {
   overflow-x: auto;
-  padding: 8px;
+  padding: var(--sp-2);
   border-radius: 6px;
   background: var(--m-soft);
   font-size: 0.78rem;
@@ -1340,7 +1341,7 @@ body,
 }
 
 .m-md p {
-  margin: 0 0 8px;
+  margin: 0 0 var(--sp-2);
 }
 
 .m-md p:last-child {
@@ -1360,8 +1361,8 @@ body,
 .m-kpi {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 12px;
+  gap: var(--sp-0);
+  padding: var(--sp-4);
   border: 1px solid var(--m-border);
   border-radius: 10px;
   background: var(--m-card);
@@ -1386,7 +1387,7 @@ body,
 /* 迭代进度条：手机上比百分比数字更直观 */
 .m-bar {
   height: 4px;
-  margin-top: 6px;
+  margin-top: var(--sp-1);
   border-radius: 2px;
   background: var(--m-soft);
   overflow: hidden;
@@ -1403,8 +1404,8 @@ body,
 /* 状态徽标：成功/失败/进行中一眼可辨，手机上颜色比文字更快 */
 .m-badge {
   display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
+  margin-left: var(--sp-1);
+  padding: 1px var(--sp-1);
   border-radius: 4px;
   font-size: 0.68rem;
   font-weight: 500;
@@ -1428,8 +1429,8 @@ body,
 
 /* 发布步骤区：展开后才出现，勾选框要够大好点 */
 .m-steps {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--m-border);
 }
 
@@ -1440,7 +1441,7 @@ body,
 .m-steps input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  margin-right: 8px;
+  margin-right: var(--sp-2);
   vertical-align: middle;
 }
 
@@ -1500,8 +1501,8 @@ body,
 .m-check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
   font-size: 0.88rem;
 }
 
@@ -1513,7 +1514,7 @@ body,
 /* ============ 请求的一生（工具内专用） ============ */
 /* 槽位竖排成一列：手机上「管线」的方向就是滚动方向，从上到下即请求的走向。 */
 .m-pipe-slot {
-  padding: 10px;
+  padding: var(--sp-3);
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-card);
@@ -1524,8 +1525,8 @@ body,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 
 .m-pipe-readout {
@@ -1539,7 +1540,7 @@ body,
   align-items: flex-end;
   gap: 3px;
   height: 76px;
-  padding: 6px;
+  padding: var(--sp-1);
   border-radius: 8px;
   background: var(--m-soft);
 }
@@ -1569,13 +1570,13 @@ body,
 }
 
 .m-pipe-cause {
-  margin: 6px 0 0;
+  margin: var(--sp-1) 0 0;
   line-height: 1.6;
 }
 
 .m-pipe-lesson {
-  margin: 8px 0 0;
-  padding: 10px;
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-3);
   border-radius: 8px;
   background: var(--m-primary-soft);
   color: var(--m-primary);
@@ -1590,7 +1591,7 @@ body,
 
 /* 关卡地图：一行一关，星与规模放在副行——chip 的胶囊圆角撑不住这么长的标签。 */
 .m-map .m-group-title {
-  margin: 8px 0 4px;
+  margin: var(--sp-2) 0 var(--sp-05);
 }
 
 .m-item.current .m-item-title {
@@ -1600,7 +1601,7 @@ body,
 
 .m-item[disabled],
 .m-item button[disabled] {
-  opacity: .5;
+  opacity: 0.55;
 }
 
 /* 预算条与图鉴：预算是这游戏的取舍来源，必须一直看得见。 */
@@ -1608,8 +1609,8 @@ body,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
   font-size: 0.8rem;
   color: var(--m-muted);
 }
@@ -1628,26 +1629,26 @@ body,
 }
 
 .m-pipe-ttl {
-  margin-top: 6px;
+  margin-top: var(--sp-1);
 }
 
 .m-pipe-stars {
-  margin-left: 6px;
+  margin-left: var(--sp-1);
   letter-spacing: 1px;
 }
 
 .m-pipe-codex {
-  padding: 10px;
+  padding: var(--sp-3);
   border-left: 3px solid var(--m-primary);
   border-radius: 0 8px 8px 0;
   background: var(--m-soft);
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
   font-size: 0.85rem;
   line-height: 1.65;
 }
 
 .m-pipe-codex p {
-  margin: 4px 0 0;
+  margin: var(--sp-05) 0 0;
   color: var(--m-muted);
 }
 

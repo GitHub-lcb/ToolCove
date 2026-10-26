@@ -1,5 +1,7 @@
 import { createApp } from "vue";
 import App from "./app/App.vue";
+import { vDialog } from "./ui/dialog.js";
+import { vFieldError } from "./ui/fieldError.js";
 import { i18n, initLocale, warmFallbackLocale } from "./i18n/index.js";
 import { runMigrations } from "./app/migrate.js";
 import { restoreEnterpriseConfig } from "./app/enterpriseServer.js";
@@ -29,7 +31,10 @@ restoreEnterpriseConfig()
   .then(() => Promise.all([initLocale(), runMigrations(), loadPolicy()]))
   .catch((e) => console.error(t("common.bootFail", { err: e })))
   .finally(() => {
-    createApp(App).use(i18n).mount("#app");
+    // v-dialog：弹窗语义（role/aria-modal/可访问名）与焦点进出的唯一实现处。
+    // 全局指令而不是每个视图自己写 role——31 个对话框里只有 4 个写过，
+    // 而"新弹窗忘了写"不会有任何测试报错。
+    createApp(App).use(i18n).directive("dialog", vDialog).directive("field-error", vFieldError).mount("#app");
     // 另一种语言的字典在挂载之后才预热：排在 mount 之前会被算进首屏字节（见 i18n/index.js 的说明）
     warmFallbackLocale();
   });

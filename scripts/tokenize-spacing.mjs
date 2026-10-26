@@ -25,10 +25,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const TARGET_DIRS = ["src"];
+const TARGET_DIRS = ["src", "mobile"];
 
 /** 有对应令牌的间距值 → 令牌名（与 tokens.css 的默认档一致） */
 const VALUE_TO_TOKEN = new Map([
+  // 微间距两档：等值替换，且在密度档里**不重定义**（它们是"线"，不该随密度缩放）
+  ["2px", "var(--sp-0)"],
+  ["4px", "var(--sp-05)"],
   ["6px", "var(--sp-1)"],
   ["8px", "var(--sp-2)"],
   ["10px", "var(--sp-3)"],
