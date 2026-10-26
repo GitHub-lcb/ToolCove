@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudProviderOf, deleteCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl, qiniuEntry, qiniuManagementAuth } from "./cloud.js";
 import { isValidRelayUrl, validatePhotoConfig } from "./config.js";
-import { cloudDownloadTarget, downloadCloudObject, isFolderMarker, LOCAL_RELAY_URL } from "./cloud.js";
+import { cloudDownloadTarget, isFolderMarker, LOCAL_RELAY_URL } from "./cloud.js";
 
 const CONFIG = {
   provider: "qiniu", bucket: "luqian520", accessKey: "AK", secretKey: "SK",

@@ -741,7 +741,7 @@ describe("写前预览", () => {
 
   it("预览失败不阻断批准：读不到旧文件也得让人做决定", async () => {
     const events = [];
-    const result = await runAgent("x", {
+    await runAgent("x", {
       registry: writeRegistry(),
       planner: writePlanner(),
       preview: async () => { throw Error("no such file"); },

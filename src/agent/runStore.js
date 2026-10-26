@@ -8,7 +8,7 @@ export function sanitizeRun(value) {
   const collect = (v, depth = 0) => {
     if (depth > 30) return;
     if (typeof v === 'string') {
-      if (/^[\[{]/.test(v.trim())) { try { collect(JSON.parse(v), depth + 1); } catch {} }
+      if (/^[[{]/.test(v.trim())) { try { collect(JSON.parse(v), depth + 1); } catch {} }
       for (const m of v.matchAll(PAIR)) {
         const secret = m[2].replace(/^["']|["']$/g, '');
         if (secret && secret !== MARK) secrets.add(secret);
@@ -25,7 +25,7 @@ export function sanitizeRun(value) {
   const clean = (v, depth = 0) => {
     if (depth > 30) return '[DEPTH LIMIT]';
     if (typeof v === 'string') {
-      if (/^[\[{]/.test(v.trim())) {
+      if (/^[[{]/.test(v.trim())) {
         try { return JSON.stringify(clean(JSON.parse(v), depth + 1)); } catch {}
       }
       let s = v.replace(/\b(Bearer|Basic)\s+[^\s"',;]+/gi, `$1 ${MARK}`)

@@ -71,7 +71,7 @@ const server = createServer((req, res) => {
     for (const [name, value] of Object.entries(job.headers || {})) {
       if (/^authorization$|^content-type$/i.test(name) && value) headers[name] = value;
     }
-    const upstream = fetch(target.href, { method, headers })
+    fetch(target.href, { method, headers })
       .then((response) => response.text().then((body) => ({ status: response.status, body })))
       .then(({ status, body }) => {
         res.writeHead(200, { ...cors, "Content-Type": "application/json" });

@@ -57,8 +57,10 @@ describe("RequestTool 渲染", () => {
   });
 
   it("cURL 占位文案按字面量渲染出花括号（不能被当成占位符吃掉）", async () => {
-    const html = await render();
-    // 转义后必须能编译出来；这里只要确认花括号还在，避免以后又被写成裸 {...} 而整块炸掉
+    // cURL 输入框是 v-if="curlOpen" 的弹窗，默认态不渲染——这条例真正守的是
+    // 「把带花括号的占位文案喂给模板会不会炸」，所以 render() 本身就是断言；
+    // 再单独确认字典里的花括号没被当成占位符改写。
+    await render();
     expect(t("toolbox.request.curlPh")).toContain("{...}");
   });
 });

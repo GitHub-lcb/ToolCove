@@ -1,7 +1,7 @@
 // 平台适配层单测：浏览器端命令实现 + 桌面端直通。
 // 说明：Node 环境下 isDesktop 为 true，因此 invoke() 走直通分支；
 // 浏览器端实现通过 browserHandlers 直接驱动（kv 在 Node 下自动落到内存后端）。
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => "desktop-ok"), Channel: undefined }));
 

@@ -5,7 +5,6 @@
 // 读 wasm」，而 fetch 不支持 file:// —— 已知规避是在初始化期间临时移除 fetch（仅影响本测试文件）。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
-import { PDFDocument } from "pdf-lib";
 import { decryptPdf } from "./decrypt.js";
 import { readPdfSummary, mergePdfs } from "./logic.js";
 

@@ -12,7 +12,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rm
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { TOOLCHAIN, VERSIONS } from "./setup-toolchain.mjs";
 

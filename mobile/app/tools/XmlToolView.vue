@@ -6,7 +6,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { loadToolbox, saveToolbox } from "../../../src/toolboxStore.js";
-import { formatXml, jsonToXml, minifyXml, queryXPath, statsXml, textOf, validateXml, xmlToJson } from "../../../src/tools/xml/logic.js";
+import { formatXml, minifyXml, queryXPath, statsXml, textOf, validateXml, xmlToJson } from "../../../src/tools/xml/logic.js";
 
 const { t } = useI18n();
 
