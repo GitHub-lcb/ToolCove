@@ -270,7 +270,7 @@ watch([input, mode, xpath], () => {
 .x-pane {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   min-height: 0;
 }
 

@@ -10,6 +10,9 @@ import { ref, watch, onMounted, onUnmounted, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import { isAIConfigured } from "../ai.js";
+import { isDesktop } from "../platform/env.js";
+import { filesFromPaths } from "../platform/droppedFiles.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 import {
   startExtractTask,
   getExtractTask,
@@ -187,6 +190,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener("keydown", onEsc);
+  stopDropWatch();
   unsub?.();
   unregisterOwner(instanceId);
   mountedRef.value = false;
@@ -215,6 +219,7 @@ function onSelect(e) {
 }
 function onDrop(e) {
   dragOver.value = false;
+  if (isDesktop) return; // 桌面端走原生拖放通道（见 watch(open)），HTML5 drop 拿不到本地文件
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   readFile(f);
 }
@@ -229,9 +234,40 @@ function onPaste(e) {
   }
 }
 // 仅在弹窗打开时监听全局粘贴
-watch(open, (v) => {
-  if (v) window.addEventListener("paste", onPaste);
-  else window.removeEventListener("paste", onPaste);
+// 桌面端拖文件：Tauri 拦掉了 HTML5 drop，只能按路径读回来；弹窗没开就不该占着窗口监听
+let stopWatchDrop = null;
+function stopDropWatch() {
+  stopWatchDrop?.();
+  stopWatchDrop = null;
+  dragOver.value = false;
+}
+watch(open, async (v) => {
+  if (!v) {
+    window.removeEventListener("paste", onPaste);
+    stopDropWatch();
+    return;
+  }
+  window.addEventListener("paste", onPaste);
+  if (!isDesktop) return;
+  try {
+    const { watchFileDrop } = await import("../platform/dnd.js");
+    const stop = await watchFileDrop({
+      onFiles: async (paths) => {
+        dragOver.value = false;
+        const { files, errors } = await filesFromPaths(paths);
+        if (files.length) readFile(files[0]);
+        else props.showToast(errors[0] || t("extract.selectImage"));
+      },
+      onActive: (active) => {
+        dragOver.value = !!active;
+      },
+    });
+    // 注册是异步的：等待期间弹窗已经关掉的话，别把监听留在窗口上
+    if (open.value) stopWatchDrop = stop;
+    else stop?.();
+  } catch {
+    /* 拖放是增强能力：注册失败不影响选择图片 */
+  }
 });
 
 // ---------- 识别（流式任务） ----------
@@ -447,8 +483,8 @@ defineExpose({ openDialog });
     <Icon name="sparkles" :size="15" /> {{ triggerLabel }}
   </button>
 
-  <div v-if="open" class="ax-mask">
-    <div class="ax-modal" :class="{ wide: isGroups }">
+  <div v-if="open" class="modal-mask ax-mask">
+    <div class="ax-modal" v-dialog :class="{ wide: isGroups }">
       <h2><Icon name="sparkles" :size="18" /> {{ dialogTitle }}</h2>
 
       <p v-if="!configured" class="ax-warn">
@@ -585,7 +621,7 @@ defineExpose({ openDialog });
 .ai-trigger.err { color: var(--danger); border-color: var(--border-danger); }
 @keyframes ax-pulse { 50% { opacity: 0.55; } }
 
-.ax-mask { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.5); display: flex; align-items: center; justify-content: center; z-index: 260; padding: var(--sp-7); }
+.ax-mask { z-index: var(--z-front); }
 .ax-modal { background: var(--card); border-radius: var(--r-lg); padding: 24px; width: 540px; max-width: 100%; max-height: 90vh; overflow-y: auto; overscroll-behavior: contain; contain: content; box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25); }
 .ax-modal.wide { width: 760px; }
 .ax-modal h2 { margin: 0 0 var(--sp-6); font-size: var(--fs-xl); display: flex; align-items: center; gap: var(--sp-2); }
@@ -610,14 +646,14 @@ defineExpose({ openDialog });
 .ax-result-hd { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-md); font-weight: 700; margin-bottom: var(--sp-4); }
 .ax-selall { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
 .ax-selall input { width: 15px; height: 15px; accent-color: var(--accent-hover); cursor: pointer; }
-.ax-add { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px dashed var(--border-strong); color: var(--muted); font-size: var(--fs-sm); padding: 4px 9px; border-radius: var(--r-sm); cursor: pointer; }
+.ax-add { display: inline-flex; align-items: center; gap: var(--sp-05); background: none; border: 1px dashed var(--border-strong); color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-05) 9px; border-radius: var(--r-sm); cursor: pointer; }
 .ax-add:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-hover); }
 .ax-add:disabled { opacity: 0.5; cursor: default; }
 
 .ax-card { position: relative; display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4) var(--sp-4) 2px; border: 1px solid var(--card-border); border-radius: var(--r-md); margin-bottom: var(--sp-3); background: var(--card-soft); transition: opacity 0.15s; }
 .ax-card.off { opacity: 0.72; }
 .ax-card.dup { border-color: var(--border-danger); background: var(--danger-soft); }
-.ax-dup { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); font-weight: 700; color: var(--danger-deep); background: var(--card); border: 1px solid var(--border-danger); border-radius: var(--r-xs); padding: 2px 7px; margin-bottom: var(--sp-3); }
+.ax-dup { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); font-weight: 700; color: var(--danger-deep); background: var(--card); border: 1px solid var(--border-danger); border-radius: var(--r-xs); padding: var(--sp-0) 7px; margin-bottom: var(--sp-3); }
 
 .ax-group { margin-bottom: var(--sp-6); }
 .ax-group-hd { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-sm); font-weight: 700; color: var(--text-soft); margin-bottom: var(--sp-2); }
@@ -631,7 +667,7 @@ defineExpose({ openDialog });
 .ax-check { flex: none; width: 16px; height: 16px; margin-top: 26px; accent-color: var(--accent-hover); cursor: pointer; }
 .ax-idx { flex: none; width: 22px; height: 22px; margin-top: 24px; display: grid; place-items: center; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-hover); font-size: var(--fs-sm); font-weight: 700; }
 .ax-card-body { flex: 1; min-width: 0; }
-.ax-del { flex: none; margin-top: 22px; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: var(--r-sm); }
+.ax-del { flex: none; margin-top: 22px; background: none; border: none; color: var(--muted); cursor: pointer; padding: var(--sp-05); border-radius: var(--r-sm); }
 .ax-del:hover:not(:disabled) { color: var(--danger); background: var(--danger-soft); }
 .ax-del:disabled { opacity: 0.5; cursor: default; }
 

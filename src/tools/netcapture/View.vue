@@ -453,7 +453,7 @@ onUnmounted(() => session?.stop());
 <style scoped>
 .nc { display: flex; flex-direction: column; gap: var(--fs-sm); padding: var(--fs-md); height: 100%; overflow: auto; }
 .nc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--fs-md); }
-.nc-title h2 { margin: 0 0 4px; font-size: var(--fs-lg); }
+.nc-title h2 { margin: 0 0 var(--sp-05); font-size: var(--fs-lg); }
 .nc-sub { margin: 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-body); }
 .nc-actions { display: flex; gap: var(--r-xs); }
 .btn { padding: 5px 11px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--card); color: var(--text); cursor: pointer; font-size: var(--fs-sm); }
@@ -469,7 +469,7 @@ onUnmounted(() => session?.stop());
 .nc-field-wide textarea { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 3px var(--sp-1); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); resize: vertical; }
 .nc-hint-inline { flex-basis: auto; }
 .nc-mark { margin-left: auto; padding: 1px var(--sp-1); font-size: var(--fs-xs); border: 1px solid var(--border); border-radius: var(--r-xs); background: transparent; color: var(--text-weak); cursor: pointer; }
-.nc-mark.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.nc-mark.on { background: var(--accent); border-color: var(--accent); color: var(--text-invert); }
 .nc-status { margin: 0; font-size: var(--fs-sm); color: var(--text-weak); }
 .nc-status[data-tone="ok"] { color: var(--success); }
 .nc-status[data-tone="warn"] { color: var(--warn); }
@@ -479,7 +479,7 @@ onUnmounted(() => session?.stop());
 .nc-note ul { margin: var(--sp-1) 0 0; padding-left: 18px; line-height: var(--lh-body); }
 .nc-list-head { display: flex; align-items: center; gap: var(--r-xs); }
 .nc-count { font-size: var(--fs-xs); color: var(--text-weak); font-family: var(--font-num); }
-.nc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-05); }
 .nc-item { display: flex; align-items: center; gap: var(--r-xs); padding: 6px var(--fs-sm); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--card); cursor: pointer; font-size: var(--fs-sm); }
 .nc-item:hover { border-color: var(--primary); }
 .nc-item[data-selected="true"] { border-color: var(--primary); }
@@ -495,7 +495,7 @@ onUnmounted(() => session?.stop());
 .nc-detail { display: flex; flex-direction: column; gap: var(--r-xs); padding: var(--fs-md); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }
 .nc-detail h3 { margin: 0; font-size: var(--fs-md); font-family: var(--font-mono); word-break: break-all; }
 .nc-detail summary { cursor: pointer; color: var(--text-weak); font-size: var(--fs-sm); }
-.nc-detail pre { margin: 4px 0 0; padding: var(--r-xs); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-xs); font-size: var(--fs-xs); overflow: auto; max-height: 220px; }
+.nc-detail pre { margin: var(--sp-05) 0 0; padding: var(--r-xs); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-xs); font-size: var(--fs-xs); overflow: auto; max-height: 220px; }
 .nc-detail textarea { width: 100%; font-family: var(--font-mono); font-size: var(--fs-sm); padding: var(--r-xs); border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg); color: var(--text); resize: vertical; }
 .nc-detail-actions { display: flex; gap: var(--r-xs); }
 .nc-warns { margin: 0; padding-left: 18px; color: var(--warn); font-size: var(--fs-xs); line-height: var(--lh-body); }

@@ -46,7 +46,7 @@ const activeComp = computed(() => (props.tabs.find((x) => x.key === props.active
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 0 28px var(--sp-3);
   overflow-x: auto;
   scrollbar-width: none;

@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   cursor: default;
 }
 .menu-item {

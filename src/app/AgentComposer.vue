@@ -963,11 +963,11 @@ defineExpose({
 }
 
 /* ---------- 附件 chips ---------- */
-.att-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-bottom: 2px; }
+.att-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-bottom: var(--sp-0); }
 .att {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   max-width: 260px;
   height: 26px;
   padding: 0 4px 0 var(--sp-2);
@@ -1074,7 +1074,7 @@ defineExpose({
 .model-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   height: 30px;
   max-width: 320px;
   padding: 0 var(--sp-2) 0 var(--sp-3);
@@ -1095,7 +1095,7 @@ defineExpose({
 /* 上下文窗口徽标：与 DSH 的模型胶囊同位同义（告诉人这个模型能装多少） */
 .ctx-badge {
   flex-shrink: 0;
-  padding: 1px 6px;
+  padding: 1px var(--sp-1);
   color: var(--primary);
   background: var(--primary-soft);
   border-radius: 999px;
@@ -1139,7 +1139,7 @@ defineExpose({
   position: absolute;
   bottom: calc(100% + 10px);
   left: 0;
-  z-index: 40;
+  z-index: var(--z-raised);
   min-width: 260px;
   max-width: min(360px, 88vw);
   max-height: min(60vh, 420px);
@@ -1210,7 +1210,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  margin-top: 2px;
+  margin-top: var(--sp-0);
   padding: var(--sp-2);
   border-top: 1px solid var(--card-border);
 }
@@ -1225,7 +1225,7 @@ defineExpose({
   font-size: var(--fs-sm);
 }
 .dp-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
-.dp-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.dp-actions { display: flex; justify-content: flex-end; gap: var(--sp-1); }
 .dp-cancel,
 .dp-create {
   height: 26px;
@@ -1252,7 +1252,7 @@ defineExpose({
 .model-pop { width: 344px; padding: var(--sp-3); }
 .mp-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); padding: 0 2px var(--sp-2); }
 .mp-title { font-size: var(--fs-md); font-weight: 650; color: var(--text); }
-.mp-head-right { display: inline-flex; align-items: center; gap: 6px; }
+.mp-head-right { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .mp-prov { font-size: var(--fs-xs); color: var(--muted); }
 .mp-refresh { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: var(--r-xs); cursor: pointer; }
 .mp-refresh:hover { color: var(--primary-hover); background: var(--primary-soft); }
@@ -1266,7 +1266,7 @@ defineExpose({
   font-size: var(--fs-xs);
   line-height: var(--lh-body);
 }
-.mp-list { display: flex; flex-direction: column; gap: 2px; }
+.mp-list { display: flex; flex-direction: column; gap: var(--sp-0); }
 .mp-item {
   display: flex;
   align-items: center;
@@ -1289,9 +1289,9 @@ defineExpose({
 .mp-profile-model { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); }
 .mp-check { flex-shrink: 0; color: var(--primary); }
 .mp-block { margin-top: var(--sp-2); border-top: 1px solid var(--card-border); padding-top: var(--sp-1); }
-.effort-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.effort-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-05); }
 .effort-chip {
-  padding: 6px 4px;
+  padding: var(--sp-1) var(--sp-05);
   color: var(--text-weak);
   background: var(--card-soft);
   border: 1px solid var(--card-border);
@@ -1304,7 +1304,7 @@ defineExpose({
 .effort-chip:hover { color: var(--text); border-color: var(--border-strong); }
 .effort-chip.on { color: var(--primary); background: var(--primary-soft); border-color: var(--border-blue); font-weight: 600; }
 .effort-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.mp-custom { display: flex; gap: 6px; margin-top: var(--sp-2); }
+.mp-custom { display: flex; gap: var(--sp-1); margin-top: var(--sp-2); }
 .mp-input {
   flex: 1;
   min-width: 0;

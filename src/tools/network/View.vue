@@ -367,7 +367,7 @@ async function copyText(value, label = t("toolbox.network.copyDefaultLabel")) {
 .tcp-result b { font-size: var(--fs-lg); }
 .tcp-result code { color: var(--text-code); font-size: var(--fs-base); }
 .tcp-result > span:not(.status-icon) { max-width: 600px; color: var(--muted); font-size: var(--fs-sm); word-break: break-word; }
-.segmented { flex-shrink: 0; display: inline-grid; grid-template-columns: repeat(2, auto); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.segmented { flex-shrink: 0; display: inline-grid; grid-template-columns: repeat(2, auto); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .segmented button { height: 30px; padding: 0 var(--sp-4); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .segmented button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .terminal-result pre { flex: 1; min-height: 0; margin: 0; padding: var(--sp-4); overflow: auto; background: var(--well); color: var(--success-deep); font-size: var(--fs-sm); line-height: var(--lh-body); white-space: pre-wrap; word-break: break-word; }

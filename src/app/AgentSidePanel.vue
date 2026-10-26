@@ -391,7 +391,7 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
    与 DSH 的 New Session 同一层级：一眼看得到，但不和主区的「运行」抢注意力。 */
 .new-chat {
   height: 36px;
-  margin: 2px 0 2px;
+  margin: var(--sp-0) 0 var(--sp-0);
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
@@ -457,13 +457,13 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   overflow-y: auto;
   overflow-x: hidden;
   margin: 0 -10px;
-  padding: 0 10px;
+  padding: 0 var(--sp-3);
   scrollbar-width: thin;
-  scrollbar-color: var(--border-steel) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 /* 分组标题：会话列表与工作面之间的层级锚点。与 App.vue 的 .nav-group 同量级，
@@ -488,7 +488,7 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   width: 100%;
   min-height: 34px;
   flex-shrink: 0;
-  padding: 5px 26px 5px 8px;
+  padding: 5px 26px 5px var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: none;
@@ -526,12 +526,12 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 @media (hover: none) { .task-more { opacity: 1; } }
 
 /* 行内菜单：历史区自己滚动，浮层会被 overflow 裁掉，所以就地展开 */
-.task-menu { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 6px 28px; }
+.task-menu { display: flex; flex-wrap: wrap; gap: var(--sp-05); padding: 0 var(--sp-1) var(--sp-1) 28px; }
 .task-menu button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: var(--sp-05);
+  padding: 3px var(--sp-2);
   font-family: inherit;
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -546,8 +546,8 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 
 .task-rename {
   width: calc(100% - 4px);
-  margin: 3px 2px;
-  padding: 4px 8px;
+  margin: 3px var(--sp-0);
+  padding: var(--sp-05) var(--sp-2);
   font-family: inherit;
   font-size: var(--fs-sm);
   color: var(--text);
@@ -558,7 +558,7 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
 .task-rename:focus { outline: none; }
 
 /* 已归档：默认折叠，归档不等于删除 */
-.archived { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-3); }
+.archived { display: flex; flex-direction: column; gap: var(--sp-0); margin-top: var(--sp-3); }
 .archived-head {
   display: flex;
   align-items: center;
@@ -611,7 +611,7 @@ const maxSteps = computed(() => Number(agentSession.cfg?.maxSteps) || 0);
   position: fixed;
   right: 22px;
   bottom: 20px;
-  z-index: 120;
+  z-index: var(--z-float);
   width: min(400px, calc(100vw - 60px));
   cursor: pointer;
   border-radius: var(--r-md);

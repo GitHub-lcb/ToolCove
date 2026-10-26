@@ -744,12 +744,12 @@ onBeforeUnmount(() => {
 /* 主体两栏：两列各自滚动。行高必须钉成 minmax(0,1fr)，否则内容会把整行撑高、
    列内的 overflow 永远不会触发（面板被压扁后由自身 overflow:hidden 裁掉内容）。 */
 .lab-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-3); }
-.lab-editor { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-2); overflow: auto; padding-right: 2px; }
+.lab-editor { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-2); overflow: auto; padding-right: var(--sp-0); }
 .lab-preview { min-height: 0; display: flex; flex-direction: column; gap: var(--sp-2); overflow: auto; }
 /* 卡片按内容自然高度排布，超出交给列滚动，不压缩、不裁切 */
 .lab-editor > *, .lab-preview > * { flex-shrink: 0; }
 
-.panel { border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); overflow: hidden; }
+
 .panel-head b { font-size: var(--fs-md); }
 .panel-head > span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); white-space: nowrap; }
 details.panel > summary { cursor: pointer; list-style: none; }
@@ -762,7 +762,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 .grid .span-2 { grid-column: span 2; }
 .grid.dim { opacity: 0.55; }
-.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .seg button { height: 28px; padding: 0 var(--sp-2); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .seg button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .switch { display: flex; align-items: center; gap: var(--sp-2); color: var(--text); font-size: var(--fs-md); cursor: pointer; }
@@ -791,9 +791,9 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .readout > div { min-width: 0; padding: var(--sp-3) var(--sp-4); border-right: 1px solid var(--border); }
 .readout > div:last-child { border-right: none; }
 .readout dt { color: var(--muted); font-size: var(--fs-xs); }
-.readout dd { margin: 2px 0 0; overflow: hidden; color: var(--text-code); font-family: var(--font-num); font-size: var(--fs-md); text-overflow: ellipsis; white-space: nowrap; }
+.readout dd { margin: var(--sp-0) 0 0; overflow: hidden; color: var(--text-code); font-family: var(--font-num); font-size: var(--fs-md); text-overflow: ellipsis; white-space: nowrap; }
 
-.ok-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--success-soft); color: var(--success-deep); font-size: var(--fs-xs); }
+.ok-chip { display: inline-flex; align-items: center; gap: var(--sp-05); margin-left: auto; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--success-soft); color: var(--success-deep); font-size: var(--fs-xs); }
 .issue-list { margin: 0; padding: var(--sp-2) var(--sp-4) var(--sp-3); list-style: none; }
 .issue-list li { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-tight); }
 .issue-list li.warn { color: var(--warn-deep); }
@@ -811,7 +811,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .target { display: flex; align-items: center; gap: var(--sp-2); max-width: 240px; color: var(--text-weak); font-size: var(--fs-sm); }
 .target span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .target.bad { color: var(--warn-deep); }
-.btn-primary kbd { margin-left: 4px; padding: 1px 4px; border-radius: var(--r-xs); background: rgba(255, 255, 255, 0.22); font-size: var(--fs-xs); }
+.btn-primary kbd { margin-left: var(--sp-05); padding: 1px var(--sp-05); border-radius: var(--r-xs); background: rgba(255, 255, 255, 0.22); font-size: var(--fs-xs); }
 
 @media (max-width: 860px) {
   .lab-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(220px, 1fr) auto; overflow: auto; }

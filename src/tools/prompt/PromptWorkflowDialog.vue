@@ -6,6 +6,7 @@ import { useI18n } from "vue-i18n";
 import { parseWorkflowGraph, fillMissingDefaults, textInputFor, uiToApiWorkflow } from "./comfy.js";
 import { fetchObjectInfo, fetchUserWorkflow, listUserWorkflows } from "./comfyClient.js";
 import Icon from "../../ui/Icon.vue";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -204,8 +205,8 @@ async function save() {
 </script>
 
 <template>
-  <div v-if="open" class="wf-mask" data-role="wf-dialog">
-    <div class="wf-box">
+  <div v-if="open" class="modal-mask wf-mask" data-role="wf-dialog">
+    <div class="wf-box" v-dialog>
       <div class="wf-head">
         <h3>{{ t("toolbox.prompt.wfTitle") }}</h3>
         <button type="button" class="mini" data-role="wf-close" @click="emit('close')">
@@ -303,15 +304,6 @@ async function save() {
 </template>
 
 <style scoped>
-.wf-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 40;
-}
 .wf-box {
   width: min(680px, calc(100vw - 48px));
   max-height: calc(100vh - 64px);
@@ -337,7 +329,7 @@ async function save() {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   font-size: var(--fs-sm);
   color: var(--text-weak);
   min-width: 0;
@@ -357,7 +349,7 @@ async function save() {
 .node-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-05);
   max-height: 96px;
   overflow: auto;
 }

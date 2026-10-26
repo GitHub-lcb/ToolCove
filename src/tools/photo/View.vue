@@ -382,6 +382,20 @@ const queueStats = computed(() => {
   return { pending: by(QUEUE_STATE.pending), uploading: by(QUEUE_STATE.uploading), done: by(QUEUE_STATE.done), error: by(QUEUE_STATE.error), total: queueItems.value.length };
 });
 
+/** 队列状态映射到跨页面统一的状态层（运行中/完成/失败/中性） */
+function chipStateCls(item) {
+  return {
+    "st-dev": item.status === QUEUE_STATE.uploading,
+    "st-done": item.status === QUEUE_STATE.done,
+    "st-fail": item.status === QUEUE_STATE.error,
+    "tc-neutral": ![
+      QUEUE_STATE.uploading,
+      QUEUE_STATE.done,
+      QUEUE_STATE.error,
+    ].includes(item.status),
+  };
+}
+
 function queueStateLabel(item) {
   if (item.status === QUEUE_STATE.pending) return t("toolbox.photo.statePending");
   if (item.status === QUEUE_STATE.uploading) return t("toolbox.photo.stateUploading");
@@ -599,7 +613,7 @@ onBeforeUnmount(() => {
         <p v-if="listError" class="hint bad" data-role="list-error">{{ listError }}</p>
         <p v-if="loading" class="hint" data-role="loading">{{ t("toolbox.photo.loading") }}</p>
 
-        <div v-if="!loading && !objects.length && !listError" class="blank-state" data-role="empty">
+        <div v-if="!loading && !objects.length && !listError" class="empty blank-state" data-role="empty">
           <Icon name="camera" :size="22" />
           <p>{{ t("toolbox.photo.emptyCloud") }}</p>
         </div>
@@ -623,8 +637,8 @@ onBeforeUnmount(() => {
                   <span class="photo-meta">{{ rowMeta(row) }}</span>
                 </span>
                 <span class="photo-size">{{ formatBytes(row.size) }}</span>
-                <span v-if="manifestByKey.has(row.key)" class="st-chip ok" data-role="archived-chip">{{ t("toolbox.photo.archivedChip") }}</span>
-                <span v-else class="st-chip" data-role="fresh-chip">{{ t("toolbox.photo.freshChip") }}</span>
+                <span v-if="manifestByKey.has(row.key)" class="st-chip st-done sm" data-role="archived-chip">{{ t("toolbox.photo.archivedChip") }}</span>
+                <span v-else class="st-chip tc-neutral sm" data-role="fresh-chip">{{ t("toolbox.photo.freshChip") }}</span>
               </label>
             </li>
           </template>
@@ -657,13 +671,13 @@ onBeforeUnmount(() => {
           <li v-for="item in queueItems" :key="item.id" class="photo-row" :data-state="item.status">
             <span class="photo-name" :title="item.key">{{ item.name }}</span>
             <span class="photo-size">{{ formatBytes(item.size) }}</span>
-            <span class="st-chip" :data-state="item.status">{{ queueStateLabel(item) }}</span>
+            <span class="st-chip sm" :class="chipStateCls(item)" :data-state="item.status">{{ queueStateLabel(item) }}</span>
             <span v-if="item.error" class="hint bad" data-role="item-error">{{ item.error }}</span>
             <div class="row-actions">
-              <button v-if="item.status === QUEUE_STATE.error" class="icon-btn xs" type="button" data-role="item-retry" @click="uploadQueue?.retry(item.id).then(refreshQueue)">
+              <button v-if="item.status === QUEUE_STATE.error" class="icon-btn xs" type="button" data-role="item-retry" :title="t('toolbox.photo.retryTitle')" :aria-label="t('toolbox.photo.retryTitle')" @click="uploadQueue?.retry(item.id).then(refreshQueue)">
                 <Icon name="refresh" :size="13" />
               </button>
-              <button v-if="item.status !== QUEUE_STATE.uploading" class="icon-btn xs" type="button" data-role="item-remove" @click="uploadQueue?.remove(item.id).then(refreshQueue)">
+              <button v-if="item.status !== QUEUE_STATE.uploading" class="icon-btn xs" type="button" data-role="item-remove" :title="t('toolbox.photo.removeTitle')" :aria-label="t('toolbox.photo.removeTitle')" @click="uploadQueue?.remove(item.id).then(refreshQueue)">
                 <Icon name="x" :size="13" />
               </button>
             </div>
@@ -687,14 +701,10 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+/* 外框走全局 .panel */
 .panel {
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  background: var(--card);
-  overflow: hidden;
 }
 
 .config-panel {
@@ -706,17 +716,6 @@ onBeforeUnmount(() => {
   flex: 1;
   /* 配置表单展开时列表也保持一个可用高度（不被挤成一条缝），差额交给根级滚动 */
   min-height: 320px;
-}
-
-.panel-head {
-  flex-shrink: 0;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--card-soft);
 }
 
 .panel-head b {
@@ -976,34 +975,11 @@ onBeforeUnmount(() => {
   font-size: var(--fs-xs);
 }
 
-.st-chip {
-  flex-shrink: 0;
-  padding: 1px var(--sp-2);
-  border-radius: var(--r-pill);
-  background: var(--ghost);
-  color: var(--text-weak);
-  font-size: var(--fs-xs);
-}
-
-.st-chip.ok {
-  background: var(--ok-soft, var(--ghost));
-  color: var(--ok);
-}
-
-.st-chip[data-state="uploading"] {
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
-.st-chip[data-state="done"] {
-  background: var(--ok-soft, var(--ghost));
-  color: var(--ok);
-}
-
-.st-chip[data-state="error"] {
-  background: var(--danger-soft);
-  color: var(--danger-deep);
-}
+/* 胶囊骨架与状态色都走共享的一层：.st-chip.sm + 状态类（见 primitives.css）。
+   原先这里把同一套颜色又写了一遍（--ok-soft/--ok 就是 --done-soft/--done-deep、
+   --primary-soft/--primary 就是 st-dev、--danger-soft/--danger-deep 就是 st-fail），
+   连"小一档"的形态也早有 .st-chip.sm 在用。整段删掉后唯一的中性色差别：
+   待上传/新照片这枚胶囊的底从 --ghost 变成 --well（差一档灰度），换来了全仓一致。 */
 
 .row-actions {
   display: flex;
@@ -1022,14 +998,8 @@ onBeforeUnmount(() => {
 .blank-state {
   flex: 1;
   min-height: 130px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: var(--sp-1);
-  color: var(--muted);
   font-size: var(--fs-sm);
-  text-align: center;
   padding: var(--sp-4);
 }
 

@@ -454,23 +454,23 @@ function openLink(url) {
 /* 手机端只补壳里没有的几处：难度角标、自评按钮行、要点块、出处块。
    其余（卡片/列表/按钮/标签）一律复用 mobile/app/styles/shell.css 的 m-* 体系。 */
 .m-itv-meta { display: flex; align-items: center; gap: var(--m-gap, 8px); flex-wrap: wrap; color: var(--m-muted); font-size: 12px; }
-.m-itv-question { margin: 6px 0; font-size: 16px; line-height: 1.6; }
-.m-itv-diff { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--m-soft); }
+.m-itv-question { margin: var(--sp-1) 0; font-size: 16px; line-height: 1.6; }
+.m-itv-diff { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 var(--sp-05); border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--m-soft); }
 .m-itv-diff[data-level="1"] { color: var(--m-ok); }
 .m-itv-diff[data-level="2"] { color: var(--m-primary); }
 .m-itv-diff[data-level="3"] { color: #d08700; }
-.m-itv-field { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--m-muted); }
+.m-itv-field { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); font-size: 13px; color: var(--m-muted); }
 .m-itv-field input, .m-itv-field select { flex: 1; min-width: 0; }
-.m-itv-rate { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 0; }
+.m-itv-rate { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-2); margin: var(--sp-2) 0; }
 .m-itv-rate .m-btn { width: 100%; }
 .m-itv-rate .m-btn[data-rating="again"] { color: var(--m-danger); }
 .m-itv-rate .m-btn[data-rating="good"], .m-itv-rate .m-btn[data-rating="easy"] { color: var(--m-ok); }
-.m-itv-points { padding: 10px 12px; margin: 8px 0; border: 1px dashed var(--m-primary); border-radius: 8px; }
-.m-itv-points b { display: block; margin-bottom: 6px; font-size: 13px; color: var(--m-primary); }
+.m-itv-points { padding: var(--sp-3) var(--sp-4); margin: var(--sp-2) 0; border: 1px dashed var(--m-primary); border-radius: 8px; }
+.m-itv-points b { display: block; margin-bottom: var(--sp-1); font-size: 13px; color: var(--m-primary); }
 .m-itv-points ul { margin: 0; padding-left: 1.2em; font-size: 13px; line-height: 1.8; }
-.m-itv-sources { margin-top: 10px; }
+.m-itv-sources { margin-top: var(--sp-3); }
 .m-itv-sources > b { display: block; font-size: 13px; }
-.m-itv-note { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--m-muted); }
+.m-itv-note { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-2); font-size: 13px; color: var(--m-muted); }
 .m-itv-note textarea { width: 100%; }
 .m-item-title.done { color: var(--m-ok, #3a9d5d); }
 </style>

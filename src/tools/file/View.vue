@@ -566,7 +566,7 @@ async function executeRename() {
 .editor-panel { flex: 1; display: flex; flex-direction: column; }
 .text-editor { flex: 1; min-height: 0; width: 100%; padding: var(--sp-4); resize: none; border: none; outline: none; background: transparent; color: var(--text-code); font-size: var(--fs-md); line-height: var(--lh-body); overflow: auto; }
 .text-editor.output { background: color-mix(in srgb, var(--text) 1.5%, transparent); }
-.segmented { flex-shrink: 0; display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, auto); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.segmented { flex-shrink: 0; display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, auto); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .segmented button { min-height: 30px; padding: 0 var(--sp-3); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .segmented button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .split-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }

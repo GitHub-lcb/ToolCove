@@ -257,7 +257,7 @@ watch([input, view, title], () => {
 .md-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -394,7 +394,7 @@ watch([input, view, title], () => {
 }
 
 .md-badge {
-  margin-left: 4px;
+  margin-left: var(--sp-05);
   padding: 0 5px;
   border-radius: 8px;
   background: var(--danger-soft);

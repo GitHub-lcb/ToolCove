@@ -1459,12 +1459,12 @@ async function copyValue(row) {
 
 /* 历史记录下拉 */
 .hist-wrap { position: relative; }
-.hist-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 320px; max-height: 320px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); box-shadow: var(--shadow-pop, 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent)); overflow: hidden; }
+.hist-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-raised); width: 320px; max-height: 320px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); box-shadow: var(--shadow-pop, 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent)); overflow: hidden; }
 .hp-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--card-border); }
 .hp-head b { font-size: var(--fs-md); }
 .hp-clear { padding: 2px var(--sp-2); font-size: var(--fs-sm); border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
 .hp-clear:hover { color: var(--danger); background: var(--danger-soft); }
-.hp-list { overflow: auto; padding: 4px; }
+.hp-list { overflow: auto; padding: var(--sp-05); }
 .hp-item { display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) 9px; border: none; background: transparent; border-radius: var(--r-sm); cursor: pointer; text-align: left; }
 .hp-item:hover { background: var(--primary-soft); }
 .hp-text { flex: 1; min-width: 0; font-size: var(--fs-sm); font-family: var(--font-mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1472,7 +1472,7 @@ async function copyValue(row) {
 .hp-empty { margin: 0; padding: var(--sp-5) var(--sp-4); font-size: var(--fs-sm); color: var(--muted); }
 
 /* AI mock 面板 */
-.mock-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 340px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); box-shadow: var(--shadow-pop, 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent)); overflow: hidden; }
+.mock-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-raised); width: 340px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-md); box-shadow: var(--shadow-pop, 0 8px 24px color-mix(in srgb, var(--text) 14%, transparent)); overflow: hidden; }
 .mock-body { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); }
 .mock-tip { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
 .mock-ta { width: 100%; min-height: 76px; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-sm); font-family: inherit; line-height: 1.5; color: var(--text); background: var(--bg, var(--card)); border: 1px solid var(--card-border); border-radius: var(--r-sm); outline: none; resize: vertical; box-sizing: border-box; }
@@ -1488,7 +1488,7 @@ async function copyValue(row) {
 .ai-fix:disabled { opacity: 0.6; cursor: default; }
 
 /* YAML 可疑写法提示条（琥珀） */
-.warn-bar { flex-shrink: 0; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 18px; padding: var(--sp-1) var(--sp-4); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-sm); }
+.warn-bar { flex-shrink: 0; display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--sp-05) 18px; padding: var(--sp-1) var(--sp-4); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-sm); }
 .warn-ico { flex-shrink: 0; margin-top: 1px; color: var(--warn-deep); }
 .warn-item { font-size: var(--fs-xs); color: var(--warn-deep); line-height: 1.5; cursor: help; }
 
@@ -1508,7 +1508,7 @@ async function copyValue(row) {
 .spacer { flex: 1; }
 
 /* 结果卡校验状态 */
-.rs { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; }
+.rs { display: inline-flex; align-items: center; gap: var(--sp-05); font-size: var(--fs-sm); font-weight: 600; }
 .rs.ok { color: var(--success); }
 .rs.bad { color: var(--danger); }
 
@@ -1534,13 +1534,13 @@ async function copyValue(row) {
 .ff-sep { color: var(--card-border); }
 
 /* 结构视图工具条 */
-.tsearch { display: inline-flex; align-items: center; gap: 5px; max-width: 170px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); color: var(--muted); }
+.tsearch { display: inline-flex; align-items: center; gap: 5px; max-width: 170px; padding: var(--sp-05) 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); color: var(--muted); }
 .tsearch:focus-within { border-color: var(--primary); color: var(--primary); }
 .tsearch input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: var(--fs-sm); color: var(--text); }
 .match-info { font-size: var(--fs-xs); color: var(--muted); font-family: var(--font-num); white-space: nowrap; }
 .chk { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
 .chk input { cursor: pointer; }
-.mini { padding: 4px 9px; font-size: var(--fs-xs); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; line-height: 1.4; }
+.mini { padding: var(--sp-05) 9px; font-size: var(--fs-xs); border: 1px solid var(--border-strong); background: var(--card); color: var(--muted); border-radius: var(--r-sm); cursor: pointer; line-height: 1.4; }
 .mini:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .mini.on { background: var(--primary-soft); border-color: var(--border-blue); color: var(--primary-hover); font-weight: 600; }
 .mini:disabled { opacity: 0.45; cursor: default; }
@@ -1576,7 +1576,7 @@ async function copyValue(row) {
 .tw.ghost { cursor: default; }
 .tk { color: var(--primary-hover); }
 .tk.root { color: var(--text); font-weight: 600; }
-.colon { color: var(--muted); margin: 0 4px 0 1px; }
+.colon { color: var(--muted); margin: 0 var(--sp-05) 0 1px; }
 .tsum { color: var(--muted); }
 .tv { cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
 .tv:hover { text-decoration: underline; }

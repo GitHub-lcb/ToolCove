@@ -25,6 +25,7 @@ import ReqResponsePanel from "./ReqResponsePanel.vue";
 import ReqEnvDialog from "./ReqEnvDialog.vue";
 import { askConfirm } from "../../ui/confirm.js";
 import { useI18n } from "vue-i18n";
+import { vDialog } from "../../ui/dialog.js"; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -869,7 +870,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
       <div class="req-body">
         <!-- 查询参数 -->
         <table v-if="reqTab === 'params'" class="kv">
-          <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.paramName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
+          <thead><tr><th scope="col" class="th-ck"></th><th scope="col">{{ t("toolbox.request.paramName") }}</th><th scope="col">{{ t("toolbox.request.value") }}</th><th scope="col" class="th-op"></th></tr></thead>
           <tbody>
             <tr v-for="(q, i) in query" :key="'q' + i">
               <td class="td-ck"><input v-model="q.on" type="checkbox" @change="rebuildUrl" /></td>
@@ -882,7 +883,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 
         <!-- 请求头 -->
         <table v-else-if="reqTab === 'headers'" class="kv">
-          <thead><tr><th class="th-ck"></th><th>Header</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
+          <thead><tr><th scope="col" class="th-ck"></th><th scope="col">Header</th><th scope="col">{{ t("toolbox.request.value") }}</th><th scope="col" class="th-op"></th></tr></thead>
           <tbody>
             <tr v-for="(h, i) in headers" :key="'h' + i">
               <td class="td-ck"><input v-model="h.on" type="checkbox" /></td>
@@ -912,7 +913,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
           </div>
           <!-- Form 表单：键值对（x-www-form-urlencoded） -->
           <table v-if="bodyType === 'form'" class="kv">
-            <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.fieldName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
+            <thead><tr><th scope="col" class="th-ck"></th><th scope="col">{{ t("toolbox.request.fieldName") }}</th><th scope="col">{{ t("toolbox.request.value") }}</th><th scope="col" class="th-op"></th></tr></thead>
             <tbody>
               <tr v-for="(f, i) in bodyForm" :key="'f' + i">
                 <td class="td-ck"><input v-model="f.on" type="checkbox" /></td>
@@ -997,8 +998,8 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
     </aside>
 
     <!-- 保存命名弹窗 -->
-    <div v-if="saveOpen" class="save-mask" @click.self="saveOpen = false">
-      <div class="save-box">
+    <div v-if="saveOpen" class="modal-mask save-mask" @click.self="saveOpen = false">
+      <div class="save-box" v-dialog>
         <div class="save-title">{{ t("toolbox.request.saveToColl") }}</div>
         <label class="save-label">{{ t("toolbox.request.targetColl") }}</label>
         <select v-model="saveCollId" class="save-select">
@@ -1015,8 +1016,8 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
     </div>
 
     <!-- 新建集合弹窗 -->
-    <div v-if="collOpen" class="save-mask" @click.self="collOpen = false">
-      <div class="save-box">
+    <div v-if="collOpen" class="modal-mask save-mask" @click.self="collOpen = false">
+      <div class="save-box" v-dialog>
         <div class="save-title">{{ t("toolbox.request.newCollection") }}</div>
         <input ref="collInputRef" v-model="collName" class="save-input" :placeholder="t('toolbox.request.collNamePh')" @keyup.enter="confirmColl" />
         <div class="save-acts">
@@ -1027,8 +1028,8 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
     </div>
 
     <!-- cURL 导入弹窗（居中模态，避免侧栏 overflow 裁切） -->
-    <div v-if="curlOpen" class="curl-mask" @click.self="curlOpen = false">
-      <div class="curl-box">
+    <div v-if="curlOpen" class="modal-mask curl-mask" @click.self="curlOpen = false">
+      <div class="curl-box" v-dialog>
         <div class="curl-title">{{ t("toolbox.request.importCurlTitle") }}</div>
         <textarea ref="curlInputRef" v-model="curlText" class="curl-input" spellcheck="false" :placeholder="CURL_PH"></textarea>
         <div class="curl-acts">
@@ -1072,7 +1073,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .col-main { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 
 /* 多请求页标签栏 */
-.tab-bar { flex-shrink: 0; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; }
+.tab-bar { flex-shrink: 0; display: flex; align-items: flex-end; gap: var(--sp-05); overflow-x: auto; }
 .tab { display: inline-flex; align-items: center; gap: var(--sp-1); max-width: 200px; padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-bottom: none; border-radius: var(--r-sm) var(--r-sm) 0 0; cursor: pointer; color: var(--muted); transition: color 0.15s; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tab.on { color: var(--text); border-color: var(--border-blue); background: var(--primary-soft); box-shadow: inset 0 2px 0 var(--primary); }
@@ -1082,7 +1083,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 @keyframes tab-spin { to { transform: rotate(360deg); } }
 .tab-close { flex-shrink: 0; display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
 .tab-close:hover { color: var(--danger); background: var(--danger-soft); }
-.tab-add { flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; margin-bottom: 2px; border: 1px dashed var(--card-border); background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
+.tab-add { flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; margin-bottom: var(--sp-0); border: 1px dashed var(--card-border); background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; }
 .tab-add:hover { color: var(--primary-hover); border-color: var(--border-blue); background: var(--primary-soft); }
 
 /* 环境 / 导入导出 工具条 */
@@ -1092,7 +1093,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .env-sel { padding: 7px var(--sp-1); font-size: var(--fs-sm); border: none; background: transparent; color: var(--text); cursor: pointer; outline: none; }
 .env-manage { display: inline-flex; align-items: center; gap: 5px; padding: 7px var(--sp-4); font-size: var(--fs-sm); color: var(--text); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .env-manage:hover { color: var(--primary-hover); border-color: var(--border-blue); background: var(--primary-soft); }
-.env-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-invert); background: var(--primary); border-radius: var(--r-pill); }
+.env-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--sp-05); font-size: var(--fs-xs); font-weight: 700; color: var(--text-invert); background: var(--primary); border-radius: var(--r-pill); }
 .io-btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px var(--sp-4); font-size: var(--fs-sm); color: var(--muted); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .io-btn:hover { color: var(--primary); border-color: var(--primary); }
 .hidden-file { display: none; }
@@ -1111,11 +1112,11 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .send-btn:disabled { opacity: 0.6; cursor: default; }
 
 /* 请求 tabs */
-.req-tabs { flex-shrink: 0; display: flex; gap: 4px; border-bottom: 1px solid var(--card-border); }
+.req-tabs { flex-shrink: 0; display: flex; gap: var(--sp-05); border-bottom: 1px solid var(--card-border); }
 .rt { position: relative; display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-5); font-size: var(--fs-md); color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; margin-bottom: -1px; }
 .rt:hover { color: var(--text); }
 .rt.on { color: var(--primary-hover); border-bottom-color: var(--primary); font-weight: 600; }
-.dot { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-invert); background: var(--primary); border-radius: var(--r-pill); }
+.dot { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--sp-05); font-size: var(--fs-xs); font-weight: 700; color: var(--text-invert); background: var(--primary); border-radius: var(--r-pill); }
 .dot-on { min-width: 8px; width: 8px; height: 8px; padding: 0; }
 
 .req-body { flex-shrink: 0; max-height: 38%; overflow: auto; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
@@ -1137,7 +1138,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .bt { padding: 4px var(--sp-4); font-size: var(--fs-sm); color: var(--muted); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; }
 .bt.on { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); font-weight: 600; }
 .body-warn { font-size: var(--fs-xs); color: var(--warn); }
-.body-act { display: inline-flex; align-items: center; gap: 4px; padding: 4px var(--sp-3); font-size: var(--fs-xs); color: var(--primary-hover); background: var(--primary-soft); border: 1px solid var(--border-blue); border-radius: var(--r-sm); cursor: pointer; }
+.body-act { display: inline-flex; align-items: center; gap: var(--sp-05); padding: 4px var(--sp-3); font-size: var(--fs-xs); color: var(--primary-hover); background: var(--primary-soft); border: 1px solid var(--border-blue); border-radius: var(--r-sm); cursor: pointer; }
 .body-act:hover { filter: brightness(0.98); }
 .body-input { min-height: 120px; padding: var(--sp-3); font-size: var(--fs-xs); font-family: var(--font-mono); line-height: 1.6; border: 1px solid var(--card-border); border-radius: var(--r-sm); background: color-mix(in srgb, var(--text) 2%, transparent); color: var(--text); outline: none; resize: vertical; white-space: pre-wrap; word-break: break-all; }
 .body-input:focus { border-color: var(--primary); }
@@ -1160,7 +1161,7 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .hist-input::placeholder { color: var(--muted); }
 
 /* 历史列表：限高内部滚动，避免撑满侧栏无限拉长 */
-.hist-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+.hist-list { display: flex; flex-direction: column; gap: var(--sp-0); max-height: 300px; overflow-y: auto; }
 .hist-item { display: flex; align-items: center; gap: 7px; width: 100%; padding: var(--sp-1) var(--sp-1); border: none; background: transparent; border-radius: var(--r-sm); cursor: pointer; text-align: left; }
 .hist-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .hi-url { flex: 1; min-width: 0; font-size: var(--fs-xs); font-family: var(--font-mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1171,13 +1172,13 @@ const VAR_NAME_SYNTAX = computed(() => "{{" + t("toolbox.request.varTokenName") 
 .quick { display: flex; align-items: center; justify-content: center; gap: var(--sp-1); width: 100%; padding: 9px var(--sp-1); font-size: var(--fs-sm); color: var(--text); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .quick:hover, .quick.on { color: var(--primary-hover); border-color: var(--border-blue); background: var(--primary-soft); }
 
-.tip-card { position: relative; display: flex; flex-direction: column; gap: 4px; padding: var(--sp-5) 40px var(--sp-5) var(--sp-5); background: var(--grad-promo); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
+.tip-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-05); padding: var(--sp-5) 40px var(--sp-5) var(--sp-5); background: var(--grad-promo); border: 1px solid var(--border-blue); border-radius: var(--r-md); }
 .tip-card b { font-size: var(--fs-sm); color: var(--primary-hover); }
 .tip-card span { font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body); }
 .tip-ico { position: absolute; top: 12px; right: 12px; color: var(--primary); }
 
 /* 弹窗：保存 / 新建集合共用 save-*，cURL 单独样式；环境弹窗样式见 ReqEnvDialog */
-.save-mask, .curl-mask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(17, 24, 39, 0.4); }
+/* 底座（定位/层叠/居中/遮罩色）走全局 .modal-mask，这里只留语义类名当钩子 */
 .save-box { width: 360px; padding: var(--sp-7); background: var(--card); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
 .save-title { margin-bottom: var(--sp-4); font-size: var(--fs-base); font-weight: 700; }
 .save-label { display: block; margin: var(--sp-3) 0 4px; font-size: var(--fs-xs); color: var(--muted); }

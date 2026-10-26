@@ -667,7 +667,7 @@ watch(
 }
 .seg {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-05);
   background: var(--well);
   border-radius: var(--r-sm, 8px);
   padding: 3px;
@@ -702,7 +702,7 @@ watch(
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   font-size: var(--fs-sm);
   color: var(--text-weak);
   min-width: 0;
@@ -850,7 +850,7 @@ watch(
 .progress {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
 }
 .bar {
   height: 6px;

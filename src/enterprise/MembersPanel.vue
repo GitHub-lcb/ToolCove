@@ -127,7 +127,7 @@ async function copyToken() {
 .members-add { display: flex; align-items: flex-end; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-5); }
 .members-name-field { flex: 1; min-width: 180px; }
 .members-role-field { width: 160px; }
-.members-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+.members-list { display: flex; flex-direction: column; gap: var(--sp-0); margin-top: var(--sp-2); }
 .members-row { display: flex; align-items: center; gap: var(--sp-3); padding: 6px var(--sp-2); border-bottom: 1px solid var(--border); }
 .members-row:last-child { border-bottom: none; }
 .members-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); color: var(--text); }

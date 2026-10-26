@@ -1580,9 +1580,9 @@ function onWinKey(e) {
             <table class="tbl">
               <thead>
                 <tr>
-                  <th v-if="canEdit" class="chk-col"></th>
-                  <th class="rowno-col" :title="t('toolbox.db.rowNoTip')">#</th>
-                  <th v-for="col in activeTab.result.columns" :key="col">
+                  <th scope="col" v-if="canEdit" class="chk-col"></th>
+                  <th scope="col" class="rowno-col" :title="t('toolbox.db.rowNoTip')">#</th>
+                  <th scope="col" v-for="col in activeTab.result.columns" :key="col">
                     <span
                       class="th-sort"
                       :class="{ sortable: activeTab.pageState.sortable, asc: activeTab.pageState.sortDir === col && activeTab.pageState.sortAsc, desc: activeTab.pageState.sortDir === col && !activeTab.pageState.sortAsc }"
@@ -1682,14 +1682,14 @@ function onWinKey(e) {
 /* 纯图标按钮：padding 0 + grid 居中，避免 UA 默认 padding 偏移 */
 .mini-btn.icon { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; }
 
-.conn-list { display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 44%; flex-shrink: 0; }
+.conn-list { display: flex; flex-direction: column; gap: var(--sp-05); overflow: auto; max-height: 44%; flex-shrink: 0; }
 .conn-item { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid transparent; background: transparent; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; text-align: left; }
 .conn-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .conn-item.on { background: var(--accent-soft); border-color: var(--accent-border); }
 .ci-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ci-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ci-sub { font-size: var(--fs-xs); color: var(--muted); }
-.ci-ops { display: none; align-items: center; gap: 2px; }
+.ci-ops { display: none; align-items: center; gap: var(--sp-0); }
 .conn-item:hover .ci-ops { display: inline-flex; }
 
 /* 连接状态点 */
@@ -1734,7 +1734,7 @@ kbd { padding: 1px 5px; font-size: var(--fs-xs); font-family: var(--font-mono); 
 .sql-editor { position: relative; }
 .sql-suggest {
   position: absolute; left: 44px; right: 8px; bottom: 6px; z-index: 5;
-  max-height: 176px; overflow-y: auto; padding: 4px;
+  max-height: 176px; overflow-y: auto; padding: var(--sp-05);
   background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm);
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
   display: flex; flex-direction: column; gap: 1px;
@@ -1756,7 +1756,7 @@ kbd { padding: 1px 5px; font-size: var(--fs-xs); font-family: var(--font-mono); 
 .btn.ai:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
 /* AI 面板：右侧抽屉浮层，不挤压 SQL/结果区 */
 .ai-panel {
-  position: absolute; top: 0; right: 0; bottom: 0; z-index: 20;
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: var(--z-raised);
   width: 400px; max-width: 80%;
   display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5);
   background: var(--card); border-left: 1px solid var(--accent-border);
@@ -1779,7 +1779,7 @@ kbd { padding: 1px 5px; font-size: var(--fs-xs); font-family: var(--font-mono); 
 .ai-reply pre { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); white-space: pre-wrap; word-break: break-all; color: var(--text); }
 
 /* SQL 历史 */
-.hist { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow: auto; padding: var(--sp-1); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); flex-shrink: 0; }
+.hist { display: flex; flex-direction: column; gap: var(--sp-0); max-height: 180px; overflow: auto; padding: var(--sp-1); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); flex-shrink: 0; }
 .hist-item { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-xs); cursor: pointer; transition: background 0.15s; }
 .hist-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .hist-sql { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1804,7 +1804,7 @@ kbd { padding: 1px 5px; font-size: var(--fs-xs); font-family: var(--font-mono); 
 .db-tab-x:hover { background: var(--danger-soft); color: var(--danger-deep); }
 .db-tab.on .db-tab-x { color: var(--primary); }
 .tab-spin { width: 10px; height: 10px; border: 2px solid var(--border-strong); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
-.tab-bar-tip { margin-left: auto; padding-right: 4px; font-size: var(--fs-xs); color: var(--faint); white-space: nowrap; }
+.tab-bar-tip { margin-left: auto; padding-right: var(--sp-05); font-size: var(--fs-xs); color: var(--faint); white-space: nowrap; }
 .tab-src { display: inline-flex; align-items: center; padding: 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 600; color: var(--accent-deep); background: var(--accent-soft); border-radius: var(--r-pill); line-height: 1.8; }
 .err { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); background: var(--danger-soft); border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); border-radius: var(--r-sm); color: var(--danger); font-size: var(--fs-sm); }
 .err-tag { flex-shrink: 0; font-weight: 700; }
@@ -1868,7 +1868,7 @@ kbd { padding: 1px 5px; font-size: var(--fs-xs); font-family: var(--font-mono); 
 .btn.danger { color: var(--danger); }
 .btn.danger:hover:not(:disabled) { background: var(--danger-soft); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.chk-col { width: 30px; padding: 0 4px; text-align: center; }
+.chk-col { width: 30px; padding: 0 var(--sp-05); text-align: center; }
 .chk-col input { accent-color: var(--primary); cursor: pointer; }
 /* 添加行模式：取消按钮 */
 .row-cancel { width: 20px; height: 20px; padding: 0; display: grid; place-items: center; border: none; background: transparent; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; transition: all 0.15s; }

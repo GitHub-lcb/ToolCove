@@ -54,7 +54,9 @@ const progress = computed(() => {
 </script>
 
 <template>
-  <div class="rp" :class="'rp--' + meta.tone">
+  <!-- 状态行会自己变（运行中 → 等待 → 完成），读屏要能"发生后才知道"：role=status 播报变化，
+       播报内容就是可见文字本身，不需要为它另写一份文案 -->
+  <div class="rp" :class="'rp--' + meta.tone" role="status" aria-live="polite">
     <span class="rp-state">
       <span class="tc-dot" :class="'tc-dot--' + meta.tone"></span>
       <b>{{ t(meta.key) }}</b>
@@ -76,7 +78,15 @@ const progress = computed(() => {
     <span v-if="tokens" class="rp-tokens">{{ t("agent.tokensCount", { n: tokens }) }}</span>
 
     <!-- 步数上限用一条细进度条表达：到达上限会自动收尾，用户需要提前有预期 -->
-    <span v-if="maxSteps" class="rp-track" :title="t('agent.stepsCount', { n: toolSteps }) + ' / ' + maxSteps">
+    <span
+      v-if="maxSteps"
+      class="rp-track"
+      role="progressbar"
+      aria-valuemin="0"
+      :aria-valuenow="toolSteps"
+      :aria-valuemax="maxSteps"
+      :title="t('agent.stepsCount', { n: toolSteps }) + ' / ' + maxSteps"
+    >
       <span class="rp-fill" :style="{ width: progress + '%' }"></span>
     </span>
   </div>
@@ -102,7 +112,7 @@ const progress = computed(() => {
 .rp--done .rp-state b { color: var(--done-deep); }
 .rp--fail .rp-state b { color: var(--fail-deep); }
 
-.rp-now { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
+.rp-now { display: inline-flex; align-items: center; gap: var(--sp-05); color: var(--text); }
 .rp-now code {
   padding: 1px var(--sp-1);
   background: var(--code-bg);

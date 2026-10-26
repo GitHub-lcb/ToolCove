@@ -639,7 +639,7 @@ async function copyPool(p) {
 .domain-seg { display: inline-flex; align-items: center; gap: 3px; padding: 3px; background: var(--well); border-radius: var(--r-pill); max-width: 420px; overflow-x: auto; }
 .domain-seg::-webkit-scrollbar { height: 4px; }
 .domain-seg::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-pill); }
-.seg-label { display: inline-flex; align-items: center; gap: 4px; padding: 0 9px 0 11px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); flex-shrink: 0; }
+.seg-label { display: inline-flex; align-items: center; gap: var(--sp-05); padding: 0 9px 0 11px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); flex-shrink: 0; }
 .domain-seg button { flex-shrink: 0; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px var(--sp-4); border: none; background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 600; border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, color 0.15s; }
 .domain-seg button:hover { color: var(--primary); }
 .domain-seg button.on { background: var(--card); color: var(--primary); }
@@ -685,7 +685,7 @@ async function copyPool(p) {
 .pool-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-6); border-bottom: 1px solid var(--border); transition: background 0.15s, box-shadow 0.15s; }
 .pool-row:last-child { border-bottom: none; }
 .pool-row:hover { background: color-mix(in srgb, var(--primary) 5%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
-.pool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .pool-name { font-size: var(--fs-md); font-weight: 600; font-family: var(--font-mono); word-break: break-all; }
 .pool-note { font-size: var(--fs-sm); color: var(--muted); }
 .pool-sub { display: inline-flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; }

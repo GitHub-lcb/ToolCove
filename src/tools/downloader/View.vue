@@ -360,7 +360,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="!hasItems" class="blank-state" data-role="empty">
+      <div v-if="!hasItems" class="empty blank-state" data-role="empty">
         <Icon name="download" :size="22" />
         <p>{{ t("toolbox.downloader.emptyTitle") }}</p>
         <p class="hint">{{ t("toolbox.downloader.emptyHint") }}</p>
@@ -452,14 +452,10 @@ onBeforeUnmount(() => {
   gap: var(--sp-3);
 }
 
+/* 外框（描边/圆角/底色/裁切/min-width）走全局 .panel；这里只补纵向弹性布局 */
 .panel {
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  background: var(--card);
-  overflow: hidden;
 }
 
 .add-panel {
@@ -469,17 +465,6 @@ onBeforeUnmount(() => {
 .queue-panel {
   flex: 1;
   min-height: 0;
-}
-
-.panel-head {
-  flex-shrink: 0;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--card-soft);
 }
 
 .panel-head b {
@@ -685,14 +670,8 @@ code {
 .blank-state {
   flex: 1;
   min-height: 130px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: var(--sp-1);
-  color: var(--muted);
   font-size: var(--fs-sm);
-  text-align: center;
   padding: var(--sp-4);
 }
 

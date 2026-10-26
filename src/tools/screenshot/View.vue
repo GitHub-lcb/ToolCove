@@ -195,7 +195,7 @@ async function captureNow() {
 .st-hk { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) 0; }
 .st-hk-label { width: 64px; color: var(--text-weak); font-size: var(--fs-md); }
 .st-hk-key {
-  display: inline-flex; align-items: center; gap: 4px; min-width: 168px;
+  display: inline-flex; align-items: center; gap: var(--sp-05); min-width: 168px;
   padding: var(--sp-1) var(--sp-3); background: var(--ghost); border: 1px solid var(--border-strong);
   border-radius: var(--r-sm); color: var(--text); font-size: var(--fs-md); cursor: pointer;
 }
@@ -203,7 +203,7 @@ async function captureNow() {
 .st-hk-key.rec { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 .st-hk-key kbd { padding: 1px var(--sp-1); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--card); font-family: var(--font-mono); font-size: var(--fs-xs); }
 
-.st-chip { font-size: var(--fs-xs); font-weight: 600; padding: 2px 9px; border-radius: var(--r-pill); }
+.st-chip { font-size: var(--fs-xs); font-weight: 600; padding: var(--sp-0) 9px; border-radius: var(--r-pill); }
 .st-chip.on { color: var(--success-deep); background: var(--success-soft); }
 .st-chip.warn { color: var(--warn-deep); background: var(--amber-soft); }
 .st-chip.off { color: var(--text-soft); background: var(--well); }
@@ -216,7 +216,7 @@ async function captureNow() {
 .st-keys { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
 .st-keys td { padding: 5px 0; border-top: 1px solid var(--border); }
 .st-keys-cell { width: 200px; }
-.st-keys kbd { display: inline-block; margin-right: 4px; padding: 1px 7px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--ghost); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.st-keys kbd { display: inline-block; margin-right: var(--sp-05); padding: 1px 7px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--ghost); font-family: var(--font-mono); font-size: var(--fs-xs); }
 
 .st-list { margin: 0; padding-left: var(--sp-7); color: var(--text); font-size: var(--fs-md); line-height: var(--lh-body); }
 .st-list li { margin: 3px 0; }

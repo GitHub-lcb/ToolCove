@@ -11,6 +11,7 @@ import { errText } from "../shared/errors.js";
 import { renderMarkdown } from "../shared/markdown.js";
 import { askConfirm } from "../ui/confirm.js";
 import { aiComplete } from "../ai.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -679,8 +680,9 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
   </div>
 
   <main class="content">
-    <div v-if="filteredList.length" class="prob-list">
-      <div v-for="p in filteredList" :key="p.id" class="prob-block">
+    <!-- div 拼的列表对读屏是"一堆匿名容器"；补 list/listitem 角色，条目数与边界就出来了 -->
+    <div v-if="filteredList.length" class="prob-list" role="list">
+      <div v-for="p in filteredList" :key="p.id" class="prob-block" role="listitem">
         <div class="prob-row" :class="{ done: p.status === 'done' }" @contextmenu.prevent="onProbCtx($event, p)">
           <button v-if="batchMode" class="sel-check" :class="{ on: checkedIds.has(p.id) }" :title="checkedIds.has(p.id) ? t('problem.uncheck') : t('problem.check')" @click.stop="toggleCheck(p)">
             <Icon v-if="checkedIds.has(p.id)" name="check" :size="13" />
@@ -810,7 +812,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 
   <!-- 新建 / 编辑弹窗 -->
   <div v-if="showForm" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ form.id ? t("problem.formEditTitle") : t("problem.formCreateTitle") }}</h2>
 
       <label class="field">
@@ -874,7 +876,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
   </div>
 
   <!-- 图片放大预览 -->
-  <div v-if="previewSrc" class="img-preview" @click="previewSrc = ''">
+  <div v-if="previewSrc" class="modal-mask img-preview" v-dialog="{ label: t('common.preview') }" @click="previewSrc = ''">
     <img :src="previewSrc" />
   </div>
 </template>
@@ -885,7 +887,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .section-title { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
 .filters { display: flex; gap: var(--sp-2); }
 .chip { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--card); border: 1px solid var(--border-strong); padding: var(--sp-2) 13px; border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 600; cursor: pointer; color: var(--text-soft); transition: all 0.15s; }
-.chip:hover { border-color: var(--border-steel); }
+.chip:hover { border-color: var(--border-strong); }
 .chip.active { background: var(--accent-hover); color: var(--text-invert); border-color: var(--accent-hover); }
 .chip .count { font-style: normal; background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1px 7px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 600; }
 .chip.active .count { background: rgba(255, 255, 255, 0.22); }
@@ -918,11 +920,11 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .sel-check { width: 22px; height: 22px; flex-shrink: 0; padding: 0; border: 1.5px solid var(--border-strong); border-radius: var(--r-xs); background: var(--card); cursor: pointer; display: grid; place-items: center; color: var(--text-invert); transition: all 0.15s; }
 .sel-check.on { background: var(--primary); border-color: var(--primary); }
 .batch-count { font-size: var(--fs-sm); font-weight: 600; color: var(--primary); }
-.type-chip { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); flex-shrink: 0; }
+.type-chip { display: inline-flex; align-items: center; gap: var(--sp-05); font-size: var(--fs-sm); font-weight: 600; padding: 3px 9px; border-radius: var(--r-pill); flex-shrink: 0; }
 .prob-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
 .prob-title { font-size: var(--fs-base); font-weight: 600; word-break: break-word; }
 .prob-sub { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.tag-chip { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--accent-hover); background: var(--accent-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); font-weight: 600; cursor: pointer; }
+.tag-chip { display: inline-flex; align-items: center; gap: var(--sp-05); font-size: var(--fs-xs); color: var(--accent-hover); background: var(--accent-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); font-weight: 600; cursor: pointer; }
 .mini-chip { font-size: var(--fs-xs); color: var(--text-dim); background: var(--well); padding: 1px var(--sp-2); border-radius: var(--r-pill); }
 .mini-chip.hrs { color: var(--danger-deep); background: var(--danger-soft); font-weight: 600; }
 .prob-note { font-size: var(--fs-sm); color: var(--muted); flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -931,7 +933,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .prob-detail { padding: 4px var(--sp-6) var(--sp-5) 50px; background: var(--card-soft); border-top: 1px dashed var(--border); }
 .sub-title { font-size: var(--fs-sm); font-weight: 700; color: var(--text-dim); display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-1); }
 .sub-title em { font-style: normal; font-weight: 600; color: var(--danger); }
-.log-row { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); padding: 4px 0; }
+.log-row { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); padding: var(--sp-05) 0; }
 .log-date { color: var(--text-soft); font-family: var(--font-num); }
 .log-hours { color: var(--danger); font-weight: 700; min-width: 40px; }
 .log-note { flex: 1; min-width: 0; color: var(--muted); word-break: break-word; }
@@ -950,7 +952,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 
 /* AI 分析 */
 .dom-hint { color: var(--muted) !important; font-weight: 600 !important; }
-.dom-picker { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: 4px; align-items: center; }
+.dom-picker { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-05); align-items: center; }
 .tag-input { padding: var(--sp-1) var(--sp-3); border: 1px solid var(--border-strong); border-radius: var(--r-pill); font-size: var(--fs-sm); outline: none; background: var(--card); color: var(--text); min-width: 140px; }
 .tag-input:focus { border-color: var(--accent-light); }
 .picked-tags { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-2); }
@@ -959,9 +961,9 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .dom-toggle.on { background: var(--accent-soft); border-color: var(--accent-light); color: var(--accent-hover); font-weight: 600; }
 .ai-meta { color: var(--accent-hover) !important; }
 .ai-actions { display: inline-flex; gap: var(--sp-1); margin-left: auto; flex-wrap: wrap; }
-.btn-ghost.xs2 { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--r-xs); gap: 4px; }
+.btn-ghost.xs2 { padding: var(--sp-05) 9px; font-size: var(--fs-sm); border-radius: var(--r-xs); gap: var(--sp-05); }
 .btn-ghost.xs2:disabled { opacity: 0.6; cursor: default; }
-.ai-result { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: var(--sp-3) 13px; margin: 0 0 4px; max-height: 420px; overflow: auto; }
+.ai-result { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: var(--sp-3) 13px; margin: 0 0 var(--sp-05); max-height: 420px; overflow: auto; }
 /* Markdown 渲染态：v-html 内容不带 scoped 属性，需 :deep() */
 .ai-result.md { white-space: normal; }
 .ai-result.md :deep(h3) { font-size: var(--fs-md); font-weight: 700; margin: var(--sp-3) 0 4px; }
@@ -969,23 +971,23 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .ai-result.md :deep(h5), .ai-result.md :deep(h6) { font-size: var(--fs-sm); font-weight: 700; margin: var(--sp-1) 0 2px; }
 .ai-result.md :deep(h3:first-child), .ai-result.md :deep(h4:first-child) { margin-top: 0; }
 .ai-result.md :deep(p) { margin: 3px 0; }
-.ai-result.md :deep(ul), .ai-result.md :deep(ol) { margin: 4px 0; padding-left: var(--sp-7); }
-.ai-result.md :deep(li) { margin: 2px 0; }
+.ai-result.md :deep(ul), .ai-result.md :deep(ol) { margin: var(--sp-05) 0; padding-left: var(--sp-7); }
+.ai-result.md :deep(li) { margin: var(--sp-0) 0; }
 .ai-result.md :deep(strong) { font-weight: 700; }
 .ai-result.md :deep(code) { font-family: var(--font-mono); font-size: var(--fs-xs); background: var(--ghost); border-radius: var(--r-xs); padding: 1px 5px; }
 .ai-result.md :deep(pre.md-code) { font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-body); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-sm); padding: var(--sp-2) 11px; margin: var(--sp-1) 0; overflow-x: auto; white-space: pre; }
 .ai-result.md :deep(pre.md-code) code { background: none; padding: 0; }
 .ai-result.md :deep(hr) { border: none; border-top: 1px dashed var(--border-strong); margin: var(--sp-2) 0; }
-.ai-result.md :deep(blockquote) { margin: 4px 0; padding: 2px var(--sp-3); border-left: 3px solid var(--border-strong); color: var(--muted); }
+.ai-result.md :deep(blockquote) { margin: var(--sp-05) 0; padding: 2px var(--sp-3); border-left: 3px solid var(--border-strong); color: var(--muted); }
 .ai-result.md :deep(a) { color: var(--primary); }
-.ai-running { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--accent-hover); background: var(--accent-soft); border-radius: var(--r-sm); padding: 9px 13px; margin-bottom: 4px; }
+.ai-running { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--accent-hover); background: var(--accent-soft); border-radius: var(--r-sm); padding: 9px 13px; margin-bottom: var(--sp-05); }
 .ai-abort { margin-left: auto; flex-shrink: 0; color: var(--danger-deep); }
 .no-dom { font-size: var(--fs-sm); color: var(--muted); align-self: center; }
 .type-opt.dom { flex: none; min-width: 0; padding: var(--sp-2) 13px; }
 .mini-chip.imgs { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); background: var(--primary-soft); font-weight: 600; }
 .mini-chip.ok { display: inline-flex; align-items: center; gap: 3px; color: var(--success-deep); background: var(--success-soft); font-weight: 600; }
 
-.img-grid { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: 4px; }
+.img-grid { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-05); }
 .img-cell { position: relative; width: 96px; height: 72px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); overflow: hidden; background: var(--card); }
 .img-cell img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; display: block; }
 .img-miss { display: grid; place-items: center; width: 100%; height: 100%; color: var(--muted); }
@@ -996,7 +998,11 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
 .img-add { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 96px; height: 72px; border: 1.5px dashed var(--border-strong); border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; transition: all 0.15s; }
 .img-add:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 
-.img-preview { position: fixed; inset: 0; z-index: 200; background: rgba(10, 12, 16, 0.82); display: grid; place-items: center; cursor: zoom-out; padding: 32px; }
+.img-preview {
+  z-index: var(--z-front);
+  background: var(--overlay-strong);
+  cursor: zoom-out;
+}
 .img-preview img { max-width: 100%; max-height: 100%; border-radius: var(--r-sm); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
 
 /* 空状态：底座见 globals.css（.empty / .empty-ico），这里只留本页特有的间距 */

@@ -48,6 +48,7 @@ import Icon from "../../ui/Icon.vue";
 import PromptGenPanel from "./PromptGenPanel.vue";
 import PromptHistoryPanel from "./PromptHistoryPanel.vue";
 import PromptWorkflowDialog from "./PromptWorkflowDialog.vue";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({ showToast: { type: Function, default: () => {} } });
 const { t } = useI18n();
@@ -479,7 +480,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tool-prompt">
-    <div v-if="!isDesktop" class="desktop-error" data-role="desktop-error">
+    <div v-if="!isDesktop" class="empty desktop-error" data-role="desktop-error">
       <Icon name="wand" :size="28" />
       <p>{{ t("toolbox.prompt.desktopOnly") }}</p>
     </div>
@@ -677,8 +678,8 @@ onBeforeUnmount(() => {
         </div>
       </main>
 
-      <div v-if="editorOpen" class="mask" data-role="lib-editor">
-        <div class="box">
+      <div v-if="editorOpen" class="modal-mask mask" data-role="lib-editor">
+        <div class="box" v-dialog>
           <h3>{{ form.id ? t("toolbox.prompt.editorEdit") : t("toolbox.prompt.editorNew") }}</h3>
           <label class="field">
             <span>{{ t("toolbox.prompt.editorTitle") }}</span>
@@ -720,8 +721,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="importOpen" class="mask" data-role="imp-panel">
-        <div class="box">
+      <div v-if="importOpen" class="modal-mask mask" data-role="imp-panel">
+        <div class="box" v-dialog>
           <h3>{{ t("toolbox.prompt.impTitle") }}</h3>
           <textarea v-model="importText" rows="8" :placeholder="t('toolbox.prompt.impPh')" data-role="imp-text"></textarea>
           <div class="row">
@@ -756,14 +757,9 @@ onBeforeUnmount(() => {
 }
 .desktop-error {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: var(--sp-4);
   color: var(--text-weak);
   padding: 40px;
-  text-align: center;
 }
 .lib {
   width: 320px;
@@ -830,7 +826,7 @@ onBeforeUnmount(() => {
 .lib-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-05);
 }
 .badge {
   font-size: var(--fs-xs);
@@ -849,7 +845,7 @@ onBeforeUnmount(() => {
 }
 .lib-row-actions {
   display: flex;
-  gap: 2px;
+  gap: var(--sp-0);
   opacity: 0;
 }
 .lib-row:hover .lib-row-actions,
@@ -935,7 +931,7 @@ onBeforeUnmount(() => {
 }
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: var(--sp-2) var(--sp-4) 0;
   border-bottom: 1px solid var(--card-border);
 }
@@ -981,7 +977,7 @@ onBeforeUnmount(() => {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   font-size: var(--fs-sm);
   color: var(--text-weak);
   min-width: 0;
@@ -1018,7 +1014,7 @@ onBeforeUnmount(() => {
 }
 .seg {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-05);
   background: var(--well);
   border-radius: var(--r-sm, 8px);
   padding: 3px;
@@ -1038,15 +1034,6 @@ onBeforeUnmount(() => {
 .seg button.on {
   background: var(--card);
   color: var(--text);
-}
-.mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 40;
 }
 .box {
   width: min(640px, calc(100vw - 48px));

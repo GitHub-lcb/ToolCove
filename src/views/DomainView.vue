@@ -12,6 +12,7 @@ import PoolPublish from "./PoolPublish.vue";
 import { releaseBadge } from "../publishState.js";
 import { errText } from "../shared/errors.js";
 import { DOMAIN_COLORS } from "../shared/workMeta.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -21,14 +22,16 @@ const props = defineProps({
 const { t } = useI18n();
 
 // 领域配色（循环取用，定义在 src/shared/workMeta.js：只用中性主色与领域色板，不混入 danger/success 语义色）
-// 令牌 → 基准 hex（hueShiftOf 解析 var() 引用用；改令牌值时同步更新这里）
+// 令牌 → 基准 hex（hueShiftOf 解析 var() 引用用）。**这份抄写由 uiSpec.test.js 逐条比对 tokens.css 的浅色值**：
+// 之前它靠注释提醒人同步，实测 --amber 已经漂了一个色相（抄的是 #d97706，令牌早就是 #9a6700），
+// 表现是琥珀色领域的徽章底色 hue 与它的色点不一致——不报错、不红灯，只是看着不对。
 const TOKEN_HEX = {
   "--primary": "#0969da",
   "--teal": "#0d9488",
   "--primary-hover": "#0550ae",
   // 历史领域色可能存的是退役令牌引用，保留映射（值已同步为主色蓝系）
   "--accent-hover": "#0550ae",
-  "--amber": "#d97706",
+  "--amber": "#9a6700",
   "--fuchsia": "#db2777",
   "--green": "#10b981",
   "--orange": "#f97316",
@@ -565,7 +568,7 @@ async function saveImport() {
 
   <!-- ============ 领域 新建 / 编辑弹窗 ============ -->
   <div v-if="showDomainForm" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ domainForm.id ? t("domain.edit") : t("domain.add") }}</h2>
       <label class="field">
         <span>{{ t("domain.name") }}</span>
@@ -584,7 +587,7 @@ async function saveImport() {
 
   <!-- ============ Pool 新建 / 编辑弹窗 ============ -->
   <div v-if="showPoolForm" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ poolForm.id ? t("domain.poolEdit") : t("domain.poolAdd") }}</h2>
       <label class="field">
         <span>{{ t("domain.poolName") }}</span>
@@ -610,7 +613,7 @@ async function saveImport() {
 
   <!-- ============ 批量录入 Pool 弹窗 ============ -->
   <div v-if="showBatch" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ t("domain.batchTitle") }}</h2>
       <label class="field">
         <span>{{ t("domain.batchHint") }}</span>
@@ -628,7 +631,7 @@ async function saveImport() {
 
   <!-- ============ 从旧项目导入弹窗 ============ -->
   <div v-if="showImport" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ t("domain.importTitle") }}</h2>
       <p class="import-tip">{{ t("domain.importTip", { name: current?.name }) }}</p>
       <div class="pick-list">
@@ -648,7 +651,7 @@ async function saveImport() {
 
 <style scoped>
 .detail-bar { padding: var(--sp-5) 28px 0; }
-.back-btn { display: inline-flex; align-items: center; gap: var(--sp-1); background: none; border: none; color: var(--muted); font-size: var(--fs-base); cursor: pointer; padding: 4px 0; }
+.back-btn { display: inline-flex; align-items: center; gap: var(--sp-1); background: none; border: none; color: var(--muted); font-size: var(--fs-base); cursor: pointer; padding: var(--sp-05) 0; }
 .back-btn:hover { color: var(--primary); }
 .rot90 { transform: rotate(90deg); }
 
@@ -659,7 +662,7 @@ async function saveImport() {
 .hero-main h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-xl); }
 .hero-note { margin: 0 0 var(--sp-1); color: var(--muted); font-size: var(--fs-md); }
 .hero-ops { display: flex; flex-direction: column; gap: var(--sp-2); flex-shrink: 0; }
-.prog-text { margin: 4px 0 0; font-size: var(--fs-md); color: var(--muted); }
+.prog-text { margin: var(--sp-05) 0 0; font-size: var(--fs-md); color: var(--muted); }
 
 /* toolbar */
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-6) 28px; flex-wrap: wrap; }
@@ -703,11 +706,11 @@ async function saveImport() {
 .pool-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-6); border-bottom: 1px solid var(--border); }
 .pool-row:last-child { border-bottom: none; }
 .pool-icon { width: 30px; height: 30px; flex-shrink: 0; border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; }
-.pool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .pool-name { font-size: var(--fs-md); font-weight: 600; font-family: var(--font-mono); word-break: break-all; cursor: pointer; transition: color 0.15s; }
 .pool-name:hover { color: var(--primary); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 .pool-note { font-size: var(--fs-sm); color: var(--muted); }
-.pool-path { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pool-path { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; align-items: center; gap: var(--sp-05); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .pool-path :deep(svg) { flex-shrink: 0; }
 .path-row { display: flex; gap: var(--sp-2); align-items: center; }
 .path-row input { flex: 1; min-width: 0; }

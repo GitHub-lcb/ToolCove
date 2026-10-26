@@ -17,6 +17,7 @@ import { weekRange, buildReportMaterial } from "../report/material.js";
 import { loadWeeklyPolicy, saveWeeklyPolicy, generateWeeklyDraft, archiveDraftToSnippet } from "../report/index.js";
 import WeeklySchedulePanel from "../report/WeeklySchedulePanel.vue";
 import { newIteration, newRequirement, newSubTask, addIteration, addRequirement, addSubTask, updateSubTask, removeSubTask, findIteration } from "../iterations.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -56,9 +57,15 @@ onMounted(() => {
     await load();
   });
 });
-// 配置类弹窗：禁点遮罩关闭，仅 Esc 可关（周报带未保存编辑态，防误触丢失）
+// 配置类弹窗：禁点遮罩关闭（带未保存编辑态，防误触丢失），但 Esc 必须能关——
+// 规范 §3.3「遮罩必须能被 Escape 关闭」。此前只接了周报，添加工时弹窗只能靠「取消」出去。
 function onEsc(e) {
-  if (e.key === "Escape" && showReport.value) showReport.value = false;
+  if (e.key !== "Escape") return;
+  if (showReport.value) {
+    showReport.value = false;
+    return;
+  }
+  if (showAddTask.value) showAddTask.value = false;
 }
 onMounted(() => window.addEventListener("keydown", onEsc));
 onUnmounted(() => {
@@ -272,7 +279,8 @@ const addSubHours = ref("");
 const addSubDate = ref(fmtDate(new Date()));
 const addSaving = ref(false);
 
-function openAddTask() {
+/** date 传字符串时按那一天录；工具栏的 @click 直接把它当事件传进来，此时落回今天 */
+function openAddTask(date) {
   addIterationId.value = iterations.value.length ? iterations.value[0].id : "__new";
   const it = findIteration(iterations.value, addIterationId.value);
   addRequirementId.value = it && it.items?.length ? it.items[0].id : "__new";
@@ -280,7 +288,7 @@ function openAddTask() {
   addNewRequirement.value = "";
   addSubName.value = "";
   addSubHours.value = "";
-  addSubDate.value = fmtDate(new Date());
+  addSubDate.value = typeof date === "string" && date ? date : fmtDate(new Date());
   showAddTask.value = true;
 }
 function addIterationOptions() {
@@ -879,6 +887,10 @@ async function historyEditSave() {
         <Icon name="repeat" :size="26" />
         <h4>{{ t("task.emptyDayTitle") }}</h4>
         <p>{{ t("task.emptyDayDesc") }}</p>
+        <!-- 就地给入口：说明里写着"点右上角"，但空态自己就能开录入，省一次视线移动 -->
+        <button class="btn-ghost sm" type="button" @click="openAddTask(selectedDate)">
+          <Icon name="plus" :size="13" />{{ t("task.addHours") }}
+        </button>
       </div>
       <div v-if="selectedProblemEntries.length" class="problem-supplement">
         <h5><Icon name="alert" :size="13" /> {{ t("task.sameDayProblemHours") }}</h5>
@@ -894,7 +906,7 @@ async function historyEditSave() {
 
   <!-- 添加工时弹窗（本地快速录入：迭代/需求/子任务） -->
   <div v-if="showAddTask" class="modal-mask">
-    <div class="modal add-task-modal">
+    <div class="modal add-task-modal" v-dialog>
       <h2><Icon name="plus" :size="18" /> {{ t("task.addHours") }}</h2>
       <div class="add-form">
         <label class="add-field">
@@ -940,7 +952,7 @@ async function historyEditSave() {
 
   <!-- AI 周报弹窗 -->
   <div v-if="showReport" class="modal-mask">
-    <div class="modal report-modal">
+    <div class="modal report-modal" v-dialog>
       <h2><Icon name="sparkles" :size="18" /> {{ t("task.reportModalTitle") }}</h2>
       <div class="report-ops">
         <div class="filters">
@@ -1032,7 +1044,7 @@ async function historyEditSave() {
 
   <!-- 周报历史管理弹窗（列表/详情，状态：新建 → 确认 → 归档） -->
   <div v-if="showHistory" class="modal-mask hist-mask" @click.self="showHistory = false">
-    <div class="modal hist-modal">
+    <div class="modal hist-modal" v-dialog>
       <h2><Icon name="folder" :size="18" /> {{ t("task.reportHistory") }} <em class="hist-count">{{ reports.length }}</em></h2>
 
       <div class="filters hist-filters">
@@ -1086,20 +1098,20 @@ async function historyEditSave() {
 <style scoped>
 .filters { display: flex; gap: var(--sp-2); }
 .chip { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--card); border: 1px solid var(--border-strong); padding: var(--sp-2) 13px; border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 600; cursor: pointer; color: var(--text-soft); transition: all 0.15s; }
-.chip:hover { border-color: var(--border-steel); }
+.chip:hover { border-color: var(--border-strong); }
 .chip.active { background: var(--accent-hover); color: var(--text-invert); border-color: var(--accent-hover); }
 
 .content { flex: 1; padding: var(--sp-6) 28px 36px; display: flex; flex-direction: column; gap: var(--sp-6); }
 
 /* 未提交工时：编辑态（本地子任务就地修改名称/工时/归属日） */
-.day-entry-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.day-entry-wrap { display: inline-flex; align-items: center; gap: var(--sp-05); }
 .day-entry.editing { border-style: dashed; background: var(--warn-soft); }
 /* 编辑态：chip 外观不变，仅工时数字与名称就地变为下划线输入框；日期框跟在条目后 */
 .de-edit-hours, .de-edit-name { border: none; border-bottom: 1px solid var(--primary); border-radius: 0; background: transparent; outline: none; padding: 0 1px; font-size: var(--fs-xs); font-family: inherit; color: var(--text); }
 .de-edit-hours { width: 40px; text-align: right; font-weight: 700; color: var(--accent-hover); }
 .de-edit-name { width: 150px; }
 .de-edit-hours:focus, .de-edit-name:focus { border-bottom-color: var(--primary-hover); }
-.de-h { font-style: normal; font-weight: 700; color: var(--accent-hover); margin-right: 4px; }
+.de-h { font-style: normal; font-weight: 700; color: var(--accent-hover); margin-right: var(--sp-05); }
 .de-iter { color: var(--text-soft); }
 .de-edit-date { padding: 3px var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--r-xs); font-size: var(--fs-xs); outline: none; background: var(--card); color: var(--text-soft); font-family: inherit; width: 116px; }
 .de-edit-date:focus { border-color: var(--primary); color: var(--text); }
@@ -1140,7 +1152,7 @@ async function historyEditSave() {
 .chart-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--border); pointer-events: none; }
 .chart-line.standard { z-index: 2; height: 0; border-top: 1px dashed var(--warn); background: none; }
 .chart-line em { position: absolute; right: 4px; bottom: 3px; color: var(--warn-deep); font-size: var(--fs-xs); font-style: normal; font-weight: 700; }
-.chart-columns { position: absolute; inset: 0 0 38px; display: grid; grid-template-columns: repeat(var(--month-days), minmax(22px, 1fr)); align-items: end; gap: 2px; }
+.chart-columns { position: absolute; inset: 0 0 38px; display: grid; grid-template-columns: repeat(var(--month-days), minmax(22px, 1fr)); align-items: end; gap: var(--sp-0); }
 .chart-day { position: relative; height: 100%; padding: 0; border: none; border-radius: var(--r-xs) var(--r-xs) 0 0; background: transparent; cursor: pointer; }
 .chart-day:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 6%, transparent); }
 .chart-day.selected { background: var(--primary-soft); box-shadow: inset 0 -2px 0 var(--primary); }
@@ -1159,7 +1171,7 @@ async function historyEditSave() {
 .chart-day.overtime .chart-value { color: var(--warn-deep); }
 .chart-label { position: absolute; left: 0; right: 0; bottom: -35px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); text-align: center; }
 .chart-label b { font-family: var(--font-num); font-size: var(--fs-xs); font-weight: 600; line-height: 1; }
-.chart-label small { position: relative; display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-xs); line-height: 1; white-space: nowrap; }
+.chart-label small { position: relative; display: inline-flex; align-items: center; gap: var(--sp-0); font-size: var(--fs-xs); line-height: 1; white-space: nowrap; }
 .chart-legend { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-6); margin-top: 7px; color: var(--muted); font-size: var(--fs-xs); }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .chart-legend i { width: 10px; height: 10px; border-radius: var(--r-xs); }
@@ -1177,12 +1189,13 @@ async function historyEditSave() {
 .day-item { display: flex; flex-direction: column; gap: var(--sp-1); }
 .day-entries { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .day-entry { font-size: var(--fs-xs); color: var(--text-soft); background: var(--card); border: 1px solid var(--border-strong); border-left-width: 3px; border-radius: var(--r-xs); padding: 3px var(--sp-2); }
-.day-entry em { font-style: normal; font-weight: 700; margin-right: 4px; }
+.day-entry em { font-style: normal; font-weight: 700; margin-right: var(--sp-05); }
 .de-note { color: var(--muted); }
 .selected-empty { display: flex; flex-direction: column; align-items: center; padding: 22px var(--sp-6); color: var(--muted); text-align: center; }
 .selected-empty > svg { color: var(--faint); }
 .selected-empty h4 { margin: var(--sp-2) 0 4px; color: var(--text-soft); font-size: var(--fs-md); }
 .selected-empty p { margin: 0; font-size: var(--fs-sm); }
+.selected-empty .btn-ghost { margin-top: var(--sp-3); }
 .problem-supplement { padding-top: var(--sp-4); border-top: 1px dashed var(--border); }
 .problem-supplement h5 { margin: 0 0 9px; display: flex; align-items: center; gap: 5px; color: var(--text-soft); font-size: var(--fs-sm); }
 
@@ -1195,9 +1208,9 @@ async function historyEditSave() {
 .report-modal { width: 680px; }
 .report-ops { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
 .report-btns { display: flex; gap: var(--sp-2); }
-.report-loading { display: flex; align-items: center; gap: 7px; padding: 26px 4px; color: var(--muted); font-size: var(--fs-md); justify-content: center; }
+.report-loading { display: flex; align-items: center; gap: 7px; padding: 26px var(--sp-05); color: var(--muted); font-size: var(--fs-md); justify-content: center; }
 .report-tip { font-size: var(--fs-xs); color: var(--muted); margin: var(--sp-4) 0 0; }
-.report-body { border: 1px solid var(--card-border); border-radius: var(--r-md); padding: 4px 18px; background: var(--bg); font-size: var(--fs-md); line-height: var(--lh-body); max-height: 52vh; overflow-y: auto; }
+.report-body { border: 1px solid var(--card-border); border-radius: var(--r-md); padding: var(--sp-05) 18px; background: var(--bg); font-size: var(--fs-md); line-height: var(--lh-body); max-height: 52vh; overflow-y: auto; }
 .report-body :deep(h2), .report-body :deep(h3), .report-body :deep(h4) { font-size: var(--fs-base); margin: var(--sp-5) 0 var(--sp-1); }
 .report-body :deep(p) { margin: var(--sp-2) 0; }
 .report-body :deep(ul), .report-body :deep(ol) { margin: var(--sp-1) 0; padding-left: 22px; }
@@ -1211,22 +1224,22 @@ async function historyEditSave() {
 .hist-edit { min-height: 200px; }
 
 /* 周报历史管理弹窗 */
-.hist-mask { z-index: 260; }
+.hist-mask { z-index: var(--z-front); }
 .hist-modal { width: 680px; }
 .hist-modal h2 { display: flex; align-items: center; gap: var(--sp-2); }
 .hist-count { font-style: normal; font-weight: 700; color: var(--accent-hover); background: var(--accent-soft); padding: 0 var(--sp-2); border-radius: var(--r-pill); font-size: var(--fs-xs); }
 .hist-filters { margin-bottom: var(--sp-4); }
-.hist-list { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding-right: 4px; }
+.hist-list { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding-right: var(--sp-05); }
 .hist-item { display: flex; align-items: center; gap: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
 .hist-item:hover { border-color: var(--border-strong); background: var(--card-soft); }
-.hist-badge { flex: none; display: inline-flex; align-items: center; font-size: var(--fs-xs); font-weight: 700; padding: 2px 9px; border-radius: var(--r-pill); }
+.hist-badge { flex: none; display: inline-flex; align-items: center; font-size: var(--fs-xs); font-weight: 700; padding: var(--sp-0) 9px; border-radius: var(--r-pill); }
 .hist-badge.st-pending { color: var(--primary); background: var(--primary-soft); }
 .hist-badge.st-confirmed { color: var(--success-deep); background: var(--success-soft); }
 .hist-badge.st-archived { color: var(--muted); background: color-mix(in srgb, var(--text) 8%, transparent); }
 .hist-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
 .hist-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hist-time { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
-.hist-item-ops { flex: none; display: flex; gap: 4px; }
+.hist-item-ops { flex: none; display: flex; gap: var(--sp-05); }
 .mini { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: none; background: transparent; color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .mini:hover { background: var(--primary-soft); color: var(--primary); }
 .mini:active { transform: translateY(1px); }
@@ -1252,7 +1265,7 @@ async function historyEditSave() {
 .heart-input { flex: 1; min-width: 220px; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-md); color: var(--text); }
 .heart-input:focus { outline: none; border-color: var(--primary); }
 .heart-file { display: none; }
-.heart-rounds { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--muted); }
+.heart-rounds { display: inline-flex; align-items: center; gap: var(--sp-05); font-size: var(--fs-xs); color: var(--muted); }
 .heart-thumb { position: relative; width: 44px; height: 44px; flex: none; }
 .heart-thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--r-xs); border: 1px solid var(--border-strong); display: block; }
 .heart-thumb-x { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: var(--r-pill); background: var(--danger-deep); color: var(--text-invert); border: none; display: grid; place-items: center; cursor: pointer; padding: 0; }

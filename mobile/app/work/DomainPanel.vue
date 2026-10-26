@@ -12,6 +12,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { load as loadKind, mutate, onDataChanged } from "../../../src/data/repository.js";
+import { vDialog } from '../../../src/ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -264,13 +265,13 @@ async function savePool() {
     </div>
 
     <!-- 删除确认 -->
-    <div v-if="confirmState.open" class="m-modal" data-role="confirm">
-      <div class="m-modal-card">
+    <div v-if="confirmState.open" class="m-modal" v-dialog data-role="confirm">
+      <div class="m-modal-card" v-dialog>
         <b>{{ t("common.delete") }}</b>
         <p>{{ confirmState.kind === "domain" ? t("mobile.domainRemoveMsg", { name: confirmState.name }) : t("mobile.poolRemoveMsg", { name: confirmState.name }) }}</p>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" data-role="confirm-cancel" @click="confirmState.open = false">{{ t("common.cancel") }}</button>
-          <button class="m-modal-ok" data-role="confirm-ok" @click="doRemove">{{ t("common.confirm") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog data-role="confirm-cancel" @click="confirmState.open = false">{{ t("common.cancel") }}</button>
+          <button class="m-modal-ok" v-dialog data-role="confirm-ok" @click="doRemove">{{ t("common.confirm") }}</button>
         </div>
       </div>
     </div>

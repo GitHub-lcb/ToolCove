@@ -278,7 +278,7 @@ async function storeImported(title, name, text) {
 .kb-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-05);
 }
 
 .kb-chip {
@@ -318,7 +318,7 @@ async function storeImported(title, name, text) {
 .kb-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   width: 100%;
   padding: var(--sp-2);
   border: 0;
@@ -442,7 +442,7 @@ async function storeImported(title, name, text) {
 .kb-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;

@@ -453,8 +453,8 @@ const shownError = computed(() => parsed.value.parseError || error.value);
         <table class="tt-table" data-role="table" ref="tableRef">
           <thead v-if="hasHeader">
             <tr>
-              <th class="tt-rownum"></th>
-              <th
+              <th scope="col" class="tt-rownum"></th>
+              <th scope="col"
                 v-for="(cell, index) in header"
                 :key="index"
                 class="tt-sortable"
@@ -523,7 +523,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 .tt-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -661,7 +661,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
 }
 
 .tt-arrow {
-  margin-left: 4px;
+  margin-left: var(--sp-05);
   color: var(--primary);
   font-size: 0.7rem;
 }
@@ -674,7 +674,7 @@ const shownError = computed(() => parsed.value.parseError || error.value);
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 4px;
+  gap: var(--sp-05);
 }
 .tt-map-row {
   display: flex;

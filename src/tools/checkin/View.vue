@@ -362,7 +362,7 @@ function fmtTime(at) {
 <style scoped>
 .ck { display: flex; flex-direction: column; gap: var(--fs-md); padding: var(--fs-md); height: 100%; overflow: auto; }
 .ck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--fs-md); }
-.ck-title h2 { margin: 0 0 4px; font-size: var(--fs-lg); }
+.ck-title h2 { margin: 0 0 var(--sp-05); font-size: var(--fs-lg); }
 .ck-sub { margin: 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-body); }
 .ck-actions { display: flex; gap: var(--r-xs); }
 .btn { padding: 5px 11px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--card); color: var(--text); cursor: pointer; font-size: var(--fs-sm); }
@@ -392,7 +392,7 @@ function fmtTime(at) {
 .ck-points { margin-left: auto; font-weight: 600; font-family: var(--font-num); }
 .ck-history { margin-top: var(--r-xs); font-size: var(--fs-xs); }
 .ck-history summary { cursor: pointer; color: var(--text-weak); }
-.ck-history ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ck-history ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-05); }
 .ck-history li { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 .ck-empty { padding: 18px; text-align: center; color: var(--text-weak); border: 1px dashed var(--border); border-radius: var(--r-sm); }
 .ck-editor { display: flex; flex-direction: column; gap: var(--r-xs); padding: var(--fs-md); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card); }

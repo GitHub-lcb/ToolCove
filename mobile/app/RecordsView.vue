@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { create, load as loadKind, onDataChanged, remove, update } from "../../src/data/repository.js";
 import { RECORD_KINDS, filterByStatus, filterRecords, recordSummary, sortRecords, toPayload } from "./records.js";
+import { vDialog } from '../../src/ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -231,13 +232,13 @@ async function togglePin(record) {
     </div>
 
     <!-- 删除确认：手机上没有原生确认框，用应用内弹层（也便于自动化测试） -->
-    <div v-if="confirmState.open" class="m-modal">
-      <div class="m-modal-card">
+    <div v-if="confirmState.open" class="m-modal" v-dialog>
+      <div class="m-modal-card" v-dialog>
         <b>{{ t("snippet.deleteTitle") }}</b>
         <p>{{ t("snippet.deleteMsg") }}</p>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" @click="confirmState.open = false">{{ t("common.cancel") }}</button>
-          <button class="m-modal-ok" @click="confirmRemove">{{ t("snippet.deleteOk") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog @click="confirmState.open = false">{{ t("common.cancel") }}</button>
+          <button class="m-modal-ok" v-dialog @click="confirmRemove">{{ t("snippet.deleteOk") }}</button>
         </div>
       </div>
     </div>

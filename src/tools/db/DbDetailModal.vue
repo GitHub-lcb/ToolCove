@@ -2,6 +2,7 @@
 // 表详情弹窗（DbTool 拆出）：索引 / DDL 双 Tab，懒加载由父组件负责
 import { useI18n } from "vue-i18n";
 import Icon from "../../ui/Icon.vue";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -16,7 +17,7 @@ const emit = defineEmits(["close"]);
 
 <template>
   <div class="modal-mask" @click.self="emit('close')">
-    <div class="modal db-detail-modal">
+    <div class="modal db-detail-modal" v-dialog>
       <h2>{{ t("toolbox.db.detailTitle") }} <code class="dd-table-name">{{ detail.table }}</code></h2>
       <div class="dd-tabs">
         <button class="dd-tab" :class="{ on: detail.tab === 'indexes' }" @click="switchDetailTab('indexes')">
@@ -32,10 +33,10 @@ const emit = defineEmits(["close"]);
           <table v-if="detail.indexes.length" class="tbl idx-tbl">
             <thead>
               <tr>
-                <th>{{ t("toolbox.db.idxName") }}</th>
-                <th>{{ t("toolbox.db.idxUnique") }}</th>
-                <th>{{ t("toolbox.db.idxCols") }}</th>
-                <th>{{ t("toolbox.db.idxDef") }}</th>
+                <th scope="col">{{ t("toolbox.db.idxName") }}</th>
+                <th scope="col">{{ t("toolbox.db.idxUnique") }}</th>
+                <th scope="col">{{ t("toolbox.db.idxCols") }}</th>
+                <th scope="col">{{ t("toolbox.db.idxDef") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -68,7 +69,7 @@ const emit = defineEmits(["close"]);
 .db-detail-modal { width: 720px; }
 .db-detail-modal h2 { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .dd-table-name { font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600; background: var(--well); padding: 2px var(--sp-2); border-radius: var(--r-xs); color: var(--text); }
-.dd-tabs { display: inline-flex; gap: 4px; padding: 3px; margin-bottom: var(--sp-3); background: var(--well); border-radius: var(--r-pill); }
+.dd-tabs { display: inline-flex; gap: var(--sp-05); padding: 3px; margin-bottom: var(--sp-3); background: var(--well); border-radius: var(--r-pill); }
 .dd-tab { padding: 5px var(--sp-5); font-size: var(--fs-sm); font-weight: 600; border: none; background: transparent; color: var(--muted); border-radius: var(--r-pill); cursor: pointer; transition: all 0.15s; }
 .dd-tab:hover { color: var(--primary); }
 .dd-tab.on { background: var(--card); color: var(--primary); box-shadow: 0 1px 4px rgba(16, 24, 40, 0.12); }

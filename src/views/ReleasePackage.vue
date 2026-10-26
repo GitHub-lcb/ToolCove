@@ -115,11 +115,12 @@ async function exportXls() {
       </div>
 
       <div class="tbl-wrap">
-        <table class="tbl">
+        <!-- 表名就是页签名：读屏进表格前先知道在看哪张表，不需要另写一份文案 -->
+        <table class="tbl" :aria-label="tab.title">
           <thead>
             <tr>
-              <th v-for="c in tab.cols" :key="c.key">{{ t(c.labelKey) }}</th>
-              <th class="op-col"></th>
+              <th scope="col" v-for="c in tab.cols" :key="c.key">{{ t(c.labelKey) }}</th>
+              <th scope="col" class="op-col"></th>
             </tr>
           </thead>
           <tbody>

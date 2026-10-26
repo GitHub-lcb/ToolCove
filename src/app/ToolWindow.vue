@@ -226,7 +226,7 @@ function winClose() {
 .tw-bar.compact .tw-title b { font-size: var(--fs-xs); }
 .tw-bar.compact .tw-hint { font-size: var(--fs-xs); }
 .tw-bar.compact .twc { width: 26px; height: 18px; }
-.tw-ctrls { display: flex; gap: 2px; pointer-events: auto !important; flex-shrink: 0; }
+.tw-ctrls { display: flex; gap: var(--sp-0); pointer-events: auto !important; flex-shrink: 0; }
 .twc { width: 34px; height: 30px; padding: 0; display: grid; place-items: center; border: none; background: transparent; color: var(--text-weak); border-radius: var(--r-xs); cursor: pointer; transition: background 0.15s, color 0.15s; }
 .twc:hover { background: var(--well); color: var(--text); }
 .twc.close:hover { background: var(--win-close); color: var(--text-invert); }

@@ -8,6 +8,7 @@ import { askConfirm } from "../ui/confirm.js";
 import AiExtract from "./AiExtract.vue";
 import { fieldsToContent, hasFields, fieldValue } from "../snippets.js";
 import { create, load as loadRecords, onDataChanged, remove as removeRecord, restore as restoreRecord, update as updateRecord } from "../data/repository.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -224,9 +225,13 @@ function onFormPaste(e) {
   if (!imgs.length) return;
   e.preventDefault();
   (async () => {
-    for (const it of imgs) {
-      const blob = it.getAsFile();
-      if (blob) await addFormImage(blob, it.type);
+    try {
+      for (const it of imgs) {
+        const blob = it.getAsFile();
+        if (blob) await addFormImage(blob, it.type);
+      }
+    } catch (err) {
+      props.showToast(t("snippet.saveImageFailed", { err }));
     }
   })();
 }
@@ -467,7 +472,7 @@ function fmtTime(ts) {
 
   <!-- 新建 / 编辑弹窗 -->
   <div v-if="showForm" class="modal-mask">
-    <div class="modal">
+    <div class="modal" v-dialog>
       <h2>{{ form.id ? t("snippet.formEditTitle") : t("snippet.formCreateTitle") }}</h2>
 
       <div class="row2">
@@ -525,7 +530,7 @@ function fmtTime(ts) {
   </div>
 
   <!-- 图片放大预览 -->
-  <div v-if="previewSrc" class="img-preview" @click="previewSrc = ''">
+  <div v-if="previewSrc" class="modal-mask img-preview" v-dialog="{ label: t('common.preview') }" @click="previewSrc = ''">
     <img :src="previewSrc" />
   </div>
 </template>
@@ -536,7 +541,7 @@ function fmtTime(ts) {
 .section-title { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
 .filters { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--card); border: 1px solid var(--border-strong); padding: var(--sp-2) 13px; border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 600; cursor: pointer; color: var(--text-soft); transition: all 0.15s; }
-.chip:hover { border-color: var(--border-steel); }
+.chip:hover { border-color: var(--border-strong); }
 .chip.active { background: var(--accent-hover); color: var(--text-invert); border-color: var(--accent-hover); }
 .tb-right { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .search-mini { position: relative; display: flex; align-items: center; }
@@ -554,7 +559,7 @@ function fmtTime(ts) {
 .snip-card.hi { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft), 0 16px 40px color-mix(in srgb, var(--primary) 22%, transparent); }
 
 .snip-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
-.snip-cat { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--primary); background: var(--primary-soft); padding: 2px 9px; border-radius: var(--r-pill); }
+.snip-cat { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--primary); background: var(--primary-soft); padding: var(--sp-0) 9px; border-radius: var(--r-pill); }
 .snip-title { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-base); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .snip-ops { display: flex; gap: 5px; opacity: 0; transform: translateY(-3px); transition: opacity 0.15s, transform 0.15s; flex-shrink: 0; }
 .snip-card:hover .snip-ops { opacity: 1; transform: none; }
@@ -570,7 +575,7 @@ function fmtTime(ts) {
 
 /* 字段模式：标签+值多行展示，每行可单独复制 */
 .snip-fields { flex: 1; margin: 0 0 var(--sp-4); font-size: var(--fs-sm); line-height: var(--lh-body); background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid var(--card-border); border-radius: var(--r-sm); padding: 4px var(--sp-3); max-height: 132px; overflow: auto; }
-.snip-field { display: flex; align-items: center; gap: var(--sp-3); padding: 5px 2px; border-bottom: 1px dashed var(--border); border-radius: var(--r-xs); cursor: pointer; transition: background 0.15s; }
+.snip-field { display: flex; align-items: center; gap: var(--sp-3); padding: 5px var(--sp-0); border-bottom: 1px dashed var(--border); border-radius: var(--r-xs); cursor: pointer; transition: background 0.15s; }
 .snip-field:last-child { border-bottom: none; }
 .snip-field:hover { background: var(--primary-soft); }
 .snip-field-label { flex-shrink: 0; max-width: 96px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -589,10 +594,14 @@ function fmtTime(ts) {
 .form-img-cell img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; display: block; }
 .form-img-del { position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; border: none; border-radius: var(--r-pill); background: rgba(10, 12, 16, 0.55); color: var(--text-invert); display: grid; place-items: center; cursor: pointer; padding: 0; }
 .form-img-del:hover { background: var(--danger); }
-.form-img-add { display: inline-flex; align-items: center; gap: 4px; padding: var(--sp-2) var(--sp-4); border: 1px dashed var(--border-strong); border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--muted); background: none; cursor: pointer; font-family: inherit; }
+.form-img-add { display: inline-flex; align-items: center; gap: var(--sp-05); padding: var(--sp-2) var(--sp-4); border: 1px dashed var(--border-strong); border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--muted); background: none; cursor: pointer; font-family: inherit; }
 .form-img-add:hover { color: var(--primary); border-color: var(--primary); }
 
-.img-preview { position: fixed; inset: 0; z-index: 200; background: rgba(10, 12, 16, 0.82); display: grid; place-items: center; cursor: zoom-out; padding: 32px; }
+.img-preview {
+  z-index: var(--z-front);
+  background: var(--overlay-strong);
+  cursor: zoom-out;
+}
 .img-preview img { max-width: 100%; max-height: 100%; border-radius: var(--r-sm); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
 
 .snip-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }

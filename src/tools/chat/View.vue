@@ -20,6 +20,7 @@ import { askConfirm } from "../../ui/confirm.js";
 import { useI18n } from "vue-i18n";
 import { invoke } from "../../platform/invoke.js";
 import { imageSrc } from "../../platform/image.js";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -327,7 +328,7 @@ function removePreset(p) {
 <template>
   <div class="ai-chat">
     <aside class="side">
-      <button class="new-btn" @click="newChat"><Icon name="plus" :size="14" />{{ t("toolbox.ai.newChat") }}</button>
+      <button class="btn-primary new-btn" @click="newChat"><Icon name="plus" :size="14" />{{ t("toolbox.ai.newChat") }}</button>
       <div class="sess-list">
         <div
           v-for="s in sortedSessions"
@@ -452,9 +453,9 @@ function removePreset(p) {
       </div>
     </section>
 
-    <div v-if="presetManage" class="mask" @click.self="presetManage = false">
-      <div class="preset-dlg">
-        <div class="dlg-head">
+    <div v-if="presetManage" class="modal-mask mask" @click.self="presetManage = false">
+      <div class="preset-dlg" v-dialog>
+        <div class="dlg-head" data-dialog-title>
           <b>{{ t("toolbox.ai.presetsTitle") }}</b>
           <button class="x" @click="presetManage = false"><Icon name="x" :size="14" /></button>
         </div>
@@ -485,7 +486,7 @@ function removePreset(p) {
   min-height: 0;
   gap: var(--sp-5);
 }
-.mode-bar { display:flex; gap:4px; padding:var(--sp-1) var(--sp-3); border-bottom:1px solid var(--border); }
+.mode-bar { display:flex; gap:var(--sp-05); padding:var(--sp-1) var(--sp-3); border-bottom:1px solid var(--border); }
 .mode-bar button, .agent-history button { border:1px solid var(--border); background:var(--card); color:var(--text-dim); border-radius:6px; padding:4px var(--sp-2); cursor:pointer; }
 .mode-bar button.cur { background:var(--primary-soft); color:var(--primary); border-color:var(--primary); }
 .agent-history { display:flex; gap:var(--sp-1); align-items:center; padding:5px var(--sp-3); font-size:12px; color:var(--text-dim); overflow:auto; }
@@ -493,7 +494,7 @@ function removePreset(p) {
 /* Agent 任务模式：紧凑只读时间线 + 内联确认（完整视图在 Agent 工作台） */
 .agent-run { display:flex; flex-direction:column; gap:var(--sp-2); padding:var(--sp-3) var(--sp-4); }
 .agent-empty { margin:0; font-size:12px; color:var(--text-dim); }
-.agent-step { display:flex; flex-direction:column; gap:4px; padding:var(--sp-2) var(--sp-3); font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
+.agent-step { display:flex; flex-direction:column; gap:var(--sp-05); padding:var(--sp-2) var(--sp-3); font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:6px; }
 .agent-step b { color:var(--text-dim); font-weight:600; }
 .agent-step code { color:var(--primary); }
 .agent-step pre { margin:0; padding:var(--sp-1) var(--sp-2); max-height:180px; overflow:auto; white-space:pre-wrap; word-break:break-all; background:var(--card-soft); border-radius:4px; }
@@ -513,19 +514,10 @@ function removePreset(p) {
   border-radius: var(--r-md);
   position: relative;
 }
+/* 骨架与主色底走全局 .btn-primary；这里只留整条宽度、无左右内边距这一个差异 */
 .new-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-1);
   padding: 7px 0;
-  font-weight: 600;
-  color: #fff;
-  background: var(--primary);
-  border: none;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: background 0.15s;
+  gap: var(--sp-1);
 }
 .new-btn:hover {
   background: var(--primary-hover);
@@ -536,12 +528,12 @@ function removePreset(p) {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
 }
 .sess-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 7px var(--sp-2);
   border-radius: var(--r-sm);
   cursor: pointer;
@@ -563,7 +555,7 @@ function removePreset(p) {
 }
 .sess-ops {
   display: none;
-  gap: 2px;
+  gap: var(--sp-0);
 }
 .sess-item:hover .sess-ops,
 .sess-item.active .sess-ops {
@@ -635,10 +627,10 @@ function removePreset(p) {
   left: 12px;
   right: 12px;
   bottom: 52px;
-  z-index: 10;
+  z-index: var(--z-raised);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   padding: var(--sp-1);
   background: var(--card);
   border: 1px solid var(--border-strong);
@@ -649,7 +641,7 @@ function removePreset(p) {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--sp-0);
   padding: var(--sp-1) var(--sp-2);
   background: transparent;
   border: none;
@@ -686,7 +678,7 @@ function removePreset(p) {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: 4px 2px;
+  padding: var(--sp-05) var(--sp-0);
 }
 .msgs-empty {
   margin: auto;
@@ -712,7 +704,7 @@ function removePreset(p) {
 }
 .msg.user .bubble {
   background: var(--primary);
-  color: #fff;
+  color: var(--text-invert);
 }
 .msg.ai .bubble {
   background: var(--card);
@@ -726,7 +718,7 @@ function removePreset(p) {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-05);
 }
 .msg-img,
 .pick-img img {
@@ -769,7 +761,7 @@ function removePreset(p) {
   display: grid;
   place-items: center;
   padding: 0;
-  color: #fff;
+  color: var(--text-invert);
   background: var(--danger);
   border: none;
   border-radius: 50%;
@@ -815,7 +807,7 @@ function removePreset(p) {
   border-color: var(--border-blue);
 }
 .send {
-  color: #fff;
+  color: var(--text-invert);
   background: var(--primary);
   border: none;
   font-weight: 600;
@@ -831,14 +823,6 @@ function removePreset(p) {
   color: var(--danger);
   background: var(--danger-soft);
   border: 1px solid transparent;
-}
-.mask {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.35);
 }
 .preset-dlg {
   width: 480px;
@@ -940,11 +924,11 @@ function removePreset(p) {
 .preset-add button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 5px var(--sp-4);
   font-size: var(--fs-sm);
   font-weight: 600;
-  color: #fff;
+  color: var(--text-invert);
   background: var(--primary);
   border: none;
   border-radius: var(--r-xs);

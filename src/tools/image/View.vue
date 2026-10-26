@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import { invoke } from "../../platform/invoke.js";
 import { open as openDialog, save as saveDialog } from "../../platform/dialog.js";
+import { filesFromPaths } from "../../platform/droppedFiles.js";
 import Icon from "../../ui/Icon.vue";
 import ImagePreview from "./ImagePreview.vue";
 import { formatFileSize } from "../../fileTool.js";
@@ -145,13 +146,25 @@ function onBatchChange(event) {
   event.target.value = "";
   if (files.length) loadBatchFiles(files);
 }
+// 拖放有两个入口：浏览器给 File（@drop），桌面给路径（watchFileDrop → filesFromPaths）
+function acceptFiles(files) {
+  if (activeTab.value === "icon") return;
+  const images = files.filter((file) => file.type.startsWith("image/"));
+  if (!images.length) return props.showToast(t("toolbox.image.noImgDetected"));
+  if (activeTab.value === "batch") loadBatchFiles(images);
+  else loadSingleFile(images[0]);
+}
+async function acceptDroppedPaths(paths) {
+  dragOver.value = false;
+  const { files, errors } = await filesFromPaths(paths);
+  // 全都读不到时如实说原因（"超过 20 MB" != "没检测到图片"）
+  if (!files.length && errors.length) return props.showToast(errors[0]);
+  acceptFiles(files);
+}
 function onDrop(event) {
   dragOver.value = false;
-  if (activeTab.value === "icon") return;
-  const files = [...(event.dataTransfer?.files || [])].filter((file) => file.type.startsWith("image/"));
-  if (!files.length) return props.showToast(t("toolbox.image.noImgDetected"));
-  if (activeTab.value === "batch") loadBatchFiles(files);
-  else loadSingleFile(files[0]);
+  if (isTauri) return; // 桌面端走原生拖放通道（见 onMounted），HTML5 drop 拿不到本地文件
+  acceptFiles([...(event.dataTransfer?.files || [])]);
 }
 async function decodeImage(file) {
   if (!file.type.startsWith("image/")) throw new Error(t("toolbox.image.pickImgFile"));
@@ -594,7 +607,7 @@ async function saveIconPngs() {
       if (!directory) return;
       const separator = String(directory).includes("\\") ? "\\" : "/";
       for (const item of outputs) {
-        const path = `${String(directory).replace(/[\\\/]$/, "")}${separator}${iconOutputName(iconOptions.name, item.size)}`;
+        const path = `${String(directory).replace(/[\\/]$/, "")}${separator}${iconOutputName(iconOptions.name, item.size)}`;
         await invoke("export_file_b64", { path, contentB64: await blobBase64(item.blob) });
       }
     } else {
@@ -624,10 +637,25 @@ watch(currentIconSvg, (svg) => {
   if (iconPreviewUrl.value) URL.revokeObjectURL(iconPreviewUrl.value);
   iconPreviewUrl.value = svg ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) : "";
 }, { immediate: true });
+let stopWatchDrop = null;
 onMounted(async () => {
   aiConfigured.value = await isAIConfigured();
+  // 桌面端拖文件：Tauri 把系统文件拖放拦成原生事件，只能按路径读回来（platform/dnd.js）
+  try {
+    const { watchFileDrop } = await import("../../platform/dnd.js");
+    stopWatchDrop = await watchFileDrop({
+      onFiles: acceptDroppedPaths,
+      onActive: (active) => {
+        dragOver.value = !!active && activeTab.value !== "icon";
+      },
+    });
+  } catch {
+    /* 拖放是增强能力：注册失败不影响选择文件 */
+  }
 });
 onBeforeUnmount(() => {
+  stopWatchDrop?.();
+  stopWatchDrop = null;
   clearTimeout(paletteTimer);
   resetSource();
   batchItems.value.forEach((item) => {
@@ -848,7 +876,7 @@ onBeforeUnmount(() => {
 .two-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .full-btn { width: 100%; justify-content: center; margin-top: auto; }
 .color-control { display: flex; align-items: center; gap: var(--sp-3); }
-.color-control input { width: 42px; height: 34px; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); }
+.color-control input { width: 42px; height: 34px; padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--card); }
 .color-control code { color: var(--text-code); font-size: var(--fs-sm); }
 .format-note, .saving-stat { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--card-soft); color: var(--primary-hover); }
 .format-note small, .saving-stat span { grid-column: 2; color: var(--muted); font-size: var(--fs-xs); }
@@ -882,7 +910,7 @@ onBeforeUnmount(() => {
 .palette-actions { flex-shrink: 0; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); }
 
 .icon-layout { display: grid; grid-template-columns: minmax(270px, 0.72fr) minmax(390px, 1.28fr); gap: var(--sp-3); }
-.icon-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.icon-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .icon-mode button { height: 30px; padding: 0 var(--sp-3); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .icon-mode button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .icon-prompt { min-height: 100px; resize: vertical; padding: var(--sp-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); outline: none; background: var(--card); color: var(--text); font-family: inherit; font-size: var(--fs-md); line-height: var(--lh-body); }
@@ -937,7 +965,7 @@ onBeforeUnmount(() => {
 .exif-list b { display: block; margin-top: var(--sp-1); color: var(--text-code); font-size: var(--fs-sm); }
 .no-exif { flex: 1; display: grid; place-items: center; color: var(--muted); font-size: var(--fs-sm); }
 .info-actions { flex-shrink: 0; display: flex; justify-content: flex-end; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); }
-.drop-overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); border: 2px dashed var(--primary); border-radius: var(--r-md); background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--primary-hover); pointer-events: none; }
+.drop-overlay { position: absolute; inset: 0; z-index: var(--z-raised); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); border: 2px dashed var(--primary); border-radius: var(--r-md); background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--primary-hover); pointer-events: none; }
 
 @media (max-width: 820px) {
   .single-layout, .edit-layout { grid-template-columns: minmax(235px, 0.75fr) minmax(360px, 1.25fr); overflow: auto; }

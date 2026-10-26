@@ -1259,7 +1259,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
                现在它待在消息流该在的位置（输入框上方），一旦有了第一条步骤就消失。
                示例提示也收进这里：二期那张可关闭的欢迎卡与空态标语同时在首屏出现，
                两块内容讲同一件事，互相稀释。 -->
-          <div v-if="showEmpty" class="canvas-empty">
+          <div v-if="showEmpty" class="empty canvas-empty">
             <span class="ce-mark"><Icon name="sparkles" :size="24" /></span>
             <h2 class="ce-slogan">{{ t("agent.emptySlogan") }}</h2>
             <p class="ce-hint">{{ t("agent.emptyHint") }}</p>
@@ -1482,7 +1482,8 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .agent-progress { flex-shrink: 0; }
 /* 空态居中：先说「这是什么」，再给三个一键可点的例子，最后一行安全说明。
    垂直居中而不是贴顶——空态是这一屏唯一的正文，贴顶会让下半屏空成一片。 */
-.canvas-empty { flex: 1; min-height: 320px; margin: 0; padding: var(--sp-7) 0 var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; justify-content: center; text-align: center; }
+/* 居中骨架与文字层级走全局 .empty */
+.canvas-empty { flex: 1; min-height: 320px; margin: 0; padding: var(--sp-7) 0 var(--sp-6); gap: var(--sp-2); }
 .ce-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); margin-bottom: var(--sp-3); }
 .ce-slogan { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 650; color: var(--text); letter-spacing: -0.6px; }
 .ce-hint { margin: 0; max-width: 46ch; font-size: var(--fs-md); color: var(--muted); line-height: var(--lh-body); }
@@ -1504,7 +1505,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   margin: var(--sp-5) 0 0; max-width: 52ch; text-align: center;
   font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body);
 }
-.ce-note .icon { vertical-align: -2px; margin-right: 4px; }
+.ce-note .icon { vertical-align: -2px; margin-right: var(--sp-05); }
 .ce-note .link { margin-left: var(--sp-2); }
 
 /* ---------- 未配置模型 ---------- */
@@ -1544,7 +1545,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   white-space: pre-wrap; word-break: break-word;
 }
 /* 附件跟在那句话下面，做成小胶囊：它们是「这一轮的输入材料」，不是另一条消息 */
-.msg-atts { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: 2px; }
+.msg-atts { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-0); }
 .msg-att {
   display: inline-flex; align-items: center; gap: 5px; max-width: 240px;
   padding: 2px var(--sp-2); color: var(--text-weak);
@@ -1779,7 +1780,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .mon-close { display: grid; place-items: center; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-xs); color: var(--muted); background: transparent; cursor: pointer; }
 .mon-close:hover { color: var(--text); background: var(--well); }
 .mon-close:focus-visible { outline: 2px solid var(--focus-ring); }
-.mon-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: 2px; }
+.mon-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-4); padding-right: var(--sp-0); }
 .mon-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
 .mon-label { font-size: var(--fs-xs); font-weight: 700; color: var(--faint); }
 /* 目标可能很长（一句话描述）：限高滚动而不是撑爆面板，也不截断成看不懂的半句 */
@@ -1796,7 +1797,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 /* 轨迹行：与执行记录同一份数据，密度更高——右栏是黑匣子，不是第二份日志墙 */
 .mon-search { width: 100%; height: 28px; padding: 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: var(--r-xs); }
 .mon-search:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.mon-rows { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
+.mon-rows { display: flex; flex-direction: column; gap: var(--sp-0); max-height: 220px; overflow: auto; }
 .mon-row { display: flex; align-items: center; gap: var(--sp-2); padding: 3px var(--sp-2); border-radius: var(--r-xs); font-size: var(--fs-xs); }
 .mon-row:hover { background: var(--well); }
 .mon-row-ico { flex-shrink: 0; color: var(--primary); }
@@ -1811,7 +1812,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 .mon-row-empty { margin: 0; padding: var(--sp-1) 0; font-size: var(--fs-xs); color: var(--faint); }
 .mon-hint-inline { margin: var(--sp-1) 0 0; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
 .manual-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.m-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-soft); background: var(--ghost); border: 1px solid var(--border); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.m-chip { display: inline-flex; align-items: center; gap: var(--sp-05); padding: 3px 9px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-soft); background: var(--ghost); border: 1px solid var(--border); border-radius: var(--r-pill); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .m-chip:hover { color: var(--primary-hover); background: var(--primary-soft); border-color: var(--border-blue); }
 
 

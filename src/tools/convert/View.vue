@@ -175,7 +175,7 @@ function prettyJson(value) {
           ><Icon name="copy" :size="14" /></button>
         </header>
 
-        <div v-if="error" class="error-state" role="alert">
+        <div v-if="error" class="empty error-state" role="alert">
           <span class="error-icon"><Icon name="alert" :size="20" /></span>
           <b>{{ t("toolbox.convert.convertFailed") }}</b>
           <p>{{ error }}</p>
@@ -229,7 +229,7 @@ function prettyJson(value) {
 
 .action-bar { flex-shrink: 0; min-height: 34px; display: flex; align-items: center; gap: var(--sp-3); }
 .action-spacer { flex: 1; }
-.direction { display: inline-grid; grid-template-columns: repeat(2, minmax(58px, 1fr)); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.direction { display: inline-grid; grid-template-columns: repeat(2, minmax(58px, 1fr)); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .direction button { padding: var(--sp-1) var(--sp-4); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .direction button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .url-safe { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-weak); font-size: var(--fs-sm); cursor: pointer; }
@@ -248,7 +248,8 @@ function prettyJson(value) {
 .text-editor::placeholder { color: var(--muted); font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 .output-editor { background: color-mix(in srgb, var(--text) 1.5%, transparent); }
 
-.error-state { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-7); text-align: center; }
+/* 居中骨架走全局 .empty；这里只留占满剩余高度与更紧的 gap/padding */
+.error-state { flex: 1; min-height: 0; gap: var(--sp-2); padding: var(--sp-7); }
 .error-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: var(--r-pill); background: var(--danger-soft); color: var(--danger); }
 .error-state b { font-size: var(--fs-base); }
 .error-state p { max-width: 440px; margin: 0; color: var(--danger-deep); font-size: var(--fs-sm); line-height: var(--lh-body); word-break: break-word; }

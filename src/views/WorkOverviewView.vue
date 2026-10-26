@@ -323,7 +323,7 @@ function dismissGuide() {
       <div class="col-main">
         <!-- 本周上线 -->
         <section class="card">
-          <h3 class="sec-title">
+          <h3 id="ov-activity-title" class="sec-title">
             <Icon name="rocket" :size="15" class="sec-ico" /> {{ t("overview.thisWeek") }}
             <button class="sec-more" @click="go('work', 'iteration')">{{ t("common.viewAll") }} <Icon name="chevron" :size="12" class="more-arrow" /></button>
           </h3>
@@ -349,13 +349,13 @@ function dismissGuide() {
 
         <!-- 最近动态 -->
         <section class="card">
-          <h3 class="sec-title">
+          <h3 id="ov-activity-title" class="sec-title">
             <Icon name="activity" :size="15" class="sec-ico" /> {{ t("overview.recentActivity") }}
             <button class="sec-more" @click="go('work', 'task')">{{ t("common.viewMore") }} <Icon name="chevron" :size="12" class="more-arrow" /></button>
           </h3>
-          <table v-if="recentLogs.length" class="act-table">
+          <table v-if="recentLogs.length" class="act-table" aria-labelledby="ov-activity-title">
             <thead>
-              <tr><th>{{ t("overview.colTime") }}</th><th>{{ t("overview.colType") }}</th><th>{{ t("overview.colContent") }}</th><th class="th-r">{{ t("overview.colHours") }}</th></tr>
+              <tr><th scope="col">{{ t("overview.colTime") }}</th><th scope="col">{{ t("overview.colType") }}</th><th scope="col">{{ t("overview.colContent") }}</th><th scope="col" class="th-r">{{ t("overview.colHours") }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="(l, i) in visibleLogs" :key="i" @click="go(l.module, l.tab, l.id)">
@@ -384,7 +384,7 @@ function dismissGuide() {
       <div class="col-side">
         <!-- 待产品确认 -->
         <section class="card">
-          <h3 class="sec-title"><Icon name="check" :size="15" class="sec-ico" /> {{ t("overview.awaitingProduct") }}</h3>
+          <h3 id="ov-activity-title" class="sec-title"><Icon name="check" :size="15" class="sec-ico" /> {{ t("overview.awaitingProduct") }}</h3>
           <div v-if="questionIters.length" class="q-list">
             <button v-for="q in questionIters" :key="q.id" class="q-row" @click="go('work', 'iteration', q.id)">
               <span class="q-title">{{ q.title }}</span>
@@ -417,7 +417,7 @@ function dismissGuide() {
 .greet::after { content: ""; position: absolute; right: -50px; top: -70px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%); pointer-events: none; }
 .greet-logo { width: 48px; height: 48px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--grad-brand); color: var(--text-invert); box-shadow: var(--glow-md); flex-shrink: 0; }
 .greet-main { position: relative; z-index: 1; }
-.greet-main h2 { margin: 0 0 4px; font-size: var(--fs-xl); font-weight: 700; }
+.greet-main h2 { margin: 0 0 var(--sp-05); font-size: var(--fs-xl); font-weight: 700; }
 .greet-sub { margin: 0; font-size: var(--fs-md); color: var(--muted); }
 .greet-date { margin-left: auto; position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; min-width: 64px; padding: 7px var(--sp-5); border-radius: var(--r-md); background: var(--card); border: 1px solid var(--accent-border); }
 .greet-date b { font-size: var(--fs-num); font-weight: 700; color: var(--accent-hover); line-height: 1.15; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
@@ -425,12 +425,12 @@ function dismissGuide() {
 
 /* 今日行动（聚合今日必办，胶囊清单） */
 .today-card { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-3) var(--sp-5); border-left: 3px solid var(--accent); }
-.today-label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); font-weight: 700; color: var(--accent-hover); margin-right: 2px; }
+.today-label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); font-weight: 700; color: var(--accent-hover); margin-right: var(--sp-0); }
 .today-item { display: inline-flex; align-items: center; gap: 5px; padding: 4px var(--sp-3); border: none; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-hover); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
 .today-item:hover { background: var(--accent-tint); }
 .today-item.late { background: var(--danger-soft); color: var(--danger-deep); }
 .today-item.late:hover { background: var(--danger-soft); }
-.today-more { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 4px var(--sp-3); border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); cursor: pointer; font-family: inherit; transition: color 0.15s, background 0.15s; }
+.today-more { display: inline-flex; align-items: center; gap: var(--sp-05); border: none; background: none; padding: 4px var(--sp-3); border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); cursor: pointer; font-family: inherit; transition: color 0.15s, background 0.15s; }
 .today-more:hover { color: var(--accent-hover); background: var(--accent-tint); }
 .today-more .tgl-arrow { transform: rotate(90deg); transition: transform 0.18s; }
 .today-more .tgl-arrow.up { transform: rotate(-90deg); }
@@ -438,7 +438,7 @@ function dismissGuide() {
 /* 新手引导 */
 .guide-card { display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap; padding: var(--sp-5) var(--sp-6); border-left: 3px solid var(--primary); background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 4%, var(--card)), var(--card)); }
 .guide-ico { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary-hover); box-shadow: var(--glow-sm); flex-shrink: 0; }
-.guide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.guide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .guide-main b { font-size: var(--fs-base); }
 .guide-main span { font-size: var(--fs-sm); color: var(--muted); }
 .guide-close { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: none; background: none; color: var(--muted); border-radius: var(--r-xs); cursor: pointer; transition: background 0.15s, color 0.15s; }
@@ -456,7 +456,7 @@ function dismissGuide() {
 .kpi.hours.ok .k-ico { background: var(--success-soft); color: var(--success-deep); }
 /* 焦点感知：hover 图标上浮 + 品牌光晕，暗示可点击 */
 .kpi:hover .k-ico { transform: translateY(-4px) scale(1.05); box-shadow: var(--glow-sm); }
-.k-main { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; flex: 1; min-width: 0; }
+.k-main { display: flex; flex-direction: column; gap: var(--sp-0); align-items: flex-start; flex: 1; min-width: 0; }
 .k-num { font-size: var(--fs-num); font-weight: 700; color: var(--accent); line-height: 1.1; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .k-num i { font-style: normal; font-size: var(--fs-md); font-weight: 600; color: var(--muted); }
 .kpi.amber .k-num { color: var(--amber); }
@@ -480,13 +480,14 @@ function dismissGuide() {
 .sec-more:hover { color: var(--accent-hover); background: var(--accent-tint); }
 .sec-more:disabled { opacity: 0.55; cursor: default; }
 .more-arrow { transform: rotate(-90deg); }
-.empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--sp-2) 0 var(--sp-4); text-align: center; }
-.empty-ico { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-soft); color: var(--primary); margin-bottom: 4px; }
-.empty p { margin: 0; font-size: var(--fs-md); color: var(--muted); }
+/* 居中与文字层级走全局 .empty；这里只把它压成卡片内的小尺寸 */
+.empty { gap: var(--sp-05); padding: var(--sp-2) 0 var(--sp-4); }
+.empty-ico { margin-bottom: var(--sp-05); }
+.empty p { font-size: var(--fs-md); }
 
 /* 本周上线列表 */
 .rel-list { display: flex; flex-direction: column; }
-.rel-row { display: flex; align-items: center; gap: var(--sp-5); width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); padding: 11px 4px; cursor: pointer; font-family: inherit; border-radius: var(--r-sm); transition: background 0.15s; }
+.rel-row { display: flex; align-items: center; gap: var(--sp-5); width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); padding: 11px var(--sp-05); cursor: pointer; font-family: inherit; border-radius: var(--r-sm); transition: background 0.15s; }
 .rel-row:last-child { border-bottom: none; }
 .rel-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: inset 2px 0 0 var(--primary); }
 .rel-date { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 56px; padding: 5px var(--sp-2); border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent-hover); flex-shrink: 0; white-space: nowrap; }
@@ -494,7 +495,7 @@ function dismissGuide() {
 .rel-date i { font-style: normal; font-size: var(--fs-xs); }
 .rel-date.overdue { background: var(--danger-soft); color: var(--danger-deep); }
 .rel-date.done { background: var(--success-soft); color: var(--success-deep); }
-.rel-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rel-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .rel-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); word-break: break-word; }
 .rel-ver { font-style: normal; font-size: var(--fs-xs); font-weight: 700; color: var(--accent-hover); background: var(--accent-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); margin-left: var(--sp-2); font-family: var(--font-num); }
 .rel-prog { font-size: var(--fs-sm); color: var(--muted); }
@@ -521,17 +522,17 @@ function dismissGuide() {
 .at-src { display: block; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .at-hrs { font-size: var(--fs-sm); font-weight: 700; color: var(--primary); text-align: right; white-space: nowrap; }
 /* 就地展开/收起：通栏轻量按钮，不抢视觉重心 */
-.act-toggle { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; margin-top: var(--sp-1); padding: 7px 0; border: none; background: none; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.act-toggle { display: flex; align-items: center; justify-content: center; gap: var(--sp-05); width: 100%; margin-top: var(--sp-1); padding: 7px 0; border: none; background: none; border-radius: var(--r-sm); font-size: var(--fs-sm); font-weight: 600; color: var(--muted); cursor: pointer; transition: background 0.15s, color 0.15s; }
 .act-toggle:hover { background: color-mix(in srgb, var(--primary) 6%, transparent); color: var(--primary); }
 .act-toggle .tgl-arrow { transform: rotate(90deg); transition: transform 0.18s; }
 .act-toggle .tgl-arrow.up { transform: rotate(-90deg); }
 
 /* 待确认 */
-.q-list { display: flex; flex-direction: column; gap: 4px; }
+.q-list { display: flex; flex-direction: column; gap: var(--sp-05); }
 .q-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); background: none; border: none; padding: var(--sp-2) var(--sp-1); border-radius: var(--r-sm); cursor: pointer; font-family: inherit; text-align: left; transition: background 0.15s; }
 .q-row:hover { background: color-mix(in srgb, var(--amber) 7%, transparent); }
 .q-title { font-size: var(--fs-md); color: var(--text); min-width: 0; word-break: break-word; }
-.q-count { flex-shrink: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--warn); background: var(--warn-soft); padding: 2px 9px; border-radius: var(--r-pill); }
+.q-count { flex-shrink: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--warn); background: var(--warn-soft); padding: var(--sp-0) 9px; border-radius: var(--r-pill); }
 
 @media (prefers-color-scheme: dark) {
   .card { background: var(--card); border-color: var(--border); }

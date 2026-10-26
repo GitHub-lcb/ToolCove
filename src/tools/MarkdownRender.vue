@@ -83,7 +83,7 @@ function onMdClick(e) {
   color: var(--muted);
 }
 .md :deep(p) {
-  margin: 4px 0;
+  margin: var(--sp-05) 0;
 }
 .md :deep(a) {
   color: var(--primary-hover);

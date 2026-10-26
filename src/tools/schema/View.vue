@@ -243,7 +243,7 @@ watch([json, schemaText, mode], () => {
 .s-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: 5px var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -279,7 +279,7 @@ watch([json, schemaText, mode], () => {
 .s-pane {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   min-height: 0;
 }
 

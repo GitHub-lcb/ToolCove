@@ -131,13 +131,13 @@ async function copyPatch() {
     </div>
 
     <section v-else class="result-workspace">
-      <div v-if="comparison.error" class="result-state error" role="alert">
+      <div v-if="comparison.error" class="empty result-state error" role="alert">
         <span><Icon name="alert" :size="22" /></span>
         <b>{{ t("toolbox.diff.compareFailed") }}</b>
         <p>{{ comparison.error }}</p>
       </div>
 
-      <div v-else-if="!comparison.data?.hasChanges" class="result-state same">
+      <div v-else-if="!comparison.data?.hasChanges" class="empty result-state same">
         <span><Icon name="check" :size="22" /></span>
         <b>{{ t("toolbox.diff.sameTitle") }}</b>
         <p>{{ t("toolbox.diff.sameDesc") }}</p>
@@ -183,7 +183,7 @@ async function copyPatch() {
 .toolbar { flex-shrink: 0; min-height: 38px; display: flex; align-items: center; gap: var(--sp-3); }
 .toolbar-spacer { flex: 1; }
 .toolbar :disabled { opacity: 0.45; cursor: default; }
-.view-switch { display: inline-grid; grid-template-columns: repeat(2, minmax(72px, 1fr)); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.view-switch { display: inline-grid; grid-template-columns: repeat(2, minmax(72px, 1fr)); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .view-switch button { padding: var(--sp-1) var(--sp-4); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .view-switch button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .check-option { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-weak); font-size: var(--fs-sm); white-space: nowrap; cursor: pointer; }
@@ -226,7 +226,8 @@ async function copyPatch() {
 .diff-cell.empty .line-no, .diff-cell.empty .line-sign { color: transparent; background: transparent; }
 .filtered-empty { margin: var(--sp-7); color: var(--muted); font-size: var(--fs-sm); text-align: center; }
 
-.result-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-7); text-align: center; }
+/* 居中骨架走全局 .empty */
+.result-state { flex: 1; gap: var(--sp-2); padding: var(--sp-7); }
 .result-state > span { width: 46px; height: 46px; display: grid; place-items: center; border-radius: var(--r-pill); }
 .result-state.same > span { color: var(--success-deep); background: var(--success-soft); }
 .result-state.error > span { color: var(--danger); background: var(--danger-soft); }

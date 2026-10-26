@@ -942,10 +942,10 @@ onBeforeUnmount(() => {
         <table class="record-table">
           <thead>
             <tr>
-              <th class="c-idx">{{ t("toolbox.rail.colStation") }}</th>
-              <th class="c-obs">{{ t("toolbox.rail.colType") }}</th>
-              <th class="c-hint" :title="t('toolbox.rail.colHintTip')">{{ t("toolbox.rail.colHint") }}</th>
-              <th class="c-res">{{ t("toolbox.rail.colInference") }}</th>
+              <th scope="col" class="c-idx">{{ t("toolbox.rail.colStation") }}</th>
+              <th scope="col" class="c-obs">{{ t("toolbox.rail.colType") }}</th>
+              <th scope="col" class="c-hint" :title="t('toolbox.rail.colHintTip')">{{ t("toolbox.rail.colHint") }}</th>
+              <th scope="col" class="c-res">{{ t("toolbox.rail.colInference") }}</th>
             </tr>
           </thead>
           <tbody>
@@ -1284,9 +1284,9 @@ onBeforeUnmount(() => {
 .rnode.bubble { flex: 3 1 0; height: 68px; border: 2px solid var(--primary); background: var(--primary-soft); border-radius: var(--r-md); box-shadow: var(--glow-sm); }
 .rnode.bubble.rec, .rnode.bubble.unknown { border-color: var(--border-strong); background: var(--card-soft); box-shadow: none; }
 .rnode.bubble .rc { font-size: var(--fs-lg); }
-.rnode.bubble .rw { max-width: 96%; margin-top: 2px; overflow: hidden; color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.rnode.bubble .rw { max-width: 96%; margin-top: var(--sp-0); overflow: hidden; color: var(--text-weak); font-size: var(--fs-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 /* 待定时三根占比条：宽度即概率，头名亮、其余淡（具体数字在 title 里）。 */
-.rnode.bubble .rbars { display: flex; gap: 2px; width: 84%; margin-top: 3px; }
+.rnode.bubble .rbars { display: flex; gap: var(--sp-0); width: 84%; margin-top: 3px; }
 .rnode.bubble .rbars i { height: 5px; border-radius: var(--r-pill); background: var(--border-blue); }
 .rnode.bubble .rbars i.on { background: var(--primary); }
 /* 游标：贴在上沿的小三角（中性色——主色留给「锁定」）。气泡本身就是当前站，不用再叠一个。 */
@@ -1327,13 +1327,13 @@ onBeforeUnmount(() => {
 .alert2 { display: flex; gap: var(--sp-2); align-items: flex-start; width: 100%; padding: 6px var(--sp-2); border: 1px solid var(--warn-border); border-left: 4px solid var(--warn); border-radius: var(--r-xs); background: var(--warn-soft); color: var(--warn-deep); }
 .alert2 .txt { display: flex; flex-direction: column; min-width: 0; }
 .alert2 .txt b { font-size: var(--fs-base); font-weight: 800; line-height: var(--lh-tight); }
-.alert2 .txt small { margin-top: 2px; font-size: var(--fs-xs); font-weight: 600; line-height: 1.45; }
+.alert2 .txt small { margin-top: var(--sp-0); font-size: var(--fs-xs); font-weight: 600; line-height: 1.45; }
 .alert2.tone-danger { border-color: var(--border-danger); border-left-color: var(--danger); background: var(--danger-soft); color: var(--danger-deep); }
 .act-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px var(--sp-3); border: 1px solid var(--border-blue); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-sm); font-weight: 700; }
 .act-chip.soft { border-color: var(--border-strong); background: var(--well); color: var(--text-weak); font-weight: 600; }
 .hud-note { color: var(--text-weak); font-size: var(--fs-sm); line-height: var(--lh-body); }
 /* 底部主操作：本站记全后出现，手动推进到下一站（记完提示 ≠ 已经购物完/离开本站）。 */
-.go-next { display: inline-flex; align-items: center; justify-content: center; gap: 4px; align-self: stretch; margin-top: auto; padding: 8px var(--sp-3); border: 1px solid var(--primary); border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-base); font-weight: 800; cursor: pointer; }
+.go-next { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-05); align-self: stretch; margin-top: auto; padding: 8px var(--sp-3); border: 1px solid var(--primary); border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); font-size: var(--fs-base); font-weight: 800; cursor: pointer; }
 .go-next:hover { border-color: var(--primary-hover); box-shadow: var(--glow-sm); }
 /* 还没记全：用一句浅色说明填住这块空白，告诉用户为什么还没有「去下一站」。 */
 .hud-wait { margin-top: auto; color: var(--text-dim); font-size: var(--fs-xs); line-height: 1.45; }
@@ -1356,8 +1356,8 @@ onBeforeUnmount(() => {
 }
 /* 间距收到 4px（与 .quick-row 同一约定）：头部要放下「站号 + 清除」，英文下也不折行。
    漏提示与「全部记录」已挪到工具栏——面板上只留「记这一站」这一件事。 */
-.quick-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.quick-title { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.quick-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-05); }
+.quick-title { display: inline-flex; align-items: center; gap: var(--sp-05); color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .quick-title b { color: var(--text); font-family: var(--font-num); font-size: var(--fs-base); }
 /* 「记录·当前站 第 4 站」的前缀点明这是录入光标（对应结论区的「推断」）。
    两处站号此前都是裸数字，看着像自相矛盾——现在各有一句话说明自己是什么。 */
@@ -1369,13 +1369,13 @@ onBeforeUnmount(() => {
 .quick-spacer { flex: 1; min-width: 0; }
 /* 头部的小动作按钮（清除本站 / 覆盖层关闭钮）。
    这一族原本是「上一站 / 下一站」翻站按钮，现在只服务「改记录」——高 24px。 */
-.qnav { display: inline-flex; align-items: center; justify-content: center; gap: 2px; height: 24px; padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--r-xs); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.qnav { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-0); height: 24px; padding: 0 var(--sp-1); border: 1px solid var(--border-strong); border-radius: var(--r-xs); background: var(--well); color: var(--text-weak); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
 .qnav.icon { width: 26px; padding: 0; }
 .qnav:hover:not(:disabled) { background: var(--well-hover); color: var(--text); }
 .qnav:disabled { opacity: 0.4; cursor: not-allowed; }
 /* 行内间距收到 4px（默认 --sp-1 是 6）：提示行四个按钮要挤在一行里，
    英文界面下每个按钮都比中文宽，靠这点余量才不至于折行。 */
-.quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.quick-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-05); }
 /* 标签只留两个字（类型 / 提示），完整措辞走 title。
    640 宽的窗口里提示行四个按钮必须挤成一行，标签每多一个字就从按钮身上抢走 13px。 */
 .quick-label { flex-shrink: 0; width: 34px; padding-left: 3px; border-left: 3px solid transparent; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 600; }
@@ -1383,14 +1383,14 @@ onBeforeUnmount(() => {
 .quick-label.pending { border-left-color: var(--warn); color: var(--warn-deep); font-weight: 700; }
 /* 按钮间距跟着 .quick-row 收到 4px（原为 --sp-1 的 6px）：提示行四个按钮必须挤在一行里，
    英文每个按钮都比中文宽，这三个 2px 正好是「一行 / 两行」的分界（一行 32px、两行 52px）。 */
-.quick-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.quick-btns { display: flex; flex-wrap: wrap; gap: var(--sp-05); }
 /* 字号取 --fs-sm 而非 --fs-md：这是一块紧凑面，按钮更接近 chip 而不是正文按钮。
    英文界面下提示行四个按钮（"Trade most" / "All equal" 这类）用 13.5px 排不进一行，
    折算下来每行只差 10px——降到 chip 字阶正好换回 25px 余量，中文界面也跟着宽松。
    padding 收到 5px 同理：这是整块版面里唯一一处宽度刚好够用的地方。
    再收到 4px：录入卡换到左栏后比原来窄了 27px，中文提示行需要 348px 而可用只有 354px——
    四个按钮各让 1px 就换回 8px 余量，正好把它从「刚好卡在折行线上」拉回来。 */
-.qbtn { min-width: 48px; height: 32px; padding: 0 4px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); color: var(--text); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.qbtn { min-width: 48px; height: 32px; padding: 0 var(--sp-05); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); color: var(--text); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
 .qbtn:hover { background: var(--well-hover); }
 /* 选中态不只用颜色：主色描边 + 内侧左竖条 + 同色文字（形状差异扛住色觉差异）。 */
 .qbtn.on { border-width: 2px; border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); box-shadow: inset 3px 0 0 var(--primary); }
@@ -1406,8 +1406,8 @@ onBeforeUnmount(() => {
    旧版把它们压进一句同字号同颜色的长文本，跑商间隙得自己从句子里切分信息。
    拆成三级后，扫一眼就能停在需要的那一级；颜色由 tone 决定，只染标题。 */
 .adv-title { margin: 0; color: var(--text); font-size: var(--fs-base); font-weight: 600; line-height: var(--lh-tight); }
-.adv-act { margin: 2px 0 0; color: var(--text); font-size: var(--fs-md); line-height: var(--lh-tight); }
-.adv-detail { margin: 2px 0 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: 1.5; }
+.adv-act { margin: var(--sp-0) 0 0; color: var(--text); font-size: var(--fs-md); line-height: var(--lh-tight); }
+.adv-detail { margin: var(--sp-0) 0 0; color: var(--text-weak); font-size: var(--fs-sm); line-height: 1.5; }
 .tone-success .adv-title { color: var(--success-deep); }
 .tone-warn .adv-title { color: var(--warn-deep); }
 .tone-danger .adv-title { color: var(--danger-deep); }
@@ -1481,7 +1481,7 @@ onBeforeUnmount(() => {
    两层的面板结构完全不同（一个是 16 行列表、一个是一句话的确认框），
    共用一个类名会让「找 .rec-overlay 再找里面的 .rec-panel」这种定位方式直接踩空。 */
 .rec-overlay,
-.confirm-overlay { position: absolute; inset: 0; z-index: 30; display: flex; padding: var(--sp-1); background: rgba(17, 24, 39, 0.42); backdrop-filter: blur(2px); }
+.confirm-overlay { position: absolute; inset: 0; z-index: var(--z-raised); display: flex; padding: var(--sp-1); background: var(--overlay); backdrop-filter: blur(2px); }
 .rec-panel { display: flex; flex: 1; flex-direction: column; gap: var(--sp-2); min-width: 0; min-height: 0; padding: var(--sp-3); border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
   /* 列宽一处定义：列头与数据行必须严格同轨，分开写两份迟早漂移 */
   --rec-cols: 44px 124px 128px minmax(0, 1fr); }
@@ -1495,12 +1495,12 @@ onBeforeUnmount(() => {
    提示列要放下 "Not recorded"（74px），各自再加上自己的内边距 16px 与下拉指示器 22px。
    124 / 128 就是照这条算出来的（余量各 30px / 14px）；再窄就会像旧版那样静默切尾巴。
    首列 44px 的底线是「始发站 / Origin」这两个词本身（37 / 38px）——32px 时中文会折成两行。 */
-.rec-cols { display: grid; grid-template-columns: var(--rec-cols); gap: var(--sp-1); padding: 0 0 2px; color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; line-height: 1.2; }
-.rec-row { display: grid; grid-template-columns: var(--rec-cols); align-items: center; gap: var(--sp-1); padding: 2px 0; border-top: 1px solid var(--border); }
+.rec-cols { display: grid; grid-template-columns: var(--rec-cols); gap: var(--sp-1); padding: 0 0 var(--sp-0); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; line-height: 1.2; }
+.rec-row { display: grid; grid-template-columns: var(--rec-cols); align-items: center; gap: var(--sp-1); padding: var(--sp-0) 0; border-top: 1px solid var(--border); }
 .rec-row:first-child { border-top: none; }
 /* 光标所在站：与完整版面的 tr.current 同一套底色，一眼对上「记录卡现在记的是哪一站」 */
 .rec-row.current { background: var(--primary-soft); }
-.rec-n { display: flex; align-items: baseline; gap: 2px; color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-sm); }
+.rec-n { display: flex; align-items: baseline; gap: var(--sp-0); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-sm); }
 .rec-n b { font-weight: 600; }
 .rec-cell { display: block; min-width: 0; }
 /* 推断列与完整版面同一个约定：胶囊之间可以换行，胶囊自己不断词 */

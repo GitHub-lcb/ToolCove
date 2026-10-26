@@ -673,7 +673,7 @@ async function doSplit() {
           </div>
         </div>
 
-        <div v-else class="empty-state">
+        <div v-else class="empty empty-state">
           <span class="empty-ico"><Icon name="layers" :size="28" /></span>
           <b>{{ t("toolbox.pdf.mergeEmptyTitle") }}</b>
           <p>{{ t("toolbox.pdf.mergeEmptyHint") }}</p>
@@ -767,7 +767,7 @@ async function doSplit() {
               </span>
             </div>
           </div>
-          <div v-else class="empty-state">
+          <div v-else class="empty empty-state">
             <span class="empty-ico"><Icon name="alert" :size="26" /></span>
             <b>{{ t("toolbox.pdf.splitEmptyTitle") }}</b>
             <p>{{ t("toolbox.pdf.splitEmptyHint") }}</p>
@@ -823,7 +823,8 @@ async function doSplit() {
 .range-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .range-field { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-weak); font-size: var(--fs-sm); }
 
-.panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card); }
+/* 外框走全局 .panel；这里只补"占满剩余高度 + 纵向布局" */
+.panel { flex: 1; display: flex; flex-direction: column; }
 .panel-head b { font-size: var(--fs-md); }
 .panel-head span { margin-left: auto; color: var(--muted); font-family: var(--font-num); font-size: var(--fs-xs); }
 .panel-foot { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); background: var(--card-soft); flex-wrap: wrap; }
@@ -856,28 +857,29 @@ async function doSplit() {
 .empty-ico.locked { background: var(--amber-soft); color: var(--warn-deep); }
 .row-order { flex-shrink: 0; min-width: 26px; padding: 1px var(--sp-1); border-radius: var(--r-xs); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-xs); text-align: center; }
 .row-ico { flex-shrink: 0; display: grid; place-items: center; color: var(--primary-hover); }
-.row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .row-name { overflow: hidden; font-size: var(--fs-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .row-info small { color: var(--muted); font-size: var(--fs-xs); }
 .row-err { color: var(--danger-deep); }
-.row-move { flex-shrink: 0; display: inline-flex; gap: 2px; }
+.row-move { flex-shrink: 0; display: inline-flex; gap: var(--sp-0); }
 
 /* 页面网格 */
 .grid-head { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4) var(--sp-2); flex-wrap: wrap; }
 .grid-stat { color: var(--muted); font-family: var(--font-num); font-size: var(--fs-sm); }
 .grid-stat.amber { color: var(--amber); }
 .page-grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: var(--sp-2); padding: 0 var(--sp-4) var(--sp-4); align-content: start; }
-.page-chip { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 54px; padding: var(--sp-2); border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-md); cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.page-chip { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-0); min-height: 54px; padding: var(--sp-2); border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: var(--fs-md); cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s; }
 .page-chip:hover { border-color: var(--primary); color: var(--text); }
 .page-chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-hover); font-weight: 600; }
 .page-rot { color: var(--amber); font-size: var(--fs-xs); }
 
 /* 空态 */
-.empty-state { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-7); text-align: center; }
+/* 居中骨架与文字层级走全局 .empty；这里只补"占满剩余高度"与更紧的 gap */
+.empty-state { flex: 1; min-height: 0; gap: var(--sp-2); }
 .empty-state.standalone { border: 1px dashed var(--card-border); border-radius: var(--r-md); }
 .empty-state .empty-ico { width: 46px; height: 46px; display: grid; place-items: center; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-hover); }
 .empty-state b { font-size: var(--fs-base); }
-.empty-state p { max-width: 420px; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.empty-state p { font-size: var(--fs-sm); }
 .empty-state .btn-outline { margin-top: var(--sp-2); }
 
 @media (max-width: 760px) {

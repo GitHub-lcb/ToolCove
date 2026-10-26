@@ -471,7 +471,7 @@ function openInJson(text) {
 
 /* 面包屑（工具详情） */
 .crumbs { flex-shrink: 0; display: flex; align-items: center; gap: var(--sp-2); }
-.crumb-back { display: inline-flex; align-items: center; gap: 4px; padding: 5px var(--sp-3); font-size: var(--fs-md); border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
+.crumb-back { display: inline-flex; align-items: center; gap: var(--sp-05); padding: 5px var(--sp-3); font-size: var(--fs-md); border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s; }
 .crumb-back:hover { color: var(--primary-hover); background: var(--primary-soft); }
 .crumb-sep { color: var(--muted); font-size: var(--fs-sm); }
 .crumb-ico { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-xs); background: var(--primary-soft); color: var(--primary-hover); }
@@ -497,7 +497,7 @@ function openInJson(text) {
 .lt-search input::-webkit-search-cancel-button { display: none; }
 .search-clear { width: 24px; height: 24px; flex-shrink: 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-xs); color: var(--muted); background: transparent; cursor: pointer; }
 .search-clear:hover { color: var(--danger); background: var(--danger-soft); }
-.lt-filters { display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding: 2px; background: var(--well); border-radius: var(--r-sm); }
+.lt-filters { display: flex; align-items: center; gap: var(--sp-0); flex-shrink: 0; padding: var(--sp-0); background: var(--well); border-radius: var(--r-sm); }
 .lt-filter { height: 28px; padding: 0 var(--sp-3); border: 0; border-radius: var(--r-xs); background: transparent; color: var(--text-weak); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .lt-filter:hover { color: var(--text); }
 .lt-filter.on { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(31, 35, 40, 0.08); }
@@ -508,15 +508,20 @@ function openInJson(text) {
 .lt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 244px; gap: var(--sp-5); padding-top: var(--sp-1); }
 .lt-list { min-width: 0; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-7); display: flex; flex-direction: column; gap: var(--sp-5); scrollbar-width: thin; }
 
-.lt-group { display: flex; flex-direction: column; gap: 1px; }
-.lt-group-title { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--sp-2); padding: 0 2px; font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.4px; color: var(--faint); }
+.lt-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+.lt-group-title { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-1); margin: 0 0 var(--sp-1); padding: 0 var(--sp-0); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.4px; color: var(--faint); }
+/* 卡片墙的列数跟着壳层台阶走（1180 / 900 都是 §11.2 的五档之一） */
+@media (max-width: 1180px) { .lt-group { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .lt-group { grid-template-columns: minmax(0, 1fr); } }
 .lt-group-title .icon { color: var(--faint); }
-.lt-group-count { margin-left: 2px; padding: 1px 6px; border-radius: var(--r-pill); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: 10.5px; }
+.lt-group-count { margin-left: var(--sp-0); padding: 1px var(--sp-1); border-radius: var(--r-pill); background: var(--well); color: var(--text-soft); font-family: var(--font-num); font-size: 10.5px; }
 .lt-group-hint { margin-left: var(--sp-2); font-weight: 400; letter-spacing: 0; color: var(--faint); }
 
-/* 目录行：扁平列表，悬停才出现底色——与 DSH 的插件清单同一种密度，
-   一屏能看到 10 件以上工具，而不是四张浮起的大卡。 */
-.lt-row-wrap { display: flex; align-items: center; gap: 2px; }
+/* 工具卡片墙（2026-10 由扁平目录行改成卡片）：
+   旧形态一屏能看 10 件以上，但每条只有一行字、描述被截断，1440 宽的主区右半边还长期空着；
+   卡片把「图标 → 名称 → 一句话」读全，一屏 9 件，用密度换可读性。
+   搜索的语义推荐行（.semantic-item）仍是清单形态——那里比的是分数，不是浏览。 */
+.lt-row-wrap { position: relative; display: block; }
 .lt-row {
   flex: 1; min-width: 0;
   display: grid; grid-template-columns: 28px 132px minmax(0, 1fr) auto 16px; align-items: center; gap: var(--sp-3);
@@ -528,6 +533,25 @@ function openInJson(text) {
 .lt-row:hover { background: var(--card); border-color: var(--card-border); }
 .lt-row:focus-visible { outline: 2px solid var(--accent-soft-text); outline-offset: 1px; }
 .lt-row.coming { opacity: 0.55; cursor: default; }
+
+/* 卡片：图标 → 名称 → 一句话（两行截断）→ 能力标签，标签贴底对齐 */
+.lt-row.lt-tool {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
+  min-height: 118px; padding: var(--sp-4);
+  border: 1px solid var(--card-border); border-radius: var(--r-md);
+  background: var(--card);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.lt-row.lt-tool:hover { border-color: var(--primary); box-shadow: var(--shadow-tile); background: var(--card); }
+.lt-tool .lt-ico { width: 34px; height: 34px; border-radius: var(--r-md); margin-bottom: var(--sp-1); }
+.lt-tool .lt-ico .icon { width: 18px; height: 18px; }
+.lt-tool .lt-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; width: 100%; }
+.lt-tool .lt-name { font-size: var(--fs-base); font-weight: 600; }
+.lt-tool .lt-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; line-height: var(--lh-tight); }
+.lt-tool .lt-badge,
+.lt-tool .lt-coming { margin-top: auto; }
+.lt-tool .lt-go { display: none; }
 .lt-ico { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary-hover); }
 .lt-ico.sm { width: 22px; height: 22px; border-radius: var(--r-xs); }
 .lt-main { display: contents; }
@@ -537,7 +561,7 @@ function openInJson(text) {
 .lt-coming { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
 .lt-go { flex-shrink: 0; color: var(--faint); }
 .lt-row:hover .lt-go { color: var(--primary-hover); }
-.lt-pin { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--border-steel); cursor: pointer; opacity: 0; transition: opacity 0.12s, color 0.12s, background 0.12s; }
+.lt-pin { position: absolute; top: 6px; right: 6px; z-index: 1; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-xs); background: var(--card); color: var(--border-strong); cursor: pointer; opacity: 0; transition: opacity 0.12s, color 0.12s, background 0.12s; }
 .lt-row-wrap:hover .lt-pin, .lt-pin.pinned { opacity: 1; }
 .lt-pin:hover { background: var(--warn-soft); color: var(--amber); }
 .lt-pin.pinned { color: var(--amber); }
@@ -554,7 +578,7 @@ function openInJson(text) {
 .lt-empty-block > span { font-size: var(--fs-sm); color: var(--muted); }
 .empty-ico { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-md); background: var(--well); color: var(--muted); }
 .semantic-title { font-size: var(--fs-md); }
-.semantic-list { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.semantic-list { display: flex; flex-direction: column; gap: var(--sp-0); width: 100%; }
 .semantic-item { border: 1px solid var(--card-border); display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); }
 .semantic-item .lt-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .semantic-score { flex-shrink: 0; font-family: var(--font-num); font-size: var(--fs-xs); color: var(--faint); }
@@ -569,12 +593,12 @@ function openInJson(text) {
 .lt-card-act { padding: 0; border: 0; background: none; font-size: var(--fs-xs); color: var(--muted); cursor: pointer; }
 .lt-card-act:hover { color: var(--primary-hover); }
 .lt-recent { display: flex; flex-direction: column; gap: 1px; }
-.lt-recent-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding: 4px; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-weak); text-align: left; cursor: pointer; }
+.lt-recent-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding: var(--sp-05); border: 0; border-radius: var(--r-xs); background: none; color: var(--text-weak); text-align: left; cursor: pointer; }
 .lt-recent-row:hover { background: var(--card); color: var(--text); }
 .lt-recent-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
 .lt-recent-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--faint); }
 .lt-empty-text { margin: 0; font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body); }
-.lt-tips { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body); }
+.lt-tips { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-05); font-size: var(--fs-xs); color: var(--muted); line-height: var(--lh-body); }
 
 @media (max-width: 1100px) {
   .lt-body { grid-template-columns: minmax(0, 1fr); }

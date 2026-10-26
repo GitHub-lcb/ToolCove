@@ -20,6 +20,7 @@ import { openPath, revealPath } from "../../platform/shell.js";
 import { askConfirm } from "../../ui/confirm.js";
 import { loadToolbox, saveToolbox } from "../../toolboxStore.js";
 import Icon from "../../ui/Icon.vue";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 import {
   applyDeletions,
   durationParts,
@@ -1224,8 +1225,8 @@ onBeforeUnmount(() => {
     </section>
 
     <!-- 迁移对话框：真实体积/空间都是 Rust 勘察出来的，检查没过不给开始 -->
-    <div v-if="migratePlan" class="dk-mask" data-role="migrate-dialog">
-      <div class="dk-dialog">
+    <div v-if="migratePlan" class="modal-mask dk-mask" data-role="migrate-dialog">
+      <div class="dk-dialog" v-dialog>
         <h3>{{ t("toolbox.disk.migrateTitle") }}</h3>
         <div class="dk-field">
           <span>{{ t("toolbox.disk.migrateSource") }}</span>
@@ -1276,8 +1277,8 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 迁移记录：回滚入口。记录里带 source/target，回滚时先校验「原路径确实是指向该目标的链接」 -->
-    <div v-if="showRecords" class="dk-mask" data-role="records-dialog">
-      <div class="dk-dialog wide">
+    <div v-if="showRecords" class="modal-mask dk-mask" data-role="records-dialog">
+      <div class="dk-dialog wide" v-dialog>
         <h3>{{ t("toolbox.disk.recordsTitle") }}</h3>
         <div v-if="records.length" class="dk-record-list">
           <div v-for="record in records" :key="record.source" class="dk-record" data-role="record">
@@ -1303,7 +1304,7 @@ onBeforeUnmount(() => {
 .tool-disk { display: flex; flex-direction: column; gap: var(--sp-4); height: 100%; min-height: 0; padding: var(--sp-6) 18px 18px; }
 
 .dk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-5); flex-shrink: 0; }
-.dk-head h2 { margin: 0 0 4px; font-size: var(--fs-xl); }
+.dk-head h2 { margin: 0 0 var(--sp-05); font-size: var(--fs-xl); }
 .dk-sub { margin: 0; color: var(--muted); font-size: var(--fs-md); }
 .dk-head-actions { display: flex; gap: var(--sp-2); flex-shrink: 0; }
 .danger { color: var(--danger); }
@@ -1350,7 +1351,7 @@ onBeforeUnmount(() => {
 .dk-left { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .dk-right { display: flex; flex-direction: column; gap: var(--sp-4); min-height: 0; }
 
-.dk-crumbs { display: flex; align-items: center; gap: 2px; padding: var(--sp-2) var(--sp-3) var(--sp-1); flex-wrap: wrap; }
+.dk-crumbs { display: flex; align-items: center; gap: var(--sp-0); padding: var(--sp-2) var(--sp-3) var(--sp-1); flex-wrap: wrap; }
 .dk-crumb {
   max-width: 180px; padding: 2px var(--sp-1); border: none; background: transparent; color: var(--text-weak);
   font-size: var(--fs-sm); border-radius: var(--r-xs); cursor: pointer;
@@ -1363,7 +1364,7 @@ onBeforeUnmount(() => {
 .dk-node-stat { display: flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-3) var(--sp-2); color: var(--text-soft); font-size: var(--fs-xs); border-bottom: 1px solid var(--border); flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .dk-hint { color: var(--muted); font-size: var(--fs-xs); }
 .dk-warn { color: var(--warn-deep); }
-.dk-stat-actions { margin-left: auto; display: flex; gap: 4px; }
+.dk-stat-actions { margin-left: auto; display: flex; gap: var(--sp-05); }
 
 .dk-selbar {
   display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3);
@@ -1373,9 +1374,9 @@ onBeforeUnmount(() => {
 .dk-selbar b { color: var(--primary-hover); }
 
 .dk-rows { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--sp-1) var(--sp-2); }
-.dk-row { display: flex; align-items: center; gap: 2px; border-radius: var(--r-xs); }
+.dk-row { display: flex; align-items: center; gap: var(--sp-0); border-radius: var(--r-xs); }
 .dk-row:hover { background: var(--well); }
-.dk-check { flex-shrink: 0; margin: 0 2px 0 4px; accent-color: var(--primary); cursor: pointer; }
+.dk-check { flex-shrink: 0; margin: 0 var(--sp-0) 0 var(--sp-05); accent-color: var(--primary); cursor: pointer; }
 .dk-row-main {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2);
   padding: 5px var(--sp-1); border: none; background: transparent; color: var(--text);
@@ -1409,7 +1410,7 @@ onBeforeUnmount(() => {
 .dk-treemap-empty { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: var(--muted); font-size: var(--fs-sm); pointer-events: none; }
 .dk-tip {
   position: absolute; z-index: 2; max-width: 280px; padding: 5px 9px;
-  display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+  display: flex; flex-direction: column; gap: var(--sp-0); pointer-events: none;
   background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--r-sm);
   box-shadow: var(--shadow-md, 0 4px 14px rgba(0, 0, 0, 0.25)); font-size: var(--fs-xs);
 }
@@ -1418,7 +1419,7 @@ onBeforeUnmount(() => {
 .dk-topfiles { flex: 1 1 44%; display: flex; flex-direction: column; min-height: 140px; overflow: hidden; }
 .dk-topfiles-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 9px var(--sp-4) 7px; border-bottom: 1px solid var(--border); }
 .dk-topfiles-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--sp-1) var(--sp-2); }
-.dk-file { display: flex; align-items: center; gap: 2px; border-radius: var(--r-xs); }
+.dk-file { display: flex; align-items: center; gap: var(--sp-0); border-radius: var(--r-xs); }
 .dk-file:hover { background: var(--well); }
 .dk-file-main {
   flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
@@ -1437,7 +1438,7 @@ onBeforeUnmount(() => {
 .dk-migrate-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-2); }
 
 /* 弹窗（z-index 低于全局确认弹窗：迁移确认是套在对话框之上再确认一次的） */
-.dk-mask { position: fixed; inset: 0; z-index: 200; background: rgba(15, 18, 24, 0.45); backdrop-filter: blur(3px); display: grid; place-items: center; }
+.dk-mask { backdrop-filter: blur(3px); }
 .dk-dialog { width: 560px; max-width: calc(100vw - 48px); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-lg); padding: 18px var(--sp-7) var(--sp-6); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28); }
 .dk-dialog.wide { width: 640px; }
 .dk-dialog h3 { margin: 0 0 var(--sp-4); font-size: var(--fs-lg); }
@@ -1453,7 +1454,7 @@ onBeforeUnmount(() => {
 
 .dk-record-list { display: flex; flex-direction: column; gap: var(--sp-1); max-height: 46vh; overflow-y: auto; }
 .dk-record { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); }
-.dk-record-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dk-record-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .dk-record-main b { font-size: var(--fs-sm); }
 .dk-record-main .dk-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

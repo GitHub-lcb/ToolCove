@@ -67,7 +67,7 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 .new-btn:hover { filter: brightness(1.08); }
 .cl-head { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
 .cl-count { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
-.cl-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.cl-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-0); }
 .cl-group { display: flex; flex-direction: column; }
 .cl-gh { display: flex; align-items: center; gap: 5px; padding: var(--sp-1) var(--sp-1); border-radius: var(--r-sm); cursor: pointer; transition: background 0.15s; }
 .cl-gh:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
@@ -76,7 +76,7 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 .cl-folder { color: var(--accent); flex-shrink: 0; }
 .cl-gname { flex: 1; min-width: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cl-gcount { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); }
-.cl-mini { flex-shrink: 0; display: none; padding: 2px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: var(--r-xs); }
+.cl-mini { flex-shrink: 0; display: none; padding: var(--sp-0); border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: var(--r-xs); }
 .cl-gh:hover .cl-mini, .cl-item:hover .cl-mini { display: inline-flex; }
 .cl-mini:hover { color: var(--accent-deep); background: var(--accent-soft); }
 .cl-del:hover { color: var(--danger); background: var(--danger-soft); }
@@ -85,6 +85,6 @@ const emit = defineEmits(["new-collection", "toggle-coll", "save-dialog", "remov
 .cl-item:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
 .cl-item.on { background: var(--accent-soft); }
 .cl-name { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cl-sub-empty { margin: 2px 0 4px 4px; font-size: var(--fs-xs); color: var(--muted); }
+.cl-sub-empty { margin: var(--sp-0) 0 var(--sp-05) var(--sp-05); font-size: var(--fs-xs); color: var(--muted); }
 .cl-empty { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 </style>

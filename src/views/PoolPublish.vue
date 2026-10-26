@@ -8,6 +8,7 @@ import Icon from "../ui/Icon.vue";
 import { RELEASE_STEPS, currentStepKey, doneStepsCount } from "../publishState.js";
 import { relativeTime } from "../shared/dates.js";
 import { askConfirm } from "../ui/confirm.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -111,7 +112,7 @@ onUnmounted(() => window.removeEventListener("keydown", onEsc));
 
 <template>
   <div class="modal-mask">
-    <div class="modal pub-modal">
+    <div class="modal pub-modal" v-dialog>
       <h2><Icon name="upload" :size="18" /> {{ t("release.modalTitle", { name: pool.name }) }}</h2>
       <p class="pub-sub">{{ t("release.modalSub") }}</p>
 
@@ -175,7 +176,7 @@ onUnmounted(() => window.removeEventListener("keydown", onEsc));
 .guide-box { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-3); }
 .guide-box p { margin: 0 0 var(--sp-3); font-size: var(--fs-md); color: var(--muted); }
 .preview-steps { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.preview-step { display: inline-flex; align-items: center; gap: 4px; padding: 4px var(--sp-3); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; }
+.preview-step { display: inline-flex; align-items: center; gap: var(--sp-05); padding: 4px var(--sp-3); border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; }
 
 .status-line { display: flex; align-items: center; gap: 7px; margin: 0 0 var(--sp-4); font-size: var(--fs-md); font-weight: 600; }
 .status-line.ok { color: var(--success-deep); }
@@ -187,7 +188,7 @@ onUnmounted(() => window.removeEventListener("keydown", onEsc));
 .step-no { width: 22px; height: 22px; border-radius: var(--r-pill); background: var(--well); color: var(--text-soft); font-size: var(--fs-sm); font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
 .step-no.ok { background: var(--success-deep); color: var(--text-invert); }
 .step-title { font-size: var(--fs-base); font-weight: 600; }
-.step-tag.doing { padding: 2px 9px; border-radius: var(--r-pill); background: var(--amber-soft); color: var(--warn-deep); font-size: var(--fs-xs); font-weight: 600; }
+.step-tag.doing { padding: var(--sp-0) 9px; border-radius: var(--r-pill); background: var(--amber-soft); color: var(--warn-deep); font-size: var(--fs-xs); font-weight: 600; }
 .step-time { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
 .step-body { margin-top: var(--sp-3); padding-left: 31px; display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
 .hint { margin: 0; font-size: var(--fs-md); color: var(--muted); }

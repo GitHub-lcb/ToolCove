@@ -129,7 +129,7 @@ async function saveAs() {
 }
 .pm-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-05);
   flex-shrink: 0;
 }
 .mini {

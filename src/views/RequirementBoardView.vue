@@ -6,6 +6,7 @@ import { mutate, onDataChanged } from "../data/repository.js";
 import Icon from "../ui/Icon.vue";
 import { errText } from "../shared/errors.js";
 import { DEFAULT_DAY_HOURS, createRequirementItem, parseEstimateInput, requirementMetrics } from "../requirementMetrics.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const props = defineProps({
   showToast: { type: Function, default: () => {} },
@@ -139,6 +140,11 @@ function openRequirement(row) {
   emit("navigate", { module: "work", tab: "iteration", id: row.iterationId });
 }
 
+/** 没有迭代时的空态出口：把人送到「迭代」页，而不是给一个点了必然失败的「新建需求」 */
+function goIteration() {
+  emit("navigate", { module: "work", tab: "iteration", id: null });
+}
+
 // ------- 新建需求弹窗 -------
 function openCreate() {
   if (!iterations.value.length) {
@@ -230,7 +236,15 @@ async function saveCreate() {
     </div>
 
     <div v-if="loading" class="board-empty">{{ t("requirement.loading") }}</div>
-    <div v-else class="board-columns">
+    <!-- 一条迭代都没有时，四列各喊一遍「去迭代页」太吵：说明放在顶部一条，列里只留标题 -->
+    <p v-if="!loading && !iterations.length" class="tc-note tc-note--info board-hint">
+      <Icon name="repeat" :size="15" />
+      <span>{{ t("requirement.needIterationFirst") }}</span>
+      <button class="btn-outline sm" type="button" @click="goIteration">
+        <Icon name="repeat" :size="13" />{{ t("requirement.openIterationBtn") }}
+      </button>
+    </p>
+    <div v-if="!loading" class="board-columns">
       <section v-for="column in COLUMNS" :key="column.key" class="board-column" :class="column.key">
         <header class="column-head">
           <div>
@@ -274,14 +288,25 @@ async function saveCreate() {
               <span v-if="row.metrics.overrun" class="overrun-chip"><Icon name="alert" :size="11" /> {{ t("requirement.overBy", { h: row.metrics.overHours }) }}</span>
             </div>
           </button>
-          <div v-if="!grouped[column.key].length" class="column-empty">{{ t("requirement.columnEmpty") }}</div>
+          <!-- 空态给下一步，而不是「暂无需求」四个字（规范 §4：空态文案的判据是这句话是不是废话）。
+               没有迭代时按钮不打开一个必然保存失败的弹窗，而是把人送去迭代页。 -->
+          <div v-if="!grouped[column.key].length" class="empty sm column-empty">
+            <span class="empty-ico"><Icon :name="iterations.length ? 'plus' : 'layers'" :size="18" /></span>
+            <p class="ce-title">{{ t("requirement.columnEmptyTitle", { label: column.label }) }}</p>
+            <template v-if="iterations.length">
+              <p class="ce-hint">{{ t("requirement.columnEmptyHint") }}</p>
+              <button class="btn-ghost sm" type="button" @click="openCreate">
+                <Icon name="plus" :size="13" />{{ t("requirement.createBtn") }}
+              </button>
+            </template>
+          </div>
         </div>
       </section>
     </div>
 
     <!-- ============ 新建需求弹窗（配置类：禁点遮罩，Esc 关闭） ============ -->
     <div v-if="showCreate" class="modal-mask">
-      <div class="modal create-req-modal">
+      <div class="modal create-req-modal" v-dialog>
         <h2>{{ t("requirement.createTitle") }}</h2>
 
         <label class="cr-field">
@@ -321,11 +346,11 @@ async function saveCreate() {
 .search-mini input { width: 100%; min-width: 0; padding: 9px 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: var(--fs-md); }
 .board-select { min-height: 36px; padding: 0 var(--sp-4); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--text); background: var(--card); font-size: var(--fs-md); outline: none; }
 .board-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.status-tabs { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-sm); background: var(--well); }
+.status-tabs { display: inline-flex; padding: 3px; gap: var(--sp-0); border-radius: var(--r-sm); background: var(--well); }
 .status-tabs button { min-height: 28px; padding: 0 var(--sp-3); border: 0; border-radius: var(--r-xs); color: var(--text-dim); background: transparent; cursor: pointer; font-size: var(--fs-sm); }
 .status-tabs button.active { color: var(--primary-hover); background: var(--card); box-shadow: var(--shadow); font-weight: 600; }
 .metric-rail { display: flex; align-items: baseline; margin-left: auto; white-space: nowrap; }
-.metric-item { display: flex; align-items: baseline; gap: 4px; padding: 0 var(--sp-4); }
+.metric-item { display: flex; align-items: baseline; gap: var(--sp-05); padding: 0 var(--sp-4); }
 .metric-item:first-child { padding-left: 0; }
 .metric-item:last-child { padding-right: 0; }
 .metric-item + .metric-item { border-left: 1px solid var(--border); }
@@ -352,7 +377,7 @@ async function saveCreate() {
 .state-chip, .source-chip, .overrun-chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: var(--r-pill); font-size: var(--fs-xs); }
 .state-chip { color: var(--primary-hover); background: var(--primary-soft); }
 .state-chip.done { color: var(--success-deep); background: var(--success-soft); }
-.iteration-name { min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; color: var(--text-dim); font-size: var(--fs-xs); white-space: nowrap; text-overflow: ellipsis; }
+.iteration-name { min-width: 0; display: flex; align-items: center; gap: var(--sp-05); overflow: hidden; color: var(--text-dim); font-size: var(--fs-xs); white-space: nowrap; text-overflow: ellipsis; }
 .effort-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: var(--sp-2) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .effort-item { min-width: 0; padding: 0 var(--sp-3); }
 .effort-item:first-child { padding-left: 0; }
@@ -360,7 +385,7 @@ async function saveCreate() {
 .effort-item + .effort-item { border-left: 1px solid var(--border); }
 .effort-item span { display: block; color: var(--text-dim); font-size: var(--fs-xs); }
 .effort-item b { display: block; margin-top: var(--sp-1); overflow: hidden; font-family: var(--font-num); font-size: var(--fs-md); text-overflow: ellipsis; white-space: nowrap; }
-.effort-item em { display: block; margin-top: 2px; color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); font-style: normal; }
+.effort-item em { display: block; margin-top: var(--sp-0); color: var(--text-dim); font-family: var(--font-num); font-size: var(--fs-xs); font-style: normal; }
 .effort-item.completed b { color: var(--success-deep); }
 .usage { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-2); }
 .usage > span { height: 5px; overflow: hidden; border-radius: var(--r-pill); background: var(--well); }
@@ -371,7 +396,13 @@ async function saveCreate() {
 .card-foot { min-height: 20px; display: flex; justify-content: space-between; gap: var(--sp-2); margin-top: auto; }
 .source-chip { color: var(--text-dim); background: var(--well); }
 .overrun-chip { margin-left: auto; color: var(--danger-deep); background: var(--danger-soft); font-weight: 600; }
-.column-empty, .board-empty { padding: 32px var(--sp-4); text-align: center; color: var(--text-dim); font-size: var(--fs-sm); }
+.board-empty { padding: 32px var(--sp-4); text-align: center; color: var(--text-dim); font-size: var(--fs-sm); }
+.board-hint { align-items: center; margin: 0 0 var(--sp-3); }
+.board-hint > span { flex: 1; min-width: 0; }
+/* 列内空态复用 .empty 的骨架（图标/标题/说明/动作），只压紧间距——一列只有约 300px 宽 */
+.column-empty { padding: var(--sp-5) var(--sp-3); gap: var(--sp-2); }
+.column-empty .ce-title { margin: 0; font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.column-empty .ce-hint { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-tight); color: var(--muted); }
 
 /* 新建需求弹窗 */
 .create-req-modal { width: 460px; }

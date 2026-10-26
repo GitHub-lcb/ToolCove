@@ -12,6 +12,7 @@ import { create, load as loadRecords, onDataChanged, remove as removeRecord, upd
 import { collectTags, excerpt, filterEntries, formatTags, parseTags, TEXT_EXTENSIONS, textStats, titleFromFile } from "../../../src/tools/kb/logic.js";
 import { invoke } from "../../../src/platform/invoke.js";
 import { nativeAvailable, pickFile } from "../platform/bridge.js";
+import { vDialog } from '../../../src/ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -252,13 +253,13 @@ watch([keyword, activeTag], () => {
     <!-- 浏览器形态下的文件入口（有原生桥时由 SAF 选择器承担） -->
     <input ref="fileInput" class="m-kb-file" type="file" :accept="ACCEPT" data-role="file-input" @change="onBrowserFile" />
 
-    <div v-if="confirmOpen" class="m-modal" data-role="confirm">
-      <div class="m-modal-card">
+    <div v-if="confirmOpen" class="m-modal" v-dialog data-role="confirm">
+      <div class="m-modal-card" v-dialog>
         <b>{{ t("toolbox.kb.deleteTitle") }}</b>
         <p>{{ t("toolbox.kb.deleteMsg", { title: form.title.trim() || t("toolbox.kb.untitled") }) }}</p>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" data-role="confirm-cancel" @click="confirmOpen = false">{{ t("common.cancel") }}</button>
-          <button class="m-modal-ok" data-role="confirm-ok" @click="doRemove">{{ t("toolbox.kb.delete") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog data-role="confirm-cancel" @click="confirmOpen = false">{{ t("common.cancel") }}</button>
+          <button class="m-modal-ok" v-dialog data-role="confirm-ok" @click="doRemove">{{ t("toolbox.kb.delete") }}</button>
         </div>
       </div>
     </div>
@@ -283,15 +284,15 @@ watch([keyword, activeTag], () => {
 /* 标签横滑不换行：标签一多换行会把列表挤到屏幕外 */
 .m-kb-tags {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1);
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: var(--sp-0);
 }
 
 .m-kb-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   width: 100%;
   padding: 0;
   border: 0;

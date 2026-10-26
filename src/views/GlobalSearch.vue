@@ -4,6 +4,7 @@ import { invoke } from "../platform/invoke.js";
 import { useI18n } from "vue-i18n";
 import Icon from "../ui/Icon.vue";
 import { searchToolboxTools, visibleToolboxTools, TOOLBOX_GROUPS } from "../toolboxTools.js";
+import { vDialog } from '../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -228,8 +229,8 @@ defineExpose({ openPalette });
     <Icon name="search" :size="15" /> <span class="gs-ph">{{ t("common.gsTriggerPh") }}</span> <kbd class="gs-kbd">Ctrl K</kbd>
   </button>
 
-  <div v-if="open" class="gs-mask" @click.self="close">
-    <div class="gs-panel">
+  <div v-if="open" class="modal-mask gs-mask" @click.self="close">
+    <div class="gs-panel" v-dialog="{ label: t('common.gsPlaceholder') }">
       <div class="gs-inputbar">
         <Icon name="search" :size="18" class="gs-icon" />
         <input
@@ -292,7 +293,11 @@ defineExpose({ openPalette });
 .gs-ph { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gs-kbd { flex-shrink: 0; font-family: inherit; font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--border-strong); border-radius: var(--r-xs); padding: 1px 5px; background: color-mix(in srgb, var(--text) 4%, transparent); }
 
-.gs-mask { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.5); display: flex; align-items: flex-start; justify-content: center; z-index: 200; padding: 80px var(--sp-7) var(--sp-7); }
+.gs-mask {
+  align-items: flex-start;
+  padding: 80px var(--sp-7) var(--sp-7);
+  z-index: var(--z-front);
+}
 .gs-panel { background: var(--card); border-radius: var(--r-lg); width: 620px; max-width: 100%; max-height: 72vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25); overflow: hidden; }
 .gs-inputbar { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-5) 18px; border-bottom: 1px solid var(--border); transition: border-color 0.15s; }
 .gs-inputbar:focus-within { border-bottom-color: var(--primary); }
@@ -304,7 +309,7 @@ defineExpose({ openPalette });
 .gs-hint { text-align: center; color: var(--muted); font-size: var(--fs-md); padding: 32px var(--sp-7); }
 .gs-none { text-align: center; color: var(--muted); font-size: var(--fs-md); padding: var(--sp-7) var(--sp-7) 28px; }
 .gs-none .empty-ico { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-soft); color: var(--primary); margin: 0 auto var(--sp-2); }
-.gs-none p { margin: 2px 0 0; }
+.gs-none p { margin: var(--sp-0) 0 0; }
 .gs-his-head { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); margin-bottom: var(--sp-3); text-align: left; }
 .gs-his-clear { background: none; border: none; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; padding: 2px var(--sp-1); border-radius: var(--r-xs); }
 .gs-his-clear:hover { color: var(--danger-deep); background: color-mix(in srgb, var(--danger) 10%, transparent); }
@@ -320,7 +325,7 @@ defineExpose({ openPalette });
 /* 键盘导航高亮（↑↓ 移动、Enter 打开） */
 .gs-item.on { background: var(--primary-soft); }
 .gs-item.on .gs-main { color: var(--text); }
-.gs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm); cursor: pointer; }
+.gs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); text-align: left; background: none; border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm); cursor: pointer; }
 .gs-copy { flex-shrink: 0; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border-strong); background: var(--card); border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: all 0.15s; }
 .gs-copy:hover { color: var(--primary); border-color: var(--primary); background: var(--card); }
 .gs-copy.done { color: var(--success-deep); border-color: var(--success); background: var(--success-tint); }

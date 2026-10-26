@@ -8,7 +8,7 @@
 //     （mergeSettingsSnapshot），否则 sync/telemetry 等未渲染分组会被整段覆盖掉；
 //  2) **apiKey 落盘加密**：读出来要 decryptValue（浏览器/手机端是明文往返，桌面端走 DPAPI/Keystore），
 //     存进去要 encryptValue——两端共用同一份 secure.js。
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { AI_PRESETS, PROVIDER_GROUPS, testAI } from "../../src/ai.js";
 import { activeProfile, normalizeAi } from "../../src/agent/modelProfiles.js";
@@ -16,6 +16,7 @@ import { mergeSettingsSnapshot } from "../../src/app/settingsConfig.js";
 import { decryptValue, encryptValue } from "../../src/secure.js";
 import { invoke } from "../../src/platform/invoke.js";
 import { applyLocale } from "../../src/i18n/index.js";
+import { vFieldError } from "../../src/ui/fieldError.js"; // 模板里的 v-field-error 由 <script setup> 就地解析
 import { applyBackup, buildBackup, describeBackup, downloadBackup } from "./backup.js";
 import { createSyncCollection, getSyncSnapshot, joinSyncCollectionFull, listDevices, setSyncDeviceName, setSyncEnabled, syncNowManual } from "../../src/sync/index.js";
 import { nativeAvailable, pickFile } from "./platform/bridge.js";
@@ -44,6 +45,9 @@ const selfTestBusy = ref(false);
 const selfTestResults = ref([]);
 const selfTestError = ref("");
 const reportCopied = ref(false);
+// 单独跑一项的进行中锁（与 src/tools/checkin/View.vue 同形态）：这项动作要弹原生选择器，
+// 连点两次会开两个面板、两份结果互相覆盖。
+const busyKey = ref("");
 
 const selfTestSummary = computed(() => {
   const list = selfTestResults.value;
@@ -55,7 +59,7 @@ const selfTestSummary = computed(() => {
 
 /** 跑全部自动项（需要用户点选文件的项会标成 manual，不会自动弹选择器）。 */
 async function runChecks() {
-  if (selfTestBusy.value) return;
+  if (selfTestBusy.value || busyKey.value) return;
   selfTestBusy.value = true;
   selfTestError.value = "";
   reportCopied.value = false;
@@ -75,6 +79,8 @@ async function runChecks() {
 
 /** 单独跑一项（文件选择器 / SQLite 需要用户点选文件）。 */
 async function runSingle(key) {
+  if (selfTestBusy.value || busyKey.value) return;
+  busyKey.value = key;
   selfTestError.value = "";
   try {
     const result = await runOne(key, { invoke, origin: typeof location !== "undefined" ? location.origin : "" });
@@ -85,6 +91,8 @@ async function runSingle(key) {
     selfTestResults.value = list;
   } catch (e) {
     selfTestError.value = e?.message || String(e);
+  } finally {
+    busyKey.value = "";
   }
 }
 
@@ -153,6 +161,26 @@ const loadError = ref("");
 // 密钥解密失败单独记：它**不能**跟着 loadError 一起禁止保存，否则用户连重填的机会都没有
 const keyError = ref("");
 const errors = ref({});
+
+/**
+ * 用户开始改这个字段，就把它的红字收起来（下次保存再判）。
+ * 刻意**不在这里重新校验**——那等于把 `settingsForm.js` 的规则在视图里抄第二份
+ * （本仓"同一段计算写第四份"就是这么出的），也避免"还没保存就一路报红"。
+ * 读屏侧的 `aria-invalid` / `aria-describedby` 由 `v-field-error` 跟着 msg 变空而撤回。
+ */
+function dropError(key) {
+  if (!errors.value[key]) return;
+  const next = { ...errors.value };
+  delete next[key];
+  errors.value = next;
+}
+watch(() => form.value.ai.baseUrl, () => dropError("baseUrl"));
+watch(() => form.value.ai.apiKey, (v) => {
+  dropError("apiKey");
+  // 正在填新密钥时，"存的那把解不出来"这条提示已经过期了（留空保存仍不覆盖原值）
+  if (v) keyError.value = "";
+});
+watch(() => form.value.ai.model, () => dropError("model"));
 const saving = ref(false);
 const testing = ref(false);
 const testResult = ref("");
@@ -513,13 +541,13 @@ async function renameDevice(event) {
         </select>
       </label>
 
-      <label class="m-field">
+      <label class="m-field" v-field-error="errors.baseUrl">
         <span>{{ t("settings.aiBaseUrl") }}</span>
         <input v-model="form.ai.baseUrl" spellcheck="false" inputmode="url" data-role="base-url" placeholder="https://api.deepseek.com/v1" />
         <span v-if="errors.baseUrl" class="m-field-err" data-role="err-base">{{ t(errors.baseUrl) }}</span>
       </label>
 
-      <label class="m-field">
+      <label class="m-field" v-field-error="errors.apiKey || keyError">
         <span>{{ t("settings.aiKey") }}</span>
         <input v-model="form.ai.apiKey" type="password" spellcheck="false" data-role="api-key" />
         <span v-if="errors.apiKey" class="m-field-err" data-role="err-key">{{ t(errors.apiKey) }}</span>
@@ -527,7 +555,7 @@ async function renameDevice(event) {
         <span v-if="keyError" class="m-field-err" data-role="key-error">{{ t("mobile.setKeyUnreadable", { err: keyError }) }}</span>
       </label>
 
-      <label class="m-field">
+      <label class="m-field" v-field-error="errors.model">
         <span>{{ t("settings.aiModel") }}</span>
         <input v-model="form.ai.model" spellcheck="false" data-role="model" placeholder="deepseek-chat" />
         <span v-if="errors.model" class="m-field-err" data-role="err-model">{{ t(errors.model) }}</span>
@@ -711,7 +739,7 @@ async function renameDevice(event) {
         </div>
         <p class="m-hint-sm">{{ t("mobile.setSelfTestNote") }}</p>
         <div class="m-actions">
-          <button class="m-btn primary" :disabled="selfTestBusy" data-role="run-selftest" @click="runChecks">
+          <button class="m-btn primary" :disabled="selfTestBusy || !!busyKey" data-role="run-selftest" @click="runChecks">
             {{ selfTestBusy ? t("common.loading") : t("mobile.setSelfTestRun") }}
           </button>
           <button class="m-btn" :disabled="!selfTestResults.length" data-role="copy-report" @click="copyReport">{{ t("mobile.setSelfTestCopy") }}</button>
@@ -725,8 +753,8 @@ async function renameDevice(event) {
               <template v-if="item.ms != null"> · {{ item.ms }}ms</template>
             </span>
             <!-- 需要用户点选文件的项：给一个单独按钮，避免一跑自检就弹选择器 -->
-            <button v-if="item.status === 'manual'" class="m-op" :data-role="`run-${item.key}`" @click="runSingle(item.key)">
-              {{ t("mobile.checkRunOne") }}
+            <button v-if="item.status === 'manual'" class="m-op" :disabled="selfTestBusy || !!busyKey" :data-role="`run-${item.key}`" @click="runSingle(item.key)">
+              {{ busyKey === item.key ? t("common.loading") : t("mobile.checkRunOne") }}
             </button>
           </li>
         </ul>

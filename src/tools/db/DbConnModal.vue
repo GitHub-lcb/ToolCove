@@ -3,6 +3,7 @@
 import { useI18n } from "vue-i18n";
 import Icon from "../../ui/Icon.vue";
 import { DB_TYPES } from "./logic.js";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -24,7 +25,7 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
 
 <template>
   <div class="modal-mask">
-    <div class="modal db-conn-modal">
+    <div class="modal db-conn-modal" v-dialog>
       <h2>{{ editingNew ? t("toolbox.db.connNew") : t("toolbox.db.connEdit") }}</h2>
       <label class="fld">
         <span>{{ t("toolbox.db.type") }}</span>
@@ -117,7 +118,7 @@ const typeMeta = (t) => DB_TYPES.find((x) => x.type === t) || DB_TYPES[0];
 <style scoped>
 .db-conn-modal { width: 560px; }
 .db-conn-modal .fld { margin-bottom: var(--sp-4); }
-.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld { display: flex; flex-direction: column; gap: var(--sp-05); }
 .fld > span { font-size: var(--fs-xs); color: var(--muted); }
 .fld input, .fld select { width: 100%; padding: var(--sp-1) 9px; font-size: var(--fs-md); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); border-radius: var(--r-sm); outline: none; transition: border-color 0.15s; }
 .fld input:focus, .fld select:focus { border-color: var(--primary); }

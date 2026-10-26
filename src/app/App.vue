@@ -314,8 +314,11 @@ function onToastAction() {
 
 // ------- 全局右键菜单 -------
 const ctxMenu = ref({ x: 0, y: 0, items: [], visible: false });
+// 右击那一刻的焦点所在：关掉菜单后要还回去，否则键盘用户每次右击都掉回页面顶部
+let ctxPrevFocus = null;
 function openCtxMenu(e, items) {
   e.preventDefault();
+  ctxPrevFocus = document.activeElement;
   ctxMenu.value = { x: e.clientX, y: e.clientY, items, visible: true };
   nextTick(() => {
     const el = document.querySelector(".ctx-menu");
@@ -323,20 +326,29 @@ function openCtxMenu(e, items) {
     const r = el.getBoundingClientRect();
     if (r.right > window.innerWidth - 8) ctxMenu.value.x = Math.max(8, ctxMenu.value.x - r.width);
     if (r.bottom > window.innerHeight - 8) ctxMenu.value.y = Math.max(8, ctxMenu.value.y - r.height);
+    // 焦点进菜单第一项：role=menu 却进不去，等于给读屏挂了个用不上的角色
+    el.querySelector(".ctx-item")?.focus();
   });
 }
 function onCtxAction(item) {
-  ctxMenu.value.visible = false;
+  closeCtxMenu(true);
   item.fn && item.fn();
 }
-function closeCtxMenu() { ctxMenu.value.visible = false; }
+function closeCtxMenu(restoreFocus) {
+  ctxMenu.value.visible = false;
+  const prev = ctxPrevFocus;
+  ctxPrevFocus = null;
+  // 只在 Escape / 选中动作时还焦点；点别处关闭时抢焦点会把用户刚点的东西弄丢
+  if (restoreFocus && prev && document.contains(prev) && typeof prev.focus === "function") prev.focus();
+}
+const dismissCtxMenu = () => closeCtxMenu(false);
 onMounted(() => {
-  window.addEventListener("click", closeCtxMenu);
-  window.addEventListener("blur", closeCtxMenu);
+  window.addEventListener("click", dismissCtxMenu);
+  window.addEventListener("blur", dismissCtxMenu);
 });
 onUnmounted(() => {
-  window.removeEventListener("click", closeCtxMenu);
-  window.removeEventListener("blur", closeCtxMenu);
+  window.removeEventListener("click", dismissCtxMenu);
+  window.removeEventListener("blur", dismissCtxMenu);
 });
 provide("openCtxMenu", openCtxMenu);
 
@@ -344,6 +356,20 @@ provide("openCtxMenu", openCtxMenu);
 // Ctrl+0 保留为工具箱（旧习惯）；Ctrl+K 开全局搜索） -------
 const HOTKEY_MODULES = MODULES.map((m) => m.key).concat("settings"); // Ctrl+1..5
 function onKeydown(e) {
+  // 右键菜单开着时：Escape 关、上下键在条目间走（role=menu 要配得上键盘操作）
+  if (ctxMenu.value.visible && (e.key === "Escape" || e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    e.preventDefault();
+    if (e.key === "Escape") {
+      closeCtxMenu(true);
+      return;
+    }
+    const items = [...document.querySelectorAll(".ctx-item")];
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    items[(at + step + items.length) % items.length]?.focus();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
     e.preventDefault();
     gsRef.value?.openPalette();
@@ -533,7 +559,8 @@ onUnmounted(() => {
   <template v-else-if="toolMode">
     <ToolWindow :tool="toolMode" :show-toast="showToast" @ready="revealToolWindow" />
     <transition name="fade">
-      <div v-if="toast" class="toast">
+      <!-- 提示是"发生后才知道"的信息：没有 live region，读屏用户完全收不到 -->
+      <div v-if="toast" class="toast" role="status" aria-live="polite">
         {{ toast.text }}
         <button v-if="toast.actionLabel" class="toast-act" @click="onToastAction">{{ toast.actionLabel }}</button>
       </div>
@@ -679,15 +706,16 @@ onUnmounted(() => {
     </aside>
 
     <transition name="fade">
-      <div v-if="toast" class="toast">
+      <!-- 提示是"发生后才知道"的信息：没有 live region，读屏用户完全收不到 -->
+      <div v-if="toast" class="toast" role="status" aria-live="polite">
         {{ toast.text }}
         <button v-if="toast.actionLabel" class="toast-act" @click="onToastAction">{{ toast.actionLabel }}</button>
       </div>
     </transition>
 
     <transition name="cf-fade">
-      <div v-if="ctxMenu.visible" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
-        <button v-for="(it, i) in ctxMenu.items" :key="i" class="ctx-item" :class="{ danger: it.danger }" @click="onCtxAction(it)">
+      <div v-if="ctxMenu.visible" class="ctx-menu" role="menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+        <button v-for="(it, i) in ctxMenu.items" :key="i" class="ctx-item" role="menuitem" :class="{ danger: it.danger }" @click="onCtxAction(it)">
           <Icon :name="it.icon" :size="14" /> {{ it.label }}
         </button>
       </div>
@@ -705,28 +733,28 @@ onUnmounted(() => {
    左栏收起保留 56px 图标轨道；右栏不占宽度时整列消失，中栏独自撑满。 */
 .shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
   transition: grid-template-columns 0.22s ease;
 }
-.shell.collapsed { grid-template-columns: 56px minmax(0, 1fr); }
-.shell.dock-open { grid-template-columns: 280px minmax(0, 1fr) 340px; }
-.shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr) 340px; }
+.shell.collapsed { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+.shell.dock-open { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--dock-w); }
+.shell.collapsed.dock-open { grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w); }
 
 /* ============ 侧边栏 ============ */
 .sidebar {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0 10px 10px;
+  padding: 0 var(--sp-3) var(--sp-3);
   background: var(--bg);
   border-right: 1px solid var(--border);
   position: relative;
   height: 100dvh;
   overflow: hidden;
 }
-.brand { display: flex; align-items: center; flex-shrink: 0; height: 48px; gap: 9px; padding: 0 4px; }
+.brand { display: flex; align-items: center; flex-shrink: 0; height: var(--topbar-h); gap: 9px; padding: 0 var(--sp-05); }
 /* 品牌区子元素不拦截鼠标，拖拽落到 .brand 的 drag-region 上（可拖动窗口） */
 .brand > * { pointer-events: none; }
 .brand-logo {
@@ -745,7 +773,7 @@ onUnmounted(() => {
 .nav { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
 .nav-item { flex-shrink: 0; }
 /* 工作面分组与新任务保持清晰分隔。 */
-.nav-group { flex-shrink: 0; margin: 14px 0 4px; padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--faint); letter-spacing: 0.6px; text-transform: uppercase; }
+.nav-group { flex-shrink: 0; margin: var(--sp-5) 0 var(--sp-05); padding: 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--faint); letter-spacing: 0.6px; text-transform: uppercase; }
 /* 导航行：扁平行 + 悬停填充，而不是默认就带边框与投影的小卡片。
    卡片式行每一条都在抢注意力，侧边栏一旦有 10 条历史就变成一片浮起的方块；
    Qoder / Cursor / VS Code 的侧边栏行都是扁平的，只有选中态才有底色。
@@ -787,16 +815,16 @@ onUnmounted(() => {
 }
 
 /* 设置保留文字主入口，其余按钮横排；图标轨道内再纵向排布。 */
-.side-foot { display: flex; align-items: center; flex-shrink: 0; gap: 4px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+.side-foot { display: flex; align-items: center; flex-shrink: 0; gap: var(--sp-05); margin-top: auto; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 
 .collapse {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   height: 34px;
   border: 1px solid transparent;
   background: none;
-  padding: 0 6px;
+  padding: 0 var(--sp-1);
   border-radius: var(--r-sm);
   font-size: 13.5px;
   font-weight: 500;
@@ -837,9 +865,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  height: 48px;
-  padding: 0 14px;
+  gap: var(--sp-3);
+  height: var(--topbar-h);
+  padding: 0 var(--sp-5);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--card);
@@ -856,10 +884,10 @@ onUnmounted(() => {
 }
 .page-title h1 { margin: 0; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .page-title .st-chip { flex-shrink: 0; }
-.top-actions { display: flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 0; }
+.top-actions { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; flex-shrink: 0; }
 /* 仅搜索框收缩；GlobalSearch 是多根组件，选择器直接命中其真实触发按钮。 */
 .top-actions > * { flex-shrink: 0; }
-.top-actions :deep(.gs-trigger) { flex-shrink: 1; width: 200px; min-width: 30px; height: 30px; padding: 0 10px; }
+.top-actions :deep(.gs-trigger) { flex-shrink: 1; width: 200px; min-width: 30px; height: 30px; padding: 0 var(--sp-3); }
 .top-actions :deep(.gs-trigger > svg) { flex-shrink: 0; }
 .top-actions :deep(.gs-ph) { min-width: 0; }
 /* 顶栏动作一律幽灵按钮：默认无边框，悬停才出现底色——一排查边按钮会把
@@ -878,7 +906,7 @@ onUnmounted(() => {
 @keyframes sync-ind-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
 /* 窗口控制按钮（自定义标题栏） */
-.win-ctrls { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.win-ctrls { display: flex; align-items: center; gap: var(--sp-0); margin-left: var(--sp-05); }
 .wc-btn { width: 32px; height: 30px; padding: 0; display: grid; place-items: center; border: none; background: none; border-radius: var(--r-sm); color: var(--muted); cursor: pointer; transition: background 0.12s, color 0.12s; }
 .wc-btn:hover { background: rgba(120, 130, 150, 0.14); color: var(--text); }
 .wc-btn.close:hover { background: var(--win-close); color: var(--text-invert); }
@@ -892,7 +920,7 @@ onUnmounted(() => {
   right: -5px;
   min-width: 17px;
   height: 17px;
-  padding: 0 4px;
+  padding: 0 var(--sp-05);
   display: grid;
   place-items: center;
   background: var(--danger-bright);
@@ -907,7 +935,7 @@ onUnmounted(() => {
   position: absolute;
   top: 44px;
   right: 0;
-  width: 340px;
+  width: var(--dock-w);
   max-height: 420px;
   display: flex;
   flex-direction: column;
@@ -915,14 +943,14 @@ onUnmounted(() => {
   border: 1px solid var(--card-border);
   border-radius: var(--r-lg);
   box-shadow: 0 18px 44px rgba(16, 24, 40, 0.18);
-  z-index: 60;
+  z-index: var(--z-float);
   overflow: hidden;
 }
 .np-head { display: flex; align-items: center; justify-content: space-between; padding: 13px var(--sp-6) var(--sp-3); border-bottom: 1px solid var(--border); }
 .np-head b { font-size: var(--fs-base); }
 .np-clear { border: none; background: none; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; padding: 2px var(--sp-1); border-radius: var(--r-xs); }
 .np-clear:hover { color: var(--danger); background: var(--danger-soft); }
-.np-list { overflow-y: auto; padding: var(--sp-1) var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: 2px; }
+.np-list { overflow-y: auto; padding: var(--sp-1) var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-0); }
 .np-item { display: flex; align-items: flex-start; gap: var(--sp-2); padding: 9px var(--sp-2); border-radius: var(--r-sm); }
 .np-item.unread { background: var(--primary-soft); }
 .np-tag { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--well); color: var(--text-weak); margin-top: 1px; }
@@ -930,7 +958,7 @@ onUnmounted(() => {
 .np-tag.backup { background: var(--success-soft); color: var(--success-deep); }
 .np-tag.sync { background: var(--primary-soft); color: var(--primary); }
 .np-text { flex: 1; min-width: 0; font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text); word-break: break-word; }
-.np-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.np-time { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); margin-top: var(--sp-0); font-variant-numeric: tabular-nums; }
 .np-empty { margin: 0; padding: 22px var(--sp-7) 26px; font-size: var(--fs-sm); color: var(--muted); text-align: center; }
 
 /* 当前用户（仅头像，主区已有问候语） */
@@ -989,7 +1017,7 @@ onUnmounted(() => {
   padding: 11px 22px;
   border-radius: var(--r-sm);
   font-size: var(--fs-base);
-  z-index: 200;
+  z-index: var(--z-front);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   display: flex;
   align-items: center;
@@ -1015,25 +1043,25 @@ onUnmounted(() => {
 /* 壳层配色完全跟随 token，不用系统媒体查询覆盖用户手动选择的主题。 */
 /* 右栏先让位：窄屏时它缩到 300，再窄就浮起来盖住中栏（不把对话列压到读不动）。 */
 @media (max-width: 1180px) {
-  .shell.dock-open { grid-template-columns: 280px minmax(0, 1fr) 300px; }
-  .shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr) 300px; }
+  .shell.dock-open { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--dock-w-sm); }
+  .shell.collapsed.dock-open { grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w-sm); }
 }
 @media (max-width: 900px) {
-  .shell.dock-open, .shell.collapsed.dock-open { grid-template-columns: 280px minmax(0, 1fr); }
-  .shell.collapsed.dock-open { grid-template-columns: 56px minmax(0, 1fr); }
-  .dock { position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 92vw); z-index: 45; box-shadow: var(--shadow-pop); }
+  .shell.dock-open, .shell.collapsed.dock-open { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+  .shell.collapsed.dock-open { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+  .dock { position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--dock-w), 92vw); z-index: var(--z-raised); box-shadow: var(--shadow-pop); }
 }
 @media (max-width: 1000px) {
-  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar { padding: 0 var(--sp-4); gap: var(--sp-2); }
   .top-actions :deep(.gs-trigger) { width: 160px; }
   .top-actions :deep(.gs-kbd) { display: none; }
 }
 @media (max-width: 760px) {
-  .shell, .shell.collapsed { grid-template-columns: 56px minmax(0, 1fr); }
+  .shell, .shell.collapsed { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
   /* 侧栏浮出后不在流内，主区必须钉在第二列，否则会掉进 56px 的轨道列。 */
   .main { grid-column: 2; }
   /* 临时展开覆盖主区，而不压缩工作台；底部收起和 Escape 均可回到轨道。 */
-  .shell:not(.collapsed) .sidebar { position: absolute; inset: 0 auto 0 0; width: 280px; z-index: 30; }
+  .shell:not(.collapsed) .sidebar { position: absolute; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: var(--z-raised); }
   .top-actions { flex-shrink: 0; }
   .top-actions :deep(.gs-trigger) { width: 32px; min-width: 32px; justify-content: center; padding: 0; }
   .top-actions :deep(.gs-ph) { display: none; }
@@ -1044,7 +1072,7 @@ onUnmounted(() => {
   .topbar .dock-toggle { display: none; }
 }
 @media (max-width: 560px) {
-  .topbar { padding: 0 8px; gap: 4px; }
+  .topbar { padding: 0 var(--sp-2); gap: var(--sp-05); }
   .pt-ico { display: none; }
   .top-actions { gap: 3px; }
   .theme-btn { width: 28px; }

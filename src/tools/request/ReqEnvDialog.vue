@@ -2,6 +2,7 @@
 // 环境变量管理弹窗（RequestTool 拆出）：变量键值直接绑定父组件数据，持久化经事件委托
 import { useI18n } from "vue-i18n";
 import Icon from "../../ui/Icon.vue";
+import { vDialog } from '../../ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 const { t } = useI18n();
 
@@ -14,9 +15,9 @@ const emit = defineEmits(["close", "add", "use", "remove", "remove-var", "var-ed
 </script>
 
 <template>
-  <div class="env-mask" @click.self="emit('close')">
-    <div class="env-box">
-      <div class="env-head">
+  <div class="modal-mask env-mask" @click.self="emit('close')">
+    <div class="env-box" v-dialog>
+      <div class="env-head" data-dialog-title>
         <b>{{ t("toolbox.request.envTitle") }}</b>
         <span class="env-hint">{{ t("toolbox.request.envHint", { syntax: varNameSyntax }) }}</span>
         <span class="spacer"></span>
@@ -31,7 +32,7 @@ const emit = defineEmits(["close", "add", "use", "remove", "remove-var", "var-ed
             <button class="env-remove" :title="t('toolbox.request.deleteEnv')" @click="emit('remove', en)"><Icon name="trash" :size="13" /></button>
           </div>
           <table class="kv">
-            <thead><tr><th class="th-ck"></th><th>{{ t("toolbox.request.varName") }}</th><th>{{ t("toolbox.request.value") }}</th><th class="th-op"></th></tr></thead>
+            <thead><tr><th scope="col" class="th-ck"></th><th scope="col">{{ t("toolbox.request.varName") }}</th><th scope="col">{{ t("toolbox.request.value") }}</th><th scope="col" class="th-op"></th></tr></thead>
             <tbody>
               <tr v-for="(v, i) in en.vars" :key="'v' + i">
                 <td class="td-ck"><input v-model="v.on" type="checkbox" @change="emit('persist')" /></td>
@@ -51,7 +52,7 @@ const emit = defineEmits(["close", "add", "use", "remove", "remove-var", "var-ed
 <style scoped>
 .spacer { flex: 1; }
 
-.env-mask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(17, 24, 39, 0.4); }
+/* 底座走全局 .modal-mask */
 .env-box { width: 640px; max-width: calc(100vw - 48px); max-height: calc(100vh - 96px); display: flex; flex-direction: column; padding: var(--sp-7); background: var(--card); border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
 .env-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
 .env-head b { font-size: var(--fs-base); font-weight: 700; }

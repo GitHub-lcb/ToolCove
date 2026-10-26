@@ -9,6 +9,7 @@
 // 这正是玩的时候真正要看的信息。
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { vDialog } from '../../../src/ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 import {
   HINT_MAX_PREFIX,
   HINT_SAME,
@@ -216,13 +217,13 @@ function hintOptionLabel(option) {
     </div>
 
     <!-- 清空确认 -->
-    <div v-if="confirmReset" class="m-modal">
-      <div class="m-modal-card">
+    <div v-if="confirmReset" class="m-modal" v-dialog>
+      <div class="m-modal-card" v-dialog>
         <b>{{ t("toolbox.rail.resetConfirmTitle") }}</b>
         <p>{{ t("toolbox.rail.resetConfirmBody") }}</p>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" @click="confirmReset = false">{{ t("toolbox.rail.resetCancel") }}</button>
-          <button class="m-modal-ok" data-role="reset-ok" @click="reset">{{ t("toolbox.rail.resetConfirmOk") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog @click="confirmReset = false">{{ t("toolbox.rail.resetCancel") }}</button>
+          <button class="m-modal-ok" v-dialog data-role="reset-ok" @click="reset">{{ t("toolbox.rail.resetConfirmOk") }}</button>
         </div>
       </div>
     </div>

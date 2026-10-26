@@ -9,6 +9,8 @@
 import { createApp, h } from "vue";
 // 共享逻辑一律用相对路径：单测（根 vite 配置）与手机端构建都能解析
 import { i18n, initLocale, warmFallbackLocale } from "../../src/i18n/index.js";
+import { vDialog } from "../../src/ui/dialog.js";
+import { vFieldError } from "../../src/ui/fieldError.js";
 import { capabilities, isMobile, isDesktop, isBrowser } from "../../src/platform/env.js";
 import { installNativeBridge } from "./platform/bridge.js";
 import Shell from "./Shell.vue";
@@ -24,6 +26,9 @@ createApp({
   render: () => h(Shell, { capabilities, isMobile, isDesktop, isBrowser }),
 })
   .use(i18n)
+  // 与桌面同一个对话框语义实现：手机端也挂 v-dialog，不另写一份 role/焦点逻辑
+  .directive("dialog", vDialog)
+  .directive("field-error", vFieldError)
   .mount("#mobile-app");
 
 // 语言与数据初始化不阻塞挂载（与桌面 main.js 相同的顺序：先落语言，再做重活）

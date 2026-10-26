@@ -51,7 +51,7 @@ const segTitle = (lane, seg) => `${t(LABEL_KEY[lane.key])} · ${fmt(seg.end - se
 </template>
 
 <style scoped>
-.lanes { display: flex; flex-direction: column; gap: 4px; padding: 0 var(--sp-4) var(--sp-3); }
+.lanes { display: flex; flex-direction: column; gap: var(--sp-05); padding: 0 var(--sp-4) var(--sp-3); }
 .lanes--flush { padding: 0; }
 .lane { display: flex; align-items: center; gap: var(--sp-2); }
 .lane-label { flex: 0 0 34px; font-size: var(--fs-xs); color: var(--muted); }

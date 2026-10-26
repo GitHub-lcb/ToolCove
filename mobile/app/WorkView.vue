@@ -11,6 +11,7 @@ import { useI18n } from "vue-i18n";
 import { load as loadKind, mutate, onDataChanged } from "../../src/data/repository.js";
 import { addIteration, addRequirement, addSubTask, newIteration, newRequirement, newSubTask, removeIteration, removeRequirement, removeSubTask, updateIteration, updateRequirement, updateSubTask } from "../../src/iterations.js";
 import { ITERATION_STATUSES, filterRequirements, hoursText, iterationSummary, requirementLine, sortIterations } from "./work.js";
+import { vDialog } from '../../src/ui/dialog.js'; // 模板里的 v-dialog 由 <script setup> 就地解析（SSR 渲染测试也能用）
 
 // 概览按需加载：它只在第一层用得到，而手机端首屏体积要省（与工具箱同样的做法）
 const WorkOverview = defineAsyncComponent(() => import("./work/WorkOverview.vue"));
@@ -315,8 +316,8 @@ const toggleSubtaskDone = (subtask) => write((list) => updateSubTask(list, view.
     </template>
 
     <!-- 新建弹层：三种层级共用（迭代 / 需求 / 子任务） -->
-    <div v-if="draft.open" class="m-modal">
-      <div class="m-modal-card">
+    <div v-if="draft.open" class="m-modal" v-dialog>
+      <div class="m-modal-card" v-dialog>
         <b>{{ t(draft.kind === "iteration" ? "mobile.workAddIteration" : draft.kind === "requirement" ? "mobile.workAddRequirement" : "mobile.workAddSubtask") }}</b>
         <label class="m-field">
           <span>{{ t("snippet.formTitle") }}</span>
@@ -326,21 +327,21 @@ const toggleSubtaskDone = (subtask) => write((list) => updateSubTask(list, view.
           <span>{{ t("mobile.workHoursLabel") }}</span>
           <input v-model="draft.days" type="number" min="0" step="0.5" inputmode="decimal" />
         </label>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" @click="draft.open = false">{{ t("common.cancel") }}</button>
-          <button class="m-modal-ok primary" @click="submitDraft">{{ t("snippet.saveBtn") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog @click="draft.open = false">{{ t("common.cancel") }}</button>
+          <button class="m-modal-ok primary" v-dialog @click="submitDraft">{{ t("snippet.saveBtn") }}</button>
         </div>
       </div>
     </div>
 
     <!-- 删除确认 -->
-    <div v-if="confirmState.open" class="m-modal">
-      <div class="m-modal-card">
+    <div v-if="confirmState.open" class="m-modal" v-dialog>
+      <div class="m-modal-card" v-dialog>
         <b>{{ t("snippet.deleteTitle") }}</b>
         <p>{{ confirmState.name }}</p>
-        <div class="m-modal-ops">
-          <button class="m-modal-cancel" @click="confirmState.open = false">{{ t("common.cancel") }}</button>
-          <button class="m-modal-ok" @click="confirmRemove">{{ t("snippet.deleteOk") }}</button>
+        <div class="m-modal-ops" v-dialog>
+          <button class="m-modal-cancel" v-dialog @click="confirmState.open = false">{{ t("common.cancel") }}</button>
+          <button class="m-modal-ok" v-dialog @click="confirmRemove">{{ t("snippet.deleteOk") }}</button>
         </div>
       </div>
     </div>

@@ -327,7 +327,7 @@ async function copyText(value, label) {
 .zone-arrow { color: var(--muted); }
 
 .calculate-workspace { position: relative; }
-.calc-switch { align-self: flex-start; display: inline-grid; grid-template-columns: repeat(2, minmax(76px, 1fr)); padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
+.calc-switch { align-self: flex-start; display: inline-grid; grid-template-columns: repeat(2, minmax(76px, 1fr)); padding: var(--sp-0); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--well); }
 .calc-switch button { padding: var(--sp-1) var(--sp-4); border: none; border-radius: var(--r-xs); background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 .calc-switch button.on { background: var(--card); color: var(--primary-hover); box-shadow: var(--shadow); font-weight: 600; }
 .zone-field { position: absolute; top: 0; right: 0; width: min(260px, 42%); }

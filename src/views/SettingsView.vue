@@ -15,6 +15,7 @@ import { open as openDialog, save as saveDialog } from "../platform/dialog.js";
 import { relaunch } from "../platform/shell.js";
 import { openUrl } from "../platform/shell.js";
 import Icon from "../ui/Icon.vue";
+import { vFieldError } from "../ui/fieldError.js";
 import MembersPanel from "../enterprise/MembersPanel.vue";
 import { testAI, listAIModels, AI_PRESETS, PROVIDER_GROUPS } from "../ai.js";
 import { newProfileId, normalizeAi, profileLabel, toStoredAi } from "../agent/modelProfiles.js";
@@ -1149,13 +1150,13 @@ async function restoreNow() {
               <span v-if="editingProviderKey !== 'custom'" class="field-hint">{{ editingProfile.baseUrl }}</span>
             </label>
 
-            <label v-if="editingProviderKey === 'custom'" class="field" :class="{ err: fieldErr.aiBase }">
+            <label v-if="editingProviderKey === 'custom'" class="field" :class="{ err: fieldErr.aiBase }" v-field-error="fieldErr.aiBase">
               <span>{{ t("settings.aiBaseUrl") }}</span>
               <input v-model="editingProfile.baseUrl" :placeholder="t('settings.aiBaseUrlPh')" @blur="maybeFetchModels" />
               <span v-if="fieldErr.aiBase" class="field-err">{{ fieldErr.aiBase }}</span>
             </label>
 
-            <label class="field" :class="{ err: fieldErr.aiKey }">
+            <label class="field" :class="{ err: fieldErr.aiKey }" v-field-error="fieldErr.aiKey">
               <span>{{ t("settings.aiKey") }}</span>
               <div class="token-row">
                 <input
@@ -1173,7 +1174,7 @@ async function restoreNow() {
             </label>
 
             <!-- 模型：填完 Key 自动从端点拉取；拉不到就退回手动输入 -->
-            <label class="field" :class="{ err: fieldErr.aiModel }">
+            <label class="field" :class="{ err: fieldErr.aiModel }" v-field-error="fieldErr.aiModel">
               <span>{{ t("settings.aiModel") }}</span>
               <div class="token-row">
                 <select v-if="modelChoices.length" v-model="editingProfile.model" class="select" data-role="ai-model-select">
@@ -1245,7 +1246,7 @@ async function restoreNow() {
           </div>
           <p class="sect-desc">{{ t("settings.typesafeDesc") }}</p>
 
-          <label class="field" :class="{ err: fieldErr.typesafeBase }">
+          <label class="field" :class="{ err: fieldErr.typesafeBase }" v-field-error="fieldErr.typesafeBase">
             <span>{{ t("settings.typesafeBaseUrl") }}</span>
             <input v-model="form.typesafe.baseUrl" :placeholder="t('settings.typesafeBaseUrlPh')" />
             <span v-if="fieldErr.typesafeBase" class="field-err">{{ fieldErr.typesafeBase }}</span>
@@ -1277,7 +1278,7 @@ async function restoreNow() {
             </label>
           </div>
 
-          <label class="field" :class="{ err: fieldErr.typesafeKey }">
+          <label class="field" :class="{ err: fieldErr.typesafeKey }" v-field-error="fieldErr.typesafeKey">
             <span>{{ t("settings.typesafeKey") }}</span>
             <div class="token-row">
               <input
@@ -1751,7 +1752,7 @@ async function restoreNow() {
   width: 176px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-05);
   padding: var(--sp-5) var(--sp-3);
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -1800,7 +1801,7 @@ async function restoreNow() {
 .sv-bar-txt b { font-size: var(--fs-base); font-weight: 700; }
 .sv-desc { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sv-dirty { font-size: var(--fs-xs); font-weight: 600; color: var(--warn-deep); background: var(--warn-soft); padding: 1px var(--sp-2); border-radius: var(--r-pill); flex-shrink: 0; }
-.sv-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.sv-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: var(--sp-0); }
 
 .sect { border: 1px solid var(--card-border); border-radius: var(--r-lg); padding: 18px; margin-bottom: 18px; background: var(--card-soft); }
 .sect.gen { border: none; background: transparent; border-radius: 0; padding: var(--sp-6) 2px; margin-bottom: 0; border-bottom: 1px solid var(--border); }
@@ -1830,13 +1831,13 @@ async function restoreNow() {
 .ai-profiles { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .ai-profile { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--card); border: 1px solid var(--card-border); border-radius: var(--r-sm); transition: border-color 0.15s, background 0.15s; }
 .ai-profile.on { border-color: var(--primary); background: var(--primary-soft); }
-.ai-profile-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; text-align: left; background: none; border: none; cursor: pointer; }
+.ai-profile-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); padding: 0; text-align: left; background: none; border: none; cursor: pointer; }
 .ai-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 .ai-profile-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--muted); }
-.ai-profile-badge { flex-shrink: 0; padding: 1px 8px; font-size: var(--fs-xs); font-weight: 600; color: var(--primary-hover); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-pill); }
+.ai-profile-badge { flex-shrink: 0; padding: 1px var(--sp-2); font-size: var(--fs-xs); font-weight: 600; color: var(--primary-hover); background: var(--card); border: 1px solid var(--border-blue); border-radius: var(--r-pill); }
 .ai-profile-empty { margin: 0; padding: var(--sp-2) 0; font-size: var(--fs-xs); color: var(--faint); }
 .ai-profile-err { margin: var(--sp-2) 0 0; }
-.field-hint { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--faint); }
+.field-hint { display: block; margin-top: var(--sp-05); font-size: var(--fs-xs); color: var(--faint); }
 /* 低频配置收进高级：默认不占视觉，展开后仍是完整表单 */
 .ai-advanced { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px dashed var(--border); }
 .ai-advanced > summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
@@ -1867,17 +1868,17 @@ async function restoreNow() {
 .tips-body { margin-top: var(--sp-2); padding: var(--sp-4) var(--sp-5); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: color-mix(in srgb, var(--text-weak) 6%, transparent); font-size: var(--fs-sm); color: var(--text); line-height: var(--lh-body); }
 .tips-body p { margin: 0 0 var(--sp-2); }
 .tips-body ol { margin: 0 0 var(--sp-2); padding-left: 18px; }
-.tips-body li { margin-bottom: 4px; }
+.tips-body li { margin-bottom: var(--sp-05); }
 .tips-body b { color: var(--primary); font-weight: 600; }
 .tips-note { color: var(--muted); font-size: var(--fs-sm); }
 .token-row { display: flex; gap: var(--sp-2); }
 .token-row input { flex: 1; }
 
-.sect-foot { display: flex; align-items: center; gap: var(--sp-5); margin-top: 4px; }
+.sect-foot { display: flex; align-items: center; gap: var(--sp-5); margin-top: var(--sp-05); }
 .nav-mod-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4) var(--sp-5); }
 .nav-mod-err { margin-top: var(--sp-3); }
 .team-reminder-err { margin: -6px 0 var(--sp-5); }
-.link-btn { background: none; border: none; color: var(--primary); font-size: var(--fs-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 0; }
+.link-btn { background: none; border: none; color: var(--primary); font-size: var(--fs-sm); cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-05); padding: 0; }
 .link-btn:hover { text-decoration: underline; }
 
 @media (prefers-color-scheme: dark) {
@@ -1902,7 +1903,7 @@ async function restoreNow() {
 }
 .sponsor-ico { flex-shrink: 0; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--grad-brand); color: var(--text-invert); }
 .sponsor-txt b { font-size: var(--fs-base); }
-.sponsor-txt p { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
+.sponsor-txt p { margin: var(--sp-05) 0 0; font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body); }
 .oss-box { margin-top: 18px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--card-border); border-radius: var(--r-sm); background: var(--card-soft); }
 .oss-box .sect-desc { margin: 0; }
 .lic-input {
@@ -1953,20 +1954,20 @@ async function restoreNow() {
 .admin-sub { margin-top: var(--sp-6); }
 .admin-group { margin-bottom: var(--sp-5); }
 .admin-group-title { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); margin-bottom: var(--sp-2); }
-.admin-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.admin-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-1) 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 .admin-tool-row:last-child { border-bottom: none; }
 .admin-tool-name { font-size: var(--fs-md); color: var(--text); }
 .admin-audit-actions { display: flex; align-items: center; gap: var(--sp-3); margin-left: auto; }
-.admin-audit-actions button { display: inline-flex; align-items: center; gap: 4px; }
+.admin-audit-actions button { display: inline-flex; align-items: center; gap: var(--sp-05); }
 .admin-audit-actions button:disabled { opacity: 0.5; cursor: default; }
-.audit-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+.audit-list { display: flex; flex-direction: column; gap: var(--sp-0); margin-top: var(--sp-2); }
 .audit-row { display: grid; grid-template-columns: 150px minmax(120px, 1fr) 140px 56px 58px 70px; gap: var(--sp-3); align-items: center; padding: 5px var(--sp-2); font-size: var(--fs-xs); border-bottom: 1px solid var(--border); }
 .audit-row:last-child { border-bottom: none; }
 .audit-time { color: var(--muted); white-space: nowrap; }
 .audit-goal { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-tool { font-family: var(--font-mono); color: var(--text-weak); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-risk { color: var(--muted); }
-.audit-badge { font-weight: 600; text-align: center; border-radius: var(--r-pill); padding: 1px 6px; }
+.audit-badge { font-weight: 600; text-align: center; border-radius: var(--r-pill); padding: 1px var(--sp-1); }
 .audit-badge.allow { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .audit-badge.deny { color: var(--danger); background: var(--danger-soft); }
 .audit-source { color: var(--faint); }
@@ -1977,7 +1978,7 @@ async function restoreNow() {
 .agent-group { margin-bottom: var(--sp-5); }
 .agent-group-title { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .agent-group-count { font-size: var(--fs-xs); color: var(--faint); font-family: var(--font-num); }
-.agent-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.agent-tool-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-1) 0; border-bottom: 1px solid var(--border); }
 .agent-tool-row:last-child { border-bottom: none; }
 /* 停用态整体压暗：一眼看出哪些不在运行时的清单里（与老面板的 .cap-row.off 同义） */
 .agent-tool-row.off { opacity: 0.55; }

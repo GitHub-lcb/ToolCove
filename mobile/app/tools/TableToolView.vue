@@ -279,8 +279,8 @@ const shownError = computed(() => parsed.value.parseError || error.value);
         <table class="m-table" data-role="table">
           <thead v-if="hasHeader">
             <tr>
-              <th class="m-rownum"></th>
-              <th
+              <th scope="col" class="m-rownum"></th>
+              <th scope="col"
                 v-for="(cell, index) in header"
                 :key="index"
                 :data-sort="sortState?.columnIndex === index ? sortState.direction : ''"

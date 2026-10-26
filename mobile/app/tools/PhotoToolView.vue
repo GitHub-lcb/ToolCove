@@ -20,6 +20,7 @@ import { createUploadQueue, filesFromInput, loadPhotoConfig, makePhotoThumb, sav
 import { canSendAuthHeader, cloudProviderOf, deleteCloudObject, downloadCloudObject, listCloudObjects, moveCloudObject, objectPreviewUrl } from "../../../src/photo/cloud.js";
 import { checkQiniuSpace, probeQiniuUpload } from "../../../src/photo/qiniu.js";
 import { testPhotoConnection } from "../../../src/photo/upload.js";
+import { vFieldError } from "../../../src/ui/fieldError.js"; // 模板里的 v-field-error 由 <script setup> 就地解析
 
 const { t } = useI18n();
 
@@ -589,7 +590,7 @@ onBeforeUnmount(() => {
             <input v-model="draft[f.key]" type="checkbox" :data-role="`field-${f.kebab}`" />
             <span>{{ t(f.labelKey) }}</span>
           </label>
-          <label v-else class="m-field">
+          <label v-else class="m-field" v-field-error="fieldError(f.key)">
             <span>{{ t(f.labelKey) }}</span>
             <input
               v-model="draft[f.key]"
@@ -798,8 +799,8 @@ onBeforeUnmount(() => {
 .m-photo-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 0;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
   border-top: 1px solid var(--m-border);
 }
 
@@ -822,7 +823,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
 }
 
 .m-photo-name {
@@ -847,12 +848,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: var(--sp-1);
   flex-shrink: 0;
 }
 
 .m-photo-chip {
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   border-radius: 999px;
   background: var(--m-soft);
   color: var(--m-muted);
@@ -877,21 +878,21 @@ onBeforeUnmount(() => {
 
 .m-btn.sm {
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--sp-3);
   font-size: 0.8rem;
 }
 
 .m-check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 10px 0 0;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
   font-size: 0.85rem;
 }
 
 .m-photo-warn {
-  margin: 10px 0 0;
-  padding: 8px 10px;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--m-radius);
   background: var(--m-warn-soft);
   color: var(--m-warn);
@@ -902,25 +903,25 @@ onBeforeUnmount(() => {
 .m-photo-transfer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
   border-top: 1px dashed var(--m-border);
 }
 
 .m-photo-tabs {
-  margin: 0 0 10px;
+  margin: 0 0 var(--sp-3);
 }
 
 /* 本机预览层：全屏遮罩 + 卡片；点遮罩空白处关闭 */
 .m-photo-preview {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--z-front);
   display: grid;
   place-items: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.72);
+  padding: var(--sp-7);
+  background: var(--overlay-strong);
 }
 
 .m-photo-preview-card {
@@ -929,9 +930,9 @@ onBeforeUnmount(() => {
   max-height: 82vh;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   overflow: auto;
-  padding: 14px;
+  padding: var(--sp-5);
   border-radius: var(--m-radius);
   background: var(--m-card);
 }
@@ -947,7 +948,7 @@ onBeforeUnmount(() => {
 .m-photo-transfer-text {
   width: 100%;
   min-height: 160px;
-  padding: 8px;
+  padding: var(--sp-2);
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-soft);

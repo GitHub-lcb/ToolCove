@@ -220,7 +220,7 @@ async function copyResult() {
             <table class="m-table" data-role="table">
               <thead>
                 <tr>
-                  <th v-for="col in result.columns" :key="col.name">{{ col.name }}</th>
+                  <th scope="col" v-for="col in result.columns" :key="col.name">{{ col.name }}</th>
                 </tr>
               </thead>
               <tbody>
