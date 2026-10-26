@@ -2353,7 +2353,9 @@ export const TOOL_MESSAGES = Object.freeze({
         "uploadHint": "浏览器形态可上传本机照片；手机拍照上传与桌面批量归档请用对应平台的入口。",
         "unknownDate": "未识别日期",
         "cloudSavedGallery": "相册（{folder} 相簿）",
-        "cloudSavedDownloads": "下载目录"
+        "cloudSavedDownloads": "下载目录",
+        "retryTitle": "重试",
+        "removeTitle": "移除"
       },
       "prompt": {
         "subtitle": "生图 / 生视频提示词库与一键生成",
@@ -5776,7 +5778,9 @@ export const TOOL_MESSAGES = Object.freeze({
         "uploadHint": "In the browser build you can upload local photos; use the mobile page for camera capture and the desktop app for batch archiving.",
         "unknownDate": "Unknown date",
         "cloudSavedGallery": "Photos ({folder} album)",
-        "cloudSavedDownloads": "Downloads"
+        "cloudSavedDownloads": "Downloads",
+        "retryTitle": "Retry",
+        "removeTitle": "Remove"
       },
       "prompt": {
         "subtitle": "Image / video prompt library with one-click generation",

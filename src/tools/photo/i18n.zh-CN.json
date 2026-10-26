@@ -162,7 +162,9 @@
       "uploadHint": "浏览器形态可上传本机照片；手机拍照上传与桌面批量归档请用对应平台的入口。",
       "unknownDate": "未识别日期",
       "cloudSavedGallery": "相册（{folder} 相簿）",
-      "cloudSavedDownloads": "下载目录"
+      "cloudSavedDownloads": "下载目录",
+      "retryTitle": "重试",
+      "removeTitle": "移除"
     }
   }
 }

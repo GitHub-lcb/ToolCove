@@ -162,7 +162,9 @@
       "uploadHint": "In the browser build you can upload local photos; use the mobile page for camera capture and the desktop app for batch archiving.",
       "unknownDate": "Unknown date",
       "cloudSavedGallery": "Photos ({folder} album)",
-      "cloudSavedDownloads": "Downloads"
+      "cloudSavedDownloads": "Downloads",
+      "retryTitle": "Retry",
+      "removeTitle": "Remove"
     }
   }
 }
