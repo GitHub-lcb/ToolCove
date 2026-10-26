@@ -4,7 +4,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("../platform/invoke.js", () => ({ invoke: invokeMock, createChannel: vi.fn() }));
 vi.mock("../secure.js", () => ({ decryptValue: async (v) => v }));
 
-import { contextWindowOf, effortLabelKey, modelsFor, normalizeEffort, providerFor, providerLabel } from "./modelCatalog.js";
+import { EFFORT_LEVELS, contextWindowOf, effortDescKey, effortLabelKey, modelsFor, normalizeEffort, providerFor, providerLabel } from "./modelCatalog.js";
 import { loadModelChoice, loadModelList, saveModelChoice } from "./modelPrefs.js";
 
 describe("模型目录", () => {
@@ -35,6 +35,11 @@ describe("模型目录", () => {
     expect(normalizeEffort(null)).toBe("");
     expect(effortLabelKey("xhigh")).toBe("agent.effortXhigh");
     expect(effortLabelKey("")).toBe("agent.effortDefault");
+    // 五档（不含"跟随服务商"）与解释词条：浮层与设置页都从这里取，别再各写一套
+    expect(EFFORT_LEVELS.map((item) => item.value)).toEqual(["minimal", "low", "medium", "high", "xhigh"]);
+    expect(effortDescKey("high")).toBe("agent.effortDescHigh");
+    expect(effortDescKey("")).toBe("agent.effortDescDefault");
+    expect(effortDescKey("ultra")).toBe("agent.effortDescDefault");
   });
 });
 

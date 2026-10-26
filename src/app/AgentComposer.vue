@@ -14,8 +14,9 @@ import { errText } from "../shared/errors.js";
 import { isDesktop } from "../platform/env.js";
 import { ATTACH_MAX, attachmentIcon, attachmentKind, formatBytes, mergeAttachments } from "../agent/attachments.js";
 import {
-  EFFORT_OPTIONS,
+  EFFORT_LEVELS,
   contextWindowOf,
+  effortDescKey,
   effortLabelKey,
   modelsFor,
   normalizeEffort,
@@ -166,6 +167,34 @@ const displayModel = computed(() => props.modelName || t("agent.modelUnset"));
 const profileName = computed(() => props.profiles.find((p) => p.id === props.profileId)?.name || "");
 const modelCtx = computed(() => contextWindowOf(props.modelBase, props.modelName));
 const effortText = computed(() => (normalizeEffort(props.effort) ? t(effortLabelKey(props.effort)) : ""));
+// 「跟随服务商」= effort 为空；它与五档是两个维度，界面分开呈现（见模板的 .effort-head）
+const currentEffort = computed(() => normalizeEffort(props.effort));
+const isAutoEffort = computed(() => currentEffort.value === "");
+const effortDesc = computed(() => t(effortDescKey(props.effort)));
+const effortGrid = ref(null);
+
+/**
+ * radiogroup 的方向键：←/↑ 退一档、→/↓ 进一档、Home/End 到两端，并把焦点一起搬过去。
+ * 必须等保存结束再聚焦：保存期间按钮是 disabled，对 disabled 元素 focus() 无效，
+ * 焦点会掉到 body（实测：按下方向键后 activeElement 变成 BODY）。
+ */
+async function onEffortKeydown(event) {
+  if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const list = EFFORT_LEVELS;
+  const active = list.findIndex((item) => item.value === currentEffort.value);
+  let index = active >= 0 ? active : list.findIndex((item) => item.value === "medium");
+  if (event.key === "ArrowRight" || event.key === "ArrowDown") index = (index + 1) % list.length;
+  else if (event.key === "ArrowLeft" || event.key === "ArrowUp") index = (index - 1 + list.length) % list.length;
+  else if (event.key === "Home") index = 0;
+  else index = list.length - 1;
+  try {
+    await chooseEffort(list[index].value);
+  } finally {
+    // 焦点必须跟着选中项走：否则方向键改了值，键盘用户还停在上一个档位上
+    nextTick(() => effortGrid.value?.querySelectorAll(".effort-seg")[index]?.focus?.());
+  }
+}
 const modelTitle = computed(() => [t("agent.modelTitle"), profileName.value, providerText.value, effortText.value].filter(Boolean).join(" · "));
 
 // 端点返回的模型列表：打开弹层时按当前配置拉一次；失败保留内置候选/手动输入。
@@ -871,22 +900,42 @@ defineExpose({
           </div>
 
           <div class="mp-block">
-            <p class="pop-group">{{ t("agent.modelEffort") }}</p>
-            <div class="effort-grid" role="radiogroup" :aria-label="t('agent.modelEffort')">
+            <div class="effort-head">
+              <p class="pop-group">{{ t("agent.modelEffort") }}</p>
+              <!-- 「跟随服务商」不是第六档：它和五档是两个维度，并排放会让人以为最左边是"最弱" -->
               <button
-                v-for="opt in EFFORT_OPTIONS"
-                :key="opt.value || 'default'"
                 type="button"
-                class="effort-chip"
+                class="effort-auto"
+                :class="{ on: isAutoEffort }"
+                :aria-pressed="isAutoEffort"
+                :disabled="modelSaving"
+                @click="chooseEffort(isAutoEffort ? 'medium' : '')"
+              >
+                <Icon v-if="isAutoEffort" name="check" :size="12" />
+                {{ t("agent.effortAuto") }}
+              </button>
+            </div>
+            <div ref="effortGrid" class="effort-grid" role="radiogroup" :aria-label="t('agent.modelEffort')" @keydown="onEffortKeydown">
+              <button
+                v-for="(opt, index) in EFFORT_LEVELS"
+                :key="opt.value"
+                type="button"
+                class="effort-seg"
+                :class="{ on: currentEffort === opt.value }"
                 role="radio"
-                :aria-checked="normalizeEffort(effort) === opt.value"
-                :class="{ on: normalizeEffort(effort) === opt.value }"
+                :aria-checked="currentEffort === opt.value"
+                :tabindex="currentEffort === opt.value || (isAutoEffort && index === 2) ? 0 : -1"
+                :title="t(opt.descKey)"
                 :disabled="modelSaving"
                 @click="chooseEffort(opt.value)"
               >
-                {{ t(opt.labelKey) }}
+                <span class="effort-bars" aria-hidden="true">
+                  <i v-for="n in 5" :key="n" :class="{ lit: n <= opt.level }"></i>
+                </span>
+                <span class="effort-seg-label">{{ t(opt.labelKey) }}</span>
               </button>
             </div>
+            <p class="effort-desc">{{ effortDesc }}</p>
             <p class="pop-note">{{ t("agent.effortNote") }}</p>
           </div>
 
@@ -1289,21 +1338,43 @@ defineExpose({
 .mp-profile-model { flex-shrink: 0; font-size: var(--fs-xs); color: var(--muted); }
 .mp-check { flex-shrink: 0; color: var(--primary); }
 .mp-block { margin-top: var(--sp-2); border-top: 1px solid var(--card-border); padding-top: var(--sp-1); }
-.effort-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-05); }
-.effort-chip {
-  padding: var(--sp-1) var(--sp-05);
-  color: var(--text-weak);
-  background: var(--card-soft);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-sm);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
+/* 推理档位：标题行放「跟随服务商」，下面五档带强度刻度 */
+.effort-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.effort-auto {
+  display: inline-flex; align-items: center; gap: var(--sp-0);
+  padding: var(--sp-0) var(--sp-1);
+  color: var(--text-soft); background: var(--card-soft);
+  border: 1px solid var(--card-border); border-radius: var(--r-pill);
+  font-family: inherit; font-size: var(--fs-xs); cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
-.effort-chip:hover { color: var(--text); border-color: var(--border-strong); }
-.effort-chip.on { color: var(--primary); background: var(--primary-soft); border-color: var(--border-blue); font-weight: 600; }
-.effort-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.effort-auto:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.effort-auto.on { color: var(--primary); background: var(--primary-soft); border-color: var(--border-blue); }
+.effort-auto:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.effort-auto:disabled { opacity: .55; cursor: default; }
+.effort-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-05); }
+.effort-seg {
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-05);
+  padding: var(--sp-1) var(--sp-05);
+  color: var(--text-weak); background: var(--card-soft);
+  border: 1px solid var(--card-border); border-radius: var(--r-sm);
+  font-family: inherit; font-size: var(--fs-xs); cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.effort-seg:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.effort-seg.on { color: var(--primary); background: var(--primary-soft); border-color: var(--border-blue); }
+.effort-seg:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.effort-seg:disabled { opacity: .55; cursor: default; }
+.effort-bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+.effort-bars i { width: 3px; border-radius: var(--r-pill); background: var(--border-strong); opacity: .7; }
+.effort-bars i:nth-child(1) { height: 4px; }
+.effort-bars i:nth-child(2) { height: 6px; }
+.effort-bars i:nth-child(3) { height: 8px; }
+.effort-bars i:nth-child(4) { height: 10px; }
+.effort-bars i:nth-child(5) { height: 12px; }
+.effort-bars i.lit { background: currentColor; opacity: 1; }
+.effort-seg-label { font-weight: 500; white-space: nowrap; }
+.effort-desc { margin: var(--sp-2) 0 0; min-height: 2.6em; color: var(--text-weak); font-size: var(--fs-xs); line-height: var(--lh-tight); }
 .mp-custom { display: flex; gap: var(--sp-1); margin-top: var(--sp-2); }
 .mp-input {
   flex: 1;
@@ -1363,7 +1434,7 @@ defineExpose({
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .goal-box, .add-btn, .mode-pill, .model-btn, .send-btn, .att-x, .effort-chip { transition: none; }
+  .goal-box, .add-btn, .mode-pill, .model-btn, .send-btn, .att-x, .effort-seg, .effort-auto { transition: none; }
   .add-btn.busy .icon { animation: none; }
 }
 </style>

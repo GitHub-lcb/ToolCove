@@ -19,6 +19,7 @@ import { vFieldError } from "../ui/fieldError.js";
 import MembersPanel from "../enterprise/MembersPanel.vue";
 import { testAI, listAIModels, AI_PRESETS, PROVIDER_GROUPS } from "../ai.js";
 import { newProfileId, normalizeAi, profileLabel, toStoredAi } from "../agent/modelProfiles.js";
+import { effortDescKey } from "../agent/modelCatalog.js";
 import { testTypeSafe } from "../typesafe.js";
 import { checkForUpdate } from "../app/updater.js";
 import { encryptValue, decryptValue } from "../secure.js";
@@ -1215,12 +1216,14 @@ async function restoreNow() {
                 <span>{{ t("settings.aiReason") }}</span>
                 <select v-model="editingProfile.reasoningEffort" class="select">
                   <option value="">{{ t("settings.aiReasonNone") }}</option>
-                  <option value="minimal">{{ t("settings.aiReasonFastest") }}</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="xhigh">{{ t("settings.aiReasonXhigh") }}</option>
+                  <option value="minimal">{{ t("agent.effortMinimal") }}</option>
+                  <option value="low">{{ t("agent.effortLow") }}</option>
+                  <option value="medium">{{ t("agent.effortMedium") }}</option>
+                  <option value="high">{{ t("agent.effortHigh") }}</option>
+                  <option value="xhigh">{{ t("agent.effortXhigh") }}</option>
                 </select>
+                <!-- 与输入框浮层同一套解释：档位讲的是"想多久"，不是"准不准" -->
+                <small class="field-hint">{{ editingProfile.reasoningEffort ? t(effortDescKey(editingProfile.reasoningEffort)) : t("settings.aiReasonDefaultHint") }}</small>
               </label>
 
               <label class="field" v-if="!editingProfile.reasoningEffort">

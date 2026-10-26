@@ -354,15 +354,24 @@ export const AI_PRESETS = Object.freeze(
   }))
 );
 
-/** 推理档位：与设置页下拉的取值一一对应（少一项就会出现「这里选了、设置页不认」）。 */
+/**
+ * 推理档位：与设置页下拉的取值一一对应（少一项就会出现「这里选了、设置页不认」）。
+ *
+ * level 用来画强度刻度（1–5）；descKey 给一句白话解释——「低/中/高」三个字不说明代价，
+ * 而这类档位的真实差别是"想多久、愿意探索多少"，不是"准不准"（服务商自己的文档也这么讲）。
+ * 空串是「跟随服务商」，**不是第六档**：它和五个档位是两个维度，界面上要分开呈现。
+ */
 export const EFFORT_OPTIONS = Object.freeze([
-  { value: "", labelKey: "agent.effortDefault" },
-  { value: "minimal", labelKey: "agent.effortMinimal" },
-  { value: "low", labelKey: "agent.effortLow" },
-  { value: "medium", labelKey: "agent.effortMedium" },
-  { value: "high", labelKey: "agent.effortHigh" },
-  { value: "xhigh", labelKey: "agent.effortXhigh" },
+  { value: "", level: 0, labelKey: "agent.effortDefault", descKey: "agent.effortDescDefault" },
+  { value: "minimal", level: 1, labelKey: "agent.effortMinimal", descKey: "agent.effortDescMinimal" },
+  { value: "low", level: 2, labelKey: "agent.effortLow", descKey: "agent.effortDescLow" },
+  { value: "medium", level: 3, labelKey: "agent.effortMedium", descKey: "agent.effortDescMedium" },
+  { value: "high", level: 4, labelKey: "agent.effortHigh", descKey: "agent.effortDescHigh" },
+  { value: "xhigh", level: 5, labelKey: "agent.effortXhigh", descKey: "agent.effortDescXhigh" },
 ]);
+
+/** 五档（不含「跟随服务商」）：按钮组与键盘方向键都只在这几个值之间走 */
+export const EFFORT_LEVELS = Object.freeze(EFFORT_OPTIONS.filter((item) => item.value));
 
 const EFFORT_VALUES = new Set(EFFORT_OPTIONS.map((item) => item.value));
 
@@ -405,6 +414,12 @@ export function normalizeEffort(value) {
 export function effortLabelKey(value) {
   const effort = normalizeEffort(value);
   return EFFORT_OPTIONS.find((item) => item.value === effort)?.labelKey || "agent.effortDefault";
+}
+
+/** 档位 → 一句白话解释的词条键（未知值按默认档）。 */
+export function effortDescKey(value) {
+  const effort = normalizeEffort(value);
+  return EFFORT_OPTIONS.find((item) => item.value === effort)?.descKey || "agent.effortDescDefault";
 }
 
 /** 档位是否短到能塞进胶囊（空档不显示，其余显示词条本身）。 */
