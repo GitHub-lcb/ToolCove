@@ -269,6 +269,59 @@ const answers = computed(() => timeline.value.filter((item) => item.kind === "fi
 const reviewNotices = computed(() => timeline.value.filter((item) => item.code === "verify_review"));
 const toolCount = computed(() => timeline.value.filter((item) => item.kind === "tool").length);
 
+// ------- 管线条：把这一轮的工具步压成一条横排，贴着画布顶（B · Pipeline 落地第一步） -------
+// 它不替代对话流，而是给「现在跑到第几步、哪一步在等确认」一个常驻的入口：
+// 点节点 → 展开对应的工具卡并滚到它（运行中链在长，靠滚屏找上一步很容易丢）。
+const scrollEl = ref(null);
+const confirmEl = ref(null);
+function reducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+const pipelineNodes = computed(() =>
+  executionTimeline.value
+    .filter((item) => item.kind === "tool")
+    .map((item, i) => {
+      const last = item.attempts[item.attempts.length - 1] || {};
+      const span = lastSpan(item);
+      return {
+        id: item.id,
+        n: i + 1,
+        tool: item.tool,
+        status: last.status || "running",
+        spanText: span ? fmtMs(span) : "",
+      };
+    })
+);
+const pendingTool = computed(() =>
+  agentSession.pending && agentSession.pending.kind === "tool" ? agentSession.pending.tool : ""
+);
+function focusStep(id) {
+  openExecution(true);
+  if (id) openCards.add(id);
+  nextTick(() => {
+    const sc = scrollEl.value;
+    if (!sc) return;
+    const el = sc.querySelector('[data-step-id="' + id + '"]');
+    if (el) el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  });
+}
+const selectedStepId = ref("");
+const selectedStep = computed(() => {
+  const id = selectedStepId.value;
+  return id ? executionTimeline.value.find((item) => item.kind === "tool" && item.id === id) || null : null;
+});
+function selectStep(id) {
+  selectedStepId.value = selectedStepId.value === id ? "" : id;
+}
+function focusPending() {
+  openExecution(true);
+  nextTick(() => {
+    if (confirmEl.value) confirmEl.value.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  });
+}
+
 const errorText = computed(() => {
   const key = ERROR_KEY[agentSession.errorCode];
   return key ? t(key) : agentSession.error || "";
@@ -954,7 +1007,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
   <div class="agent">
     <!-- 会话头已经上移到外壳的单一顶栏（标题 / 状态 / 右栏开关都在那里），
          这里不再叠第二条 bar。 -->
-    <div class="body">
+    <div class="body" :class="{ 'body-insp': selectedStep }">
       <!-- 对话列：消息流占满剩余高度，输入框钉在底部。
            这是主流 agent 产品的固定骨架（Qoder「输入框位于中央区域底部」、
            VS Code Chat view 的 sessions/对话/输入三段、Zed 的 message editor 在面板底部），
@@ -973,7 +1026,35 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           </span>
         </section>
 
-        <div class="scroll">
+        <!-- 管线条：这一轮的工具步 + 正在等确认的那一步。点节点跳到对应卡片；
+             不替代对话流，只做「现在在哪、下一步是什么」的常驻入口。 -->
+        <nav v-if="pipelineNodes.length || pendingTool" class="pipe" :aria-label="t('agent.trajectoryTitle')">
+          <span class="pipe-label">{{ t("agent.trajectoryTitle") }}</span>
+          <div class="pipe-track">
+            <button
+              v-for="node in pipelineNodes"
+              :key="node.id"
+              type="button"
+              class="pipe-node"
+              :class="'s-' + node.status"
+              :title="node.tool"
+              :aria-pressed="selectedStepId === node.id"
+              @click="selectStep(node.id)"
+            >
+              <span class="pn-no">{{ String(node.n).padStart(2, "0") }}</span>
+              <span class="pn-name">{{ node.tool }}</span>
+              <span v-if="node.status === 'running'" class="pn-live" aria-hidden="true"></span>
+              <span v-else class="pn-meta">{{ node.spanText }}</span>
+            </button>
+            <button v-if="pendingTool" type="button" class="pipe-node s-wait" :title="pendingTool" @click="focusPending">
+              <span class="pn-no">{{ String(pipelineNodes.length + 1).padStart(2, "0") }}</span>
+              <span class="pn-name">{{ pendingTool }}</span>
+              <span class="pn-meta pn-wait">{{ t("agent.approvalPending") }}</span>
+            </button>
+          </div>
+        </nav>
+
+        <div ref="scrollEl" class="scroll">
           <!-- 我说的那句话：会话流的第一条消息。回看历史时它就是当初那条目标，
                实时运行时是本次运行的目标（goal 在 startRun 成功后即被清空，
                所以这里读 agentSession.goal，而不是输入框的草稿）。 -->
@@ -995,7 +1076,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
           <!-- 内联确认卡：运行时交给我们的是 Promise，卡片能展示工具名 / 风险 / 完整 args，
                全局 askConfirm 模态做不到，而且不会盖住用户正在看的时间线。
                它属于实时运行：回看历史时照常显示——后台运行来了一张确认卡，人仍要答得上。 -->
-          <section v-if="agentSession.pending" class="confirm" :class="'risk-' + (agentSession.pending.risk || 'ask')">
+          <section v-if="agentSession.pending" ref="confirmEl" class="confirm" :class="'risk-' + (agentSession.pending.risk || 'ask')">
             <p v-if="viewRun" class="cf-hint">{{ t("agent.backgroundTask") }} · {{ agentSession.goal }}</p>
             <div class="cf-head">
               <Icon name="alert" :size="15" />
@@ -1003,6 +1084,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               <span v-if="agentSession.pending.risk" class="tc-chip sm" :class="riskChip(agentSession.pending.risk)">
                 {{ t(riskKey(agentSession.pending.risk)) }}
               </span>
+              <span v-if="agentSession.pending.kind === 'tool'" class="cf-wait">{{ t("agent.approvalPending") }}</span>
             </div>
             <!-- 提问卡：ask_user 要的是**文本**答案（路径、SQL、口令…），不是允许/拒绝。
                  旧实现把它画成同一张确认卡，于是「允许」把布尔当答案回灌，模型只会再问一遍。 -->
@@ -1073,10 +1155,12 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
               </div>
               <pre v-if="agentSession.pending.args" class="cf-args">{{ payloadText(agentSession.pending.args) }}</pre>
               <p class="cf-hint">{{ t("agent.confirmArgsHint") }}</p>
-              <p v-if="agentSession.pending.kind === 'tool'" class="cf-once">{{ t("agent.confirmOnce") }}</p>
-              <div class="cf-actions">
-                <button ref="denyBtn" class="btn-ghost sm" @click="onDecide(false)">{{ t("agent.confirmDeny") }}</button>
-                <button class="btn-primary sm" @click="onDecide(true)">{{ t("agent.confirmAllow") }}</button>
+              <div class="cf-foot">
+                <p v-if="agentSession.pending.kind === 'tool'" class="cf-once">{{ t("agent.confirmOnce") }}</p>
+                <div class="cf-actions">
+                  <button ref="denyBtn" class="btn-ghost sm" @click="onDecide(false)">{{ t("agent.confirmDeny") }}</button>
+                  <button class="btn-primary sm" @click="onDecide(true)">{{ t("agent.confirmAllow") }}</button>
+                </div>
               </div>
             </template>
           </section>
@@ -1097,7 +1181,7 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
             <ExecutionLanes :steps="sourceSteps" :running="busy && !viewRun" :now="clock" />
             <section class="timeline">
             <template v-for="(item, index) in executionTimeline" :key="cardKey(item, index)">
-              <article v-if="item.kind === 'tool'" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" :data-motion="motionKind(item.tool)" data-role="tool-card">
+              <article v-if="item.kind === 'tool'" :data-step-id="item.id" class="tl-card" :data-status="item.attempts[item.attempts.length - 1].status" :data-motion="motionKind(item.tool)" data-role="tool-card">
                 <button
                   class="tl-head"
                   :aria-expanded="openCards.has(cardKey(item, index))"
@@ -1389,6 +1473,37 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
         </footer>
       </div>
 
+      <!-- 检查器：轨迹选中某一步时的速览。对话流仍是「记录」，这里只回答这一步干了什么。 -->
+      <aside v-if="selectedStep" class="insp" :aria-label="t('agent.args')">
+        <header class="insp-head">
+          <code class="insp-name" :title="selectedStep.tool">{{ selectedStep.tool }}</code>
+          <span class="tc-chip sm" :class="riskChip(toolMeta.get(selectedStep.tool)?.risk)">
+            {{ t(riskKey(toolMeta.get(selectedStep.tool)?.risk)) }}
+          </span>
+          <button class="insp-x" type="button" :aria-label="t('agent.backToCurrent')" @click="selectedStepId = ''">
+            <Icon name="x" :size="14" />
+          </button>
+        </header>
+        <div class="insp-body">
+          <div v-for="a in selectedStep.attempts" :key="a.n" class="insp-att">
+            <div class="ia-head">
+              <span class="ia-n">{{ t("agent.attempt", { n: a.n }) }}</span>
+              <span class="ia-st">{{ t(ATTEMPT_KEY[a.status]) }}</span>
+              <span v-if="attemptSpan(a)" class="ia-dur">{{ fmtMs(attemptSpan(a)) }}</span>
+            </div>
+            <p class="ia-label">{{ t("agent.args") }}</p>
+            <pre class="ia-pre">{{ a.argsText }}</pre>
+            <template v-if="a.status === 'ok' && a.result != null">
+              <p class="ia-label">{{ t("agent.stepResult") }}</p>
+              <pre class="ia-pre">{{ a.resultText }}</pre>
+            </template>
+          </div>
+        </div>
+        <footer class="insp-foot">
+          <button class="btn-ghost sm" type="button" @click="focusStep(selectedStepId)">{{ t("agent.executionTitle") }} ›</button>
+        </footer>
+      </aside>
+
       <!-- 任务监控投递到外壳右栏（#shell-dock）：它属于「运行期才出现的面板」，
            不该在对话列里再切走 280px。没有外壳时（单测/手机端）留在原地。 -->
       <Teleport to="#shell-dock" :disabled="!shell">
@@ -1483,15 +1598,15 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 /* 空态居中：先说「这是什么」，再给三个一键可点的例子，最后一行安全说明。
    垂直居中而不是贴顶——空态是这一屏唯一的正文，贴顶会让下半屏空成一片。 */
 /* 居中骨架与文字层级走全局 .empty */
-.canvas-empty { flex: 1; min-height: 320px; margin: 0; padding: var(--sp-7) 0 var(--sp-6); gap: var(--sp-2); }
-.ce-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--primary-hover); background: var(--primary-soft); border-radius: var(--r-md); margin-bottom: var(--sp-3); }
-.ce-slogan { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 650; color: var(--text); letter-spacing: -0.6px; }
-.ce-hint { margin: 0; max-width: 46ch; font-size: var(--fs-md); color: var(--muted); line-height: var(--lh-body); }
-.ce-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-5); max-width: 560px; }
+.canvas-empty { flex: 1; min-height: 320px; margin: 0; padding: var(--sp-7) 0 var(--sp-6); gap: var(--sp-2); align-items: flex-start; text-align: left; }
+.ce-mark { display: grid; place-items: center; width: 32px; height: 32px; color: var(--primary); background: var(--card); border: 1px solid var(--border); border-radius: var(--r-xs); margin-bottom: var(--sp-2); }
+.ce-slogan { margin: 0; font-size: 24px; line-height: 1.3; font-weight: 650; color: var(--text); letter-spacing: -0.4px; }
+.ce-hint { margin: 0; max-width: 42ch; font-size: var(--fs-base); color: var(--muted); line-height: var(--lh-body); }
+.ce-examples { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-5); width: 100%; max-width: 640px; }
 .ce-chip {
-  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 var(--sp-4);
-  font-size: var(--fs-sm); font-weight: 500; color: var(--text-weak);
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: var(--sp-2); height: 46px; padding: 0 var(--sp-3);
+  font-size: var(--fs-md); font-weight: 600; color: var(--text);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-sm); text-align: left;
   cursor: pointer; white-space: nowrap;
   transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
@@ -1502,11 +1617,80 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 /* 确认行为说明：低调的一段，且自带「知道了」——它讲的是安全边界，不是卖点。
    刻意不用 flex（图标会在大段文字里被挤到单独一行），图标用 vertical-align 跟首行对齐。 */
 .ce-note {
-  margin: var(--sp-5) 0 0; max-width: 52ch; text-align: center;
-  font-size: var(--fs-xs); color: var(--faint); line-height: var(--lh-body);
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin: var(--sp-5) 0 0; max-width: 640px; text-align: left;
+  font-size: var(--fs-sm); color: var(--muted); line-height: var(--lh-body);
+  padding: var(--sp-2) var(--sp-3); background: var(--card-soft);
+  border: 1px solid var(--border); border-left: 2px solid var(--primary);
 }
 .ce-note .icon { vertical-align: -2px; margin-right: var(--sp-05); }
-.ce-note .link { margin-left: var(--sp-2); }
+.ce-note .link { margin-left: auto; flex-shrink: 0; }
+
+/* ---------- 管线条 ---------- */
+.pipe {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  min-width: 0;
+}
+.pipe-label {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.pipe-track {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+  padding: var(--sp-05) 0;
+}
+.pipe-track::-webkit-scrollbar { display: none; }
+.pipe-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--card);
+  color: var(--text-weak);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+}
+.pipe-node:hover { border-color: var(--primary); color: var(--text); }
+.pipe-node:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.pipe-node .pn-no { color: var(--faint); font-size: var(--fs-xs); }
+.pipe-node .pn-meta { color: var(--faint); font-size: var(--fs-xs); }
+.pipe-node.s-ok .pn-name { color: var(--done); }
+.pipe-node.s-error { border-color: var(--border-danger); }
+.pipe-node.s-error .pn-name { color: var(--danger); }
+.pipe-node.s-running { border-color: var(--primary); background: var(--primary-soft); color: var(--text); }
+.pipe-node.s-wait { border-color: var(--primary); background: var(--primary-soft); }
+.pipe-node.s-wait .pn-name { color: var(--primary-hover); }
+.pipe-node .pn-wait { color: var(--wait); }
+.pipe-node .pn-live {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--primary);
+  animation: pipe-live 1.1s ease-in-out infinite;
+}
+@keyframes pipe-live { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
 /* ---------- 未配置模型 ---------- */
 /* 横排：图标 + 说明 + 出路按钮一行放下，占的高度不到原来的三分之二，
@@ -1845,4 +2029,36 @@ const usageText = computed(() => (agentSession.usage.totalTokens ? fmtNum(agentS
 @media (prefers-reduced-motion: reduce) {
   .dot, .tl-card { animation: none; }
 }
+
+/* ---------- B · Pipeline 收口：卡片降噪 ----------
+   把执行记录/工具卡/确认卡从「浮起的卡片」压成「发丝线分区」：
+   圆角收到 r-xs、去掉阴影、边框统一走 --border。结构不动，只换材质。 */
+.execution { border-color: var(--border); border-radius: var(--r-xs); background: var(--card); }
+.tl-card { border-color: var(--border); border-radius: var(--r-xs); }
+.tl-head { padding: var(--sp-2) var(--sp-3); }
+.confirm { border-radius: var(--r-xs); border-color: var(--border); border-left-width: 2px; box-shadow: none; background: var(--card-soft); }
+.view-banner { border-radius: var(--r-xs); }
+.cf-preview .cf-pv-body, .cf-args, .payload pre { border-radius: var(--r-xs); }
+
+/* ---------- 检查器（轨迹选中的那一步） ---------- */
+.body.body-insp { grid-template-columns: minmax(0, 1fr) 320px; }
+.insp { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--border); background: var(--card); }
+.insp-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); min-width: 0; }
+.insp-name { font-family: var(--font-mono); font-size: var(--fs-md); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-x { margin-left: auto; flex-shrink: 0; width: 26px; height: 26px; display: grid; place-items: center; color: var(--muted); border: 1px solid transparent; border-radius: var(--r-xs); background: none; cursor: pointer; }
+.insp-x:hover { color: var(--text); border-color: var(--border); }
+.insp-body { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-4); }
+.insp-att + .insp-att { margin-top: var(--sp-5); }
+.ia-head { display: flex; align-items: center; gap: var(--sp-2); }
+.ia-n, .ia-st, .ia-dur { font-size: var(--fs-xs); color: var(--muted); }
+.ia-st { border: 1px solid var(--border); border-radius: var(--r-xs); padding: 0 var(--sp-05); }
+.ia-dur { margin-left: auto; font-family: var(--font-mono); color: var(--faint); }
+.ia-label { margin: var(--sp-3) 0 var(--sp-1); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.ia-pre { margin: 0; max-height: 220px; overflow: auto; padding: var(--sp-2); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--text-code); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-xs); white-space: pre-wrap; word-break: break-word; }
+.insp-foot { display: flex; justify-content: flex-end; padding: var(--sp-2) var(--sp-4); border-top: 1px solid var(--border); }
+
+/* 闸门底栏：说明在左、决定在右，和轨迹尾部的「等待你的决定」是同一件事的两种入口。 */
+.cf-wait { margin-left: auto; font-size: var(--fs-xs); color: var(--wait); font-weight: 600; letter-spacing: 0.02em; }
+.cf-foot { display: flex; align-items: center; gap: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+.cf-foot .cf-once { margin: 0; flex: 1; min-width: 0; }
 </style>

@@ -323,6 +323,57 @@ describe("AgentView 渲染", () => {
     expect(html).not.toMatch(/agent\.[a-zA-Z]+\.[a-zA-Z]/);
   });
 
+  it("工具确认是一道闸门：等待标记、底栏说明与决定都在", async () => {
+    const html = await render({ status: "waiting", pending: { kind: "tool", tool: "file.write", risk: "write", args: { path: "a.json" } } });
+    expect(html).toContain('class="cf-wait"');
+    expect(html).toContain(t("agent.approvalPending"));
+    expect(html).toContain('class="cf-foot"');
+    expect(html).toContain(t("agent.confirmOnce"));
+    expect(html).toContain(t("agent.confirmAllow"));
+    expect(html).toContain(t("agent.confirmDeny"));
+  });
+
+  it("管线条：按顺序渲染这一轮的工具步，并在等确认时多出一步", async () => {
+    const runs = [
+      {
+        id: "r2",
+        input: "清洗订单",
+        status: "completed",
+        steps: [
+          { type: "tool_start", id: "c1", tool: "file.inspect", args: {}, attempt: 1, ts: 1 },
+          { type: "tool_result", id: "c1", tool: "file.inspect", result: { ok: 1 }, ts: 2 },
+          { type: "tool_start", id: "c2", tool: "table.parse", args: {}, attempt: 1, ts: 3 },
+          { type: "tool_result", id: "c2", tool: "table.parse", result: { ok: 1 }, ts: 4 },
+          { type: "final", answer: "完成", ts: 5 },
+        ],
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 1 },
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ];
+    const html = await render({ runs }, { jumpId: { module: "agent", tab: null, action: "view", runId: "r2", ts: 1 } });
+    const pipe = html.match(/<nav[^>]*class="pipe"[\s\S]*?<\/nav>/)?.[0];
+    expect(pipe).toBeTruthy();
+    expect(pipe).toContain("file.inspect");
+    expect(pipe).toContain("table.parse");
+    expect((pipe.match(/pipe-node/g) || []).length).toBe(2);
+    // 点节点要能定位到卡片：卡片自己带 data-step-id
+    expect(html).toContain('data-step-id="c1"');
+
+    // 实时运行等待确认：链条尾部多一个 s-wait 节点
+    const waiting = await render({
+      status: "waiting",
+      pending: { kind: "tool", tool: "file.write", risk: "write" },
+      steps: [
+        { type: "tool_start", id: "c9", tool: "schema.infer", args: {}, attempt: 1, ts: 1 },
+        { type: "tool_result", id: "c9", tool: "schema.infer", result: { ok: 1 }, ts: 2 },
+      ],
+    });
+    expect(waiting).toContain("s-wait");
+    expect(waiting).toContain("file.write");
+    expect(waiting).toContain(t("agent.approvalPending"));
+  });
+
   it("jump 指向不存在的 run：忽略深链，退回实时画布", async () => {
     const html = await render({}, { jumpId: { module: "agent", tab: null, action: "view", runId: "ghost", ts: 1 } });
     expect(html).not.toContain("view-banner");
