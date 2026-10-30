@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolCove · 方向 C · Desk</title>
+<style>
+  :root {
+    --win: #f3f4ef;
+    --side: #eceee8;
+    --doc: #ffffff;
+    --plate: #fbfbf8;
+    --line: #dedfd7;
+    --line-2: #c8cabf;
+    --ink: #1b1e20;
+    --ink-2: #3f4540;
+    --muted: #6b7069;
+    --faint: #6f756e;
+    --blue: #0b57c9;
+    --add-bg: #e9f4ec;
+    --add-ink: #1d623d;
+    --del-bg: #fbeae6;
+    --del-ink: #94341f;
+    --warn: #a9620a;
+    --sans: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: #d9dbd4; display: grid; place-items: center; font-family: var(--sans); font-size: 13px; color: var(--ink); }
+  button, input { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; padding: 0; }
+  p, h1, h2, h3, ul, li { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  .win {
+    width: 100vw; height: 100dvh; min-height: 640px;
+    background: var(--win); border: 1px solid #c3c5bc;
+    display: grid; grid-template-rows: 38px minmax(0, 1fr);
+    box-shadow: 0 30px 80px -40px rgba(20,25,20,.5);
+  }
+  /* titlebar */
+  .title { display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--win); border-bottom: 1px solid var(--line); }
+  .lights { display: flex; gap: 6px; margin-right: 4px; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #f26b5e; }
+  .lights i:nth-child(2) { background: #f5bf4f; }
+  .lights i:nth-child(3) { background: #61c454; }
+  .title .t { font-size: 12px; color: var(--muted); }
+  .title .t b { color: var(--ink); font-weight: 600; }
+  .title .right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .title .right .pol { font-size: 11px; color: var(--muted); }
+  .title .right .pol i { display: inline-block; width: 6px; height: 6px; background: var(--warn); margin-right: 5px; vertical-align: 1px; }
+  .cmd { font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line-2); padding: 2px 7px; background: var(--plate); }
+
+  .body { display: grid; grid-template-columns: 240px minmax(0, 1fr) 344px; min-height: 0; }
+
+  /* left */
+  .side { background: var(--side); border-right: 1px solid var(--line-2); display: flex; flex-direction: column; min-height: 0; }
+  .side-head { padding: 12px 12px 8px; display: flex; align-items: center; gap: 6px; }
+  .side-head h2 { font-size: 12px; font-weight: 600; }
+  .side-head span { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .search { margin: 0 12px 8px; height: 26px; display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--line); padding: 0 7px; }
+  .search input { flex: 1; min-width: 0; border: 0; outline: none; font-size: 11.5px; background: transparent; }
+  .side-list { flex: 1; overflow: auto; padding-bottom: 8px; }
+  .grp { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--faint); padding: 8px 12px 3px; }
+  .row { display: flex; align-items: center; gap: 7px; width: 100%; padding: 4px 12px; text-align: left; font-size: 12px; color: var(--ink-2); }
+  .row:hover { background: rgba(0,0,0,.035); }
+  .row.on { background: #fff; color: var(--ink); box-shadow: inset 2px 0 0 var(--blue); }
+  .row .sq { width: 7px; height: 7px; border: 1px solid var(--line-2); background: #fff; }
+  .row.on .sq { border-color: var(--blue); background: var(--blue); }
+  .side-foot { border-top: 1px solid var(--line); padding: 8px 12px; font-family: var(--mono); font-size: 9.5px; color: var(--faint); line-height: 1.7; }
+
+  /* center document */
+  .doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--win); }
+  .doc-head { background: var(--doc); border-bottom: 1px solid var(--line); padding: 10px 18px 0; }
+  .doc-path { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .doc-path b { color: var(--muted); font-weight: 400; }
+  .doc-title { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 8px; }
+  .doc-title h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.005em; }
+  .doc-title span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+  .doc-title .st { margin-left: auto; font-family: var(--sans); font-size: 11.5px; color: var(--warn); display: inline-flex; align-items: center; gap: 6px; }
+  .doc-title .st i { width: 6px; height: 6px; background: var(--warn); display: block; }
+  .doc-title .st.ok { color: var(--add-ink); }
+  .doc-title .st.ok i { background: var(--add-ink); }
+  .doc-title .st.no { color: var(--del-ink); }
+  .doc-title .st.no i { background: var(--del-ink); }
+  .tabs { display: flex; gap: 14px; }
+  .tab { padding: 0 0 7px; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .doc-body { flex: 1; min-height: 0; overflow: auto; background: var(--doc); }
+  .diff-head { display: flex; align-items: center; gap: 9px; padding: 7px 18px; border-bottom: 1px solid var(--line); background: var(--plate); font-family: var(--mono); font-size: 10.5px; color: var(--muted); position: sticky; top: 0; }
+  .diff-head b { color: var(--ink); font-weight: 600; }
+  .diff-head .r { margin-left: auto; color: var(--faint); }
+  .diff { font-family: var(--mono); font-size: 11.5px; line-height: 1.75; }
+  .dl { display: grid; grid-template-columns: 46px 16px minmax(0, 1fr); padding-right: 18px; }
+  .dl i { font-style: normal; text-align: right; padding-right: 10px; color: #767b73; user-select: none; }
+  .dl s { text-decoration: none; color: #8f948c; }
+  .dl .tx { white-space: pre-wrap; word-break: break-word; }
+  .dl.a { background: var(--add-bg); }
+  .dl.a i, .dl.a s { color: #7ea98e; }
+  .dl.a .tx { color: var(--add-ink); }
+  .dl.d { background: var(--del-bg); }
+  .dl.d i, .dl.d s { color: #c09183; }
+  .dl.d .tx { color: var(--del-ink); }
+  .dl.h { background: #f6f6f2; color: var(--faint); font-size: 10.5px; }
+  .dl.h .tx { color: var(--faint); }
+  .dl .k { color: var(--ink-2); }
+  .note-row { padding: 8px 18px; border-top: 1px solid var(--line); background: var(--plate); font-size: 11.5px; color: var(--muted); }
+
+  .sign { border-top: 1px solid var(--line-2); background: var(--win); padding: 10px 18px; display: flex; align-items: center; gap: 12px; }
+  .sign .say { font-size: 11.5px; color: var(--muted); line-height: 1.45; max-width: 44ch; }
+  .sign .say b { color: var(--ink); }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid var(--line-2); background: var(--doc); color: var(--ink-2); font-size: 12px; }
+  .btn:hover { border-color: var(--ink-2); color: var(--ink); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; margin-left: auto; }
+  .btn.primary:hover { background: #0a4bb0; }
+  .btn.ghost { margin-left: auto; }
+  .btn:active { transform: translateY(1px); }
+
+  /* result tab */
+  .result { padding: 18px; font-family: var(--mono); font-size: 11.5px; line-height: 1.8; color: var(--ink-2); white-space: pre-wrap; }
+
+  /* right agent */
+  .agent { border-left: 1px solid var(--line-2); background: var(--side); display: flex; flex-direction: column; min-height: 0; }
+  .agent-head { padding: 10px 14px 9px; border-bottom: 1px solid var(--line); }
+  .kicker { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--faint); text-transform: uppercase; }
+  .agent-head .run { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+  .agent-head .run b { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+  .agent-head .run span { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .agent-thread { flex: 1; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+  .goal { background: var(--doc); border: 1px solid var(--line); padding: 9px 10px; }
+  .goal h3 { font-size: 10px; font-family: var(--mono); letter-spacing: .12em; color: var(--faint); margin-bottom: 3px; }
+  .goal p { font-size: 12px; line-height: 1.5; }
+  .step-msg { display: flex; gap: 8px; padding: 5px 0; }
+  .step-msg .no { font-family: var(--mono); font-size: 9.5px; color: var(--faint); padding-top: 2px; }
+  .step-msg .b { min-width: 0; }
+  .step-msg .b b { display: block; font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-2); }
+  .step-msg .b span { display: block; font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 1px; }
+  .step-msg.now { background: #fff; border: 1px solid #e6d6b8; padding: 8px; margin: 0 -2px; }
+  .step-msg.now .b b { color: var(--warn); }
+  .ask { background: #fff; border: 1px solid var(--line-2); padding: 10px; }
+  .ask h3 { font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
+  .ask p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .ask .mini { margin-top: 7px; font-family: var(--mono); font-size: 10px; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 6px; }
+  .agent-composer { border-top: 1px solid var(--line-2); padding: 8px 12px 10px; background: var(--win); }
+  .agent-composer .input { display: flex; align-items: center; gap: 7px; background: #fff; border: 1px solid var(--line-2); padding: 6px 8px; }
+  .agent-composer input { flex: 1; min-width: 0; border: 0; outline: none; font-size: 12px; background: transparent; }
+  .agent-composer .send { width: 22px; height: 22px; background: var(--blue); color: #fff; display: grid; place-items: center; font-size: 12px; }
+  .agent-composer .hint { margin-top: 5px; font-family: var(--mono); font-size: 9.5px; color: var(--faint); display: flex; justify-content: space-between; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 12px; font-size: 12px; z-index: 60; }
+
+  [hidden] { display: none !important; }
+  @media (max-width: 1180px) { .body { grid-template-columns: 210px minmax(0, 1fr) 300px; } }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; } }
+</style>
+
+<style>
+/* ---------- 深色工作台 + 白纸文档：把「桌面上的文件」做成对比 ---------- */
+.win { background: #242927; border-color: #141816; }
+.title { background: #1d2220; border-bottom-color: #333a35; }
+.title .t { color: #9aa098; } .title .t b { color: #e8ece7; }
+.title .right .pol { color: #9aa098; }
+.cmd { color: #a8aea6; border-color: #39403b; background: #232927; }
+.side, .agent { background: #222724; border-color: #333a35; }
+.side-head h2 { color: #e4e8e3; } .side-head span { color: #8d948c; }
+.search { background: #191e1c; border-color: #39403b; }
+.search input { color: #dfe4de; } .search input::placeholder { color: #7f857e; }
+.grp { color: #8d948c; }
+.row { color: #b9bfb8; } .row:hover { background: #2a302c; }
+.row.on { background: #2e3530; color: #eef1ec; box-shadow: inset 2px 0 0 #4c8dff; }
+.row .sq { background: #2a302c; border-color: #4a524b; }
+.row.on .sq { background: #4c8dff; border-color: #4c8dff; }
+.side-foot { color: #9aa098; border-color: #333a35; }
+.agent-head { border-color: #333a35; }
+.kicker { color: #8d948c; } .agent-head .run b { color: #eef1ec; } .agent-head .run span { color: #8d948c; }
+.goal { background: #191e1c; border-color: #39403b; }
+.goal h3 { color: #8d948c; } .goal p { color: #dfe4de; }
+.step-msg .b b { color: #c9cfc8; } .step-msg .b span { color: #9aa198; }
+.step-msg.now { background: #2a2f2b; border-color: #55492f; }
+.ask { background: #191e1c; border-color: #39403b; }
+.ask h3 { color: #e6eae4; } .ask p { color: #a9b0a8; }
+.ask .mini { color: #8d948c; border-color: #333a35; }
+.agent-composer { background: #1d2220; border-color: #333a35; }
+.agent-composer .input { background: #191e1c; border-color: #39403b; }
+.agent-composer input { color: #e4e8e3; }
+.agent-composer .hint { color: #8d948c; }
+.sign { background: #1d2220; border-color: #333a35; }
+.sign .say { color: #b7bdb6; } .sign .say b { color: #e8ece7; }
+.btn { background: #2a302c; color: #d5dad3; border-color: #3c443d; }
+.btn:hover { color: #fff; border-color: #5a635a; }
+.doc { background: #e9eae4; }
+.doc-head, .doc-body { background: #fff; }
+.diff-head { background: #f7f7f3; }
+.note-row { background: #f7f7f3; }
+.more { padding: 26px 18px; text-align: center; font-family: "Cascadia Code", Consolas, monospace; font-size: 10.5px; color: #a3a79f; letter-spacing: .04em; }
+.doc-body { background: #fdfdfb; }
+</style>
+</head>
+<body>
+<div class="win">
+  <header class="title">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    <span class="t">ToolCove · <b>运行 0142</b> · 订单清洗</span>
+    <div class="right">
+      <span class="pol"><i></i>审批 · 风险放行</span>
+      <span class="cmd">⌘K</span>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="side">
+      <div class="side-head"><h2>工具</h2><span>28</span></div>
+      <div class="search">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="toolSearch" placeholder="搜工具" aria-label="搜工具">
+      </div>
+      <div class="side-list" id="toolList"></div>
+      <div class="side-foot">16 件可被 Agent 驱动<br>12 件只能手动</div>
+    </aside>
+
+    <main class="doc">
+      <header class="doc-head">
+        <div class="doc-path">文件 <b>/</b> Desktop <b>/</b> <b>orders-clean.json</b></div>
+        <div class="doc-title">
+          <h1>orders-clean.json</h1>
+          <span>1,196 行 · 138 KB · UTF-8</span>
+          <span class="st" id="docState"><i></i>待确认写入</span>
+        </div>
+        <div class="tabs" role="tablist" aria-label="文档视图">
+          <button class="tab on" data-tab="diff" role="tab" aria-selected="true">改动</button>
+          <button class="tab" data-tab="result" role="tab" aria-selected="false">结果预览</button>
+        </div>
+      </header>
+
+      <div class="doc-body" id="docBody">
+        <div class="diff-head"><b>file.write</b> 覆盖写 · 第 5 步 <span class="r">1 个 hunk · +4 / −1</span></div>
+        <div class="diff">
+          <div class="dl"><i>1</i><s> </s><span class="tx">{</span></div>
+          <div class="dl"><i>2</i><s> </s><span class="tx">  <span class="k">"generated_at"</span>: "2026-10-29T11:02:14+08:00",</span></div>
+          <div class="dl d"><i>3</i><s>-</s><span class="tx">  <span class="k">"count"</span>: 1284,</span></div>
+          <div class="dl a"><i>3</i><s>+</s><span class="tx">  <span class="k">"count"</span>: 1196,</span></div>
+          <div class="dl"><i>4</i><s> </s><span class="tx">  <span class="k">"orders"</span>: [</span></div>
+          <div class="dl a"><i>5</i><s>+</s><span class="tx">    { "order_no": "SO-2026-1042", "amount": 1288.00, "status": "new" },</span></div>
+          <div class="dl a"><i>6</i><s>+</s><span class="tx">    { "order_no": "SO-2026-1043", "amount": 96.50, "status": "new" },</span></div>
+          <div class="dl a"><i>7</i><s>+</s><span class="tx">    { "order_no": "SO-2026-1044", "amount": 432.00, "status": "paid" },</span></div>
+          <div class="dl"><i>8</i><s> </s><span class="tx">    { "order_no": "SO-2026-1045", "amount": 128.00, "status": "new" },</span></div>
+          <div class="dl"><i>9</i><s> </s><span class="tx">    { "order_no": "SO-2026-1046", "amount": 66.00, "status": "new" },</span></div>
+          <div class="dl"><i>10</i><s> </s><span class="tx">    { "order_no": "SO-2026-1047", "amount": 980.50, "status": "paid" },</span></div>
+          <div class="dl"><i>11</i><s> </s><span class="tx">    { "order_no": "SO-2026-1048", "amount": 12.90, "status": "new" },</span></div>
+          <div class="dl"><i>12</i><s> </s><span class="tx">    { "order_no": "SO-2026-1049", "amount": 340.00, "status": "paid" },</span></div>
+          <div class="dl"><i>13</i><s> </s><span class="tx">    { "order_no": "SO-2026-1050", "amount": 58.80, "status": "new" },</span></div>
+          <div class="dl"><i>14</i><s> </s><span class="tx">    { "order_no": "SO-2026-1051", "amount": 764.20, "status": "new" },</span></div>
+          <div class="dl"><i>15</i><s> </s><span class="tx">    { "order_no": "SO-2026-1052", "amount": 2100.00, "status": "paid" },</span></div>
+          <div class="dl"><i>16</i><s> </s><span class="tx">    { "order_no": "SO-2026-1053", "amount": 44.00, "status": "new" },</span></div>
+          <div class="dl"><i>17</i><s> </s><span class="tx">    { "order_no": "SO-2026-1054", "amount": 399.00, "status": "new" },</span></div>
+          <div class="dl"><i>18</i><s> </s><span class="tx">    { "order_no": "SO-2026-1055", "amount": 1288.00, "status": "paid" },</span></div>
+          <div class="dl h"><i></i><s> </s><span class="tx">    … 1,180 行未显示</span></div>
+          <div class="dl"><i>1197</i><s> </s><span class="tx">  ]</span></div>
+          <div class="dl"><i>1198</i><s> </s><span class="tx">}</span></div>
+        </div>
+        <div class="note-row">把 1,284 行去重成 1,196 行；amount 统一成两位小数；删除的只有 count 这一行。</div>
+        <div class="more">文件还有 1,180 行 · 继续滚动查看</div>
+      </div>
+      <div class="doc-body" id="resultBody" hidden>
+        <div class="result" id="resultText"></div>
+      </div>
+
+      <div class="sign" id="sign">
+        <span class="say" id="signSay"><b>写入前确认</b> · 覆盖已有文件（138 KB）。这次允许只对本次调用生效。</span>
+        <button class="btn ghost" data-reject>取消</button>
+        <button class="btn primary" data-approve>允许写入</button>
+      </div>
+    </main>
+
+    <aside class="agent">
+      <div class="agent-head">
+        <div class="kicker">Agent</div>
+        <div class="run">运行 <b>0142</b> <span id="agentMeta">05 / 08 · 00:41</span></div>
+      </div>
+      <div class="agent-thread" id="thread"></div>
+      <div class="agent-composer">
+        <div class="input">
+          <input id="goalInput" value="把上周导出的订单 CSV 清洗后写进本地订单库" aria-label="目标">
+          <button class="send" type="button" id="sendBtn" aria-label="运行">↑</button>
+        </div>
+        <div class="hint"><span>Enter 运行 · Shift+Enter 换行</span><span>4 / 8 步</span></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  var TOOLS = [
+    ['数据', ['表格 / CSV', '结构化数据', 'JSON Schema', '文本处理', 'XML 报文', 'Markdown']],
+    ['文件', ['文件处理', '图片处理', 'PDF 工具', '磁盘分析']],
+    ['网络', ['接口调试', '网络诊断', '多线程下载']],
+    ['开发', ['加密与校验', '数据库管理']],
+    ['AI', ['AI 对话', '提示词']]
+  ];
+  var STEPS = [
+    ['01', 'file.inspect', '1,284 行 · 9 列 · 138 KB'],
+    ['02', 'table.parse', '识别 3 个日期列、1 个数值列'],
+    ['03', 'table.convert', '去重 88 行，保留 1,196 行'],
+    ['04', 'schema.infer', '9 个字段，3 个可空']
+  ];
+  var RESULT = '[\n  {\n    "order_no": "SO-2026-1042",\n    "amount": 1288,\n    "status": "new",\n    "paid_at": "2026-10-19T09:12:00Z"\n  },\n  {\n    "order_no": "SO-2026-1043",\n    "amount": 96.5,\n    "status": "new",\n    "paid_at": "2026-10-19T09:14:37Z"\n  },\n  … 共 1,196 条\n]';
+
+  var state = { phase: 'pending', tool: '文件处理' };
+
+  function renderTools() {
+    var q = ($('#toolSearch').value || '').trim().toLowerCase();
+    var html = '';
+    TOOLS.forEach(function (g) {
+      var rows = g[1].filter(function (n) { return !q || n.toLowerCase().indexOf(q) >= 0; });
+      if (!rows.length) return;
+      html += '<div class="grp">' + g[0] + '</div>';
+      rows.forEach(function (n) {
+        html += '<button class="row' + (n === state.tool ? ' on' : '') + '" data-tool="' + esc(n) + '"><span class="sq"></span>' + esc(n) + '</button>';
+      });
+    });
+    $('#toolList').innerHTML = html || '<div class="grp">没有匹配</div>';
+    $$('.row').forEach(function (b) {
+      b.addEventListener('click', function () { state.tool = b.getAttribute('data-tool'); renderTools(); toast('已选中「' + state.tool + '」'); });
+    });
+  }
+
+  function renderThread() {
+    var html = '<div class="goal"><h3>目标</h3><p>' + esc($('#goalInput').value) + '</p></div>';
+    STEPS.forEach(function (s) {
+      html += '<div class="step-msg"><span class="no">' + s[0] + '</span><div class="b"><b>' + s[1] + '</b><span>' + s[2] + '</span></div></div>';
+    });
+    if (state.phase === 'pending') {
+      html += '<div class="step-msg now"><span class="no">05</span><div class="b"><b>file.write</b><span>要覆盖 orders-clean.json，等你确认</span></div></div>';
+      html += '<div class="ask"><h3>需要你确认</h3><p>第 5 步会覆盖你桌面上的同名文件。改动只有 count 一行，订单从 1,284 去重到 1,196。</p><div class="mini">策略：风险放行 · 这次允许只对本次调用生效</div></div>';
+    } else if (state.phase === 'done') {
+      html += '<div class="step-msg"><span class="no">05</span><div class="b"><b>file.write</b><span>已写入 138 KB · 01:14</span></div></div>';
+      html += '<div class="step-msg"><span class="no">06</span><div class="b"><b>db.query</b><span>写入 1,196 行到 orders_clean</span></div></div>';
+      html += '<div class="step-msg"><span class="no">07</span><div class="b"><b>data.create</b><span>记下「88 行重复单号」</span></div></div>';
+      html += '<div class="step-msg"><span class="no">08</span><div class="b"><b>spill.read</b><span>回读中段结果，总额对得上</span></div></div>';
+    } else {
+      html += '<div class="step-msg"><span class="no">05</span><div class="b"><b>file.write</b><span>已拒绝，文件没有改动</span></div></div>';
+      html += '<div class="ask"><h3>运行已停止</h3><p>第 6-8 步没有执行。你可以改完目标再运行，或把这次的结果存成一条问题。</p></div>';
+    }
+    html += '<div class="ask" style="border-style:dashed;background:transparent"><h3 style="font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;color:var(--faint)">上下文</h3><p>工作域 <b>订单系统</b> · 3 个代码池<br>技能命中 csv-cleanup ×3、sqlite-upsert ×1<br>大结果落盘 30 份 / 7 天</p></div>';
+    $('#thread').innerHTML = html;
+  }
+
+  function setDocState(kind) {
+    var el = $('#docState');
+    if (kind === 'pending') { el.className = 'st'; el.innerHTML = '<i></i>待确认写入'; }
+    if (kind === 'done') { el.className = 'st ok'; el.innerHTML = '<i></i>已写入 · 01:14'; }
+    if (kind === 'rejected') { el.className = 'st no'; el.innerHTML = '<i></i>未写入'; }
+    $('#agentMeta').textContent = kind === 'done' ? '08 / 08 · 01:14' : kind === 'rejected' ? '05 / 08 · 已停止' : '05 / 08 · 00:41';
+  }
+
+  function renderSign() {
+    var sr = $('#signSay');
+    if (state.phase === 'pending') {
+      sr.innerHTML = '<b>写入前确认</b> · 覆盖已有文件（138 KB）。这次允许只对本次调用生效。';
+      $('#sign').innerHTML = '<span class="say" id="signSay"><b>写入前确认</b> · 覆盖已有文件（138 KB）。这次允许只对本次调用生效。</span>' +
+        '<button class="btn ghost" data-reject>取消</button><button class="btn primary" data-approve>允许写入</button>';
+    } else if (state.phase === 'done') {
+      $('#sign').innerHTML = '<span class="say"><b>已写入</b> · 1,196 行 · 138 KB · 用时 01:14。原始文件已按覆盖前的版本放进溢出区。</span>' +
+        '<button class="btn ghost" data-tab="result">看结果</button><button class="btn primary" style="margin-left:0" data-approve disabled>已写入</button>';
+    } else {
+      $('#sign').innerHTML = '<span class="say"><b>已取消</b> · 文件与数据库都没有改动。</span><button class="btn primary" style="margin-left:0" data-rerun>重新运行</button>';
+    }
+    var ap = $('[data-approve]'); if (ap) ap.addEventListener('click', approve);
+    var rj = $('[data-reject]'); if (rj) rj.addEventListener('click', reject);
+    var rr = $('[data-rerun]'); if (rr) rr.addEventListener('click', reset);
+    var tb = $('[data-tab]'); if (tb) tb.addEventListener('click', function () { setTab('result'); });
+  }
+
+  function approve() {
+    state.phase = 'done';
+    setDocState('done'); renderThread(); renderSign();
+    toast('已写入 orders-clean.json（1,196 行）');
+  }
+  function reject() {
+    state.phase = 'rejected';
+    setDocState('rejected'); renderThread(); renderSign();
+    toast('已取消：没有改动任何文件');
+  }
+  function reset() {
+    state.phase = 'pending';
+    setDocState('pending'); renderThread(); renderSign();
+    toast('重新开始：等第 5 步确认');
+  }
+
+  function setTab(name) {
+    $$('.tab').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-tab') === name); t.setAttribute('aria-selected', String(t.getAttribute('data-tab') === name)); });
+    $('#docBody').hidden = name !== 'diff';
+    $('#resultBody').hidden = name !== 'result';
+    $('#resultText').textContent = RESULT;
+  }
+
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 2200);
+  }
+
+  $$('.tab').forEach(function (t) { t.addEventListener('click', function () { setTab(t.getAttribute('data-tab')); }); });
+  $('#toolSearch').addEventListener('input', renderTools);
+  $('#sendBtn').addEventListener('click', reset);
+  $('#goalInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); reset(); } });
+
+  renderTools(); renderThread(); renderSign(); setDocState('pending');
+})();
+</script>
+</body>
+</html>

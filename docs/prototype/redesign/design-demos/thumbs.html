@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ToolCove · 六格缩略图</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: #dfe0db;
+    color: #1b1d1f;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    padding: 28px 32px 40px;
+  }
+  header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+  header p { margin: 0; font-size: 12px; color: #5d625d; }
+  .grid { display: grid; grid-template-columns: repeat(3, 480px); gap: 22px 26px; }
+  figure { margin: 0; }
+  .frame {
+    width: 480px; height: 300px; position: relative; overflow: hidden;
+    font-size: 8px; line-height: 1.4;
+  }
+  figcaption { margin-top: 8px; font-size: 11px; display: flex; gap: 8px; align-items: baseline; }
+  figcaption b { font-weight: 600; }
+  figcaption span { color: #6a6f69; }
+  .mono { font-family: "Cascadia Code", Consolas, monospace; }
+
+  /* ---------- 1 Quiet ---------- */
+  .q { background: #f3f3ee; border: 1px solid #d9dad2; color: #232625; }
+  .q .mark { position: absolute; left: 14px; top: 12px; font-size: 7px; letter-spacing: .16em; color: #7b8078; }
+  .q .margin { position: absolute; left: 14px; top: 44px; bottom: 46px; width: 58px; border-right: 1px solid #dcdcd4; }
+  .q .tick { position: absolute; left: 0; width: 100%; height: 1px; background: #cfd0c7; }
+  .q .tick i { position: absolute; left: 2px; top: -4px; font-style: normal; font-size: 6px; color: #8a8f86; }
+  .q .tick.on i { color: #b4451f; font-weight: 700; }
+  .q .doc { position: absolute; left: 128px; top: 40px; width: 268px; bottom: 58px; background: #fbfbf7; border: 1px solid #dfe0d8; padding: 10px 12px; }
+  .q .doc h3 { font-size: 9px; margin: 0 0 6px; font-weight: 600; letter-spacing: .02em; }
+  .q .doc .meta { font-size: 6.5px; color: #7d827a; margin-bottom: 7px; }
+  .q .ln { font-family: "Cascadia Code", Consolas, monospace; font-size: 6.2px; color: #4a4f4b; white-space: pre; }
+  .q .add { background: #e6f0e4; color: #26603c; }
+  .q .del { background: #f6e4df; color: #99331d; }
+  .q .sign { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 6px; align-items: center; }
+  .q .sign em { font-style: normal; font-size: 6.5px; color: #7d827a; }
+  .q .sign b { font-size: 7px; border: 1px solid #232625; padding: 3px 8px; font-weight: 600; }
+  .q .ask { position: absolute; left: 14px; right: 14px; bottom: 9px; border-top: 1px solid #232625; padding-top: 8px; font-size: 8px; color: #333; }
+  .q .ask span { color: #9a9e96; }
+
+  /* ---------- 2 Pipeline ---------- */
+  .p { background: #f1f2ed; border: 1px solid #d7d9d1; color: #16181b; }
+  .p .dots { position: absolute; inset: 0; background-image: radial-gradient(#cfd2c9 0.7px, transparent 0.7px); background-size: 12px 12px; opacity: .6; }
+  .p .bin { position: absolute; left: 0; top: 0; bottom: 0; width: 74px; background: #f7f8f4; border-right: 1px solid #d7d9d1; padding: 8px; }
+  .p .bin h4 { font-size: 6px; letter-spacing: .12em; color: #8a8f86; margin: 0 0 6px; font-weight: 600; }
+  .p .bin div { font-size: 6.4px; color: #3d423e; padding: 3px 0; border-bottom: 1px solid #e6e7e0; display: flex; gap: 3px; }
+  .p .bin div i { font-style: normal; color: #a0a59c; }
+  .p .chain { position: absolute; left: 88px; top: 24px; right: 12px; height: 40px; display: flex; align-items: center; gap: 0; }
+  .p .node { width: 40px; height: 26px; background: #fff; border: 1px solid #b9bcb2; position: relative; flex: 0 0 auto; }
+  .p .node::after { content: ""; position: absolute; left: 100%; top: 50%; width: 12px; height: 1px; background: #8f938a; }
+  .p .node:last-child::after { display: none; }
+  .p .node i { position: absolute; left: 4px; top: 3px; font-style: normal; font-size: 5.5px; color: #8a8f86; }
+  .p .node b { position: absolute; left: 4px; bottom: 3px; font-size: 5.6px; font-weight: 600; font-family: "Cascadia Code", Consolas, monospace; }
+  .p .node.done { background: #e9efe8; border-color: #9fb49f; }
+  .p .node.now { width: 58px; height: 34px; border: 1px dashed #2b45d8; background: #fff; }
+  .p .node.next { border-style: dashed; border-color: #c9cbc2; opacity: .6; }
+  .p .panel { position: absolute; left: 88px; top: 78px; width: 300px; background: #fff; border: 1px solid #b9bcb2; padding: 8px; }
+  .p .panel h4 { margin: 0 0 4px; font-size: 7px; font-weight: 600; }
+  .p .panel .row { font-family: "Cascadia Code", Consolas, monospace; font-size: 5.8px; color: #4a4f4b; white-space: pre; }
+  .p .panel .add { background: #e4efe4; }
+  .p .panel .del { background: #f7e7e2; }
+  .p .fr { position: absolute; right: 12px; top: 78px; width: 62px; border: 1px solid #d7d9d1; background: #fbfbf7; padding: 6px; font-size: 6px; color: #5d625d; }
+  .p .fr b { display: block; color: #16181b; font-size: 7px; margin-bottom: 3px; }
+  .p .ask { position: absolute; left: 88px; top: 196px; width: 300px; border: 1px dashed #2b45d8; background: #f7f8ff; padding: 7px 8px; display: flex; align-items: center; gap: 8px; }
+  .p .ask b { font-size: 7px; }
+  .p .ask span { font-size: 6px; color: #5d625d; margin-left: auto; }
+  .p .ask u { text-decoration: none; background: #2b45d8; color: #fff; padding: 3px 7px; font-size: 6.5px; }
+  .p .composer { position: absolute; left: 74px; right: 0; bottom: 0; height: 30px; border-top: 1px solid #b9bcb2; background: #fbfbf7; display: flex; align-items: center; padding: 0 12px; gap: 8px; font-size: 7px; color: #5d625d; }
+  .p .composer b { color: #16181b; font-weight: 500; }
+
+  /* ---------- 3 Console ---------- */
+  .c { background: #08090b; border: 1px solid #22262c; color: #e8eaed; }
+  .c .top { position: absolute; left: 0; right: 0; top: 0; height: 22px; border-bottom: 1px solid #1c2026; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 6.4px; color: #8a9099; }
+  .c .top b { color: #e8eaed; font-weight: 600; letter-spacing: .1em; }
+  .c .rail { position: absolute; left: 0; top: 22px; bottom: 0; width: 26px; border-right: 1px solid #1c2026; display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 12px; }
+  .c .rail i { width: 9px; height: 9px; border: 1px solid #4a525c; display: block; }
+  .c .rail i.on { border-color: #4c8dff; background: #4c8dff; }
+  .c .stream { position: absolute; left: 38px; right: 92px; top: 34px; bottom: 42px; }
+  .c .goal { font-size: 9.5px; line-height: 1.35; margin-bottom: 3px; }
+  .c .meta { font-family: "Cascadia Code", Consolas, monospace; font-size: 6px; color: #7c838d; margin-bottom: 8px; }
+  .c .blk { border-top: 1px solid #1c2026; padding: 5px 0 4px 16px; position: relative; }
+  .c .blk .no { position: absolute; left: 0; top: 6px; font-family: "Cascadia Code", Consolas, monospace; font-size: 6px; color: #5c636d; }
+  .c .blk .cmd { font-family: "Cascadia Code", Consolas, monospace; font-size: 7px; color: #c9ced6; }
+  .c .blk .cmd b { color: #fff; font-weight: 600; }
+  .c .blk .cmd em { font-style: normal; color: #6b7280; font-size: 6px; }
+  .c .blk .res { font-size: 6.4px; color: #8a9099; margin-top: 2px; }
+  .c .gate { border: 1px solid #3a4048; background: #0d1014; margin-top: 4px; padding: 6px 8px; }
+  .c .gate .h { display: flex; align-items: center; gap: 6px; font-size: 6.6px; color: #e8eaed; }
+  .c .gate .h u { text-decoration: none; color: #f0b45a; font-family: "Cascadia Code", Consolas, monospace; font-size: 6px; border: 1px solid #6b4c1f; padding: 1px 4px; }
+  .c .diff { margin-top: 5px; font-family: "Cascadia Code", Consolas, monospace; font-size: 5.8px; line-height: 1.5; }
+  .c .diff div { white-space: pre; }
+  .c .diff .a { background: #0f2418; color: #9ad7b0; }
+  .c .diff .d { background: #2a1212; color: #e0a196; }
+  .c .acts { display: flex; gap: 5px; justify-content: flex-end; margin-top: 6px; }
+  .c .acts u { text-decoration: none; font-size: 6.2px; padding: 2px 7px; border: 1px solid #3a4048; color: #c9ced6; }
+  .c .acts u.pri { background: #2f6df6; border-color: #2f6df6; color: #fff; }
+  .c .aside { position: absolute; right: 0; top: 22px; bottom: 0; width: 84px; border-left: 1px solid #1c2026; padding: 10px 8px; }
+  .c .aside h5 { font-size: 5.6px; letter-spacing: .14em; color: #6b7280; margin: 0 0 5px; font-weight: 600; }
+  .c .aside .big { font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; color: #fff; }
+  .c .aside .meter { display: flex; gap: 1px; margin: 5px 0 8px; }
+  .c .aside .meter i { height: 3px; flex: 1; background: #23272e; }
+  .c .aside .meter i.d { background: #c9ced6; }
+  .c .aside .meter i.n { background: #f0b45a; }
+  .c .aside p { font-size: 6px; color: #7c838d; margin: 0 0 8px; line-height: 1.5; }
+  .c .aside p b { color: #c9ced6; font-weight: 500; }
+  .c .composer { position: absolute; left: 26px; right: 0; bottom: 0; height: 34px; border-top: 1px solid #1c2026; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 7px; color: #5c636d; }
+  .c .composer b { color: #e8eaed; font-family: "Cascadia Code", Consolas, monospace; font-size: 6.6px; }
+  .c .composer u { margin-left: auto; text-decoration: none; background: #2f6df6; color: #fff; padding: 3px 8px; font-size: 6.4px; }
+
+  /* ---------- 4 Desk ---------- */
+  .d { background: #f6f6f3; border: 1px solid #d8d9d2; color: #1b1d1f; }
+  .d .title { position: absolute; left: 0; right: 0; top: 0; height: 20px; background: #ecece7; border-bottom: 1px solid #d8d9d2; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+  .d .title i { width: 5px; height: 5px; border-radius: 50%; background: #c9cbc2; display: block; }
+  .d .title span { margin-left: 8px; font-size: 6.4px; color: #5d625d; }
+  .d .left { position: absolute; left: 0; top: 20px; bottom: 0; width: 82px; border-right: 1px solid #d8d9d2; padding: 7px; }
+  .d .left h5 { font-size: 5.6px; letter-spacing: .12em; color: #8a8f86; margin: 0 0 5px; }
+  .d .left div { font-size: 6.2px; padding: 3px 0; color: #3d423e; border-bottom: 1px solid #e8e9e2; display: flex; gap: 4px; }
+  .d .left div.on { color: #0b57c9; font-weight: 600; }
+  .d .doc { position: absolute; left: 82px; right: 104px; top: 20px; bottom: 30px; background: #fff; border-right: 1px solid #d8d9d2; }
+  .d .doc .head { padding: 7px 10px; border-bottom: 1px solid #e8e9e2; display: flex; align-items: baseline; gap: 6px; }
+  .d .doc .head b { font-size: 7.6px; }
+  .d .doc .head span { font-size: 6px; color: #7d827a; }
+  .d .doc .head em { margin-left: auto; font-style: normal; font-size: 6px; color: #0b57c9; }
+  .d .dl { font-family: "Cascadia Code", Consolas, monospace; font-size: 6px; line-height: 1.55; }
+  .d .dl div { display: flex; gap: 5px; padding-left: 8px; white-space: pre; }
+  .d .dl i { font-style: normal; width: 14px; text-align: right; color: #b0b4ab; }
+  .d .dl .a { background: #eaf4ec; color: #1c5e3a; }
+  .d .dl .d { background: #fbecea; color: #8f2f1d; }
+  .d .sign { position: absolute; left: 0; right: 0; bottom: 0; height: 30px; border-top: 1px solid #d8d9d2; background: #fbfbf8; display: flex; align-items: center; gap: 6px; padding: 0 10px; }
+  .d .sign b { font-size: 6.4px; }
+  .d .sign span { font-size: 5.8px; color: #7d827a; }
+  .d .sign u { margin-left: auto; text-decoration: none; font-size: 6.4px; padding: 3px 8px; border: 1px solid #c6c8bf; }
+  .d .sign u.pri { background: #1b1d1f; color: #fff; border-color: #1b1d1f; }
+  .d .run { position: absolute; right: 0; top: 20px; bottom: 0; width: 104px; background: #f1f1ec; padding: 7px; }
+  .d .run h5 { font-size: 5.6px; letter-spacing: .12em; color: #8a8f86; margin: 0 0 5px; }
+  .d .bubble { background: #fff; border: 1px solid #e0e1da; padding: 5px 6px; font-size: 6px; color: #3d423e; margin-bottom: 5px; }
+  .d .bubble b { display: block; font-size: 6.4px; color: #1b1d1f; margin-bottom: 2px; }
+  .d .bubble.warn { border-color: #e2c9a2; background: #fdf6ea; }
+  .d .steps { margin-top: 6px; }
+  .d .steps div { display: flex; gap: 4px; font-size: 5.8px; color: #5d625d; padding: 2px 0; }
+  .d .steps i { font-style: normal; font-family: "Cascadia Code", Consolas, monospace; color: #a0a59c; }
+
+  /* ---------- 5 Command ---------- */
+  .m { background: #0a0b0d; border: 1px solid #22262c; }
+  .m .ghost { position: absolute; inset: 0; opacity: .1; color: #e8eaed; font-family: "Cascadia Code", Consolas, monospace; font-size: 7px; padding: 14px; line-height: 1.9; }
+  .m .pal { position: absolute; left: 64px; top: 40px; width: 352px; height: 212px; background: #121417; border: 1px solid #2b3037; display: flex; flex-direction: column; box-shadow: 0 18px 40px rgba(0,0,0,.5); }
+  .m .in { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-bottom: 1px solid #23272e; font-size: 8px; color: #8a9099; }
+  .m .in b { color: #e8eaed; font-weight: 400; }
+  .m .in u { margin-left: auto; text-decoration: none; font-size: 6px; border: 1px solid #2b3037; padding: 1px 4px; color: #7c838d; }
+  .m .list { flex: 1; padding: 5px 0; }
+  .m .sec { font-size: 5.6px; letter-spacing: .14em; color: #6b7280; padding: 4px 10px 3px; }
+  .m .row { display: flex; align-items: center; gap: 7px; padding: 4px 10px; font-size: 6.6px; color: #c9ced6; }
+  .m .row i { width: 12px; height: 12px; display: block; flex: 0 0 auto; }
+  .m .row em { font-style: normal; color: #7c838d; font-size: 5.8px; margin-left: 4px; }
+  .m .row u { margin-left: auto; text-decoration: none; font-size: 5.6px; color: #8a9099; border: 1px solid #2b3037; padding: 1px 3px; }
+  .m .row.on { background: #1c2026; box-shadow: inset 2px 0 0 #4c8dff; }
+  .m .foot { display: flex; gap: 10px; align-items: center; height: 22px; border-top: 1px solid #23272e; padding: 0 10px; font-size: 5.8px; color: #6b7280; }
+  .m .foot span:last-child { margin-left: auto; }
+
+  /* ---------- 6 Mandala ---------- */
+  .n { background: #14100e; color: #efe6d4; border: 1px solid #2a231d; }
+  .n .ring { position: absolute; left: 22px; top: 34px; width: 214px; height: 214px; border-radius: 50%; border: 1px solid #6f5b3e; }
+  .n .ring2 { position: absolute; left: 50px; top: 62px; width: 158px; height: 158px; border-radius: 50%; border: 1px solid #8a6f47; }
+  .n .ring3 { position: absolute; left: 82px; top: 94px; width: 94px; height: 94px; border-radius: 50%; border: 1px solid #8a6f47; }
+  .n .core { position: absolute; left: 115px; top: 127px; width: 28px; height: 28px; border-radius: 50%; background: #b5381f; }
+  .n .lab { position: absolute; font-family: "Cascadia Code", Consolas, monospace; font-size: 5.4px; color: #c9b48a; }
+  .n .title { position: absolute; right: 26px; top: 34px; writing-mode: vertical-rl; font-family: "Noto Serif SC", "Songti SC", "SimSun", serif; font-size: 24px; line-height: 1.15; letter-spacing: .16em; color: #f0e3c6; }
+  .n .note { position: absolute; right: 24px; font-size: 6px; color: #d8c9a8; width: 120px; line-height: 1.5; }
+  .n .note b { color: #b5381f; font-family: "Cascadia Code", Consolas, monospace; margin-right: 3px; }
+  .n .lead { position: absolute; height: 1px; background: #6f5b3e; transform-origin: left center; }
+  .n .rule { position: absolute; left: 26px; right: 26px; bottom: 22px; border-top: 1px solid #3a3129; }
+  .n .foot { position: absolute; left: 26px; bottom: 8px; font-size: 5.6px; color: #8f7f66; letter-spacing: .1em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ToolCove 重设计 · 六格缩略图</h1>
+  <p>同一屏内容（运行停在第 5 步等确认），六种骨架。完整版：A Console / B Pipeline / C Desk。</p>
+</header>
+
+<div class="grid">
+
+  <!-- 1 Quiet -->
+  <figure>
+    <div class="frame q">
+      <div class="mark">TOOLCOVE / 0142</div>
+      <div class="margin">
+        <div class="tick on" style="top:8px"><i>01</i></div>
+        <div class="tick" style="top:34px"><i>02</i></div>
+        <div class="tick" style="top:60px"><i>03</i></div>
+        <div class="tick" style="top:86px"><i>04</i></div>
+        <div class="tick on" style="top:112px"><i>05</i></div>
+        <div class="tick" style="top:138px"><i>06</i></div>
+        <div class="tick" style="top:164px"><i>07</i></div>
+        <div class="tick" style="top:190px"><i>08</i></div>
+      </div>
+      <div class="doc">
+        <h3>orders-clean.json</h3>
+        <div class="meta">1,196 行 · 138 KB · 覆盖写 · 等你确认</div>
+        <div class="ln">{</div>
+        <div class="ln">  "generated_at": "2026-10-29T11:02:14+08:00",</div>
+        <div class="ln del">- "count": 1284,</div>
+        <div class="ln add">+ "count": 1196,</div>
+        <div class="ln">  "orders": [</div>
+        <div class="ln add">+   { "order_no": "SO-2026-1042", … },</div>
+        <div class="ln">    … 共 1,196 条</div>
+        <div class="ln">  ]</div>
+        <div class="ln">}</div>
+        <div class="sign"><em>这次允许只对本次调用生效</em><b>允许写入</b></div>
+      </div>
+      <div class="ask">把上周导出的订单 CSV 清洗后写进本地订单库 <span>　⌘↵ 运行</span></div>
+    </div>
+    <figcaption><b>1 · Quiet</b><span>深泽直人 · 文档居中 / 步骤退成页边批注</span></figcaption>
+  </figure>
+
+  <!-- 2 Pipeline -->
+  <figure>
+    <div class="frame p">
+      <div class="dots"></div>
+      <div class="bin">
+        <h4>零件箱 · 28</h4>
+        <div><i>TBL</i>表格 / CSV</div>
+        <div><i>JSN</i>结构化数据</div>
+        <div><i>FIL</i>文件处理</div>
+        <div><i>DB</i>数据库</div>
+        <div><i>SCH</i>JSON Schema</div>
+        <div><i>TXT</i>文本处理</div>
+      </div>
+      <div class="chain">
+        <div class="node done"><i>01</i><b>inspect</b></div>
+        <div class="node done"><i>02</i><b>parse</b></div>
+        <div class="node done"><i>03</i><b>convert</b></div>
+        <div class="node done"><i>04</i><b>infer</b></div>
+        <div class="node now"><i>05</i><b>write</b></div>
+        <div class="node next"><i>06</i><b>query</b></div>
+        <div class="node next"><i>07</i><b>create</b></div>
+        <div class="node next"><i>08</i><b>spill</b></div>
+      </div>
+      <div class="panel">
+        <h4>file.write · 写入 · 覆盖 orders-clean.json</h4>
+        <div class="row">  {</div>
+        <div class="row del">-   "count": 1284,</div>
+        <div class="row add">+   "count": 1196,</div>
+        <div class="row">    "orders": [ … 1,196 条 ]</div>
+        <div class="row">  }</div>
+      </div>
+      <div class="fr"><b>1,196 行</b>去重 88<br>2 列裁空白<br>UTF-8 · 138 KB</div>
+      <div class="ask"><b>第 5 步要覆盖写</b><span>允许后继续 06-08</span><u>允许一次</u></div>
+      <div class="composer"><b>❯</b> 清洗订单 CSV 并入库 <span>　⌘↵</span></div>
+    </div>
+    <figcaption><b>2 · Pipeline</b><span>Bret Victor · 横排链 / 断点即闸门</span></figcaption>
+  </figure>
+
+  <!-- 3 Console -->
+  <figure>
+    <div class="frame c">
+      <div class="top"><b>TC</b> TOOLCOVE <span style="margin-left:6px">工作台</span><span style="margin-left:auto">RUN 0142</span><span style="color:#5c636d">⌘K</span></div>
+      <div class="rail"><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="stream">
+        <div class="goal">把上周导出的订单 CSV 清洗后写进本地订单库</div>
+        <div class="meta">05/08 · 00:41 · 4 calls · v3.2</div>
+        <div class="blk"><span class="no">01</span><div class="cmd"><b>file.inspect</b> <em>read 12ms</em></div><div class="res">1,284 行 · 9 列 · 138 KB</div></div>
+        <div class="blk"><span class="no">02</span><div class="cmd"><b>table.parse</b> <em>read 38ms</em></div><div class="res">识别 3 个日期列、1 个数值列</div></div>
+        <div class="blk"><span class="no">03</span><div class="cmd"><b>table.convert</b> <em>transform 61ms</em></div><div class="res">去重 88 行，保留 1,196 行</div></div>
+        <div class="blk"><span class="no">04</span><div class="cmd"><b>schema.infer</b> <em>transform 22ms</em></div><div class="res">9 字段 · 3 可空 · amount number(2)</div></div>
+        <div class="blk" style="border-top:none;padding-top:2px">
+          <div class="gate">
+            <div class="h"><b class="mono" style="font-size:7px">file.write</b><u>写入</u><span style="margin-left:auto;color:#f0b45a">等待确认</span></div>
+            <div class="diff">
+              <div>  {</div>
+              <div class="d">-   "count": 1284,</div>
+              <div class="a">+   "count": 1196,</div>
+              <div>    "orders": [ … ]</div>
+            </div>
+            <div class="acts"><u>拒绝</u><u class="pri">允许一次</u></div>
+          </div>
+        </div>
+      </div>
+      <div class="aside">
+        <h5>RUN</h5>
+        <div class="big">0142</div>
+        <div class="meter"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i></div>
+        <p>已执行 <b>4 / 8</b><br>第 5 步等你确认</p>
+        <h5>GUARDS</h5>
+        <p>写类每次都问<br>先出 diff 才能批<br>删除永远确认</p>
+        <h5>OUT</h5>
+        <p>orders-clean.json 待写入<br>spill 7f3a 138 KB</p>
+      </div>
+      <div class="composer"><b>❯</b> 目标：清洗 CSV 并入库 <u>运行</u></div>
+    </div>
+    <figcaption><b>3 · Console</b><span>Linear 参照 · 单列块流 + 光标停在闸门</span></figcaption>
+  </figure>
+
+  <!-- 4 Desk -->
+  <figure>
+    <div class="frame d">
+      <div class="title"><i></i><i></i><i></i><span>ToolCove · 运行 0142 · 订单清洗</span></div>
+      <div class="left">
+        <h5>工具</h5>
+        <div>表格 / CSV</div>
+        <div>结构化数据</div>
+        <div class="on">文件处理</div>
+        <div>数据库</div>
+        <div>JSON Schema</div>
+        <h5 style="margin-top:9px">最近</h5>
+        <div>orders-2026-10-24.csv</div>
+        <div>orders-clean.json</div>
+      </div>
+      <div class="doc">
+        <div class="head"><b>orders-clean.json</b><span>1,196 行 · 138 KB</span><em>待确认写入</em></div>
+        <div class="dl">
+          <div><i>1</i>  {</div>
+          <div class="d"><i>2</i>-   "count": 1284,</div>
+          <div class="a"><i>2</i>+   "count": 1196,</div>
+          <div><i>3</i>    "orders": [</div>
+          <div class="a"><i>4</i>+     { "order_no": "SO-2026-1042", … },</div>
+          <div class="a"><i>5</i>+     { "order_no": "SO-2026-1043", … },</div>
+          <div><i>6</i>      … 共 1,196 条</div>
+          <div><i>7</i>    ]</div>
+          <div><i>8</i>  }</div>
+        </div>
+      </div>
+      <div class="run">
+        <h5>AGENT</h5>
+        <div class="bubble"><b>目标</b>清洗 CSV 并写进本地订单库</div>
+        <div class="bubble"><b>已完成 4 步</b>去重 88 行，保留 1,196 行</div>
+        <div class="bubble warn"><b>需要你确认</b>覆盖写 orders-clean.json（138 KB）</div>
+        <div class="steps">
+          <div><i>01</i>file.inspect</div>
+          <div><i>02</i>table.parse</div>
+          <div><i>03</i>table.convert</div>
+          <div><i>04</i>schema.infer</div>
+          <div><i>05</i>file.write ←</div>
+        </div>
+      </div>
+      <div class="sign"><b>写入前确认</b><span>这次允许只对本次调用生效</span><u>取消</u><u class="pri">允许写入</u></div>
+    </div>
+    <figcaption><b>4 · Desk</b><span>Zed 参照 · 三栏，diff 是主角，批准是签字</span></figcaption>
+  </figure>
+
+  <!-- 5 Command -->
+  <figure>
+    <div class="frame m">
+      <div class="ghost">
+        01 file.inspect  read   12ms<br>
+        02 table.parse   read   38ms<br>
+        03 table.convert transform 61ms<br>
+        04 schema.infer  transform 22ms<br>
+        05 file.write    write  waiting…
+      </div>
+      <div class="pal">
+        <div class="in">⌕ <b>清洗</b><u>esc</u></div>
+        <div class="list">
+          <div class="sec">建议</div>
+          <div class="row on"><i style="background:#2f6df6"></i>用 table.convert 去重并转 JSON<em>动作</em><u>↵</u></div>
+          <div class="row"><i style="background:#3ba55d"></i>打开「表格 / CSV」<em>工具</em><u>⌘O</u></div>
+          <div class="sec">最近</div>
+          <div class="row"><i style="background:#f0b45a"></i>运行 0142 · 等待确认<em>4/8</em><u>⌘1</u></div>
+          <div class="row"><i style="background:#8a63f5"></i>orders-2026-10-24.csv<em>文件</em></div>
+          <div class="row"><i style="background:#5c636d"></i>设置 · 审批策略<em>风险放行</em><u>⌘,</u></div>
+        </div>
+        <div class="foot"><span>打开命令 ↵</span><span>更多操作 ⌘K</span><span>动作可直接交给 Agent</span></div>
+      </div>
+    </div>
+    <figcaption><b>5 · Command Surface</b><span>Raycast（轮盘 #8）· 搜索即主页</span></figcaption>
+  </figure>
+
+  <!-- 6 Mandala -->
+  <figure>
+    <div class="frame n">
+      <div class="ring"></div>
+      <div class="ring2"></div>
+      <div class="ring3"></div>
+      <div class="core"></div>
+      <div class="lab" style="left:106px;top:22px">01 读取</div>
+      <div class="lab" style="left:222px;top:66px">04 推断</div>
+      <div class="lab" style="left:230px;top:186px">05 写入</div>
+      <div class="lab" style="left:120px;top:254px">06 入库</div>
+      <div class="lab" style="left:26px;top:206px">07 记录</div>
+      <div class="lab" style="left:18px;top:92px">02 解析</div>
+      <div class="title">运行<br>0142</div>
+      <div class="note" style="top:104px"><b>①</b>前四步只读与转换，已完成</div>
+      <div class="note" style="top:136px"><b>②</b>第 5 步覆盖写 138 KB，等你点头</div>
+      <div class="note" style="top:168px"><b>③</b>允许后 06-08 继续，删除永不自动</div>
+      <div class="lead" style="left:132px;top:150px;width:86px;transform:rotate(-26deg)"></div>
+      <div class="lead" style="left:168px;top:186px;width:96px;transform:rotate(14deg)"></div>
+      <div class="rule"></div>
+      <div class="foot">结 束 于 第 8 步 · 1,196 行 · 00:41</div>
+    </div>
+    <figcaption><b>6 · Mandala</b><span>杉浦康平（轮盘 #8）· 径向运行图</span></figcaption>
+  </figure>
+
+</div>
+</body>
+</html>

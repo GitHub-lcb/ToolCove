@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolCove · 方向 A · Console</title>
+<style>
+  :root {
+    --bg: #08090b;
+    --panel: #0d0f12;
+    --panel-2: #12151a;
+    --panel-3: #171b21;
+    --line: #1d2127;
+    --line-2: #2a3038;
+    --text: #e7e9ec;
+    --dim: #a8b0ba;
+    --faint: #8b939d;
+    --blue: #4c8dff;
+    --blue-soft: rgba(76, 141, 255, 0.12);
+    --amber: #f0b45a;
+    --green: #63c68a;
+    --red: #e6765f;
+    --sans: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "Cascadia Code", Consolas, "SF Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; padding: 0; }
+  p, h1, h2, h3, pre, ul, li { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  ::selection { background: rgba(76, 141, 255, 0.3); }
+  :focus-visible { outline: 1px solid var(--blue); outline-offset: 2px; }
+
+  .app { display: grid; grid-template-rows: 40px minmax(0, 1fr); height: 100dvh; min-height: 640px; }
+
+  /* ---------- topbar ---------- */
+  .top {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 12px; border-bottom: 1px solid var(--line);
+    background: var(--panel); font-family: var(--mono); font-size: 11px; color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+  .mark { width: 20px; height: 20px; display: grid; place-items: center; }
+  .brand { color: var(--text); font-weight: 600; letter-spacing: 0.14em; font-size: 11px; }
+  .brand span { color: var(--faint); font-weight: 400; margin-left: 8px; letter-spacing: 0.02em; font-family: var(--sans); }
+  .top .sep { width: 1px; height: 14px; background: var(--line-2); }
+  .run-chip { color: var(--dim); }
+  .run-chip b { color: var(--text); font-weight: 500; }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .kbd-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 26px; padding: 0 8px; border: 1px solid var(--line-2);
+    color: var(--dim); font-family: var(--mono); font-size: 11px;
+  }
+  .kbd-btn:hover { border-color: #3a424c; color: var(--text); }
+  .kbd-btn kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); border: 1px solid var(--line-2); padding: 0 3px; line-height: 14px; }
+  .policy { display: inline-flex; align-items: center; gap: 6px; font-family: var(--sans); font-size: 11.5px; color: var(--dim); }
+  .policy i { width: 6px; height: 6px; background: var(--amber); display: block; }
+  .win { display: flex; gap: 6px; margin-left: 4px; }
+  .win i { width: 10px; height: 10px; border: 1px solid #3a424c; display: block; }
+  .win i:last-child { border-color: #4a3a3a; }
+
+  .shell { display: grid; grid-template-columns: 52px minmax(0, 1fr); min-height: 0; }
+
+  /* ---------- rail ---------- */
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 10px 0; border-right: 1px solid var(--line); background: var(--panel);
+  }
+  .rail button {
+    width: 36px; height: 36px; display: grid; place-items: center;
+    color: #59616c; position: relative; border: 1px solid transparent;
+  }
+  .rail button:hover { color: var(--text); border-color: var(--line-2); }
+  .rail button.on { color: var(--blue); background: var(--blue-soft); border-color: rgba(76,141,255,.35); }
+  .rail .grow { flex: 1; }
+
+  /* ---------- main grid ---------- */
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 296px; min-height: 0; }
+  .work { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+  .head { padding: 18px 26px 12px; border-bottom: 1px solid var(--line); }
+  .head h1 {
+    font-family: var(--sans); font-size: 17.5px; font-weight: 600; line-height: 1.42;
+    letter-spacing: 0.01em; margin-bottom: 9px; max-width: 46ch;
+  }
+  .head .meta { display: flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--faint); flex-wrap: wrap; }
+  .head .meta b { color: var(--dim); font-weight: 500; }
+  .head .run-state { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-family: var(--sans); font-size: 12px; }
+  .head .run-state i { width: 7px; height: 7px; background: var(--amber); display: block; animation: pulse 1.6s steps(2, end) infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; margin-left: auto; align-self: center; }
+  .tab {
+    height: 26px; padding: 0 10px; font-size: 11.5px; color: var(--dim);
+    border: 1px solid transparent; font-family: var(--sans);
+  }
+  .tab:hover { color: var(--text); }
+  .tab.on { color: var(--text); border-color: var(--line-2); background: var(--panel-2); }
+
+  /* ---------- stream ---------- */
+  .stream { flex: 1; overflow: auto; min-height: 0; padding: 0 26px 16px; }
+  .stream::-webkit-scrollbar { width: 10px; }
+  .stream::-webkit-scrollbar-thumb { background: #232730; border: 3px solid var(--bg); }
+
+  .blk {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr);
+    border-bottom: 1px solid var(--line); position: relative;
+  }
+  .blk:last-of-type { border-bottom: 0; }
+  .gutter { position: relative; padding: 13px 0 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .gutter span { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .gutter i { flex: 1; width: 1px; background: var(--line); min-height: 20px; position: relative; }
+  .gutter i::before, .gutter i::after { content: ""; position: absolute; left: -2px; width: 5px; height: 1px; background: #2f353d; }
+  .gutter i::before { top: 0; } .gutter i::after { bottom: 0; }
+
+  .blk .body { padding: 11px 0 12px; min-width: 0; }
+  .line { display: flex; align-items: center; gap: 9px; }
+  .cmd { font-family: var(--mono); font-size: 12.5px; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
+  .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em;
+    border: 1px solid #343b44; color: var(--dim); padding: 0 4px; line-height: 15px;
+  }
+  .tag[data-risk="write"] { border-color: #6b4c1f; color: var(--amber); }
+  .tag[data-risk="database"] { border-color: #3d4a63; color: #9db6dd; }
+  .tag[data-risk="read"] { border-style: dashed; }
+  .ms { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+  .state { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+  .expand { font-family: var(--sans); font-size: 11px; color: var(--faint); padding: 1px 5px; border: 1px solid transparent; }
+  .expand:hover { color: var(--text); border-color: var(--line-2); }
+
+  .args { display: flex; flex-wrap: wrap; gap: 3px 16px; margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .args i { font-style: normal; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #8b939d; margin-right: 5px; }
+  .args b { color: var(--dim); font-weight: 400; }
+  .res { font-size: 12.5px; color: var(--dim); margin-top: 6px; line-height: 1.55; }
+  .res b { color: var(--text); font-weight: 600; }
+  .detail { margin-top: 8px; }
+  .detail pre {
+    font-family: var(--mono); font-size: 11px; line-height: 1.65; color: #b9c0c8;
+    background: #0a0c0f; border: 1px solid var(--line); padding: 9px 11px; overflow: auto; max-height: 190px;
+  }
+  .detail .c { color: #5f6873; }
+  .detail .k { color: #9cc3ff; }
+
+  /* ---------- gate ---------- */
+  .gate-wrap { padding: 14px 0 6px; }
+  .gate {
+    max-width: 960px;
+    border: 1px solid #333b45; background: #0b0e12;
+    box-shadow: 0 0 0 1px rgba(240, 180, 90, 0.06), 0 18px 40px -30px rgba(0,0,0,.9);
+  }
+  .gate header { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .gate header .cmd { font-size: 12.5px; }
+  .gate .wait { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-family: var(--sans); font-size: 11.5px; color: var(--amber); }
+  .gate .wait i { width: 6px; height: 6px; background: var(--amber); display: block; animation: pulse 1.6s steps(2,end) infinite; }
+  .gate .wait.done { color: var(--green); }
+  .gate .wait.done i { background: var(--green); animation: none; }
+  .diff { font-family: var(--mono); font-size: 11.5px; line-height: 1.6; background: #07090b; overflow: auto; max-height: 112px; }
+  .diff div { display: grid; grid-template-columns: 34px 14px minmax(0, 1fr); padding: 0 10px 0 0; white-space: pre; }
+  .diff i { font-style: normal; text-align: right; padding-right: 9px; color: #4d5560; }
+  .diff s { text-decoration: none; color: #5d6570; }
+  .diff .a { background: #0e2318; color: #a8dcbd; }
+  .diff .a s { color: #5f9d78; }
+  .diff .d { background: #241110; color: #e0a196; }
+  .diff .d s { color: #a05f55; }
+  .diff .h { color: #8a929c; background: #0a0d10; }
+  .gate footer { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); }
+  .note { font-size: 11.5px; color: var(--faint); line-height: 1.45; max-width: 46ch; }
+  .btn { height: 28px; padding: 0 12px; border: 1px solid var(--line-2); color: var(--dim); font-size: 12px; font-family: var(--sans); }
+  .btn:hover { border-color: #3d454f; color: var(--text); }
+  .btn.primary { background: #1f57d6; border-color: #1f57d6; color: #fff; font-weight: 600; margin-left: auto; }
+  .btn.primary:hover { background: #3f7bf0; }
+  .btn.ghost { margin-left: auto; }
+  .btn:active { transform: translateY(1px); }
+
+  .queued { display: grid; gap: 2px; padding: 10px 0 4px; }
+  .queued div { display: flex; gap: 10px; align-items: baseline; font-family: var(--mono); font-size: 11px; color: #7b838d; padding-left: 44px; }
+  .queued b { color: #9aa2ac; font-weight: 400; }
+  .queued.dim { opacity: .45; }
+
+  .donebar {
+    margin: 12px 0 0 44px; border-left: 2px solid var(--green); padding: 6px 0 6px 10px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  }
+  .donebar b { color: var(--text); }
+
+  /* artifacts view */
+  .artifacts { padding: 16px 26px; display: grid; gap: 12px; }
+  .art { border: 1px solid var(--line); background: var(--panel); padding: 12px 14px; display: flex; gap: 12px; align-items: center; }
+  .art .ic { width: 30px; height: 30px; border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--dim); font-family: var(--mono); font-size: 10px; }
+  .art h3 { font-size: 13px; font-weight: 600; font-family: var(--mono); }
+  .art p { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+  .art .right { margin-left: auto; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .art .right b { color: var(--amber); font-weight: 500; }
+  .art.done .right b { color: var(--green); }
+
+  /* ---------- composer ---------- */
+  .composer { border-top: 1px solid var(--line-2); background: var(--panel); padding: 9px 26px 10px; }
+  .composer .row { display: flex; align-items: center; gap: 10px; }
+  .prompt { font-family: var(--mono); font-size: 13px; color: var(--blue); }
+  .composer input {
+    flex: 1; background: transparent; border: 0; outline: none;
+    font-family: var(--sans); font-size: 14px; color: var(--text); min-width: 0;
+  }
+  .composer input::placeholder { color: var(--faint); }
+  .composer .foot { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .chip {
+    font-family: var(--mono); font-size: 10.5px; color: var(--faint);
+    border: 1px solid var(--line); padding: 2px 7px; line-height: 16px;
+  }
+  .chip:hover { border-color: #3a424c; color: var(--dim); }
+  .composer .hint { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: #4f5660; }
+  .run-btn { height: 28px; padding: 0 14px; background: #1f57d6; color: #fff; font-size: 12px; font-weight: 600; }
+  .run-btn:hover { background: #3f7bf0; }
+
+  /* ---------- aside ---------- */
+  .aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; min-height: 0; }
+  .sec { padding: 14px 16px 15px; border-bottom: 1px solid var(--line); }
+  .sec:last-child { border-bottom: 0; }
+  .kicker { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; color: #5b636e; text-transform: uppercase; }
+  .run-no { font-family: var(--mono); font-size: 26px; color: var(--text); letter-spacing: 0.02em; margin: 6px 0 8px; }
+  .run-no small { font-size: 11px; color: var(--faint); margin-left: 8px; letter-spacing: 0; }
+  .meter { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin-bottom: 9px; }
+  .meter i { height: 3px; background: #23272e; display: block; }
+  .meter i.d { background: #b9c0c8; }
+  .meter i.n { background: var(--amber); animation: pulse 1.6s steps(2,end) infinite; }
+  .sec p.small { font-size: 11.5px; color: var(--faint); line-height: 1.55; }
+  .sec p.small b { color: var(--dim); font-weight: 500; }
+  .kv { display: grid; gap: 8px; margin-top: 9px; }
+  .kv div { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; }
+  .kv dt { font-size: 11px; color: #59616c; }
+  .kv dd { font-size: 11.5px; color: var(--dim); line-height: 1.5; word-break: break-word; }
+  .guards { display: grid; gap: 6px; margin-top: 9px; }
+  .guards div { display: flex; gap: 8px; font-size: 11.5px; color: var(--dim); }
+  .guards i { width: 5px; height: 5px; margin-top: 6px; background: #3a424c; display: block; flex: 0 0 auto; }
+  .out { display: grid; gap: 7px; margin-top: 9px; }
+  .out div { display: flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .out b { font-weight: 400; }
+  .out span { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+  .out .pending span { color: var(--amber); }
+  .out .ok span { color: var(--green); }
+
+  /* ---------- palette ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(4,5,7,.62); display: flex; justify-content: center; align-items: flex-start; padding-top: 100px; z-index: 50; }
+  .palette { width: 640px; background: #0c0e11; border: 1px solid #2b3037; box-shadow: 0 40px 80px -40px #000; }
+  .palette .in { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 12px; border-bottom: 1px solid #22262d; }
+  .palette .in input { flex: 1; background: transparent; border: 0; outline: none; font-size: 14px; color: var(--text); }
+  .palette .in kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); border: 1px solid var(--line-2); padding: 1px 5px; }
+  .palette .list { max-height: 340px; overflow: auto; padding: 6px 0; }
+  .palette .grp { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; color: #5b636e; padding: 8px 12px 4px; }
+  .prow { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 6px 12px; border-left: 2px solid transparent; }
+  .prow:hover, .prow.cur { background: #15181d; border-left-color: var(--blue); }
+  .prow .t { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .prow .d { font-size: 11px; color: #6c747f; margin-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .k { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: #5b636e; }
+  .palette .foot { display: flex; gap: 14px; padding: 8px 12px; border-top: 1px solid #22262d; font-size: 10.5px; color: #5b636e; font-family: var(--mono); }
+  .palette .foot span:last-child { margin-left: auto; }
+
+  .toast { position: fixed; right: 22px; bottom: 74px; background: #14181e; border: 1px solid #2b3037; border-left: 2px solid var(--green); padding: 8px 12px; font-size: 12px; color: var(--dim); z-index: 60; }
+
+  [hidden] { display: none !important; }
+  @media (max-width: 1120px) {
+    .main { grid-template-columns: minmax(0, 1fr) 256px; }
+    .head, .stream, .composer { padding-left: 18px; padding-right: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <span class="mark" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="32" cy="32" r="21" fill="none" stroke="currentColor" stroke-width="3.4"/><rect x="20" y="21" width="24" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="26.5" cy="30" r="2.2" fill="currentColor"/><circle cx="37.5" cy="30" r="2.2" fill="currentColor"/><path d="M38 34.4a6 6 0 0 1-12 0" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+    </span>
+    <span class="brand">TOOLCOVE<span>工具湾</span></span>
+    <span class="sep"></span>
+    <span class="run-chip">RUN <b>0142</b></span>
+    <span class="sep"></span>
+    <span class="run-chip" id="crumb">工作台 / 执行</span>
+
+    <div class="top-right">
+      <button class="kbd-btn" id="openPalette"><span>⌘K</span> 命令 <kbd>Ctrl</kbd><kbd>K</kbd></button>
+      <span class="policy"><i></i>审批 · 风险放行</span>
+      <span class="win" aria-hidden="true"><i></i><i></i><i></i></span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="rail" aria-label="模块">
+      <button class="on" title="工作台" aria-label="工作台">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6"/><rect x="3" y="14" width="18" height="6"/><path d="M6 7h.01M6 17h.01"/></svg>
+      </button>
+      <button title="工具箱" aria-label="工具箱">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      </button>
+      <button title="记录" aria-label="记录">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3h11l3 3v15H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      </button>
+      <span class="grow"></span>
+      <button title="设置" aria-label="设置">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+      </button>
+    </nav>
+
+    <div class="main">
+      <section class="work">
+        <header class="head">
+          <h1>把上周导出的订单 CSV 清洗后写进本地订单库</h1>
+          <div class="meta">
+            <span class="run-state" id="runState"><i></i>等待确认</span>
+            <span>步骤 <b id="stepNo">05 / 08</b></span>
+            <span>用时 <b id="clock">00:41</b></span>
+            <span>调用 <b id="calls">4</b></span>
+            <span>模型 <b>deepseek-v3.2</b></span>
+            <div class="tabs" role="tablist" aria-label="视图">
+              <button class="tab on" role="tab" aria-selected="true" data-tab="run">执行</button>
+              <button class="tab" role="tab" aria-selected="false" data-tab="out">产出</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="stream" id="stream" role="tabpanel" aria-label="执行"></div>
+
+        <div class="artifacts" id="outPanel" hidden>
+          <div class="art" id="artJson">
+            <span class="ic">JSN</span>
+            <div><h3>orders-clean.json</h3><p>清洗后的 1,196 条订单 · UTF-8 · 138 KB</p></div>
+            <div class="right"><b id="artState">待写入</b><br>覆盖 C:\Users\cb\Desktop\orders-clean.json</div>
+          </div>
+          <div class="art">
+            <span class="ic">SPL</span>
+            <div><h3>spill · 7f3a</h3><p>被裁掉的中段结果，Agent 可分段读回</p></div>
+            <div class="right">138 KB<br>保留 7 天</div>
+          </div>
+          <div class="art">
+            <span class="ic">DTA</span>
+            <div><h3>一条问题记录</h3><p>「88 行重复单号」将在第 7 步写入记录</p></div>
+            <div class="right">待执行<br>data.create</div>
+          </div>
+        </div>
+
+        <form class="composer" id="composer">
+          <div class="row">
+            <span class="prompt" aria-hidden="true">❯</span>
+            <input id="goalInput" value="把上周导出的订单 CSV 清洗后写进本地订单库" aria-label="目标" />
+            <button class="run-btn" type="submit">运行</button>
+          </div>
+          <div class="foot">
+            <button class="chip" type="button" data-fill="用 table.convert 去重后转 JSON，再写进订单库">table.convert</button>
+            <button class="chip" type="button" data-fill="推断这份 CSV 的 schema，并标出可空字段">schema.infer</button>
+            <button class="chip" type="button" data-fill="把清洗结果写进 orders_clean，先给我看 diff">db.query</button>
+            <span class="hint">⌘↵ 运行 · ↑ 历史</span>
+          </div>
+        </form>
+      </section>
+
+      <aside class="aside">
+        <section class="sec">
+          <div class="kicker">Run</div>
+          <div class="run-no">0142<small id="runPct">4 / 8</small></div>
+          <div class="meter" id="meter" aria-hidden="true"></div>
+          <p class="small" id="runNote">已执行 <b>4</b> 步 · 第 5 步等你确认</p>
+        </section>
+        <section class="sec">
+          <div class="kicker">Context</div>
+          <dl class="kv">
+            <div><dt>工作域</dt><dd>订单系统</dd></div>
+            <div><dt>代码池</dt><dd>order-api · wms-core · batch-job</dd></div>
+            <div><dt>技能</dt><dd>csv-cleanup ×3 · sqlite-upsert ×1</dd></div>
+          </dl>
+        </section>
+        <section class="sec">
+          <div class="kicker">Guards</div>
+          <div class="guards">
+            <div><i></i>写类每次都问</div>
+            <div><i></i>先出 diff 才能批</div>
+            <div><i></i>删除永远二次确认</div>
+            <div><i></i>大结果落盘，30 份 · 7 天</div>
+          </div>
+        </section>
+        <section class="sec">
+          <div class="kicker">Output</div>
+          <div class="out" id="outList">
+            <div class="pending"><b>orders-clean.json</b><span>待写入</span></div>
+            <div><b>spill · 7f3a</b><span>138 KB</span></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="in">
+      <span class="prompt">❯</span>
+      <input id="paletteInput" placeholder="搜动作、工具、运行或设置" autocomplete="off">
+      <kbd>esc</kbd>
+    </div>
+    <div class="list" id="paletteList"></div>
+    <div class="foot"><span>↵ 打开</span><span>↑↓ 选择</span><span>动作会填进目标框</span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  var STEPS = [
+    { key: 'file.inspect', risk: 'read', label: '读取', ms: '12ms',
+      args: [['path', 'C:\\Users\\cb\\Desktop\\orders-2026-10-24.csv'], ['mode', 'meta']],
+      res: '<b>1,284</b> 行 · 9 列 · 138 KB · UTF-8（带 BOM）',
+      detail: '{\n  "size": 141312,\n  "encoding": "utf-8",\n  "bom": true,\n  "lines": 1285,\n  "modified": "2026-10-24T18:40:02+08:00"\n}' },
+    { key: 'table.parse', risk: 'read', label: '读取', ms: '38ms',
+      args: [['delimiter', ','], ['header', 'true'], ['encoding', 'utf-8']],
+      res: '解析 <b>1,284</b> 行 × 9 列；识别 3 个日期列、1 个数值列',
+      detail: 'order_no,amount,paid_at,status\nSO-2026-1042,1288.00,2026-10-19T09:12:00Z,new\nSO-2026-1043,96.50,2026-10-19T09:14:37Z,new\nSO-2026-1043,96.50,2026-10-19T09:14:37Z,new' },
+    { key: 'table.convert', risk: 'transform', label: '转换', ms: '61ms',
+      args: [['to', 'json'], ['dedupeBy', 'order_no'], ['trim', 'true']],
+      res: '去重 <b>88</b> 行，保留 <b>1,196</b> 行；2 列首尾空白已裁掉',
+      detail: '{\n  "count": 1196,\n  "orders": [\n    { "order_no": "SO-2026-1042", "amount": 1288, "status": "new" }\n  ]\n}' },
+    { key: 'schema.infer', risk: 'transform', label: '转换', ms: '22ms',
+      args: [['sample', '200'], ['nullable', 'true']],
+      res: '推断 9 个字段，3 个可空；amount 判定为 number(2)',
+      detail: '{\n  "type": "object",\n  "required": ["order_no", "amount", "paid_at"],\n  "properties": {\n    "amount": { "type": "number", "multipleOf": 0.01 },\n    "buyer": { "type": ["string", "null"] }\n  }\n}' }
+  ];
+
+  var NEXT = [
+    ['db.query', '数据库', '写入 1,196 行到 orders_clean，冲突只更新金额与时间'],
+    ['data.create', '写入', '把「88 行重复单号」存成一条问题记录'],
+    ['spill.read', '读取', '回读中段结果，核对清洗前后总额']
+  ];
+
+  var DIFF = [
+    ['h', '', '@@ orders-clean.json · 第 1 个 hunk @@'],
+    ['', '1', '  {'],
+    ['', '2', '    "generated_at": "2026-10-29T11:02:14+08:00",'],
+    ['d', '3', '    "count": 1284,'],
+    ['a', '3', '    "count": 1196,'],
+    ['', '4', '    "orders": ['],
+    ['a', '5', '      { "order_no": "SO-2026-1042", "amount": 1288.00 },'],
+    ['a', '6', '      { "order_no": "SO-2026-1043", "amount": 96.50 },'],
+    ['', '7', '      … 共 1,196 条'],
+    ['', '8', '    ]'],
+    ['', '9', '  }']
+  ];
+
+  var state = { phase: 'pending', visible: 4, open: {}, seconds: 41, calls: 4, timer: null };
+
+  function meterHtml(done, now) {
+    var out = '';
+    for (var i = 0; i < 8; i++) {
+      var cls = i < done ? 'd' : (i === done && now) ? 'n' : '';
+      out += '<i class="' + cls + '"></i>';
+    }
+    return out;
+  }
+
+  function blockHtml(s, i) {
+    var open = !!state.open[i];
+    return '' +
+      '<article class="blk" data-i="' + i + '">' +
+        '<div class="gutter"><span>' + String(i + 1).padStart(2, '0') + '</span><i></i></div>' +
+        '<div class="body">' +
+          '<div class="line">' +
+            '<span class="cmd">' + s.key + '</span>' +
+            '<span class="tag" data-risk="' + s.risk + '">' + s.label + '</span>' +
+            '<span class="ms">' + s.ms + '</span>' +
+            '<span class="state">完成</span>' +
+            '<button class="expand" data-open="' + i + '" aria-expanded="' + open + '">' + (open ? '收起' : '详情') + '</button>' +
+          '</div>' +
+          '<div class="args">' + s.args.map(function (a) { return '<span><i>' + esc(a[0]) + '</i><b>' + esc(a[1]) + '</b></span>'; }).join('') + '</div>' +
+          '<p class="res">' + s.res + '</p>' +
+          (open ? '<div class="detail"><pre>' + esc(s.detail) + '</pre></div>' : '') +
+        '</div>' +
+      '</article>';
+  }
+
+  function gateHtml() {
+    var done = state.phase === 'done';
+    var rejected = state.phase === 'rejected';
+    var wait = done ? '<span class="wait done"><i></i>已允许 · 继续</span>'
+      : rejected ? '<span class="wait" style="color:#e6765f"><i style="background:#e6765f;animation:none"></i>已拒绝</span>'
+      : '<span class="wait"><i></i>等待你的确认</span>';
+    var diff = DIFF.map(function (d) {
+      var cls = d[0] === 'a' ? ' class="a"' : d[0] === 'd' ? ' class="d"' : d[0] === 'h' ? ' class="h"' : '';
+      var sign = d[0] === 'a' ? '+' : d[0] === 'd' ? '-' : ' ';
+      return '<div' + cls + '><i>' + d[1] + '</i><s>' + sign + '</s><span>' + esc(d[2]) + '</span></div>';
+    }).join('');
+    return '' +
+      '<div class="gate-wrap"><div class="gate">' +
+        '<header><span class="cmd">file.write</span><span class="tag" data-risk="write">写入</span>' +
+          '<span class="ms">覆盖 138 KB</span>' + wait + '</header>' +
+        '<div class="args" style="padding:8px 12px 0;margin:0">' +
+          '<span><i>path</i><b>C:\\Users\\cb\\Desktop\\orders-clean.json</b></span>' +
+          '<span><i>overwrite</i><b>true</b></span>' +
+          '<span><i>encoding</i><b>utf-8</b></span>' +
+        '</div>' +
+        '<div class="diff" style="margin-top:9px">' + diff + '</div>' +
+        (state.phase === 'pending'
+          ? '<footer><span class="note">风险放行：这次允许只对本次调用生效；同一次运行里再写还会问。</span>' +
+            '<button class="btn ghost" type="button" data-reject>拒绝</button>' +
+            '<button class="btn primary" type="button" data-approve>允许一次</button></footer>'
+          : '<footer><span class="note">' + (done ? '已写入 1,196 行 · 138 KB · 01:14' : '没有写入。磁盘与数据库都没有改动。') + '</span>' +
+            '<button class="btn ghost" type="button" data-tab="out">看产出</button></footer>') +
+      '</div></div>';
+  }
+
+  function queuedHtml() {
+    if (state.phase === 'pending') {
+      return '<div class="queued">' + NEXT.map(function (n, i) {
+        return '<div><span>' + String(6 + i).padStart(2, '0') + '</span><b>' + n[0] + '</b><span>' + n[2] + '</span></div>';
+      }).join('') + '</div>';
+    }
+    if (state.phase === 'done') {
+      return '<div class="queued">' + NEXT.map(function (n, i) {
+        return '<div style="opacity:1"><span>' + String(6 + i).padStart(2, '0') + '</span><b style="color:#98a0aa">' + n[0] + '</b><span>完成</span></div>';
+      }).join('') + '</div><div class="donebar"><b>运行完成</b> · 8 步 · 写入 1 个文件 · 1,196 行进库 · 用时 01:14</div>';
+    }
+    return '<div class="queued dim">' + NEXT.map(function (n, i) {
+      return '<div><span>' + String(6 + i).padStart(2, '0') + '</span><b>' + n[0] + '</b><span>未执行</span></div>';
+    }).join('') + '</div>';
+  }
+
+  function render() {
+    var stream = $('#stream');
+    stream.innerHTML = STEPS.map(blockHtml).join('') + gateHtml() + queuedHtml();
+    $$('[data-open]', stream).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = Number(b.getAttribute('data-open'));
+        state.open[i] = !state.open[i];
+        render();
+      });
+    });
+    var ap = $('[data-approve]', stream); if (ap) ap.addEventListener('click', approve);
+    var rj = $('[data-reject]', stream); if (rj) rj.addEventListener('click', reject);
+    var tb = $('[data-tab]', stream); if (tb) tb.addEventListener('click', function () { setTab('out'); });
+  }
+
+  function setStatus(kind) {
+    var el = $('#runState');
+    var map = { pending: ['等待确认', 'var(--amber)'], running: ['运行中', 'var(--blue)'], done: ['已完成', 'var(--green)'], rejected: ['已停止', 'var(--red)'] };
+    el.innerHTML = '<i style="background:' + map[kind][1] + (kind === 'pending' || kind === 'running' ? ';animation:pulse 1.6s steps(2,end) infinite' : '') + '"></i>' + map[kind][0];
+    el.style.color = map[kind][1];
+    $('#stepNo').textContent = kind === 'done' ? '08 / 08' : kind === 'rejected' ? '05 / 08（停）' : '05 / 08';
+    $('#calls').textContent = kind === 'done' ? '8' : '4';
+    var done = kind === 'done' ? 8 : 4;
+    $('#meter').innerHTML = meterHtml(done, kind === 'pending');
+    $('#runPct').textContent = done + ' / 8';
+    var note = $('#runNote');
+    var out = $('#outList');
+    var art = $('#artState');
+    if (kind === 'done') {
+      note.innerHTML = '8 步全部完成 · 用时 <b>01:14</b>';
+      out.innerHTML = '<div class="ok"><b>orders-clean.json</b><span>已写入 138 KB</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+      if (art) { art.textContent = '已写入 138 KB'; art.style.color = 'var(--green)'; }
+    } else if (kind === 'rejected') {
+      note.innerHTML = '已停在 5 / 8 · 磁盘没有改动';
+      out.innerHTML = '<div><b>orders-clean.json</b><span>未写入</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+      if (art) { art.textContent = '未写入'; art.style.color = 'var(--faint)'; }
+    } else {
+      note.innerHTML = '已执行 <b>4</b> 步 · 第 5 步等你确认';
+      out.innerHTML = '<div class="pending"><b>orders-clean.json</b><span>待写入</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+      if (art) { art.textContent = '待写入'; art.style.color = 'var(--amber)'; }
+    }
+  }
+
+  function clock(on) {
+    clearInterval(state.timer);
+    if (!on) return;
+    state.timer = setInterval(function () {
+      state.seconds += 1;
+      var m = String(Math.floor(state.seconds / 60)).padStart(2, '0');
+      var s = String(state.seconds % 60).padStart(2, '0');
+      $('#clock').textContent = m + ':' + s;
+    }, 1000);
+  }
+
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.hidden = true; }, 2400);
+  }
+
+  function approve() {
+    state.phase = 'running'; setStatus('running'); render(); clock(true);
+    toast('已允许这一次写入');
+    var n = 0;
+    var iv = setInterval(function () {
+      n += 1;
+      if (n >= 3) {
+        clearInterval(iv); clearInterval(state.timer);
+        state.phase = 'done'; state.seconds = 74;
+        $('#clock').textContent = '01:14';
+        setStatus('done'); render();
+        toast('运行完成：1,196 行进库');
+      }
+    }, 900);
+  }
+
+  function reject() {
+    state.phase = 'rejected'; clearInterval(state.timer);
+    setStatus('rejected'); render();
+    toast('已拒绝：磁盘与数据库都没有改动');
+  }
+
+  function reset() {
+    clearInterval(state.timer);
+    state.phase = 'pending'; state.visible = 4; state.open = {}; state.seconds = 0; state.calls = 4;
+    $('#clock').textContent = '00:00';
+    setStatus('pending'); render(); clock(true);
+  }
+
+  function setTab(name) {
+    $$('.tab').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-tab') === name); t.setAttribute('aria-selected', String(t.getAttribute('data-tab') === name)); });
+    $('#stream').hidden = name !== 'run';
+    $('#outPanel').hidden = name !== 'out';
+    $('#crumb').textContent = name === 'run' ? '工作台 / 执行' : '工作台 / 产出';
+  }
+
+  /* palette */
+  var ROWS = [
+    ['动作', 'table.convert', 'CSV / TSV 转 JSON、Markdown 或 SQL', 'table.convert'],
+    ['动作', 'table.parse', '解析分隔符文本', 'table.parse'],
+    ['动作', 'file.write', '写文件，先出 diff 再确认', 'file.write'],
+    ['动作', 'db.query', '执行只读 SQL，或确认后写入', 'db.query'],
+    ['工具', '表格 / CSV', '清洗、去重、导出', ''],
+    ['工具', '结构化数据', 'JSON / YAML 校验、格式化', ''],
+    ['工具', '文件处理', '编码、Base64、批量改名', ''],
+    ['工具', '数据库管理', '连接、执行 SQL', ''],
+    ['界面', '产出', '看这次运行留下的两个文件', 'tab:out'],
+    ['界面', '执行', '回到动作流', 'tab:run'],
+    ['设置', '审批策略', '风险放行 / 每步都问 / 全部放行', '']
+  ];
+  var cur = 0;
+  function rowsFiltered() {
+    var q = $('#paletteInput').value.trim().toLowerCase();
+    if (!q) return ROWS;
+    return ROWS.filter(function (r) { return (r[0] + r[1] + r[2]).toLowerCase().indexOf(q) >= 0; });
+  }
+  function renderPalette() {
+    var rows = rowsFiltered();
+    cur = Math.min(cur, Math.max(0, rows.length - 1));
+    var html = '', last = '';
+    rows.forEach(function (r, i) {
+      if (r[0] !== last) { html += '<div class="grp">' + r[0] + '</div>'; last = r[0]; }
+      html += '<button class="prow' + (i === cur ? ' cur' : '') + '" data-i="' + i + '"><span class="t">' + esc(r[1]) + '</span><span class="d">' + esc(r[2]) + '</span><span class="k">' + (r[0] === '动作' ? '动作' : r[0] === '工具' ? '工具' : '') + '</span></button>';
+    });
+    if (!rows.length) html = '<div class="grp">没有匹配。试试 json / 去重 / 审批。</div>';
+    $('#paletteList').innerHTML = html;
+    $$('.prow', $('#paletteList')).forEach(function (b) {
+      b.addEventListener('mouseenter', function () { cur = Number(b.getAttribute('data-i')); renderPalette(); });
+      b.addEventListener('click', function () { pick(Number(b.getAttribute('data-i'))); });
+    });
+  }
+  function pick(i) {
+    var r = rowsFiltered()[i];
+    if (!r) return;
+    closePalette();
+    if (r[0] === '动作') { $('#goalInput').value = '用 ' + r[3] + ' 处理：'; $('#goalInput').focus(); toast('动作已填进目标'); return; }
+    if (r[0] === '界面') { setTab(r[3].split(':')[1]); return; }
+    toast('「' + r[1] + '」在完整版里打开');
+  }
+  function openPalette() { $('#scrim').hidden = false; cur = 0; $('#paletteInput').value = ''; renderPalette(); $('#paletteInput').focus(); }
+  function closePalette() { $('#scrim').hidden = true; }
+
+  document.addEventListener('keydown', function (e) {
+    var open = !$('#scrim').hidden;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open ? closePalette() : openPalette(); return; }
+    if (e.key === 'Escape' && open) { closePalette(); return; }
+    if (!open) return;
+    var rows = rowsFiltered();
+    if (e.key === 'ArrowDown') { e.preventDefault(); cur = Math.min(cur + 1, rows.length - 1); renderPalette(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(cur - 1, 0); renderPalette(); }
+    if (e.key === 'Enter') { e.preventDefault(); pick(cur); }
+  });
+
+  $('#openPalette').addEventListener('click', openPalette);
+  $('#paletteInput').addEventListener('input', function () { cur = 0; renderPalette(); });
+  $('#scrim').addEventListener('mousedown', function (e) { if (e.target === this) closePalette(); });
+  $$('.tab').forEach(function (t) { t.addEventListener('click', function () { setTab(t.getAttribute('data-tab')); }); });
+  $$('[data-fill]').forEach(function (b) { b.addEventListener('click', function () { $('#goalInput').value = b.getAttribute('data-fill'); $('#goalInput').focus(); }); });
+  $('#composer').addEventListener('submit', function (e) { e.preventDefault(); reset(); });
+  $('#goalInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); reset(); } });
+
+  state.phase = 'pending';
+  $('#meter').innerHTML = meterHtml(4, true);
+  setStatus('pending');
+  render();
+})();
+</script>
+</body>
+</html>

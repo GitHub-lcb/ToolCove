@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>记录页 · 三态 + 空态 草图</title>
+<style>
+  :root {
+    --canvas: #f1f2ed; --plate: #fcfcf9; --plate2: #f6f7f2; --line: #d8dad0; --line2: #c3c6ba;
+    --ink: #16181b; --ink2: #3b413c; --muted: #5c6159; --faint: #6a6f66;
+    --blue: #2b45d8; --blue-soft: #e9ecff; --amber: #8f5206; --red: #9a3520; --red-soft: #fae9e4;
+    --sans: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e3e4de; color: var(--ink); font-family: var(--sans); padding: 28px 32px 40px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.2px; }
+  .sub { font-size: 13px; color: var(--muted); margin: 0 0 20px; }
+  .board { display: grid; grid-template-columns: 760px 760px; gap: 22px 26px; }
+  figure { margin: 0; }
+  figcaption { margin-top: 8px; font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  .frame { width: 760px; height: 540px; background: var(--canvas); border: 1px solid var(--line2); display: flex; flex-direction: column; overflow: hidden; }
+  .top { height: 30px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--plate); border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
+  .top b { color: var(--ink); font-weight: 600; font-size: 12px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); display: block; }
+  .top .tabs { display: flex; gap: 6px; margin-left: 10px; }
+  .top .tab { font-size: 11.5px; padding: 2px 8px; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
+  .top .tab.on { border-color: var(--line2); background: var(--plate2); color: var(--ink); font-weight: 600; }
+  .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--canvas); }
+  .search { flex: 1; height: 28px; border: 1px solid var(--line); background: var(--plate); display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 11.5px; color: var(--faint); }
+  .btn { height: 28px; padding: 0 10px; border: 1px solid var(--line2); background: var(--plate); font-size: 11.5px; color: var(--ink2); display: inline-flex; align-items: center; gap: 5px; }
+  .btn.pri { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 258px minmax(0, 1fr); }
+  .list { border-right: 1px solid var(--line); background: var(--plate); overflow: hidden; }
+  .list-head { padding: 8px 12px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; color: var(--faint); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .row { display: block; width: 100%; text-align: left; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; font-family: inherit; color: inherit; }
+  .row.on { background: var(--plate2); box-shadow: inset 2px 0 0 var(--blue); }
+  .row h3 { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row p { margin: 3px 0 0; font-size: 11px; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .row .m { margin-top: 5px; display: flex; gap: 5px; align-items: center; font-family: var(--mono); font-size: 9.5px; color: var(--faint); }
+  .tag { border: 1px solid var(--line2); padding: 0 4px; font-size: 9.5px; line-height: 15px; color: var(--muted); }
+  .tag.q { border-color: var(--red); color: var(--red); }
+  .detail { padding: 16px 18px; overflow: hidden; }
+  .kicker { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
+  .detail h2 { font-size: 17px; margin: 6px 0 6px; letter-spacing: -0.2px; line-height: 1.35; }
+  .meta { display: flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--faint); flex-wrap: wrap; }
+  .p { font-size: 12.5px; line-height: 1.7; color: var(--ink2); margin: 10px 0 0; }
+  .code { margin-top: 10px; background: #17191c; color: #dfe3dc; font-family: var(--mono); font-size: 10.5px; line-height: 1.65; padding: 9px 10px; white-space: pre; overflow: hidden; }
+  .code .c { color: #98a09a; }
+  .acts { display: flex; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); align-items: center; }
+  .acts .note { margin-left: auto; font-size: 10px; color: var(--faint); }
+  .field { margin-top: 10px; }
+  .field label { display: block; font-size: 10px; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3px; font-family: var(--mono); }
+  .input { border: 1px solid var(--blue); background: #fff; padding: 6px 8px; font-size: 12.5px; }
+  .textarea { border: 1px solid var(--line2); background: #fff; padding: 8px; font-size: 12px; line-height: 1.6; min-height: 92px; color: var(--ink2); }
+  .callout { position: absolute; }
+  .hint { position: absolute; background: var(--blue); color: #fff; font-size: 10px; padding: 3px 6px; }
+  .rel { margin-top: 12px; border: 1px solid var(--line); background: var(--plate); }
+  .rel .rh { padding: 6px 9px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; color: var(--faint); }
+  .rel .rr { display: flex; gap: 8px; padding: 6px 9px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--ink2); }
+  .rel .rr:last-child { border-bottom: 0; }
+  .rel .rr b { font-weight: 600; color: var(--ink); }
+  .rel .rr span { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .emptybox { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 0 26px; height: 100%; }
+  .emptybox .mk { width: 30px; height: 30px; border: 1px solid var(--line2); display: grid; place-items: center; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .emptybox h2 { font-size: 18px; margin: 10px 0 4px; }
+  .emptybox p { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); max-width: 34ch; line-height: 1.6; }
+  .anno { font-family: var(--mono); font-size: 10px; color: var(--blue); }
+</style>
+</head>
+<body>
+<h1>记录页 · 四种状态草图</h1>
+<p class="sub">同一套骨架：左边「有什么」，右边「在做什么」。速记与问题共用详情，问题多一块关联区；编辑在右侧就地完成，不弹窗。</p>
+
+<div class="board">
+
+  <figure>
+    <div class="frame">
+      <div class="top"><span class="dot"></span><b>记录</b><span class="tabs"><span class="tab on">速记 128</span><span class="tab">问题 34</span></span></div>
+      <div class="toolbar"><div class="search">搜索标题、内容、标签…</div><span class="btn">全部</span><span class="btn pri">＋ 新建速记</span></div>
+      <div class="body">
+        <div class="list">
+          <div class="list-head"><span>最近更新</span><span>128</span></div>
+          <button class="row on"><h3>SQLite 批量 upsert：冲突时只更新两列</h3><p>ON CONFLICT(order_no) DO UPDATE SET amount=excluded.amount, updated_at=…</p><div class="m"><span class="tag">sql</span><span class="tag">订单</span>2 天前</div></button>
+          <button class="row"><h3>接口调试：网关 504 先看这三处</h3><p>超时配置、上游连接池、慢 SQL。按这个顺序排，九成能在五分钟内定位。</p><div class="m"><span class="tag">排障</span>1 周前</div></button>
+          <button class="row"><h3>正则提取运单号：排除已取消的单</h3><p>SF\d{12} 会把取消单也捞进来，用前置负向断言跳过状态位是 C 的行。</p><div class="m"><span class="tag">正则</span>2 周前</div></button>
+          <button class="row"><h3>WMS 回传金额精度丢失</h3><p>回传用 float 做中间存储，0.1 + 0.2 变成 0.30000000000000004。</p><div class="m"><span class="tag q">问题</span><span class="tag">对账</span>6 天前</div></button>
+          <button class="row"><h3>CSV 里 88 行是重复单号</h3><p>导出脚本重试没做幂等，清洗时保留最后一条。</p><div class="m"><span class="tag q">问题</span><span class="tag">数据</span>2 天前</div></button>
+        </div>
+        <div class="detail">
+          <div class="kicker">速记 · #s-0311</div>
+          <h2>SQLite 批量 upsert：冲突时只更新两列</h2>
+          <div class="meta"><span class="tag">sql</span><span class="tag">订单</span>2026-10-27 21:12<span style="margin-left:auto">来自运行 0138</span></div>
+          <p class="p">订单表以 order_no 为主键。重跑清洗时只允许更新金额与时间，其余列保持首次写入的值。</p>
+          <div class="code"><span class="c">-- 1,196 行一次写入，冲突只动两列</span>
+INSERT INTO orders_clean (order_no, amount, updated_at, status)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(order_no) DO UPDATE SET
+  amount     = excluded.amount,
+  updated_at = excluded.updated_at
+WHERE orders_clean.status = 'new';</div>
+          <div class="acts"><span class="btn">复制</span><span class="btn">交给 Agent</span><span class="note">在运行 0142 里被注入过 1 次</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A · 列表 + 详情（默认）</b><span>上面两栏之外不再放第三列；详情就是正文，不折叠。</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame">
+      <div class="top"><span class="dot"></span><b>记录</b><span class="tabs"><span class="tab on">速记 128</span><span class="tab">问题 34</span></span></div>
+      <div class="toolbar"><div class="search">搜索标题、内容、标签…</div><span class="btn">全部</span><span class="btn pri">＋ 新建速记</span></div>
+      <div class="body">
+        <div class="list" style="opacity:.55">
+          <div class="list-head"><span>最近更新</span><span>128</span></div>
+          <button class="row"><h3>SQLite 批量 upsert：冲突时只更新两列</h3><p>ON CONFLICT(order_no) DO UPDATE SET amount=…</p><div class="m"><span class="tag">sql</span><span class="tag">订单</span>2 天前</div></button>
+          <button class="row"><h3>接口调试：网关 504 先看这三处</h3><p>超时配置、上游连接池、慢 SQL。</p><div class="m"><span class="tag">排障</span>1 周前</div></button>
+          <button class="row"><h3>正则提取运单号：排除已取消的单</h3><p>SF\d{12} 会把取消单也捞进来。</p><div class="m"><span class="tag">正则</span>2 周前</div></button>
+        </div>
+        <div class="detail" style="background:var(--plate2)">
+          <div class="kicker">编辑 · #s-0311</div>
+          <div class="field"><label>标题</label><div class="input">SQLite 批量 upsert：冲突时只更新两列</div></div>
+          <div class="field"><label>内容</label><div class="textarea">订单表以 order_no 为主键。重跑清洗时只允许更新金额与时间，其余列保持首次写入的值，避免把人工改过的状态覆盖掉。<br><br>注意 WHERE 挂在 DO UPDATE 上：状态不是 new 的行会被静默跳过。</div></div>
+          <div class="field"><label>标签</label><div class="meta"><span class="tag">sql</span><span class="tag">订单</span><span class="tag" style="border-style:dashed">＋ 添加</span></div></div>
+          <div class="acts" style="border-top:0;padding-top:12px"><span class="btn pri">保存</span><span class="btn">取消</span><span class="btn">删除</span><span class="note">Esc 取消 · ⌘↵ 保存</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>B · 详情内就地编辑</b><span>不弹窗：左列保持可见，改完当场落回详情；新建也走同一块，只是从空白开始。</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame">
+      <div class="top"><span class="dot" style="background:var(--red)"></span><b>记录</b><span class="tabs"><span class="tab">速记 128</span><span class="tab on">问题 34</span></span></div>
+      <div class="toolbar"><div class="search">搜索标题、内容、标签…</div><span class="btn">全部</span><span class="btn">未解决 12</span><span class="btn pri">＋ 新建问题</span></div>
+      <div class="body">
+        <div class="list">
+          <div class="list-head"><span>最近更新</span><span>34</span></div>
+          <button class="row on"><h3>WMS 回传金额精度丢失</h3><p>回传用 float 做中间存储，对账差 1 分。</p><div class="m"><span class="tag q">问题</span><span class="tag">对账</span>6 天前</div></button>
+          <button class="row"><h3>CSV 里 88 行是重复单号</h3><p>导出脚本重试没做幂等，清洗时保留最后一条。</p><div class="m"><span class="tag q">问题</span><span class="tag">数据</span>2 天前</div></button>
+          <button class="row"><h3>网关 504 偶发：上游连接池耗尽</h3><p>不是超时配置的问题，池子只有 20 个连接。</p><div class="m"><span class="tag q">问题</span><span class="tag">排障</span>1 周前</div></button>
+        </div>
+        <div class="detail">
+          <div class="kicker">问题 · #p-0042 · 未解决</div>
+          <h2>WMS 回传金额精度丢失</h2>
+          <div class="meta"><span class="tag q">问题</span><span class="tag">对账</span>2026-10-23 14:08</div>
+          <p class="p">回传用 float 做中间存储，0.1 + 0.2 变成 0.30000000000000004，对账差 1 分。改成整数分或 decimal 后消失。</p>
+          <div class="rel">
+            <div class="rh">关联</div>
+            <div class="rr"><b>迭代</b> 1.4 · 对账修复 <span>v1.4.2</span></div>
+            <div class="rr"><b>领域</b> 订单系统 <span>3 个代码池</span></div>
+            <div class="rr"><b>出现</b> 3 次 · 最近 10-27 <span>运行 0138 / 0142</span></div>
+          </div>
+          <div class="acts"><span class="btn">标记已解决</span><span class="btn">复制</span><span class="btn">交给 Agent</span><span class="note">已解决会从默认列表收起</span></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>C · 问题详情</b><span>同一套详情骨架，问题多一块「关联」：迭代 / 领域 / 出现次数；解决态只看一眼状态行。</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame">
+      <div class="top"><span class="dot"></span><b>记录</b><span class="tabs"><span class="tab on">速记 0</span><span class="tab">问题 0</span></span></div>
+      <div class="toolbar"><div class="search">搜索标题、内容、标签…</div><span class="btn">全部</span><span class="btn pri">＋ 新建速记</span></div>
+      <div class="body">
+        <div class="list">
+          <div class="list-head"><span>最近更新</span><span>0</span></div>
+          <div class="emptybox">
+            <span class="mk">＋</span>
+            <h2>还没有速记</h2>
+            <p>把常用的命令、token、SQL、账号、链接存在这里，随时一键复制，不用再翻聊天记录。</p>
+            <span class="btn">＋ 新建第一条速记</span>
+          </div>
+        </div>
+        <div class="detail" style="display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px">
+          选中左侧任意一条，详情出现在这里
+        </div>
+      </div>
+    </div>
+    <figcaption><b>D · 空态</b><span>空态落在左列里（「从这条开始」），右列只留一句占位；不再整屏居中。</span></figcaption>
+  </figure>
+
+</div>
+</body>
+</html>

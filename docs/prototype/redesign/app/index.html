@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolCove 工具湾 · 工作台原型（B · Pipeline）</title>
+<style>
+  :root {
+    --canvas: #f1f2ed;
+    --plate: #fcfcf9;
+    --plate-2: #f7f8f4;
+    --ink: #16181b;
+    --ink-2: #3a403b;
+    --muted: #5c6159;
+    --faint: #6a6f66;
+    --line: #d8dad0;
+    --line-2: #bfc2b6;
+    --blue: #2b45d8;
+    --blue-soft: #e9ecff;
+    --add-bg: #e7f2e9;
+    --add-ink: #1f6b44;
+    --del-bg: #fae9e4;
+    --del-ink: #9a3520;
+    --warn: #8f5206;
+    --sans: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--canvas); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button, input { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; padding: 0; }
+  p, h1, h2, h3, pre, ul, li { margin: 0; padding: 0; }
+  ul { list-style: none; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  ::selection { background: #d7ddff; }
+
+  .app { display: grid; grid-template-rows: 48px minmax(0, 1fr); height: 100dvh; min-height: 680px; }
+
+  /* ---------- top ---------- */
+  .top { display: flex; align-items: center; gap: 18px; padding: 0 14px; background: var(--plate); border-bottom: 1px solid var(--line-2); }
+  .brand { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+  .brand b { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; }
+  .brand span { font-size: 12px; color: var(--muted); }
+  .views { display: flex; gap: 2px; margin-left: 10px; }
+  .views button { height: 30px; padding: 0 12px; font-size: 13px; color: var(--muted); border: 1px solid transparent; }
+  .views button:hover { color: var(--ink); }
+  .views button.on { color: var(--ink); border-color: var(--line-2); background: var(--plate-2); font-weight: 600; }
+  .top .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .runchip { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border: 1px solid var(--line); background: var(--plate-2); font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .runchip b { color: var(--ink); font-weight: 600; }
+  .runchip i { width: 6px; height: 6px; background: var(--warn); display: block; }
+  .runchip:hover { border-color: var(--line-2); }
+  .cmdkey { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border: 1px solid var(--line); background: var(--plate-2); font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .cmdkey:hover { border-color: var(--line-2); color: var(--ink); }
+  .policy { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .policy i { display: inline-block; width: 6px; height: 6px; background: var(--warn); margin-right: 6px; vertical-align: 1px; }
+
+  .body { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 0; }
+
+  /* ---------- side ---------- */
+  .side { border-right: 1px solid var(--line-2); background: var(--plate); display: flex; flex-direction: column; min-height: 0; }
+  .side-head { padding: 14px 14px 10px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; color: var(--faint); text-transform: uppercase; }
+  .side-head h2 { font-size: 14px; font-weight: 600; margin-top: 3px; display: flex; align-items: baseline; gap: 7px; }
+  .side-head h2 span { font-family: var(--mono); font-size: 12px; color: var(--faint); font-weight: 400; }
+  .search { margin: 0 14px 10px; height: 30px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--plate-2); padding: 0 8px; }
+  .search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+  .search input { flex: 1; min-width: 0; border: 0; outline: none; font-size: 13px; background: transparent; }
+  .search input::placeholder { color: var(--faint); }
+  .side-list { flex: 1; overflow: auto; padding-bottom: 10px; }
+  .grp { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; color: var(--faint); padding: 10px 14px 3px; }
+  .row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 14px; text-align: left; font-size: 13px; color: var(--ink-2); }
+  .row:hover { background: var(--plate-2); }
+  .row.on { background: var(--blue-soft); color: var(--ink); box-shadow: inset 2px 0 0 var(--blue); }
+  .row .sq { width: 7px; height: 7px; border: 1px solid var(--line-2); background: var(--plate); flex: 0 0 auto; }
+  .row.on .sq { border-color: var(--blue); background: var(--blue); }
+  .row u { margin-left: auto; text-decoration: none; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .side-foot { border-top: 1px solid var(--line); padding: 10px 14px; font-family: var(--mono); font-size: 12px; color: var(--faint); line-height: 1.7; }
+
+  /* ---------- main ---------- */
+  .main { min-width: 0; min-height: 0; overflow: auto; background-image: radial-gradient(#d5d8ce 0.8px, transparent 0.8px); background-size: 20px 20px; }
+  .main-inner { min-height: 100%; display: flex; flex-direction: column; }
+
+  /* bench head */
+  .head { padding: 16px 26px 10px; display: flex; align-items: flex-start; gap: 18px; }
+  .goal { font-size: 20px; font-weight: 600; line-height: 1.4; letter-spacing: 0.004em; max-width: 40ch; }
+  .meta { display: flex; gap: 8px 16px; margin-top: 8px; font-family: var(--mono); font-size: 12px; color: var(--muted); flex-wrap: wrap; align-items: center; }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-family: var(--sans); font-size: 13px; color: var(--ink-2); }
+  .st i { width: 7px; height: 7px; background: var(--warn); display: block; }
+  .st.run i { background: var(--blue); animation: pulse 1.2s steps(2,end) infinite; }
+  .st.ok i { background: var(--add-ink); }
+  .st.stop i { background: var(--del-ink); }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .head-actions { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; align-items: flex-start; }
+  .seg { display: flex; border: 1px solid var(--line-2); background: var(--plate); }
+  .seg button { height: 28px; padding: 0 11px; font-size: 12.5px; color: var(--muted); }
+  .seg button.on { background: var(--ink); color: #fff; }
+
+  /* chain */
+  .chain-wrap { padding: 6px 26px 8px; }
+  .chain { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 16px; }
+  .node { position: relative; text-align: left; }
+  .node .card { position: relative; z-index: 1; height: 84px; background: var(--plate); border: 1px solid var(--line-2); padding: 8px 9px; display: flex; flex-direction: column; gap: 2px; transition: border-color .12s, box-shadow .12s; }
+  .node:hover .card { border-color: var(--ink); }
+  .node.sel .card { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+  .node .no { font-family: var(--mono); font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; }
+  .node .no em { font-style: normal; }
+  .node .key { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+  .node .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node.done .no em { color: var(--add-ink); }
+  .node.now .card { border: 2px solid var(--blue); background: #fff; padding: 7px 8px; }
+  .node.now .no em { color: var(--blue); font-family: var(--sans); font-weight: 600; }
+  .node.next .card { background: rgba(252,252,249,.55); border-style: dashed; }
+  .node.next .key, .node.next .sub { color: var(--faint); }
+  .node.rejected .card { border-color: var(--del-ink); }
+  .node.rejected .no em { color: var(--del-ink); }
+  .node::after { content: ""; position: absolute; z-index: 0; top: 41px; left: 100%; width: 16px; height: 2px; background: var(--line-2); }
+  .node:last-child::after { display: none; }
+  .node.done::after { background: var(--ink); }
+  .node.now::after { background: repeating-linear-gradient(90deg, var(--blue) 0 4px, transparent 4px 8px); }
+  .node.next::after { background: var(--line); }
+
+  /* detail */
+  .detail-row { display: grid; grid-template-columns: minmax(0, 1fr) 308px; gap: 18px; padding: 4px 26px 0; align-items: start; }
+  .panel { background: var(--plate); border: 1px solid var(--line-2); }
+  .panel-head { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .panel-head .k { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .tag { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line-2); padding: 0 5px; line-height: 18px; }
+  .panel-head .ms { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .panel-head .right { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+  .panel-body { padding: 12px 14px; }
+  .args { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 5px 12px; font-family: var(--mono); font-size: 14px; }
+  .args dt { color: var(--faint); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding-top: 1px; }
+  .args dd { color: var(--ink-2); word-break: break-all; }
+  .result { margin-top: 10px; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+  .result b { color: var(--ink); }
+  .diffbar { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-family: var(--mono); font-size: 14px; color: var(--faint); }
+  .diff { margin-top: 6px; border: 1px solid var(--line); background: #fff; font-family: var(--mono); font-size: 14px; line-height: 1.6; overflow: auto; max-height: 182px; }
+  .diff div { display: grid; grid-template-columns: 40px 18px minmax(0, 1fr); padding-right: 10px; white-space: pre; }
+  .diff i { font-style: normal; text-align: right; padding-right: 8px; color: #8a8f87; }
+  .diff s { text-decoration: none; color: #8f948c; }
+  .diff .a { background: var(--add-bg); color: var(--add-ink); }
+  .diff .d { background: var(--del-bg); color: var(--del-ink); }
+  .gate { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line-2); background: var(--plate-2); }
+  .gate .note { font-size: 14px; color: var(--muted); line-height: 1.45; max-width: 46ch; }
+  .btn { height: 30px; padding: 0 12px; border: 1px solid var(--line-2); background: var(--plate); font-size: 13px; color: var(--ink-2); }
+  .btn:hover { border-color: var(--ink-2); color: var(--ink); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; margin-left: auto; }
+  .btn.primary:hover { background: #2338c2; }
+  .btn.ghost { margin-left: auto; }
+  .btn:active { transform: translateY(1px); }
+  .okline { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; color: var(--add-ink); }
+  .okline.stop { color: var(--del-ink); }
+
+  /* inspector */
+  .insp { display: flex; flex-direction: column; gap: 12px; }
+  .icard { background: var(--plate); border: 1px solid var(--line-2); padding: 11px 12px; }
+  .icard h3 { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--faint); text-transform: uppercase; margin-bottom: 8px; }
+  .icard p { font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+  .icard p b { color: var(--ink); }
+  .out div { display: flex; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .out div:last-child { border-bottom: 0; }
+  .out span { margin-left: auto; color: var(--faint); font-size: 12px; }
+  .out .pend span { color: var(--warn); }
+  .out .ok span { color: var(--add-ink); }
+
+  /* plan */
+  .plan { padding: 16px 26px 0; }
+  .plan-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--faint); text-transform: uppercase; }
+  .plan-head span { letter-spacing: 0; font-family: var(--sans); font-size: 12.5px; color: var(--muted); text-transform: none; }
+  .plan-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .plan-card { border: 1px dashed var(--line-2); background: rgba(252,252,249,.56); padding: 9px 11px; }
+  .plan-card b { display: block; font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--faint); }
+  .plan-card span { display: block; margin-top: 2px; font-size: 14px; color: var(--faint); line-height: 1.45; }
+  .plan-card em { font-style: normal; font-family: var(--mono); font-size: 12px; color: #8d928a; margin-right: 5px; }
+
+  /* composer */
+  .composer { margin-top: auto; position: sticky; bottom: 0; border-top: 1px solid var(--line-2); background: var(--plate); padding: 10px 26px 12px; z-index: 6; }
+  .composer .row { display: flex; align-items: center; gap: 10px; }
+  .prompt { font-family: var(--mono); font-size: 16px; color: var(--blue); }
+  .composer input { flex: 1; border: 0; background: transparent; outline: none; font-size: 15px; min-width: 0; }
+  .composer input::placeholder { color: var(--faint); }
+  .run { height: 32px; padding: 0 16px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; }
+  .run:hover { background: #000; }
+  .chips { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .chip { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); background: var(--plate-2); padding: 3px 8px; }
+  .chip:hover { border-color: var(--line-2); color: var(--ink); }
+  .hint { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+  /* ---------- toolbox ---------- */
+  .box { padding: 22px 26px 40px; }
+  .box-head { display: flex; align-items: flex-end; gap: 20px; border-bottom: 1px solid var(--line-2); padding-bottom: 16px; }
+  .box-head h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; max-width: 24ch; }
+  .box-head .sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .stats { margin-left: auto; display: flex; gap: 18px; flex: 0 0 auto; }
+  .stats div { display: flex; align-items: baseline; gap: 6px; padding-left: 14px; border-left: 1px solid var(--line); }
+  .stats b { font-family: var(--mono); font-size: 24px; font-weight: 600; }
+  .stats span { font-size: 12px; color: var(--muted); }
+  .box-bar { display: flex; align-items: center; gap: 12px; padding: 12px 0 6px; position: sticky; top: 0; background: var(--canvas); z-index: 5; }
+  .box-bar .search { margin: 0; flex: 0 1 360px; }
+  .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .filter { height: 30px; padding: 0 10px; border: 1px solid transparent; font-size: 12.5px; color: var(--muted); }
+  .filter:hover { color: var(--ink); background: var(--plate-2); }
+  .filter.on { border-color: var(--ink); color: var(--ink); background: var(--plate); }
+  .filter b { font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--faint); margin-left: 4px; }
+  .filter.on b { color: var(--ink-2); }
+  .box-count { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .tgroup { margin-top: 20px; }
+  .tgroup-head { display: flex; align-items: baseline; gap: 9px; padding-bottom: 8px; }
+  .tgroup-head h2 { font-size: 15px; font-weight: 600; }
+  .tgroup-head .desc { font-size: 12.5px; color: var(--muted); }
+  .tgroup-head .n { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 10px; }
+  .tcard { display: flex; flex-direction: column; gap: 5px; min-height: 128px; padding: 11px 12px; background: var(--plate); border: 1px solid var(--line-2); text-align: left; transition: border-color .12s, box-shadow .12s; }
+  .tcard:hover { border-color: var(--ink); box-shadow: 0 2px 0 var(--ink); }
+  .tcard .top { display: flex; align-items: center; gap: 7px; }
+  .code { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; border: 1px solid var(--line-2); padding: 0 5px; line-height: 18px; color: var(--ink-2); background: var(--plate-2); }
+  .tcard .flag { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .tcard .name { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .tcard .desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .tcard .foot { margin-top: auto; display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--faint); padding-top: 6px; }
+  .tcard .foot .plus { margin-left: auto; color: var(--blue); }
+  .tcard:hover .foot .plus { text-decoration: underline; }
+
+  /* ---------- records ---------- */
+  .rec { padding: 22px 26px 30px; display: flex; flex-direction: column; min-height: 100%; }
+  .rec-head { display: flex; align-items: flex-end; gap: 20px; border-bottom: 1px solid var(--line-2); padding-bottom: 14px; }
+  .rec-head h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+  .rec-head .sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .rec-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .rec-split { display: grid; grid-template-columns: minmax(300px, 40%) minmax(0, 1fr); gap: 0; margin-top: 14px; border: 1px solid var(--line-2); background: var(--plate); min-height: 0; flex: 1; }
+  .rlist { border-right: 1px solid var(--line); overflow: auto; }
+  .rrow { display: block; width: 100%; text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .rrow:hover { background: var(--plate-2); }
+  .rrow.on { background: var(--plate-2); box-shadow: inset 3px 0 0 var(--blue); }
+  .rrow h2 { font-size: 14px; font-weight: 600; line-height: 1.45; }
+  .rrow p { margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .rrow .m { margin-top: 6px; display: flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .rtag { border: 1px solid var(--line-2); padding: 0 4px; line-height: 18px; font-size: 12px; }
+  .rtag.problem { border-color: var(--del-ink); color: var(--del-ink); }
+  .rdetail { overflow: auto; padding: 20px 26px 26px; }
+  .rdetail .doc { max-width: 72ch; }
+  .rdetail h2 { font-size: 20px; font-weight: 600; line-height: 1.4; margin: 6px 0 8px; }
+  .rdetail .rmeta { display: flex; gap: 7px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--faint); flex-wrap: wrap; }
+  .rdetail p.rbody { margin-top: 14px; font-size: 14px; line-height: 1.75; color: var(--ink-2); }
+  .rdetail code { font-family: var(--mono); font-size: 13px; background: var(--plate-2); border: 1px solid var(--line); padding: 0 3px; }
+  .rdetail pre { margin-top: 12px; padding: 12px 14px; background: var(--ink); color: #dfe3dc; font-family: var(--mono); font-size: 13px; line-height: 1.7; overflow: auto; }
+  .rdetail pre .c { color: #98a09a; }
+  .rdetail pre .k { color: #a9c8dd; }
+  .rdetail .acts { display: flex; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); align-items: center; }
+  .rdetail .acts .note { font-size: 12px; color: var(--faint); margin-left: 4px; }
+
+  /* ---------- palette & sheet ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(22,24,27,.28); display: flex; justify-content: center; align-items: flex-start; padding-top: 96px; z-index: 40; }
+  .palette { width: 640px; background: var(--plate); border: 1px solid var(--ink); box-shadow: 0 30px 60px -30px rgba(22,24,27,.6); }
+  .palette .in { display: flex; align-items: center; gap: 9px; height: 44px; padding: 0 12px; border-bottom: 1px solid var(--ink); }
+  .palette .in input { flex: 1; border: 0; outline: none; background: transparent; font-size: 15px; }
+  .palette .in kbd { font-family: var(--mono); font-size: 12px; color: var(--faint); border: 1px solid var(--line-2); padding: 1px 5px; }
+  .palette .list { max-height: 360px; overflow: auto; padding: 5px 0; }
+  .prow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 12px; text-align: left; border-left: 2px solid transparent; }
+  .prow:hover, .prow.cur { background: var(--plate-2); border-left-color: var(--blue); }
+  .prow b { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .prow span { font-size: 12.5px; color: var(--muted); }
+  .prow u { margin-left: auto; text-decoration: none; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .sheet-scrim { position: fixed; inset: 0; background: rgba(22,24,27,.3); display: flex; justify-content: flex-end; z-index: 45; }
+  .sheet { width: 420px; background: var(--plate); border-left: 1px solid var(--ink); padding: 18px 18px 16px; display: flex; flex-direction: column; }
+  .sheet h2 { font-size: 20px; font-weight: 600; }
+  .sheet .sdesc { margin-top: 6px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+  .sheet .acts { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .sheet .act { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--plate-2); padding: 8px 10px; font-family: var(--mono); font-size: 13px; }
+  .sheet .act span { margin-left: auto; font-family: var(--sans); font-size: 12px; color: var(--faint); }
+  .sheet .foot { margin-top: auto; display: flex; gap: 8px; padding-top: 16px; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 14px; font-size: 13px; z-index: 60; }
+
+  [hidden] { display: none !important; }
+  @media (max-width: 1180px) {
+    .body { grid-template-columns: 210px minmax(0, 1fr); }
+    .detail-row { grid-template-columns: minmax(0, 1fr) 268px; }
+    .head, .chain-wrap, .detail-row, .plan, .composer, .box, .rec { padding-left: 18px; padding-right: 18px; }
+    .stats div:nth-child(3) { display: none; }
+  }
+  @media (max-height: 840px) {
+    .head { padding-top: 11px; padding-bottom: 8px; }
+    .node .card { height: 74px; padding: 6px 8px; }
+    .node .key { margin-top: 1px; }
+    .node::after { top: 36px; }
+    .diff { max-height: 138px; }
+    .panel-head { padding: 8px 12px; }
+    .panel-body { padding: 10px 12px; }
+    .gate { padding: 8px 12px; }
+    .plan { padding-top: 10px; }
+    .plan-card { padding: 7px 9px; }
+    .composer { padding-top: 8px; padding-bottom: 9px; }
+    .chips { margin-top: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="none" stroke="currentColor" stroke-width="5"/><circle cx="32" cy="32" r="21" fill="none" stroke="currentColor" stroke-width="4"/><rect x="20" y="21" width="24" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="3.4"/><circle cx="26.5" cy="30" r="2.4" fill="currentColor"/><circle cx="37.5" cy="30" r="2.4" fill="currentColor"/></svg>
+      <b>TOOLCOVE</b><span>工具湾</span>
+    </div>
+    <nav class="views" role="tablist" aria-label="模块">
+      <button data-view="bench" class="on" role="tab" aria-selected="true">工作台</button>
+      <button data-view="box" role="tab" aria-selected="false">工具箱</button>
+      <button data-view="rec" role="tab" aria-selected="false">记录</button>
+    </nav>
+    <div class="right">
+      <button class="runchip" data-view="bench"><i></i>运行 <b>0142</b></button>
+      <button class="cmdkey" id="openPalette">⌘K 命令 <span style="color:var(--faint)">Ctrl K</span></button>
+      <span class="policy"><i></i>审批 · 风险放行</span>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="side" id="side"></aside>
+    <main class="main" id="main"><div class="main-inner" id="mainInner"></div></main>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="in"><span style="color:var(--blue)">❯</span><input id="paletteInput" placeholder="搜动作、工具、记录或界面"><kbd>esc</kbd></div>
+    <div class="list" id="paletteList"></div>
+  </div>
+</div>
+
+<div class="sheet-scrim" id="sheetScrim" hidden>
+  <div class="sheet" role="dialog" aria-label="工具详情">
+    <div id="sheetBody"></div>
+    <div class="foot"><button class="btn" id="sheetClose">关闭</button><span style="margin-left:auto"></span><button class="btn" id="sheetOpen">打开工具窗口</button><button class="btn primary" id="sheetAgent" style="margin-left:0">加进管线</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ---------------- data ---------------- */
+  var GROUPS = [
+    ['数据与文本', 'data', '转换、文本、时间、结构化与数据生成'],
+    ['网络与接口', 'network', '网络诊断与 API 接口调试'],
+    ['文件与媒体', 'file', '文件、图片与媒体资源处理'],
+    ['开发调试', 'development', '安全校验、数据库与开发调试'],
+    ['AI 助手', 'ai', 'AI 驱动的对话与生成工具'],
+    ['游戏辅助', 'game', '游戏内的推理与路线规划'],
+    ['面试刷题', 'arcade', '离线题库与自测']
+  ];
+  var TOOLS = [
+    ['CVT', '数据转换', 'data', 2, 'Base64、URL、Unicode、Hex、JWT 与 JSON 转义'],
+    ['TBL', '表格 / CSV', 'data', 2, 'CSV / TSV 解析、清洗、去重，导出 JSON / Markdown / SQL'],
+    ['MD', 'Markdown 文档', 'data', 2, '编辑预览、目录、表格对齐、检查与独立 HTML 导出'],
+    ['KB', '知识库', 'data', 0, '收藏与检索长文本，标签分类与全文搜索'],
+    ['XML', 'XML 报文', 'data', 3, '格式化、转 JSON、XPath 查询与良构性校验'],
+    ['TXT', '文本处理', 'data', 1, 'Diff、正则、替换、行处理、命名转换与统计'],
+    ['SCH', 'JSON Schema', 'data', 2, '从样例推断 Schema，校验数据与解释结构'],
+    ['TIM', '时间与计划', 'data', 1, '时间戳、时区换算与 Cron 表达式'],
+    ['JSN', '结构化数据', 'data', 3, 'JSON / YAML 校验、格式化、树视图与互转'],
+    ['GEN', '数据生成', 'data', 1, 'UUID / ULID / NanoID、随机数据与模板'],
+    ['NET', '网络诊断', 'network', 4, 'URL、CIDR、DNS、端口、Ping 与路由', 1],
+    ['API', '接口调试', 'network', 1, '集合与环境变量，发请求、看响应'],
+    ['DL', '多线程下载', 'network', 0, '分片并行、批量队列与断点续传', 1],
+    ['CAP', '接口抓包', 'network', 0, '抓本地应用的请求，转成签到站点描述', 1],
+    ['FIL', '文件处理', 'file', 7, '文件信息、编码、Base64、换行与批量改名', 1],
+    ['IMG', '图片处理', 'file', 1, '格式转换、压缩、尺寸、取色与图标生成'],
+    ['PHO', '照片存档', 'file', 0, '手机拍照直传对象存储，桌面批量归档'],
+    ['SHT', '截图', 'file', 0, 'F1 冻结屏幕标注，F3 把剪贴板图钉在桌面', 1],
+    ['DSK', '磁盘分析', 'file', 0, '扫描目录按体积排序，看清空间被谁占了', 1],
+    ['PDF', 'PDF 工具', 'file', 3, '合并、按范围拆分、页面增删、旋转与解密'],
+    ['LBL', '标签打印', 'file', 0, 'TSPL 排版、条码二维码与 203dpi 实时预览', 1],
+    ['CRY', '加密与校验', 'development', 3, '摘要、HMAC、AES、RSA 与密码生成'],
+    ['DB', '数据库管理', 'development', 1, '连接、执行 SQL、浏览表结构', 1],
+    ['CHT', 'AI 对话', 'ai', 0, '多会话对话，支持图片与提示词模板'],
+    ['CHK', '自动签到', 'ai', 0, '按站点描述定时签到，凭据加密落盘', 1],
+    ['PRM', '提示词', 'ai', 0, '提示词库，接云端生图与本地 ComfyUI', 1],
+    ['RAIL', '庄园路线', 'game', 0, '贸易路线求解，锁定下一站与卡牌'],
+    ['INT', '面试刷题', 'arcade', 0, '四个方向离线题库，自评后按间隔复习']
+  ];
+  var ACTIONS = {
+    TBL: ['table.parse', 'table.convert'], JSN: ['json.parse', 'json.format', 'schema.validate'],
+    FIL: ['file.inspect', 'file.read', 'file.write'], DB: ['db.query'], SCH: ['schema.infer', 'schema.validate'],
+    MD: ['markdown.normalize', 'markdown.lint'], CVT: ['base64.encode', 'base64.decode'],
+    XML: ['xml.format', 'xml.validate'], TXT: ['text.diff'], GEN: ['id.generate'], CRY: ['crypto.hash', 'crypto.hmac'],
+    NET: ['network.ping', 'network.trace', 'network.dns'], TIM: ['time.timestamp'], API: ['http.request'],
+    PDF: ['pdf.merge', 'pdf.split'], IMG: ['image.plan']
+  };
+
+  var STEPS = [
+    { key: 'file.inspect', risk: '只读', ms: '12ms', sub: '1,284 行 · 9 列', args: [['path', 'C:\\Users\\cb\\Desktop\\orders-2026-10-24.csv'], ['mode', 'meta']], res: '文件 <b>138 KB</b>，UTF-8（带 BOM），最后修改 2026-10-24 18:40。' },
+    { key: 'table.parse', risk: '只读', ms: '38ms', sub: '1,284 × 9', args: [['delimiter', ','], ['header', 'true']], res: '识别 <b>3</b> 个 ISO 日期列、<b>1</b> 个数值列；首行作为表头。' },
+    { key: 'table.convert', risk: '转换', ms: '61ms', sub: '去重 88 行', args: [['to', 'json'], ['dedupeBy', 'order_no'], ['trim', 'true']], res: '保留 <b>1,196</b> 行；amount 转 number(2)，两列首尾空白已裁掉。' },
+    { key: 'schema.infer', risk: '转换', ms: '22ms', sub: '9 字段 · 3 可空', args: [['sample', '200'], ['nullable', 'true']], res: 'order_no 匹配 <b>^SO-\\d{4}-\\d{4}$</b>；buyer 允许 null。' },
+    { key: 'file.write', risk: '写入', ms: '', sub: '覆盖 138 KB', args: [['path', 'C:\\Users\\cb\\Desktop\\orders-clean.json'], ['overwrite', 'true'], ['encoding', 'utf-8']], res: '目标文件已存在。写入前需要你确认；这次允许只对本次调用生效。', gate: true },
+    { key: 'db.query', risk: '数据库', ms: '', sub: '1,196 行', args: [['sql', 'INSERT INTO orders_clean …'], ['rows', '1196']], res: '冲突时只更新 amount / updated_at；读取状态不是 new 的行会被跳过。', queued: true },
+    { key: 'data.create', risk: '写入', ms: '', sub: '问题记录', args: [['kind', 'problems']], res: '把「88 行重复单号」存成一条问题记录。', queued: true },
+    { key: 'spill.read', short: 'spill', risk: '只读', ms: '', sub: 'spill:7f3a', args: [['key', 'spill:7f3a'], ['range', '0-20000']], res: '回读被裁掉的中段结果，核对清洗前后总额。', queued: true }
+  ];
+  var DIFF = [
+    ['', '1', '  {'], ['', '2', '    "generated_at": "2026-10-29T11:02:14+08:00",'],
+    ['d', '3', '    "count": 1284,'], ['a', '3', '    "count": 1196,'],
+    ['', '4', '    "orders": ['], ['a', '5', '      { "order_no": "SO-2026-1042", "amount": 1288.00, "status": "new" },'],
+    ['a', '6', '      { "order_no": "SO-2026-1043", "amount": 96.50, "status": "new" },'],
+    ['', '7', '      … 共 1,196 条'], ['', '8', '    ]'], ['', '9', '  }']
+  ];
+  var NEXT = [
+    ['06', 'db.query', '写入 1,196 行到 orders_clean，冲突只更新金额与时间'],
+    ['07', 'data.create', '把「88 行重复单号」存成一条问题记录'],
+    ['08', 'spill.read', '回读中段结果，核对清洗前后总额']
+  ];
+
+  var RECORDS = [
+    { t: 'snippet', title: 'SQLite 批量 upsert：冲突时只更新两列', tags: ['sql', '订单'], time: '2 天前', from: '来自运行 0138', body: '订单表以 order_no 为主键。重跑清洗时只允许更新金额与时间，其余列保持首次写入的值，避免把人工改过的状态覆盖掉。', code: '<span class="c">-- 1,196 行一次写入，冲突只动两列</span>\nINSERT INTO orders_clean (order_no, amount, updated_at, status)\nVALUES (?, ?, ?, ?)\nON CONFLICT(order_no) DO UPDATE SET\n  amount     = excluded.amount,\n  updated_at = excluded.updated_at\nWHERE orders_clean.status = \'new\';', note: '注意 WHERE 挂在 DO UPDATE 上：状态不是 new 的行会被静默跳过，不会报错。' },
+    { t: 'problem', title: 'CSV 里 1,284 行有 88 行是重复单号', tags: ['数据', '订单'], time: '2 天前', body: '导出脚本在上游重试时没做幂等，重复行的 amount 却不一样。清洗时保留最后一条，并在第 7 步记一条问题。' },
+    { t: 'problem', title: 'WMS 回传金额精度丢失', tags: ['对账'], time: '6 天前', body: '回传用 float 做了中间存储，0.1 + 0.2 变成 0.30000000000000004，对账差 1 分。改成整数分或 decimal 后消失。' },
+    { t: 'snippet', title: '接口调试：网关 504 先看这三处', tags: ['排障'], time: '1 周前', body: '超时配置、上游连接池、慢 SQL。按这个顺序排，九成能在五分钟内定位。' },
+    { t: 'snippet', title: '正则提取运单号：排除已取消的单', tags: ['正则'], time: '2 周前', body: 'SF\\d{12} 会把取消单也捞进来，用前置负向断言跳过状态位是 C 的行。' }
+  ];
+
+  var state = { view: 'bench', phase: 'pending', sel: 4, shown: 4, seconds: 41, tab: 'run', group: 'all', q: '', tool: null, rec: 0, timer: null };
+
+  /* ---------------- side ---------------- */
+  function renderSide() {
+    var side = $('#side');
+    if (state.view === 'bench') {
+      side.innerHTML =
+        '<div class="side-head"><div class="kicker">Parts bin</div><h2>零件箱<span>28 件</span></h2></div>' +
+        '<div class="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="binSearch" placeholder="搜工具或动作" aria-label="搜工具"></div>' +
+        '<div class="side-list" id="binList"></div>' +
+        '<div class="side-foot">43 个动作<br>16 件可被 Agent 驱动</div>';
+      var q = ($('#binSearch').value || '').trim().toLowerCase();
+      var html = '';
+      GROUPS.slice(0, 5).forEach(function (g) {
+        var rows = TOOLS.filter(function (t) { return t[2] === g[1] && (!q || (t[1] + t[0]).toLowerCase().indexOf(q) >= 0); });
+        if (!rows.length) return;
+        html += '<div class="grp">' + g[0] + '</div>';
+        rows.forEach(function (t) {
+          html += '<button class="row" data-tool="' + t[1] + '"><span class="sq"></span>' + t[1] + '<u>＋</u></button>';
+        });
+      });
+      $('#binList').innerHTML = html || '<div class="grp">没有匹配</div>';
+      $$('#binList .row').forEach(function (b) {
+        b.addEventListener('click', function () { addToComposer(b.getAttribute('data-tool')); });
+      });
+      $('#binSearch').addEventListener('input', renderSide);
+    } else if (state.view === 'box') {
+      side.innerHTML =
+        '<div class="side-head"><div class="kicker">Index</div><h2>分组<span>7 组</span></h2></div>' +
+        '<div class="side-list">' +
+          '<button class="row' + (state.group === 'all' ? ' on' : '') + '" data-group="all"><span class="sq"></span>全部<u>28</u></button>' +
+          GROUPS.map(function (g) {
+            var n = TOOLS.filter(function (t) { return t[2] === g[1]; }).length;
+            return '<button class="row' + (state.group === g[1] ? ' on' : '') + '" data-group="' + g[1] + '"><span class="sq"></span>' + g[0] + '<u>' + n + '</u></button>';
+          }).join('') +
+        '</div>' +
+        '<div class="side-foot">43 个动作<br>16 件可被驱动<br>10 件桌面独占</div>';
+      $$('#side .row').forEach(function (b) {
+        b.addEventListener('click', function () { state.group = b.getAttribute('data-group'); render(); });
+      });
+    } else {
+      side.innerHTML =
+        '<div class="side-head"><div class="kicker">Records</div><h2>类型<span>162 条</span></h2></div>' +
+        '<div class="side-list">' +
+          '<button class="row on"><span class="sq"></span>全部<u>162</u></button>' +
+          '<button class="row"><span class="sq"></span>速记<u>128</u></button>' +
+          '<button class="row"><span class="sq"></span>问题<u>34</u></button>' +
+          '<div class="grp">标签</div>' +
+          ['sql 12', '订单 9', '对账 7', '排障 5', '正则 3', '数据 8'].map(function (t) {
+            return '<button class="row"><span class="sq"></span>' + t.split(' ')[0] + '<u>' + t.split(' ')[1] + '</u></button>';
+          }).join('') +
+        '</div>' +
+        '<div class="side-foot">记录会在下一次运行时<br>作为上下文注入（技能命中 2）</div>';
+      $$('#side .row').forEach(function (b) {
+        b.addEventListener('click', function () { toast('原型里只做了一条记录的详情'); });
+      });
+    }
+  }
+
+  /* ---------------- bench ---------------- */
+  function nodeState(i) {
+    if (state.phase === 'rejected' && i === 4) return 'rejected';
+    if (i < state.shown) return 'done';
+    if (i === 4) return 'now';
+    return 'next';
+  }
+  function chainHtml() {
+    return '<div class="chain">' + STEPS.map(function (s, i) {
+      var st = nodeState(i);
+      var mark = st === 'done' ? '✓' : st === 'now' ? '等你' : st === 'rejected' ? '停' : '—';
+      return '<button class="node ' + st + (state.sel === i ? ' sel' : '') + '" data-node="' + i + '"><div class="card">' +
+        '<div class="no"><span>' + String(i + 1).padStart(2, '0') + '</span><em>' + mark + '</em></div>' +
+        '<div class="key" title="' + s.key + '">' + (s.short || s.key.split('.')[1]) + '</div><div class="sub">' + (st === 'done' ? s.sub : st === 'now' ? '等待确认' : s.risk) + '</div></div></button>';
+    }).join('') + '</div>';
+  }
+  function diffHtml() {
+    return '<div class="diff">' + DIFF.map(function (d) {
+      var cls = d[0] === 'a' ? ' class="a"' : d[0] === 'd' ? ' class="d"' : '';
+      var sign = d[0] === 'a' ? '+' : d[0] === 'd' ? '-' : ' ';
+      return '<div' + cls + '><i>' + d[1] + '</i><s>' + sign + '</s><span>' + esc(d[2]) + '</span></div>';
+    }).join('') + '</div>';
+  }
+  function panelHtml() {
+    var s = STEPS[state.sel];
+    var st = nodeState(state.sel);
+    var head = '<div class="panel-head"><span class="k">' + s.key + '</span><span class="tag">' + s.risk + '</span>' +
+      (s.ms ? '<span class="ms">' + s.ms + '</span>' : '') +
+      '<span class="right">' + (st === 'done' ? '已完成' : st === 'now' ? '等待你的确认' : st === 'rejected' ? '已拒绝' : '排队中') + '</span></div>';
+    var body = '<div class="panel-body"><dl class="args">' +
+      s.args.map(function (a) { return '<dt>' + a[0] + '</dt><dd>' + esc(a[1]) + '</dd>'; }).join('') + '</dl>' +
+      '<p class="result">' + s.res + '</p>';
+    if (s.gate) body += '<div class="diffbar">写入预览 · orders-clean.json · 覆盖 138 KB · 1,196 行</div>' + diffHtml();
+    body += '</div>';
+    var gate = '';
+    if (s.gate && state.phase === 'pending') {
+      gate = '<div class="gate"><span class="note">风险放行：这次允许只对本次调用生效，同一次运行里再写还会问。</span>' +
+        '<button class="btn ghost" data-reject>拒绝</button><button class="btn primary" data-approve>允许一次</button></div>';
+    } else if (s.gate && state.phase === 'running') {
+      gate = '<div class="gate"><span class="okline">已允许，继续 06-08…</span></div>';
+    } else if (s.gate && state.phase === 'done') {
+      gate = '<div class="gate"><span class="okline">✓ 已写入 1,196 行 · 138 KB · 用时 01:14</span><button class="btn" data-tab="out">看产出</button></div>';
+    } else if (s.gate && state.phase === 'rejected') {
+      gate = '<div class="gate"><span class="okline stop">已拒绝 · 磁盘与数据库都没有改动</span></div>';
+    }
+    return head + body + gate;
+  }
+  function outListHtml() {
+    if (state.phase === 'done') return '<div class="ok"><b>orders-clean.json</b><span>已写入 138 KB</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+    if (state.phase === 'rejected') return '<div><b>orders-clean.json</b><span>未写入</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+    return '<div class="pend"><b>orders-clean.json</b><span>待写入</span></div><div><b>spill · 7f3a</b><span>138 KB</span></div>';
+  }
+  function benchHtml() {
+    var st = state.phase;
+    return '' +
+      '<div class="head"><div class="goal-wrap"><h1 class="goal">把上周导出的订单 CSV 清洗后写进本地订单库</h1>' +
+        '<div class="meta"><span class="st ' + (st === 'done' ? 'ok' : st === 'rejected' ? 'stop' : st === 'running' ? 'run' : '') + '" id="runState"><i></i>' +
+          (st === 'done' ? '已完成' : st === 'rejected' ? '已停止' : st === 'running' ? '运行中' : '等待确认') + '</span>' +
+          '<span>第 <b id="stepNo">' + (st === 'done' ? '08' : '05') + '</b> / 08 步</span>' +
+          '<span>用时 <b id="clock">' + (st === 'done' ? '01:14' : state.phase === 'pending' ? '00:41' : '00:00') + '</b></span>' +
+          '<span>调用 <b>' + (st === 'done' ? '8' : '4') + '</b></span><span>模型 deepseek-v3.2</span></div></div>' +
+      '<div class="head-actions"><div class="seg" role="tablist" aria-label="视图">' +
+        '<button class="' + (state.tab === 'run' ? 'on' : '') + '" data-tab="run" role="tab" aria-selected="' + (state.tab === 'run') + '">过程</button>' +
+        '<button class="' + (state.tab === 'out' ? 'on' : '') + '" data-tab="out" role="tab" aria-selected="' + (state.tab === 'out') + '">产出</button></div></div></div>' +
+      '<div class="chain-wrap">' + chainHtml() + '</div>' +
+      (state.tab === 'out' ? artifactsHtml() : detailHtml()) +
+      planHtml() +
+      '<form class="composer" id="composer"><div class="row"><span class="prompt">❯</span>' +
+        '<input id="goalInput" value="把上周导出的订单 CSV 清洗后写进本地订单库" aria-label="目标">' +
+        '<button class="run" type="submit">运行</button></div>' +
+        '<div class="chips"><button class="chip" type="button" data-fill="用 table.convert 去重后转 JSON">table.convert</button>' +
+        '<button class="chip" type="button" data-fill="推断 CSV 的 schema 并标出可空字段">schema.infer</button>' +
+        '<button class="chip" type="button" data-fill="写进 orders_clean，先给我看 diff">db.query</button>' +
+        '<span class="hint">⌘↵ 运行</span></div></form>';
+  }
+  function detailHtml() {
+    return '<div class="detail-row"><section class="panel" aria-label="步骤详情">' + panelHtml() + '</section>' +
+      '<aside class="insp">' +
+        '<div class="icard"><h3>本次运行</h3><p><b>订单系统</b> · 3 个代码池<br>技能命中 csv-cleanup ×3、sqlite-upsert ×1</p></div>' +
+        '<div class="icard"><h3>护栏</h3><p>写类每次都问 · 先出 diff 才能批<br>删除永不自动 · 大结果落盘 30 份 / 7 天</p></div>' +
+        '<div class="icard"><h3>产出</h3><div class="out">' + outListHtml() + '</div></div>' +
+      '</aside></div>';
+  }
+  function artifactsHtml() {
+    return '<div class="detail-row"><section class="panel" aria-label="产出">' +
+      '<div class="panel-head"><span class="k">本次运行产出</span><span class="right">2 个文件 · 1 条待写入</span></div>' +
+      '<div class="panel-body"><div class="args" style="grid-template-columns:1fr">' +
+        '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line)"><b style="font-family:var(--mono);font-size:13px">orders-clean.json</b><span style="font-size:13px;color:var(--muted)">清洗后的 1,196 条订单 · UTF-8 · 138 KB</span><span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:' + (state.phase === 'done' ? 'var(--add-ink)' : 'var(--warn)') + '">' + (state.phase === 'done' ? '已写入' : state.phase === 'rejected' ? '未写入' : '待写入') + '</span></div>' +
+        '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line)"><b style="font-family:var(--mono);font-size:13px">spill · 7f3a</b><span style="font-size:13px;color:var(--muted)">被裁掉的中段结果，Agent 可分段读回</span><span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--faint)">138 KB</span></div>' +
+        '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 0"><b style="font-family:var(--mono);font-size:13px">一条问题记录</b><span style="font-size:13px;color:var(--muted)">「88 行重复单号」在第 7 步写入记录</span><span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--faint)">data.create</span></div>' +
+      '</div></div></section><aside class="insp">' +
+      '<div class="icard"><h3>怎么接着用</h3><p>产出可以拖进速记，或在下一次运行里当作输入；写入过的文件可在溢出区找回上一版。</p></div></aside></div>';
+  }
+  function planHtml() {
+    var done = state.phase === 'done', stop = state.phase === 'rejected';
+    return '<div class="plan"><div class="plan-head">接下来' + (stop ? ' <span>已停止，不会执行</span>' : done ? ' <span>已全部执行</span>' : ' <span>确认第 5 步后继续</span>') + '</div>' +
+      '<div class="plan-row">' + NEXT.map(function (n) {
+        return '<div class="plan-card" style="' + (stop ? 'opacity:.5' : '') + '"><b><em>' + n[0] + '</em>' + n[1] + '</b><span>' + (done ? '完成' : stop ? '未执行' : n[2]) + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+
+  /* ---------------- toolbox ---------------- */
+  function boxHtml() {
+    var q = state.q.trim().toLowerCase();
+    var groups = GROUPS.filter(function (g) { return state.group === 'all' || state.group === g[1]; });
+    var shown = 0, body = '';
+    groups.forEach(function (g) {
+      var tools = TOOLS.filter(function (t) { return t[2] === g[1] && (!q || (t[1] + t[4] + t[0]).toLowerCase().indexOf(q) >= 0); });
+      if (!tools.length) return;
+      shown += tools.length;
+      body += '<section class="tgroup"><div class="tgroup-head"><h2>' + g[0] + '</h2><span class="desc">' + g[2] + '</span><span class="n">' + tools.length + ' 件</span></div><div class="tgrid">' +
+        tools.map(function (t) {
+          return '<button class="tcard" data-tool="' + t[1] + '"><div class="top"><span class="code">' + t[0] + '</span>' + (t[5] ? '<span class="flag">仅桌面</span>' : '') + '</div>' +
+            '<div class="name">' + t[1] + '</div><div class="desc">' + t[4] + '</div>' +
+            '<div class="foot"><span>' + (t[3] ? t[3] + ' 个动作' : '手动工具') + '</span><span class="plus">详情 ›</span></div></button>';
+        }).join('') + '</div></section>';
+    });
+    return '<div class="box"><div class="box-head"><div><h1>每一件都能被 Agent 调用，也能自己点。</h1>' +
+        '<p class="sub">28 件工具 · 43 个动作 · 16 件可被驱动；另外 12 件只给人用。</p></div>' +
+        '<div class="stats"><div><b>28</b><span>件工具</span></div><div><b>43</b><span>个动作</span></div><div><b>16</b><span>件可驱动</span></div></div></div>' +
+      '<div class="box-bar"><div class="search" style="margin:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="boxSearch" value="' + esc(state.q) + '" placeholder="按名字、能力或动作搜索" aria-label="搜索工具"></div>' +
+        '<div class="filters">' + [['全部', 'all', 28]].concat(GROUPS.map(function (g) { return [g[0], g[1], TOOLS.filter(function (t) { return t[2] === g[1]; }).length]; })).map(function (f) {
+          return '<button class="filter' + (state.group === f[1] ? ' on' : '') + '" data-group="' + f[1] + '">' + f[0] + '<b>' + f[2] + '</b></button>';
+        }).join('') + '</div><span class="box-count">' + shown + ' 件</span></div>' + body + '</div>';
+  }
+
+  /* ---------------- records ---------------- */
+  function recHtml() {
+    var r = RECORDS[state.rec];
+    return '<div class="rec"><div class="rec-head"><div><h1>留下的东西，下一次还能用上。</h1><p class="sub">速记 128 · 问题 34 · 这次运行注入了 2 条技能与 1 条速记。</p></div>' +
+        '<div class="right"><button class="btn">新建速记</button></div></div>' +
+      '<div class="rec-split"><div class="rlist">' + RECORDS.map(function (rec, i) {
+        return '<button class="rrow' + (i === state.rec ? ' on' : '') + '" data-rec="' + i + '"><h2>' + rec.title + '</h2><p>' + rec.body + '</p>' +
+          '<div class="m">' + rec.tags.map(function (t) { return '<span class="rtag' + (rec.t === 'problem' ? ' problem' : '') + '">' + t + '</span>'; }).join('') +
+          '<span>' + rec.time + '</span>' + (rec.from ? '<span style="margin-left:auto">' + rec.from + '</span>' : '') + '</div></button>';
+      }).join('') + '</div>' +
+      '<article class="rdetail">' + recordDetail(r) + '</article></div></div>';
+  }
+  function recordDetail(r) {
+    return '<div class="doc"><div class="rmeta"><span class="rtag' + (r.t === 'problem' ? ' problem' : '') + '">' + (r.t === 'problem' ? '问题' : '速记') + '</span>' +
+      r.tags.map(function (t) { return '<span class="rtag">' + t + '</span>'; }).join('') + '<span>' + r.time + '</span>' + (r.from ? '<span>· ' + r.from + '</span>' : '') + '</div>' +
+      '<h2>' + r.title + '</h2><p class="rbody">' + r.body + '</p>' +
+      (r.code ? '<pre>' + r.code + '</pre>' : '') +
+      (r.note ? '<p class="rbody">' + r.note + '</p>' : '') +
+      '<div class="acts"><button class="btn" data-copy>复制</button><button class="btn" data-agent>交给 Agent</button><span class="note">' + (r.from ? '这条速记在运行 0142 里被注入过一次' : '还没有在运行里用过') + '</span></div></div>';
+  }
+
+  /* ---------------- render ---------------- */
+  function render() {
+    $$('.views button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === state.view); b.setAttribute('aria-selected', String(b.getAttribute('data-view') === state.view)); });
+    renderSide();
+    var inner = $('#mainInner');
+    if (state.view === 'bench') inner.innerHTML = benchHtml();
+    else if (state.view === 'box') inner.innerHTML = boxHtml();
+    else inner.innerHTML = recHtml();
+    bindMain();
+  }
+  function bindMain() {
+    $$('#mainInner [data-view]').forEach(function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-view')); }); });
+    var st = $('#mainInner .seg');
+    if (st) $$('#mainInner .seg button').forEach(function (b) { b.addEventListener('click', function () { state.tab = b.getAttribute('data-tab'); render(); }); });
+    $$('#mainInner [data-node]').forEach(function (b) { b.addEventListener('click', function () { state.sel = Number(b.getAttribute('data-node')); render(); }); });
+    var ap = $('#mainInner [data-approve]'); if (ap) ap.addEventListener('click', approve);
+    var rj = $('#mainInner [data-reject]'); if (rj) rj.addEventListener('click', reject);
+    var tb = $('#mainInner [data-tab="out"]'); if (tb) tb.addEventListener('click', function () { state.tab = 'out'; render(); });
+    var form = $('#composer');
+    if (form) {
+      form.addEventListener('submit', function (e) { e.preventDefault(); reset(); });
+      $$('#mainInner [data-fill]').forEach(function (b) { b.addEventListener('click', function () { addToComposer(b.getAttribute('data-fill')); }); });
+    }
+    var boxSearch = $('#boxSearch');
+    if (boxSearch) boxSearch.addEventListener('input', function () { state.q = boxSearch.value; var pos = boxSearch.selectionStart; render(); var el = $('#boxSearch'); if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
+    $$('#mainInner [data-group]').forEach(function (b) { b.addEventListener('click', function () { state.group = b.getAttribute('data-group'); render(); }); });
+    $$('#mainInner [data-tool]').forEach(function (b) { b.addEventListener('click', function (e) { openSheet(b.getAttribute('data-tool')); }); });
+    $$('#mainInner [data-rec]').forEach(function (b) { b.addEventListener('click', function () { state.rec = Number(b.getAttribute('data-rec')); render(); }); });
+    var cp = $('#mainInner [data-copy]'); if (cp) cp.addEventListener('click', function () { toast('已复制'); });
+    var ag = $('#mainInner [data-agent]'); if (ag) ag.addEventListener('click', function () { addToComposer('把这条速记带进下一次运行'); });
+  }
+
+  function setView(v) { state.view = v; render(); }
+  function addToComposer(text) {
+    state.view = 'bench'; state.tab = 'run'; render();
+    var input = $('#goalInput');
+    if (input) { input.value = (text.indexOf('用 ') === 0 ? text : '用 ' + text + ' 处理：'); input.focus(); }
+    toast('已放进目标框');
+  }
+
+  /* ---------------- run ---------------- */
+  function approve() {
+    state.phase = 'running'; render(); clock(true);
+    toast('已允许这一次写入');
+    var n = 5;
+    var iv = setInterval(function () {
+      state.shown = n; n += 1; render();
+      if (n > 8) {
+        clearInterval(iv); clearInterval(state.timer);
+        state.phase = 'done'; state.shown = 8; render();
+        toast('运行完成：1,196 行进库');
+      }
+    }, 700);
+  }
+  function reject() { state.phase = 'rejected'; clearInterval(state.timer); render(); toast('已拒绝：没有写入'); }
+  function reset() {
+    clearInterval(state.timer); state.phase = 'pending'; state.shown = 4; state.seconds = 0;
+    render(); clock(true);
+  }
+  function clock(on) {
+    clearInterval(state.timer);
+    if (!on) return;
+    state.timer = setInterval(function () {
+      state.seconds += 1;
+      var el = $('#clock');
+      if (el) el.textContent = String(Math.floor(state.seconds / 60)).padStart(2, '0') + ':' + String(state.seconds % 60).padStart(2, '0');
+    }, 1000);
+  }
+
+  /* ---------------- sheet ---------------- */
+  function openSheet(name) {
+    var t = TOOLS.filter(function (x) { return x[1] === name; })[0];
+    if (!t) return;
+    state.tool = name;
+    var acts = ACTIONS[t[0]] || [];
+    $('#sheetBody').innerHTML = '<div class="kicker">Tool · ' + t[0] + (t[5] ? ' · 仅桌面' : '') + '</div><h2>' + t[1] + '</h2><p class="sdesc">' + t[4] + '</p><p class="sdesc" style="margin-top:6px;font-family:var(--mono);font-size:12px">' + (t[3] ? t[3] + ' 个动作可被 Agent 调用' : '这件只手动用，Agent 目录里没有它') + '</p>' +
+      '<div class="acts">' + (acts.length ? acts.map(function (a) { return '<div class="act">' + a + '<span>动作</span></div>'; }).join('') : '<div class="act">这件只手动用<span>无动作</span></div>') + '</div>';
+    $('#sheetScrim').hidden = false;
+  }
+  function closeSheet() { $('#sheetScrim').hidden = true; }
+
+  /* ---------------- palette ---------------- */
+  var PROWS = [
+    ['动作', 'table.convert', 'CSV / TSV 转 JSON'],
+    ['动作', 'file.write', '写文件，先出 diff'],
+    ['动作', 'db.query', '执行只读 SQL 或写入'],
+    ['工具', '表格 / CSV', '清洗、去重、导出'],
+    ['工具', '文件处理', '编码、Base64、批量改名'],
+    ['工具', '数据库管理', '连接、执行 SQL'],
+    ['界面', '工作台', '回到当前运行'],
+    ['界面', '工具箱', '28 件工具与 43 个动作'],
+    ['界面', '记录', '速记与问题'],
+    ['记录', 'SQLite 批量 upsert', '速记 · sql']
+  ];
+  var cur = 0;
+  function filtered() {
+    var q = $('#paletteInput').value.trim().toLowerCase();
+    if (!q) return PROWS;
+    return PROWS.filter(function (r) { return (r[0] + r[1] + r[2]).toLowerCase().indexOf(q) >= 0; });
+  }
+  function renderPalette() {
+    var rows = filtered(); cur = Math.min(cur, Math.max(0, rows.length - 1));
+    var html = '', last = '';
+    rows.forEach(function (r, i) {
+      if (r[0] !== last) { html += '<div class="grp">' + r[0] + '</div>'; last = r[0]; }
+      html += '<button class="prow' + (i === cur ? ' cur' : '') + '" data-i="' + i + '"><b>' + esc(r[1]) + '</b><span>' + esc(r[2]) + '</span><u>' + r[0] + '</u></button>';
+    });
+    if (!rows.length) html = '<div class="grp">没有匹配。试试 json / 去重 / 审批。</div>';
+    $('#paletteList').innerHTML = html;
+    $$('.prow').forEach(function (b) {
+      b.addEventListener('mouseenter', function () { cur = Number(b.getAttribute('data-i')); renderPalette(); });
+      b.addEventListener('click', function () { pick(Number(b.getAttribute('data-i'))); });
+    });
+  }
+  function pick(i) {
+    var r = filtered()[i]; if (!r) return;
+    closePalette();
+    if (r[0] === '工具') { setView('box'); openSheet(r[1]); return; }
+    if (r[0] === '界面') { setView(r[1] === '工作台' ? 'bench' : r[1] === '工具箱' ? 'box' : 'rec'); return; }
+    if (r[0] === '记录') { setView('rec'); return; }
+    addToComposer(r[1]);
+  }
+  function openPalette() { $('#scrim').hidden = false; cur = 0; $('#paletteInput').value = ''; renderPalette(); $('#paletteInput').focus(); }
+  function closePalette() { $('#scrim').hidden = true; }
+
+  /* ---------------- misc ---------------- */
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 2200);
+  }
+
+  $$('.views button').forEach(function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-view')); }); });
+  $('.runchip').addEventListener('click', function () { setView('bench'); });
+  $('#openPalette').addEventListener('click', openPalette);
+  $('#paletteInput').addEventListener('input', function () { cur = 0; renderPalette(); });
+  $('#scrim').addEventListener('mousedown', function (e) { if (e.target === this) closePalette(); });
+  $('#sheetClose').addEventListener('click', closeSheet);
+  $('#sheetScrim').addEventListener('mousedown', function (e) { if (e.target === this) closeSheet(); });
+  $('#sheetAgent').addEventListener('click', function () { closeSheet(); if (state.tool) addToComposer(state.tool); });
+  $('#sheetOpen').addEventListener('click', function () { closeSheet(); toast('工具窗口只在桌面端打开；这里先记下它'); });
+  document.addEventListener('keydown', function (e) {
+    var open = !$('#scrim').hidden;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open ? closePalette() : openPalette(); return; }
+    if (e.key === 'Escape') { if (open) { closePalette(); return; } if (!$('#sheetScrim').hidden) closeSheet(); return; }
+    if (!open) return;
+    var rows = filtered();
+    if (e.key === 'ArrowDown') { e.preventDefault(); cur = Math.min(cur + 1, rows.length - 1); renderPalette(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(cur - 1, 0); renderPalette(); }
+    if (e.key === 'Enter') { e.preventDefault(); pick(cur); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
