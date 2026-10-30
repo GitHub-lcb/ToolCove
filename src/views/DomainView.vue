@@ -26,11 +26,11 @@ const { t } = useI18n();
 // 之前它靠注释提醒人同步，实测 --amber 已经漂了一个色相（抄的是 #d97706，令牌早就是 #9a6700），
 // 表现是琥珀色领域的徽章底色 hue 与它的色点不一致——不报错、不红灯，只是看着不对。
 const TOKEN_HEX = {
-  "--primary": "#0969da",
+  "--primary": "#2b45d8",
   "--teal": "#0d9488",
-  "--primary-hover": "#0550ae",
+  "--primary-hover": "#2036b8",
   // 历史领域色可能存的是退役令牌引用，保留映射（值已同步为主色蓝系）
-  "--accent-hover": "#0550ae",
+  "--accent-hover": "#2036b8",
   "--amber": "#9a6700",
   "--fuchsia": "#db2777",
   "--green": "#10b981",

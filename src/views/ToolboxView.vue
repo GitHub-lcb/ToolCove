@@ -604,4 +604,13 @@ function openInJson(text) {
   .lt-body { grid-template-columns: minmax(0, 1fr); }
   .lt-side { display: none; }
 }
+
+/* ---------- B · Pipeline 收口：目录卡片降噪 ----------
+   图标不再坐一块彩色底、卡片不再浮起：发丝线 + 无阴影 + 小圆角，
+   让「工具数量与动作数」成为可扫的信息，而不是一排彩色方块。 */
+.lt-row.lt-tool { border-color: var(--border); border-radius: var(--r-xs); padding: var(--sp-3); }
+.lt-row.lt-tool:hover { border-color: var(--primary); box-shadow: none; background: var(--card); }
+.lt-tool .lt-ico { width: 22px; height: 22px; border-radius: var(--r-xs); margin-bottom: var(--sp-1); background: none; color: var(--muted); }
+.lt-tool .lt-ico .icon { width: 18px; height: 18px; }
+.lt-tool .lt-desc { color: var(--muted); }
 </style>

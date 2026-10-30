@@ -172,7 +172,7 @@ test("工作台壳为280/56px侧栏与48px顶栏（三栏 AppFrame），底部�
   await expect(page.locator(".new-chat")).toBeVisible();
   await expect(page.locator(".sidebar")).toHaveCSS("width", "280px");
   await expect(page.locator(".topbar")).toHaveCSS("height", "48px");
-  await expect(page.locator(".page-title h1")).toHaveCSS("font-size", "13.5px");
+  await expect(page.locator(".page-title h1")).toHaveCSS("font-size", "14px");
   await expect(page.locator(".brand-logo")).toHaveCSS("width", "27px");
   await expect(page.locator(".brand-logo")).toHaveCSS("box-shadow", "none");
   await expect(page.locator(".pt-ico")).toHaveCSS("box-shadow", "none");

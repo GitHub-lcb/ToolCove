@@ -748,7 +748,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   padding: 0 var(--sp-3) var(--sp-3);
-  background: var(--bg);
+  background: var(--card);
   border-right: 1px solid var(--border);
   position: relative;
   height: 100dvh;
@@ -785,10 +785,10 @@ onUnmounted(() => {
   gap: var(--sp-2);
   border: 1px solid transparent;
   background: none;
-  height: 32px;
+  height: 34px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--text-weak);
   cursor: pointer;
@@ -858,7 +858,7 @@ onUnmounted(() => {
 .shell.collapsed .collapse { flex: none; width: 100%; justify-content: center; padding-left: 0; padding-right: 0; }
 
 /* ============ 主区 ============ */
-.main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; overflow: hidden; position: relative; background: var(--card); }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100dvh; overflow: hidden; position: relative; background: var(--bg); }
 /* 单条顶栏（48px）：标题 + 状态 + 动作。视图不再自带第二条 bar——
    两层 chrome 是旧版最笨重的地方，DSH 的窗口顶带只有一条。 */
 .topbar {
@@ -882,7 +882,7 @@ onUnmounted(() => {
   place-items: center;
   color: var(--muted);
 }
-.page-title h1 { margin: 0; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.page-title h1 { margin: 0; min-width: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .page-title .st-chip { flex-shrink: 0; }
 .top-actions { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; flex-shrink: 0; }
 /* 仅搜索框收缩；GlobalSearch 是多根组件，选择器直接命中其真实触发按钮。 */

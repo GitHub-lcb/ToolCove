@@ -105,50 +105,50 @@
   --dock-w-sm: 300px;   /* ≤900px 时让出 40px 给中栏 */
 
   /* ---------- 语义层：背景与表面 ---------- */
-  --bg: #f6f8fa;
-  --bg-grad: linear-gradient(160deg, #f6f8fa 0%, #f0f3f7 55%, #f4f7fa 100%);
-  --card: #ffffff;
-  --card-soft: #fafbfd;   /* 卡片内嵌套区块底 */
+  --bg: #f1f2ed;
+  --bg-grad: linear-gradient(160deg, #f1f2ed 0%, #eceee7 55%, #f4f5ef 100%);
+  --card: #fcfcf9;
+  --card-soft: #f6f7f2;   /* 卡片内嵌套区块底 */
   --card-raised: #ffffff; /* 抬起的控件底（输入框、次级按钮） */
   --card-inset: #f2f4f7;  /* 内嵌凹陷区（代码块、预览框） */
-  --well: #eef1f6;        /* 嵌入浅灰底（进度槽、tag 底、缩略图占位） */
-  --well-hover: #e7eaf0;
-  --ghost: #f1f3f7;       /* 幽灵按钮底 */
+  --well: #eef0e9;        /* 嵌入浅灰底（进度槽、tag 底、缩略图占位） */
+  --well-hover: #e6e8dd;
+  --ghost: #eef0e9;       /* 幽灵按钮底 */
 
   /* ---------- 语义层：文字 ---------- */
-  --text: #1f2328;
-  --text-weak: #59636e;   /* 次要文字（导航项、辅助说明） */
-  --text-soft: #4a5561;   /* 三级文字（chip、日期、tag） */
-  --text-dim: #59636e;    /* 四级文字（表格表头、弱标签） */
-  --text-code: #334155;   /* 代码/预格式文本 */
+  --text: #16181b;
+  --text-weak: #4b514c;   /* 次要文字（导航项、辅助说明） */
+  --text-soft: #3b413c;   /* 三级文字（chip、日期、tag） */
+  --text-dim: #4b514c;    /* 四级文字（表格表头、弱标签） */
+  --text-code: #2f3430;   /* 代码/预格式文本 */
   --text-invert: #ffffff; /* 彩色底上的白字 */
-  --muted: #656d76;
+  --muted: #5c6159;
   /* 最淡的一档文字色。曾经是 #afb8c4（白底 2.0:1，却用在行号/时间戳等可读文本上），
      E2E 对比度审计抓到后改到这个值，保证 card/well 两种底色都过 WCAG AA 4.5:1。 */
-  --faint: #626a75;
+  --faint: #62675f;
 
   /* ---------- 语义层：描边 ---------- */
-  --border: #d8dee4;
-  --border-strong: #c8d1da;
-  --card-border: #e3e8ee;
-  --border-blue: #b8d8fb;
+  --border: #d8dad0;
+  --border-strong: #c3c6ba;
+  --card-border: #e5e7de;
+  --border-blue: #c9d0ff;
   --border-danger: #f0b1b1;
 
   /* ---------- 语义层：主色（GitHub 蓝系） ---------- */
-  --primary: #0969da;
-  --primary-hover: #0550ae;
-  --primary-light: #4493f8;
-  --primary-bright: #79c0ff;
-  --primary-soft: #eaf2fd;
-  --primary-soft-hover: #d8e9fb;
-  --grad-brand: linear-gradient(135deg, #0969da, #4493f8 55%, #79c0ff);
-  --grad-selected: linear-gradient(135deg, #f2f8fe, #e3effd);
-  --grad-promo: linear-gradient(150deg, #f6fafd, #e9f1fb);
+  --primary: #2b45d8;
+  --primary-hover: #2036b8;
+  --primary-light: #5568e8;
+  --primary-bright: #8b9bff;
+  --primary-soft: #e9ecff;
+  --primary-soft-hover: #dbe0ff;
+  --grad-brand: linear-gradient(135deg, #2b45d8, #5568e8 55%, #8b9bff);
+  --grad-selected: linear-gradient(135deg, #eef1ff, #e2e7ff);
+  --grad-promo: linear-gradient(150deg, #f4f6ff, #e8ecff);
 
   /* ---------- 状态层：跨页面统一的语义色 ---------- */
   /* 运行中 / 等待 / 完成 / 失败 / 阻塞。Agent 的每一步、任务状态、发布状态
      全部映射到这五个语义槽，而不是各自取色。 */
-  --run: #0969da;         --run-soft: #eaf2fd;   --run-deep: #0550ae;
+  --run: #2b45d8;         --run-soft: #e9ecff;   --run-deep: #2036b8;
   --wait: #9a6700;        --wait-soft: #fff8c5;  --wait-deep: #7d4e00;
   --done: #1a7f37;        --done-soft: #dafbe1;  --done-deep: #116329;
   --fail: #cf222e;        --fail-soft: #ffebe9;  --fail-deep: #a40e26;
@@ -200,7 +200,7 @@
 
   /* ---------- 语义层：控件与遮罩 ---------- */
   --input-bg: var(--card);       /* 此前被 SettingsView 引用但从未定义 */
-  --toast-bg: #1f2937;
+  --toast-bg: #1d2220;
   --win-close: #e81123;
   --overlay: rgba(17, 24, 39, 0.5);  /* 统一遮罩色：旧代码有 4 种不同写法 */
   /* 媒体预览底：看图时要把周围全部压暗，让画面浮起来，比普通弹窗的遮罩深一档。
@@ -210,8 +210,8 @@
   --focus-ring: var(--primary);
 
   /* ---------- 语义层：代码块 ---------- */
-  --code-bg: #f6f8fa;
-  --code-border: #eef0f6;
+  --code-bg: #f6f7f2;
+  --code-border: #e8eae2;
 
   /* ---------- 兼容层：紫系退役映射 ---------- */
   /* 这些 token 的值早已迁到主色蓝系，但**仍有 176 处引用分布在 19 个文件**，
@@ -223,7 +223,7 @@
   --accent-soft: var(--primary-soft);
   --accent-border: var(--border-blue);
   --accent-soft-text: var(--primary-light);
-  --accent-tint: #f2f8fe;
+  --accent-tint: #f2f4ff;
   --accent-soft-deep: var(--primary-soft);
   --accent-soft-deep-hover: var(--primary-soft-hover);
   --accent-border-deep: var(--border-blue);
@@ -236,51 +236,51 @@
 /* 方式 a：跟随系统 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0d1117;
-    --bg-grad: linear-gradient(135deg, #0d1117 0%, #11151d 50%, #0d1219 100%);
-    --card: #161b22;
-    --card-soft: #10151c;
-    --card-raised: #1c2128;
-    --card-inset: #10151c;
-    --well: #21262d;
-    --well-hover: #262d36;
-    --ghost: #21262d;
+    --bg: #101214;
+    --bg-grad: linear-gradient(135deg, #101214 0%, #141619 50%, #0e1012 100%);
+    --card: #17191c;
+    --card-soft: #131518;
+    --card-raised: #1d2024;
+    --card-inset: #131518;
+    --well: #1e2226;
+    --well-hover: #252a2f;
+    --ghost: #1e2226;
 
-    --text: #e6edf3;
-    --text-weak: #b7c0cf;
-    --text-soft: #8b949e;
-    --text-dim: #8b949e;
-    --text-code: #cbd5e1;
-    --muted: #8b949e;
+    --text: #e7e9ec;
+    --text-weak: #b6bcc3;
+    --text-soft: #8b929a;
+    --text-dim: #8b929a;
+    --text-code: #cbd2d9;
+    --muted: #98a0a9;
     /* 与浅色同理：深色下也要过 AA（原 #3d444d 在卡片上只有 1.76:1，等于看不见） */
-    --faint: #9aa4b2;
+    --faint: #9aa2ab;
 
-    --border: #21262d;
-    --border-strong: #30363d;
-    --card-border: #21262d;
-    --border-blue: #1f3a5f;
+    --border: #2a2e33;
+    --border-strong: #3a3f45;
+    --card-border: #24282d;
+    --border-blue: #33406e;
     --border-danger: #5c2b2b;
 
     /* E2E 对比度审计：深色下主按钮白字原来只有 3.1:1（#4493f8 太亮），
        而按钮文字是 12–13px，够不上大字号豁免。压深到 5.15:1。 */
-    --primary: #2b6ad0;
+    --primary: #3f5ce0;
     /* 深色下它同时是"激活态文字色"（nav-item.on / rail-tabs .on），
        原来 #3478e0 在卡片底上只有 4.04:1；提到亮一档 → 6.2:1 */
-    --primary-hover: #58a6ff;
-    --primary-light: #4493f8;
-    --primary-bright: #79c0ff;
-    --primary-soft: #1a3352;
-    --primary-soft-hover: #11263c;
-    --grad-brand: linear-gradient(135deg, #1f6feb, #4493f8 55%, #79c0ff);
-    --grad-selected: linear-gradient(135deg, #152c47, #11263c);
-    --grad-promo: linear-gradient(150deg, #141d2b, #101a26);
+    --primary-hover: #8b9dff;
+    --primary-light: #7d92ff;
+    --primary-bright: #a9b7ff;
+    --primary-soft: #1d2440;
+    --primary-soft-hover: #171d33;
+    --grad-brand: linear-gradient(135deg, #3f5ce0, #7d92ff 55%, #a9b7ff);
+    --grad-selected: linear-gradient(135deg, #1c2340, #171d33);
+    --grad-promo: linear-gradient(150deg, #171c2a, #12161f);
 
     /* 状态色：GitHub Dark 语义色 */
-    --run: #4493f8;   --run-soft: #152c47;  --run-deep: #58a6ff;
+    --run: #7d92ff;   --run-soft: #1d2440;  --run-deep: #a9b7ff;
     --wait: #d29922;  --wait-soft: #3a2e10; --wait-deep: #d29922;
     --done: #3fb950;  --done-soft: #103a26; --done-deep: #3fb950;
     --fail: #f85149;  --fail-soft: #3d1d1d; --fail-deep: #f85149;
-    --idle: #8b949e;  --idle-soft: #21262d; --idle-deep: #8b949e;
+    --idle: #8b949e;  --idle-soft: #1e2226; --idle-deep: #8b949e;
 
     --success-light: #7ee787;  --success-tint: #0f2e22;  --success-border: #1f6f54;
     --danger-light: #ffa198;   --danger-bright: #f85149;
@@ -301,56 +301,56 @@
     --shadow-pop: 0 10px 32px rgba(0, 0, 0, 0.55);
     --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.35), 0 18px 40px rgba(0, 0, 0, 0.5);
 
-    --input-bg: #1c2128;
-    --toast-bg: #1c2128;
+    --input-bg: #1d2024;
+    --toast-bg: #1d2024;
     --overlay: rgba(0, 0, 0, 0.62);
     --overlay-strong: rgba(0, 0, 0, 0.86);
 
-    --code-bg: #161a21;
-    --code-border: #343c4a;
+    --code-bg: #14171b;
+    --code-border: #2f353c;
 
-    --accent-tint: #111d2e;
+    --accent-tint: #141a2c;
     --orb-opacity: 0.09;  /* 背景氛围减半，专注内容 */
   }
 }
 
 /* 方式 b：手动指定（用户在设置/顶栏显式选择） */
 [data-theme="dark"] {
-  --bg: #0d1117;
-  --bg-grad: linear-gradient(135deg, #0d1117 0%, #11151d 50%, #0d1219 100%);
-  --card: #161b22;
-  --card-soft: #10151c;
-  --card-raised: #1c2128;
-  --card-inset: #10151c;
-  --well: #21262d;
-  --well-hover: #262d36;
-  --ghost: #21262d;
-  --text: #e6edf3;
-  --text-weak: #b7c0cf;
-  --text-soft: #8b949e;
-  --text-dim: #8b949e;
-  --text-code: #cbd5e1;
-  --muted: #8b949e;
-  --faint: #9aa4b2;
-  --border: #21262d;
-  --border-strong: #30363d;
-  --card-border: #21262d;
-  --border-blue: #1f3a5f;
+  --bg: #101214;
+  --bg-grad: linear-gradient(135deg, #101214 0%, #141619 50%, #0e1012 100%);
+  --card: #17191c;
+  --card-soft: #131518;
+  --card-raised: #1d2024;
+  --card-inset: #131518;
+  --well: #1e2226;
+  --well-hover: #252a2f;
+  --ghost: #1e2226;
+  --text: #e7e9ec;
+  --text-weak: #b6bcc3;
+  --text-soft: #8b929a;
+  --text-dim: #8b929a;
+  --text-code: #cbd2d9;
+  --muted: #98a0a9;
+  --faint: #9aa2ab;
+  --border: #2a2e33;
+  --border-strong: #3a3f45;
+  --card-border: #24282d;
+  --border-blue: #33406e;
   --border-danger: #5c2b2b;
-  --primary: #2b6ad0;
-  --primary-hover: #58a6ff;
-  --primary-light: #4493f8;
-  --primary-bright: #79c0ff;
-  --primary-soft: #1a3352;
-  --primary-soft-hover: #11263c;
-  --grad-brand: linear-gradient(135deg, #1f6feb, #4493f8 55%, #79c0ff);
-  --grad-selected: linear-gradient(135deg, #152c47, #11263c);
-  --grad-promo: linear-gradient(150deg, #141d2b, #101a26);
-  --run: #4493f8;   --run-soft: #152c47;  --run-deep: #58a6ff;
+  --primary: #3f5ce0;
+  --primary-hover: #8b9dff;
+  --primary-light: #7d92ff;
+  --primary-bright: #a9b7ff;
+  --primary-soft: #1d2440;
+  --primary-soft-hover: #171d33;
+  --grad-brand: linear-gradient(135deg, #3f5ce0, #7d92ff 55%, #a9b7ff);
+  --grad-selected: linear-gradient(135deg, #1c2340, #171d33);
+  --grad-promo: linear-gradient(150deg, #171c2a, #12161f);
+  --run: #7d92ff;   --run-soft: #1d2440;  --run-deep: #a9b7ff;
   --wait: #d29922;  --wait-soft: #3a2e10; --wait-deep: #d29922;
   --done: #3fb950;  --done-soft: #103a26; --done-deep: #3fb950;
   --fail: #f85149;  --fail-soft: #3d1d1d; --fail-deep: #f85149;
-  --idle: #8b949e;  --idle-soft: #21262d; --idle-deep: #8b949e;
+  --idle: #8b949e;  --idle-soft: #1e2226; --idle-deep: #8b949e;
   --success-light: #7ee787;  --success-tint: #0f2e22;  --success-border: #1f6f54;
   --danger-light: #ffa198;   --danger-bright: #f85149;
   --warn-tint: #332a0e;      --warn-border: #6b5417;
@@ -365,13 +365,13 @@
   --shadow-tile: 0 5px 14px rgba(0, 0, 0, 0.4);
   --shadow-pop: 0 10px 32px rgba(0, 0, 0, 0.55);
   --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.35), 0 18px 40px rgba(0, 0, 0, 0.5);
-  --input-bg: #1c2128;
-  --toast-bg: #1c2128;
+  --input-bg: #1d2024;
+  --toast-bg: #1d2024;
   --overlay: rgba(0, 0, 0, 0.62);
   --overlay-strong: rgba(0, 0, 0, 0.86);
-  --code-bg: #161a21;
-  --code-border: #343c4a;
-  --accent-tint: #111d2e;
+  --code-bg: #14171b;
+  --code-border: #2f353c;
+  --accent-tint: #141a2c;
   --orb-opacity: 0.09;
 }
 

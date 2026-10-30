@@ -92,9 +92,9 @@ test("长内容、窄窗口、监控展开不挤走输入框，手动主题保�
   }
   await page.emulateMedia({ colorScheme: "dark" });
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
-  await expect(page.locator(".agent")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(page.locator(".agent")).toHaveCSS("background-color", "rgb(252, 252, 249)");
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
-  await expect(page.locator(".agent")).toHaveCSS("background-color", "rgb(22, 27, 34)");
+  await expect(page.locator(".agent")).toHaveCSS("background-color", "rgb(23, 25, 28)");
 });
 
 test("切换工作面后返回运行，已发送目标不会重新进入输入框", async ({ page }) => {

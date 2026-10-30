@@ -69,7 +69,7 @@ export async function openToolWindow(tool, { showToast, onFallback } = {}) {
       visible: false,
       focus: false,
       theme,
-      backgroundColor: theme === "dark" ? [13, 17, 23, 255] : [246, 248, 250, 255],
+      backgroundColor: theme === "dark" ? [16, 18, 20, 255] : [241, 242, 237, 255],
     });
     // 创建失败（如权限不足）：提示降级内嵌
     win.once("tauri://error", (e) => {
