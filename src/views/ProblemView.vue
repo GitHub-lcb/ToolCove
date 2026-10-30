@@ -103,6 +103,7 @@ function tryJump() {
   if (!p) return;
   filter.value = "all";
   search.value = "";
+  selectedId.value = p.id;
   expanded.value[p.id] = true;
   lastExpandedId.value = p.id;
   loadImages(p);
@@ -132,6 +133,16 @@ const counts = computed(() => ({
   all: problems.value.length,
 }));
 const totalHours = computed(() => round(problems.value.reduce((s, p) => s + probHours(p), 0)));
+const selectedId = ref("");
+const sel = computed(() => filteredList.value.find((x) => x.id === selectedId.value) || filteredList.value[0] || null);
+function selectProblem(p) {
+  if (batchMode.value) return toggleCheck(p);
+  selectedId.value = p.id;
+  expanded.value[p.id] = true;
+  lastExpandedId.value = p.id;
+  loadImages(p);
+}
+
 const filteredList = computed(() => {
   const kw = search.value.trim().toLowerCase();
   return [...problems.value]
@@ -237,6 +248,7 @@ async function toggleStatus(p) {
   if (p.status === "done") {
     p.resolvedAt = Date.now();
     if (!(p.resolution || "").trim()) {
+      selectedId.value = p.id;
       expanded.value[p.id] = true;
       lastExpandedId.value = p.id;
       loadImages(p);
@@ -285,11 +297,7 @@ async function removeProblem(p) {
   });
 }
 function toggleExpand(p) {
-  expanded.value[p.id] = !expanded.value[p.id];
-  if (expanded.value[p.id]) {
-    lastExpandedId.value = p.id;
-    loadImages(p);
-  }
+  selectProblem(p);
 }
 
 // ------- 多选批量（勾选 + 批量删除，撤销可恢复） -------
@@ -450,6 +458,53 @@ function onWinPaste(e) {
 }
 onMounted(() => window.addEventListener("paste", onWinPaste));
 onUnmounted(() => window.removeEventListener("paste", onWinPaste));
+
+const editing = ref(false);
+const creating = ref(false);
+const draft = ref({ title: "", note: "" });
+function startCreate() {
+  draft.value = { title: "", note: "" };
+  creating.value = true;
+  editing.value = true;
+  selectedId.value = "";
+}
+function startEdit(p) {
+  creating.value = false;
+  draft.value = { title: p.title || "", note: p.note || "" };
+  editing.value = true;
+}
+function cancelEdit() { editing.value = false; creating.value = false; }
+async function saveInline() {
+  const title = draft.value.title.trim();
+  if (!title) return props.showToast(t("problem.titleRequired"));
+  if (creating.value) {
+    const now = Date.now();
+    const rec = {
+      id: crypto.randomUUID(),
+      title,
+      type: "online",
+      status: "open",
+      note: draft.value.note.trim(),
+      tags: [],
+      logs: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    problems.value.unshift(rec);
+    await persist();
+    selectedId.value = rec.id;
+    creating.value = false;
+    editing.value = false;
+    return;
+  }
+  const p = sel.value;
+  if (!p) return;
+  p.title = title;
+  p.note = draft.value.note;
+  touch(p);
+  await persist();
+  editing.value = false;
+}
 
 async function saveResolution(p) {
   touch(p);
@@ -667,7 +722,7 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
       </template>
       <template v-else>
         <button class="btn-ghost sm" :title="t('problem.batchBtnTitle')" @click="enterBatch"><Icon name="square" :size="14" /> {{ t("problem.batchBtn") }}</button>
-        <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> {{ t("problem.create") }}</button>
+        <button class="btn-primary sm" @click="startCreate"><Icon name="plus" :size="15" /> {{ t("problem.create") }}</button>
         <AiExtract :fields="AI_FIELDS" :multiple="true" dedupe-key="title" :existing="problems.map((p) => p.title)" :hint="t('prompt.problemExtractHint')" :title="t('problem.extractTitle')" :show-toast="showToast" @apply="createProblemsFromAI" />
       </template>
     </div>
@@ -679,135 +734,152 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
     <div class="stat all"><span class="stat-ico"><Icon name="alert" :size="17" /></span><span class="stat-main"><span class="num">{{ counts.all }}</span><span class="lbl">{{ t("problem.statAll") }}</span></span></div>
   </div>
 
-  <main class="content">
-    <!-- div 拼的列表对读屏是"一堆匿名容器"；补 list/listitem 角色，条目数与边界就出来了 -->
-    <div v-if="filteredList.length" class="prob-list" role="list">
-      <div v-for="p in filteredList" :key="p.id" class="prob-block" role="listitem">
-        <div class="prob-row" :class="{ done: p.status === 'done' }" @contextmenu.prevent="onProbCtx($event, p)">
-          <button v-if="batchMode" class="sel-check" :class="{ on: checkedIds.has(p.id) }" :title="checkedIds.has(p.id) ? t('problem.uncheck') : t('problem.check')" @click.stop="toggleCheck(p)">
-            <Icon v-if="checkedIds.has(p.id)" name="check" :size="13" />
-          </button>
-          <button class="check" :class="{ on: p.status === 'done' }" @click="toggleStatus(p)">
-            <Icon v-if="p.status === 'done'" name="check" :size="14" />
-          </button>
-          <span class="tc-chip" :class="typeMeta(p).cls">
-            <Icon :name="typeMeta(p).icon" :size="12" /> {{ typeMeta(p).label }}
-          </span>
-          <div class="prob-main" @click="batchMode ? toggleCheck(p) : toggleExpand(p)">
-            <span class="prob-title">{{ p.title }}</span>
-            <span class="prob-sub">
-              <span v-for="t in p.tags || []" :key="t" class="tag-chip"><Icon name="tag" :size="11" /> {{ t }}</span>
-              <span v-if="probHours(p)" class="mini-chip hrs">{{ probHours(p) }}h</span>
-              <span v-if="(p.images || []).length" class="mini-chip imgs"><Icon name="image" :size="11" /> {{ p.images.length }}</span>
-              <span v-if="p.status === 'done' && p.resolvedAt" class="mini-chip ok"><Icon name="check" :size="11" /> {{ fmtDate(new Date(p.resolvedAt)) }}</span>
-              <span v-if="p.status === 'done' && p.resolution" class="prob-note res" :title="notePreview(p.resolution)">{{ p.resolution }}</span>
-              <span v-else-if="p.note" class="prob-note" :title="notePreview(p.note)">{{ p.note }}</span>
+  <main class="content prob">
+    <section class="prob-list" role="list" :aria-label="t('problem.sectionTitle')">
+      <template v-if="filteredList.length">
+        <div v-for="p in filteredList" :key="p.id" class="prob-block" role="listitem">
+          <div
+            class="prob-row"
+            :class="{ done: p.status === 'done', on: sel && sel.id === p.id }"
+            @click="selectProblem(p)"
+            @contextmenu.prevent="onProbCtx($event, p)"
+          >
+            <button v-if="batchMode" class="sel-check" :class="{ on: checkedIds.has(p.id) }" :title="checkedIds.has(p.id) ? t('problem.uncheck') : t('problem.check')" @click.stop="toggleCheck(p)">
+              <Icon v-if="checkedIds.has(p.id)" name="check" :size="13" />
+            </button>
+            <button class="check" :class="{ on: p.status === 'done' }" :title="p.status === 'done' ? t('problem.filterOpen') : t('problem.filterDone')" @click.stop="toggleStatus(p)">
+              <Icon v-if="p.status === 'done'" name="check" :size="14" />
+            </button>
+            <span class="tc-chip" :class="typeMeta(p).cls">
+              <Icon :name="typeMeta(p).icon" :size="12" /> {{ typeMeta(p).label }}
             </span>
+            <div class="prob-main">
+              <span class="prob-title">{{ p.title }}</span>
+              <span class="prob-sub">
+                <span v-for="t in p.tags || []" :key="t" class="tag-chip"><Icon name="tag" :size="11" /> {{ t }}</span>
+                <span v-if="probHours(p)" class="mini-chip hrs">{{ probHours(p) }}h</span>
+                <span v-if="(p.images || []).length" class="mini-chip imgs"><Icon name="image" :size="11" /> {{ p.images.length }}</span>
+                <span v-if="p.status === 'done' && p.resolvedAt" class="mini-chip ok"><Icon name="check" :size="11" /> {{ fmtDate(new Date(p.resolvedAt)) }}</span>
+                <span v-else-if="p.note" class="prob-note" :title="notePreview(p.note)">{{ p.note }}</span>
+              </span>
+            </div>
           </div>
-          <button class="icon-btn" :title="expanded[p.id] ? t('problem.collapse') : t('problem.logHoursBtn')" @click="toggleExpand(p)">
-            <Icon name="chevron" :size="15" :class="{ rot180: expanded[p.id] }" />
-          </button>
-          <button class="icon-btn" :title="t('problem.edit')" @click="openEdit(p)"><Icon name="edit" :size="15" /></button>
-          <button class="icon-btn" :title="t('problem.delete')" @click="removeProblem(p)"><Icon name="trash" :size="15" /></button>
         </div>
+      </template>
+      <div v-else class="empty rec-empty">
+        <span class="empty-ico"><Icon name="alert" :size="26" /></span>
+        <h2>{{ t("problem.emptyTitle") }}</h2>
+        <p>{{ t("problem.emptyDesc") }}</p>
+        <button class="btn-outline sm" @click="startCreate"><Icon name="plus" :size="15" />{{ t("problem.emptyCreate") }}</button>
+      </div>
+    </section>
 
-        <div v-if="expanded[p.id]" class="prob-detail">
-          <div class="sub-title">{{ t("problem.hoursTitle") }} <em>{{ t("problem.hoursTotal", { hours: probHours(p) }) }}</em></div>
-          <div v-for="l in p.logs || []" :key="l.id" class="log-row">
+    <article v-if="sel || editing" class="prob-pane prob-detail" :aria-label="t('problem.sectionTitle')">
+      <div class="pane-inner">
+      <header v-if="sel || editing" class="pane-head">
+        <div v-if="!editing && sel" class="pane-copy">
+          <span class="tc-chip" :class="typeMeta(sel).cls"><Icon :name="typeMeta(sel).icon" :size="12" /> {{ typeMeta(sel).label }}</span>
+          <h2 class="pane-title">{{ sel.title }}</h2>
+          <p class="pane-meta">
+            {{ sel.status === "done" ? t("problem.filterDone") : t("problem.filterOpen") }}
+            <span v-if="sel.status === 'done' && sel.resolvedAt"> · {{ fmtDate(new Date(sel.resolvedAt)) }}</span>
+          </p>
+        </div>
+        <div v-else class="pane-copy pane-edit">
+          <label class="pe-field"><span>{{ t("problem.formTitle") }}</span><input v-model="draft.title" :placeholder="t('problem.formTitlePh')" /></label>
+          <label class="pe-field"><span>{{ t("problem.formNote") }}</span><textarea v-model="draft.note" rows="3" :placeholder="t('problem.formNotePh')"></textarea></label>
+        </div>
+        <div class="pane-acts">
+          <template v-if="!editing">
+            <button class="btn-ghost sm" @click="startEdit(sel)"><Icon name="edit" :size="14" />{{ t("problem.edit") }}</button>
+            <button class="btn-ghost sm" @click="toggleStatus(sel)"><Icon name="check" :size="14" />{{ sel.status === "done" ? t("problem.filterOpen") : t("problem.filterDone") }}</button>
+            <button class="btn-ghost sm" @click="removeProblem(sel)"><Icon name="trash" :size="14" />{{ t("problem.delete") }}</button>
+          </template>
+          <template v-else>
+            <button class="btn-primary sm" @click="saveInline">{{ t("problem.saveBtn") }}</button>
+            <button class="btn-ghost sm" @click="cancelEdit">{{ t("common.cancel") }}</button>
+            <button v-if="!creating" class="btn-ghost sm" @click="openEdit(sel)">{{ t("problem.formEditTitle") }}</button>
+          </template>
+        </div>
+      </header>
+
+      <template v-if="sel && !editing">
+      <p v-if="sel.note" class="pane-note">{{ sel.note }}</p>
+
+      <div class="sub-title">{{ t("problem.hoursTitle") }} <em>{{ t("problem.hoursTotal", { hours: probHours(sel) }) }}</em></div>
+      <div class="pane-block">
+        <div v-for="l in sel.logs || []" :key="l.id" class="log-row">
             <span class="log-date">{{ l.date }}</span>
             <span class="log-hours">{{ l.hours }}h</span>
             <span class="log-note">{{ l.note }}</span>
-            <button class="icon-btn xs" :title="t('problem.delete')" @click="removeLog(p, l)"><Icon name="x" :size="13" /></button>
+            <button class="icon-btn xs" :title="t('problem.delete')" @click="removeLog(sel, l)"><Icon name="x" :size="13" /></button>
           </div>
-          <div class="log-add">
-            <input type="date" v-model="ensureLog(p).date" class="log-d" />
-            <input type="number" min="0" step="0.5" v-model.number="ensureLog(p).hours" class="log-h" />
-            <input v-model="ensureLog(p).note" :placeholder="t('problem.logNotePh')" class="log-n" @keyup.enter="addLog(p)" />
-            <button class="btn-ghost sm" @click="addLog(p)"><Icon name="plus" :size="14" /> {{ t("problem.addLog") }}</button>
-          </div>
-
-          <div class="sub-title res-title">
-            {{ t("problem.resolutionTitle") }}
-            <em v-if="p.status === 'done' && p.resolvedAt" class="ok">{{ t("problem.resolvedAt", { date: fmtDate(new Date(p.resolvedAt)) }) }}</em>
-          </div>
-          <textarea
-            v-model="p.resolution"
-            class="res-input"
-            rows="2"
-            :placeholder="t('problem.resolutionPh')"
-            @change="saveResolution(p)"
-          ></textarea>
-
-          <div class="sub-title res-title">
-            {{ t("problem.tagsTitle") }}
-            <em class="dom-hint">{{ t("problem.tagHint") }}</em>
-          </div>
-          <div class="dom-picker">
-            <input
-              v-model="newTagInput"
-              class="tag-input"
-              :placeholder="t('problem.tagInputPh')"
-              @keyup.enter="addProbTag(p)"
-            />
-            <button
-              v-for="t in allTags"
-              :key="t"
-              type="button"
-              class="dom-toggle"
-              :class="{ on: (p.tags || []).includes(t) }"
-              @click="toggleProbTag(p, t)"
-            >
-              <Icon name="tag" :size="12" /> {{ t }}
-            </button>
-            <span v-if="!allTags.length" class="no-dom">{{ t("problem.noTags") }}</span>
-          </div>
-
-          <div class="sub-title res-title">
-            {{ t("problem.aiTitle") }}
-            <em v-if="p.aiAnalysis" class="ai-meta">{{ fmtDate(new Date(p.aiAnalysis.at)) }}</em>
-            <span class="ai-actions">
-              <button class="btn-ghost xs2" :disabled="!!analyzing[p.id]" :title="t('problem.aiBtnTitle')" @click="analyzeProblem(p)">
-                <Icon name="sparkles" :size="12" /> {{ analyzing[p.id] ? t("problem.aiAnalyzing") : t("problem.aiAnalyze") }}
-              </button>
-              <template v-if="p.aiAnalysis">
-                <button class="btn-ghost xs2" :title="t('problem.aiCopyBtnTitle')" @click="copyAnalysis(p)"><Icon name="copy" :size="12" /> {{ t("problem.aiCopyBtn") }}</button>
-                <button class="btn-ghost xs2" :title="t('problem.aiClearTitle')" @click="clearAnalysis(p)"><Icon name="x" :size="12" /></button>
-              </template>
-            </span>
-          </div>
-          <div v-if="analyzing[p.id]" class="ai-running">
-            <Icon name="sparkles" :size="13" /> {{ t("problem.aiRunning") }}
-            <button class="btn-ghost xs2 ai-abort" :title="t('problem.aiAbortTitle')" @click="cancelAnalysis(p)"><Icon name="x" :size="12" /> {{ t("problem.aiAbort") }}</button>
-          </div>
-          <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown 先 escapeHtml 再做行内标记，不外泄原始 HTML -->
-          <div v-if="p.aiAnalysis" class="ai-result md" v-html="renderAnalysis(p.aiAnalysis.text)"></div>
-
-          <div class="sub-title res-title">{{ t("problem.imgsTitle") }} <em v-if="(p.images || []).length">{{ t("problem.imgsCount", { count: p.images.length }) }}</em></div>
-          <div class="img-grid">
-            <div v-for="img in p.images || []" :key="img.id" class="img-cell">
-              <img v-if="imgCache[img.name]" :src="imgCache[img.name]" @click="previewSrc = imgCache[img.name]" />
-              <span v-else class="img-miss"><Icon name="image" :size="18" /></span>
-              <button class="img-stage" :class="img.stage" :title="t('problem.stageTitle')" @click="toggleStage(p, img)">
-                {{ img.stage === "after" ? t("problem.stageAfter") : t("problem.stageBefore") }}
-              </button>
-              <button class="img-del" :title="t('problem.delete')" @click="removeImage(p, img)"><Icon name="x" :size="12" /></button>
-            </div>
-            <label class="img-add">
-              <Icon name="plus" :size="15" /> {{ t("problem.pickImage") }}
-              <input type="file" accept="image/*" multiple hidden @change="onPickImages(p, $event)" />
-            </label>
-            <button class="img-add" @click="pasteImages(p)"><Icon name="copy" :size="14" /> {{ t("problem.pasteImage") }}</button>
-          </div>
+        <div class="log-add">
+          <input type="date" v-model="ensureLog(sel).date" class="log-d" />
+          <input type="number" min="0" step="0.5" v-model.number="ensureLog(sel).hours" class="log-h" />
+          <input v-model="ensureLog(sel).note" :placeholder="t('problem.logNotePh')" class="log-n" @keyup.enter="addLog(sel)" />
+          <button class="btn-ghost sm" @click="addLog(sel)"><Icon name="plus" :size="14" /> {{ t("problem.addLog") }}</button>
         </div>
       </div>
-    </div>
 
-    <div v-else class="empty">
-          <span class="empty-ico"><Icon name="alert" :size="32" /></span>
-      <h2>{{ t("problem.emptyTitle") }}</h2>
-      <p>{{ t("problem.emptyDesc") }}</p>
-      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> {{ t("problem.emptyCreate") }}</button>
-    </div>
+      <div class="sub-title res-title">
+        {{ t("problem.resolutionTitle") }}
+        <em v-if="sel.status === 'done' && sel.resolvedAt" class="ok">{{ t("problem.resolvedAt", { date: fmtDate(new Date(sel.resolvedAt)) }) }}</em>
+      </div>
+      <textarea v-model="sel.resolution" class="res-input" rows="3" :placeholder="t('problem.resolutionPh')" @change="saveResolution(sel)"></textarea>
+
+      <div class="sub-title res-title">
+        {{ t("problem.tagsTitle") }}
+        <em class="dom-hint">{{ t("problem.tagHint") }}</em>
+      </div>
+      <div class="dom-picker">
+        <input v-model="newTagInput" class="tag-input" :placeholder="t('problem.tagInputPh')" @keyup.enter="addProbTag(sel)" />
+        <button v-for="t in allTags" :key="t" type="button" class="dom-toggle" :class="{ on: (sel.tags || []).includes(t) }" @click="toggleProbTag(sel, t)">
+          <Icon name="tag" :size="12" /> {{ t }}
+        </button>
+        <span v-if="!allTags.length" class="no-dom">{{ t("problem.noTags") }}</span>
+      </div>
+
+      <div class="sub-title res-title">
+        {{ t("problem.aiTitle") }}
+        <em v-if="sel.aiAnalysis" class="ai-meta">{{ fmtDate(new Date(sel.aiAnalysis.at)) }}</em>
+        <span class="ai-actions">
+          <button class="btn-ghost xs2" :disabled="!!analyzing[sel.id]" :title="t('problem.aiBtnTitle')" @click="analyzeProblem(sel)">
+            <Icon name="sparkles" :size="12" /> {{ analyzing[sel.id] ? t("problem.aiAnalyzing") : t("problem.aiAnalyze") }}
+          </button>
+          <template v-if="sel.aiAnalysis">
+            <button class="btn-ghost xs2" :title="t('problem.aiCopyBtnTitle')" @click="copyAnalysis(sel)"><Icon name="copy" :size="12" /> {{ t("problem.aiCopyBtn") }}</button>
+            <button class="btn-ghost xs2" :title="t('problem.aiClearTitle')" @click="clearAnalysis(sel)"><Icon name="x" :size="12" /></button>
+          </template>
+        </span>
+      </div>
+      <div v-if="analyzing[sel.id]" class="ai-running">
+        <Icon name="sparkles" :size="13" /> {{ t("problem.aiRunning") }}
+        <button class="btn-ghost xs2 ai-abort" :title="t('problem.aiAbortTitle')" @click="cancelAnalysis(sel)"><Icon name="x" :size="12" /> {{ t("problem.aiAbort") }}</button>
+      </div>
+      <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown 先 escapeHtml 再做行内标记，不外泄原始 HTML -->
+      <div v-if="sel.aiAnalysis" class="ai-result md" v-html="renderAnalysis(sel.aiAnalysis.text)"></div>
+
+      <div class="sub-title res-title">{{ t("problem.imgsTitle") }} <em v-if="(sel.images || []).length">{{ t("problem.imgsCount", { count: sel.images.length }) }}</em></div>
+      <div class="img-grid">
+        <div v-for="img in sel.images || []" :key="img.id" class="img-cell">
+          <img v-if="imgCache[img.name]" :src="imgCache[img.name]" @click="previewSrc = imgCache[img.name]" />
+          <span v-else class="img-miss"><Icon name="image" :size="18" /></span>
+          <button class="img-stage" :class="img.stage" :title="t('problem.stageTitle')" @click="toggleStage(sel, img)">
+            {{ img.stage === "after" ? t("problem.stageAfter") : t("problem.stageBefore") }}
+          </button>
+          <button class="img-del" :title="t('problem.delete')" @click="removeImage(sel, img)"><Icon name="x" :size="12" /></button>
+        </div>
+        <label class="img-add">
+          <Icon name="plus" :size="15" /> {{ t("problem.pickImage") }}
+          <input type="file" accept="image/*" multiple hidden @change="onPickImages(sel, $event)" />
+        </label>
+        <button class="img-add" @click="pasteImages(sel)"><Icon name="copy" :size="14" /> {{ t("problem.pasteImage") }}</button>
+      </div>
+      </template>
+      </div>
+    </article>
+    <div v-else class="prob-pane prob-blank">{{ t("problem.emptyDesc") }}</div>
   </main>
 
   <!-- 新建 / 编辑弹窗 -->
@@ -1041,4 +1113,29 @@ onUnmounted(() => window.removeEventListener("quick-note", openCreate));
   .ai-abort { color: var(--danger-soft-text); }
   .type-opt { background: var(--card-inset); color: var(--text-weak); }
 }
+
+/* ---------- 记录：左列表 + 右详情（问题） ---------- */
+.content.prob { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; }
+.prob-list { min-height: 0; overflow: auto; background: var(--card); border-right: 1px solid var(--border); }
+.prob-row.on { background: var(--card-soft); box-shadow: inset 2px 0 0 var(--primary); }
+.prob-pane { min-height: 0; overflow: auto; padding: var(--sp-6) var(--sp-7); background: var(--card); }
+.pane-inner { max-width: 900px; }
+.prob-blank { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: var(--fs-sm); }
+.pane-head { display: flex; align-items: flex-start; gap: var(--sp-6); }
+.pane-copy { min-width: 0; }
+.pane-title { margin: var(--sp-1) 0 var(--sp-1); font-size: var(--fs-xl); line-height: 1.35; letter-spacing: -0.3px; }
+.pane-meta { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.pane-acts { margin-left: auto; display: flex; gap: var(--sp-1); flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.pane-note { margin: var(--sp-3) 0 0; font-size: var(--fs-md); line-height: var(--lh-body); color: var(--text-weak); max-width: 72ch; }
+.pane-block { border: 1px solid var(--border); border-radius: var(--r-xs); margin-top: var(--sp-2); }
+.pane-block .log-row { border-bottom: 1px solid var(--border); padding: var(--sp-2) var(--sp-3); }
+.pane-block .log-add { padding: var(--sp-2); }
+.rec-empty { padding: var(--sp-7) var(--sp-4); align-items: flex-start; text-align: left; }
+
+.pane-edit { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; max-width: 560px; }
+.pe-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.pe-field > span { font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.pe-field input, .pe-field textarea { width: 100%; padding: var(--sp-2); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: var(--fs-md); }
+.pe-field input:focus, .pe-field textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.pe-field textarea { resize: vertical; line-height: var(--lh-body); }
 </style>

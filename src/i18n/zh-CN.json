@@ -548,6 +548,7 @@
     "formContentHint": "（已有字段，保存时自动按「标签: 值」生成，无需手填）",
     "formContentPh": "要随时复制的内容，支持多行；纯图速记可留空",
     "formFields": "字段（可选，账号/密码等多条信息，每条可单独复制）",
+      "fullEditor": "字段与图片",
     "fieldLabelPh": "标签（如：账号）",
     "fieldValuePh": "值",
     "removeField": "删除该字段",

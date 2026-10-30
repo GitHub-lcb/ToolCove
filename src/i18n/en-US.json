@@ -548,6 +548,7 @@
     "formContentHint": " (fields exist; auto-generated as “label: value” on save)",
     "formContentPh": "Content to copy anytime; multiple lines supported. Leave empty for image-only snippets",
     "formFields": "Fields (optional; each piece of info such as account/password can be copied separately)",
+      "fullEditor": "Fields & images",
     "fieldLabelPh": "Label (e.g. account)",
     "fieldValuePh": "Value",
     "removeField": "Remove this field",

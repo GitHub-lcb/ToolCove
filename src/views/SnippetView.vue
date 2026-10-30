@@ -88,6 +88,13 @@ const categories = computed(() => {
   snippets.value.forEach((s) => s.category && set.add(s.category));
   return [...set];
 });
+const selectedId = ref("");
+const selected = computed(() => filteredList.value.find((s) => s.id === selectedId.value) || filteredList.value[0] || null);
+function excerptOf(s) {
+  if (hasFields(s)) return (s.fields || []).map((f) => (f.label ? f.label + "：" : "") + (fieldValue(f) || "")).join(" · ");
+  return String(s.content || "").replace(/\s+/g, " ").trim();
+}
+
 const filteredList = computed(() => {
   const kw = search.value.trim().toLowerCase();
   return [...snippets.value]
@@ -278,6 +285,52 @@ async function createSnippetsFromAI(list) {
   }
   props.showToast(added ? t("snippet.aiAdded", { count: added }) : t("snippet.aiNothing"));
 }
+const editing = ref(false);
+function startCreate() {
+  form.value = { id: "", title: "", category: "", content: "", fields: [], images: [] };
+  removedImages.value = [];
+  selectedId.value = "";
+  editing.value = true;
+}
+function startEdit(s) {
+  form.value = {
+    id: s.id,
+    title: s.title || "",
+    category: s.category || "",
+    content: s.content || "",
+    fields: (s.fields || []).map((f) => ({ ...f })),
+    images: (s.images || []).map((img) => ({ ...img })),
+  };
+  removedImages.value = [];
+  editing.value = true;
+}
+function cancelEdit() { editing.value = false; }
+async function saveInline() {
+  const f = form.value;
+  if (!f.content.trim()) return props.showToast(t("snippet.saveRequire"));
+  const payload = {
+    title: f.title.trim(),
+    category: f.category.trim(),
+    content: f.content,
+    fields: f.fields,
+    images: f.images,
+  };
+  try {
+    if (f.id) {
+      const saved = await updateRecord("snippets", f.id, payload, { source: "view" });
+      const idx = snippets.value.findIndex((s) => s.id === f.id);
+      if (idx >= 0) snippets.value[idx] = saved;
+    } else {
+      const saved = await create("snippets", { ...payload, pinned: false }, { source: "view" });
+      snippets.value.unshift(saved);
+      selectedId.value = saved.id;
+    }
+    editing.value = false;
+  } catch (e) {
+    props.showToast(t("snippet.saveFailed", { err: e }));
+  }
+}
+
 function openEdit(s) {
   form.value = {
     id: s.id,
@@ -408,66 +461,113 @@ function fmtTime(ts) {
       </div>
     </div>
     <div class="tb-right">
-      <button class="btn-primary sm" @click="openCreate"><Icon name="plus" :size="15" /> {{ t("snippet.create") }}</button>
+      <button class="btn-primary sm" @click="startCreate"><Icon name="plus" :size="15" /> {{ t("snippet.create") }}</button>
             <AiExtract :fields="AI_FIELDS" :multiple="true" :hint="t('prompt.snippetExtractHint')" :title="t('snippet.extractTitle')" :show-toast="showToast" @apply="createSnippetsFromAI" />
     </div>
   </div>
 
-  <main class="content">
-    <div v-if="filteredList.length" class="snip-grid">
-      <div
-        v-for="(s, i) in filteredList"
-        :key="s.id"
-        :id="'snip-' + s.id"
-        class="snip-card"
-        :class="{ pinned: s.pinned, hi: jumpHi === s.id }"
-        :style="{ animationDelay: i * 0.04 + 's' }"
-      >
-        <div class="snip-head">
-          <span v-if="s.category" class="snip-cat">{{ s.category }}</span>
-          <h4 class="snip-title" :title="s.title || t('snippet.untitled')">{{ s.title || t("snippet.untitled") }}</h4>
-          <div class="snip-ops">
-            <button
-              v-if="isSecret(s) && s.content"
-              class="op"
-              :class="{ on: revealed[s.id] }"
-              :title="revealed[s.id] ? t('snippet.hideContent') : t('snippet.revealContent')"
-              @click="revealed[s.id] = !revealed[s.id]"
-            >
-              <Icon :name="revealed[s.id] ? 'eye-off' : 'eye'" :size="14" />
-            </button>
-            <button class="op" :class="{ on: s.pinned }" :title="s.pinned ? t('snippet.unpin') : t('snippet.pin')" @click="togglePin(s)"><Icon name="target" :size="14" /></button>
-            <button class="op" :title="t('snippet.edit')" @click="openEdit(s)"><Icon name="edit" :size="14" /></button>
-            <button class="op del" :title="t('snippet.delete')" @click="removeSnippet(s)"><Icon name="trash" :size="14" /></button>
-          </div>
-        </div>
-        <pre v-if="s.content && !hasFields(s)" class="snip-content" :class="{ masked: isSecret(s) && !revealed[s.id] }" :title="t('snippet.clickCopy')" @click="copy(s)">{{ isSecret(s) && !revealed[s.id] ? maskOf() : s.content }}</pre>
-        <div v-else-if="hasFields(s)" class="snip-fields" :class="{ masked: isSecret(s) && !revealed[s.id] }">
-          <div v-for="f in s.fields" :key="f.id" class="snip-field" :title="f.label ? t('snippet.fieldClickCopy', { label: f.label }) : t('snippet.clickCopy')" @click="copyField(f, s)">
-            <span v-if="f.label" class="snip-field-label">{{ f.label }}</span>
-            <span class="snip-field-val">{{ isSecret(s) && !revealed[s.id] ? maskOf() : fieldValue(f) || "-" }}</span>
-            <button class="snip-field-copy" :class="{ done: copiedId === s.id + ':' + f.id }" :title="t('snippet.copyFieldBtn', { label: f.label || t('snippet.fieldDefault') })" @click.stop="copyField(f, s)"><Icon :name="copiedId === s.id + ':' + f.id ? 'check' : 'copy'" :size="12" /></button>
-          </div>
-        </div>
-        <div v-if="(s.images || []).length" class="snip-imgs">
-          <div v-for="img in s.images" :key="img.id" class="snip-img-cell">
-            <img v-if="imgCache[img.name]" :src="imgCache[img.name]" :title="t('snippet.zoomIn')" @click="previewSrc = imgCache[img.name]" />
-            <span v-else class="snip-img-miss"><Icon name="image" :size="16" /></span>
-          </div>
-        </div>
-        <div class="snip-foot">
-          <span class="snip-time">{{ fmtTime(s.updatedAt) }}</span>
-          <button class="copy-btn" :class="{ done: copiedId === s.id }" @click="copy(s)"><Icon :name="copiedId === s.id ? 'check' : 'copy'" :size="14" /> {{ hasFields(s) ? t("snippet.copyAll") : t("snippet.copy") }}</button>
+  <main class="content rec">
+    <section class="rec-list" :aria-label="t('nav.snippet')">
+      <div class="rec-list-head"><span>{{ t("snippet.titleCount", { count: filteredList.length }) }}</span><span>{{ t("snippet.filterAll") }}</span></div>
+      <template v-if="filteredList.length">
+        <button
+          v-for="s in filteredList"
+          :key="s.id"
+          type="button"
+          class="rec-row"
+          :class="{ on: selected && selected.id === s.id, pinned: s.pinned, hi: jumpHi === s.id }"
+          @click="selectedId = s.id"
+        >
+          <span class="rr-title">{{ s.title || t("snippet.untitled") }}</span>
+          <span class="rr-ex">{{ excerptOf(s) }}</span>
+          <span class="rr-meta">
+            <span v-if="s.category" class="rtag">{{ s.category }}</span>
+            <span v-if="s.pinned" class="rtag">{{ t("snippet.pin") }}</span>
+            <span class="rr-time">{{ fmtTime(s.updatedAt) }}</span>
+          </span>
+        </button>
+      </template>
+      <div v-else class="empty rec-empty">
+        <span class="empty-ico"><Icon name="copy" :size="26" /></span>
+        <h2>{{ t("snippet.emptyTitle") }}</h2>
+        <p>{{ t("snippet.emptyDesc") }}</p>
+        <button class="btn-outline sm" @click="startCreate"><Icon name="plus" :size="15" />{{ t("snippet.emptyCreate") }}</button>
+      </div>
+    </section>
+
+    <article v-if="selected || editing" class="rec-detail" :aria-label="t('snippet.edit')">
+      <template v-if="!editing && selected">
+      <p class="rd-kicker">{{ t("nav.snippet") }}<span v-if="selected.category"> · {{ selected.category }}</span></p>
+      <h2 class="rd-title">{{ selected.title || t("snippet.untitled") }}</h2>
+      <div class="rd-meta">
+        <span v-if="selected.category" class="rtag">{{ selected.category }}</span>
+        <span class="rr-time">{{ fmtTime(selected.updatedAt) }}</span>
+        <button v-if="isSecret(selected) && selected.content" class="link xs" @click="revealed[selected.id] = !revealed[selected.id]">
+          {{ revealed[selected.id] ? t("snippet.hideContent") : t("snippet.revealContent") }}
+        </button>
+        <button class="link xs" @click="togglePin(selected)">{{ selected.pinned ? t("snippet.unpin") : t("snippet.pin") }}</button>
+      </div>
+
+      <pre
+        v-if="selected.content && !hasFields(selected)"
+        class="rd-content"
+        :class="{ masked: isSecret(selected) && !revealed[selected.id] }"
+        :title="t('snippet.clickCopy')"
+        @click="copy(selected)"
+      >{{ isSecret(selected) && !revealed[selected.id] ? maskOf() : selected.content }}</pre>
+
+      <div v-else-if="hasFields(selected)" class="rd-fields">
+        <div
+          v-for="f in selected.fields"
+          :key="f.id"
+          class="rd-field"
+          :title="f.label ? t('snippet.fieldClickCopy', { label: f.label }) : t('snippet.clickCopy')"
+          @click="copyField(f, selected)"
+        >
+          <span v-if="f.label" class="rd-field-label">{{ f.label }}</span>
+          <span class="rd-field-val">{{ isSecret(selected) && !revealed[selected.id] ? maskOf() : fieldValue(f) || "-" }}</span>
+          <button
+            class="snip-field-copy"
+            :class="{ done: copiedId === selected.id + ':' + f.id }"
+            :title="t('snippet.copyFieldBtn', { label: f.label || t('snippet.fieldDefault') })"
+            @click.stop="copyField(f, selected)"
+          >
+            <Icon :name="copiedId === selected.id + ':' + f.id ? 'check' : 'copy'" :size="12" />
+          </button>
         </div>
       </div>
-    </div>
 
-    <div v-else class="empty">
-          <span class="empty-ico"><Icon name="copy" :size="32" /></span>
-      <h2>{{ t("snippet.emptyTitle") }}</h2>
-      <p>{{ t("snippet.emptyDesc") }}</p>
-      <button class="btn-outline lg" @click="openCreate"><Icon name="plus" :size="16" /> {{ t("snippet.emptyCreate") }}</button>
-    </div>
+      <div v-if="(selected.images || []).length" class="rd-imgs">
+        <div v-for="img in selected.images" :key="img.id" class="snip-img-cell">
+          <img v-if="imgCache[img.name]" :src="imgCache[img.name]" :title="t('snippet.zoomIn')" @click="previewSrc = imgCache[img.name]" />
+          <span v-else class="snip-img-miss"><Icon name="image" :size="16" /></span>
+        </div>
+      </div>
+
+      <div class="rd-acts">
+        <button class="btn-ghost sm" @click="copy(selected)">
+          <Icon :name="copiedId === selected.id ? 'check' : 'copy'" :size="14" />{{ hasFields(selected) ? t("snippet.copyAll") : t("snippet.copy") }}
+        </button>
+        <button class="btn-ghost sm" @click="startEdit(selected)"><Icon name="edit" :size="14" />{{ t("snippet.edit") }}</button>
+        <button class="btn-ghost sm" @click="removeSnippet(selected)"><Icon name="trash" :size="14" />{{ t("snippet.delete") }}</button>
+      </div>
+      </template>
+      <div v-else class="inline-edit">
+        <p class="rd-kicker">{{ form.id ? t("snippet.formEditTitle") : t("snippet.formCreateTitle") }}</p>
+        <div class="ie-row">
+          <label class="ie-field"><span>{{ t("snippet.formTitle") }}</span><input v-model="form.title" :placeholder="t('snippet.formTitlePh')" /></label>
+          <label class="ie-field"><span>{{ t("snippet.formCategory") }}</span><input v-model="form.category" :placeholder="t('snippet.formCategoryPh')" /></label>
+        </div>
+        <label class="ie-field"><span>{{ t("snippet.formContent") }}</span><textarea v-model="form.content" rows="8" class="mono" :placeholder="t('snippet.formContentPh')"></textarea></label>
+        <p v-if="form.fields.length || form.images.length" class="ie-note">{{ t("snippet.formContentHint") }}</p>
+        <div class="rd-acts">
+          <button class="btn-primary sm" @click="saveInline">{{ t("snippet.saveBtn") }}</button>
+          <button class="btn-ghost sm" @click="cancelEdit">{{ t("common.cancel") }}</button>
+          <button class="btn-ghost sm" @click="openEdit(selected)">{{ t("snippet.fullEditor") }}</button>
+        </div>
+      </div>
+    </article>
+    <div v-else class="rec-detail rec-blank">{{ t("snippet.emptyDesc") }}</div>
   </main>
 
   <!-- 新建 / 编辑弹窗 -->
@@ -643,4 +743,53 @@ function fmtTime(ts) {
   .snip-fields { background: var(--card-raised); }
   .snip-field-val { color: var(--text-code); }
 }
+
+/* ---------- B · Pipeline 收口：卡片与空态 ---------- */
+.section-title { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.3px; }
+.snip-card { border-color: var(--border); border-radius: var(--r-xs); box-shadow: none; }
+.snip-card:hover { transform: none; border-color: var(--primary); box-shadow: none; }
+.snip-card.hi { box-shadow: none; border-color: var(--primary); }
+.snip-card.pinned::before { background: var(--amber); height: 2px; }
+.snip-cat { background: transparent; border: 1px solid var(--border-blue); border-radius: var(--r-xs); padding: 0 var(--sp-05); }
+.snip-content { border-radius: var(--r-xs); }
+
+/* ---------- 记录：左列表 + 右详情 ---------- */
+.content.rec { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; }
+.rec-list { min-height: 0; overflow: auto; background: var(--card); border-right: 1px solid var(--border); }
+.rec-list-head { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); background: var(--card); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.rec-row { display: flex; flex-direction: column; gap: var(--sp-1); width: 100%; padding: var(--sp-3); border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; }
+.rec-row:hover { background: var(--card-soft); }
+.rec-row.on { background: var(--card-soft); box-shadow: inset 2px 0 0 var(--primary); }
+.rr-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-ex { font-size: var(--fs-sm); line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rr-meta { display: flex; align-items: center; gap: var(--sp-1); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.rr-time { margin-left: auto; }
+.rtag { border: 1px solid var(--border-strong); border-radius: var(--r-xs); padding: 0 var(--sp-05); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); }
+.rec-empty { padding: var(--sp-7) var(--sp-4); align-items: flex-start; text-align: left; }
+.rec-detail { min-height: 0; overflow: auto; padding: var(--sp-6) var(--sp-7); background: var(--card); }
+.rd-kicker { margin: 0 0 var(--sp-1); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+.rd-title { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); line-height: 1.35; letter-spacing: -0.3px; }
+.rd-meta { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--faint); }
+.rd-meta .rr-time { margin-left: 0; }
+.rd-content { margin: var(--sp-4) 0 0; padding: var(--sp-4); background: var(--code-bg); border: 1px solid var(--code-border); border-radius: var(--r-xs); font-family: var(--font-mono); font-size: var(--fs-md); line-height: var(--lh-body); color: var(--text-code); white-space: pre-wrap; word-break: break-word; cursor: pointer; }
+.rd-content.masked { letter-spacing: 3px; color: var(--muted); }
+.rd-fields { margin-top: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-xs); }
+.rd-field { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); cursor: pointer; }
+.rd-field:last-child { border-bottom: 0; }
+.rd-field:hover { background: var(--card-soft); }
+.rd-field-label { flex: 0 0 96px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.rd-field-val { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-code); word-break: break-all; }
+.rd-imgs { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
+.rd-acts { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+.rec-blank { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: var(--fs-sm); }
+
+/* ---------- 详情内就地编辑 ---------- */
+.inline-edit { display: flex; flex-direction: column; gap: var(--sp-3); max-width: 720px; }
+.ie-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+.ie-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.ie-field > span { font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.ie-field input, .ie-field textarea { width: 100%; padding: var(--sp-2); border: 1px solid var(--border-strong); background: var(--card); color: var(--text); font-size: var(--fs-md); }
+.ie-field input:focus, .ie-field textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.ie-field textarea { resize: vertical; line-height: var(--lh-body); font-family: var(--font-mono); font-size: var(--fs-sm); }
+.ie-note { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
 </style>
